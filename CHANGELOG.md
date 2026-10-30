@@ -12,6 +12,8 @@ What each release contains, newest first. Until a release that calls itself play
 - An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039),
   and the SPU poison-write diagnostic works with `SPU_POISON_DMA_WATCH` (patch 1019); both found by ps3recomp's own
   tests, which now run on the patched tree in CI (`tools/tests/test_upstream_suite.sh`, patch 0004).
+- An SPU that reserves a line while another SPU's plain write to it is being copied now loses the reservation at once,
+  not at the next 10 ms poll (patch 1020, `tools/tests/test_spu_put_recheck.sh`).
 - `tools/mlaa_harness` and `tools/mlaa_probe`: the lifted MLAA jobs run outside the game, test patterns and checks.
 
 ## The first public tree (2026-10-30)

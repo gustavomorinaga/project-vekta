@@ -103,3 +103,4 @@
 0004-tests-upstream-s-host-tests-follow-the-port-s-patche.patch
 2039-cellGcm-the-SPU-PUT-reject-reads-its-own-page-map-wh.patch
 1019-spu-the-DMA-fast-path-leaves-the-POISON-DMA-report-t.patch
+1020-spu-a-PUT-that-found-no-reserved-line-checks-again-a.patch

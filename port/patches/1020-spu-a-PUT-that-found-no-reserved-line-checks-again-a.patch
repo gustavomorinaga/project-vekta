@@ -1,0 +1,72 @@
+From e9cb152f18d65721b2b334ecb58edf0bb9242aaa Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 30 Oct 2026 22:09:55 +0000
+Subject: [PATCH] spu: a PUT that found no reserved line checks again after its
+ copy, fenced
+
+Patch 1010's fast path copied an unreserved PUT and stopped there, so another
+SPU's GETLLAR landing between the scan and the end of the copy kept a valid
+reservation with an old or torn snapshot and no SPU_EVENT_LR: its PUTLLC
+fails on the compare, but an SPU asleep on the event waits for the 10 ms
+poll. The fast path now checks the span again after the copy, as
+mfc_do_transfer does. That check and the locked GETLLAR's mark are the
+store-buffering shape, so both get a seq_cst fence (the full path's check
+missed too without them). Marks used to be permanent and only a line's
+first reservation could race; patch 0002 drops them, so it is frequent.
+tools/tests/test_spu_put_recheck.sh: 89864 of 200000 rounds kept a stale
+reservation on the fast path and 158 on the full path; 0 on both now.
+---
+ runtime/spu/spu_coherency.c |  8 ++++++++
+ runtime/spu/spu_dma.h       | 12 ++++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
+index cbcaedf..1d08313 100644
+--- a/runtime/spu/spu_coherency.c
++++ b/runtime/spu/spu_coherency.c
+@@ -153,6 +153,14 @@ void spu_coh_reserve(spu_context* ctx, uint32_t ea)
+         s_coh_bitmap[line >> 3] |= bit;
+     if (!g_spu_coh_bits)
+         g_spu_coh_bits = s_coh_bitmap;
++    /* The mark before the caller's copy of the line, against a DMA PUT that
++     * copies without the lock and then reads the mark (mfc_do_transfer): the
++     * same store-buffering shape as spu_coh_reserve_fast, so a fence on each
++     * side. Without it the mark could still sit in this core's store buffer
++     * when the PUT looks, and the copy still read the old line. Marks used to
++     * be permanent, so only a line's first reservation could race; now that a
++     * write drops them (spu_coh_unmark) it happens all the time. */
++    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+ 
+     if (!ctx) return;
+     for (spu_coh_entry* entry = s_coh_ctxs; entry; entry = entry->next)
+diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
+index 9ece7e0..0f1727c 100644
+--- a/runtime/spu/spu_dma.h
++++ b/runtime/spu/spu_dma.h
+@@ -263,7 +263,18 @@ static inline int mfc_do_transfer_fast(spu_context* spu, uint32_t lsa, uint64_t
+             }
+             spu_lockline_unlock();
+         } else {
++            /* As the full path below: a line reserved between the scan and
++             * the end of the copy gets its event after it. */
+             memcpy(ea_ptr, ls_ptr, size);
++            __atomic_thread_fence(__ATOMIC_SEQ_CST);   /* against spu_coh_reserve's */
++            for (uint32_t a = a0; ; a += 128u) {
++                if (spu_coh_line_reserved(a)) {
++                    spu_lockline_lock();
++                    spu_coh_notify_write_except(a, spu);
++                    spu_lockline_unlock();
++                }
++                if (a == a1) break;
++            }
+         }
+         { extern void (*g_spu_put_hook)(uint32_t ea, uint32_t size);
+           if (g_spu_put_hook) g_spu_put_hook((uint32_t)ea, size); }
+@@ -833,6 +844,7 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
+             } else {
+                 memcpy(ea_ptr, ls_ptr, size);
+                 SPU_DMA_STATS(1, (uint32_t)ea, size);
++                __atomic_thread_fence(__ATOMIC_SEQ_CST);   /* against spu_coh_reserve's */
+                 for (uint32_t a = a0; ; a += 128u) {
+                     if (spu_coh_line_reserved(a)) {
+                         spu_lockline_lock();
