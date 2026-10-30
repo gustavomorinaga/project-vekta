@@ -1,0 +1,124 @@
+# Release: the source archive of a tag, published as a DRAFT GitHub release for the maintainer to read and publish.
+# After Project Pyrrhus's and Project Helghast's release.yml (undecuple, MIT); their installer and portable zip are
+# not here yet: a release is the source (docs/BUILDING.md builds it on the player's machine from their own game).
+#
+# Triggers: a pushed tag vMAJOR.MINOR.PATCH (builds, then creates the draft) and workflow_dispatch (a dry run: builds
+# and uploads the workflow artifact, never publishes). Nothing runs on a push to a branch or on a pull request.
+# Release rules: the version is VERSION and the tag must say the same (tools/release/release_version.py); the release
+# is a pre-release while the major version is 0; its title is the tag; its notes are written from the tag's
+# CHANGELOG.md entry (tools/release/release_notes.py, which refuses a tag without a released entry); SHA256SUMS and a
+# .sha256 sit beside the archive; an existing release is never touched, no tag is created, moved or deleted, and no
+# asset is overwritten. Make the release commit with tools/release/bump_version.py, tag it, push the tag.
+#
+# Jobs: source (read-only token) checks and builds the archive; publish (tag pushes only) is the one job that may
+# write: it creates the draft release from the source job's artifact and runs no repository code.
+# Third-party: actions/checkout and actions/upload-artifact (GitHub, MIT), the gh CLI (MIT, on the image).
+# Published files: project-vekta-<version>-source.tar.gz, its .sha256, SHA256SUMS. Nothing of the game is used or
+# produced here.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:   # dry run only: version = VERSION, publishing is skipped
+
+permissions:
+  contents: read    # default for every job; only the publish job below gets write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - name: Version (VERSION; a tag must say the same)
+        id: ver
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = tag ]; then
+            python3 tools/release/release_version.py --check --tag "$GITHUB_REF_NAME" || {
+              echo "::error::tag $GITHUB_REF_NAME is not v + VERSION ($(cat VERSION))"; exit 1; }
+          else
+            python3 tools/release/release_version.py --check
+          fi
+          echo "version=$(python3 tools/release/release_version.py)" >> "$GITHUB_OUTPUT"
+
+      # The notes come from the tag's CHANGELOG.md entry; nobody writes them by hand. A tag with no released entry
+      # stops here; a dispatch previews the notes.
+      - name: Release notes (from CHANGELOG.md)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p out
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = tag ]; then
+            python3 tools/release/release_notes.py --tag "$GITHUB_REF_NAME" --out out/release-body.md
+          else
+            python3 tools/release/release_notes.py --preview "$VERSION" --out out/release-body.md
+          fi
+          cat out/release-body.md
+
+      - name: The tree at the tag (no game files; every patch applies; the page and versions agree)
+        run: |
+          sh tools/check-tree.sh
+          bash tools/ps3recomp-patched.sh
+          python3 tools/website.py --check
+          python3 tools/tests/test_version_agree.py
+
+      - name: Source archive (tools/release/pack_source.py, reproducible)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          python3 tools/release/pack_source.py --version "$VERSION" --out out
+          cd out && sha256sum -c "project-vekta-$VERSION-source.tar.gz.sha256" && ls -l
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: project-vekta-${{ steps.ver.outputs.version }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
+
+  # Tag pushes only; a dispatch never publishes. A draft pre-release (major 0) titled with the tag. If a release for the
+  # tag already exists the job fails: nothing is edited, re-uploaded or clobbered, and no tag is touched (--verify-tag
+  # refuses to create one). No checkout: the job runs no repository code.
+  publish:
+    needs: source
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # gh release create; nothing else is written
+      actions: read     # gh run download: the source job's artifact
+    steps:
+      - name: Draft release with SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          set -euo pipefail
+          [ "$GITHUB_REF_NAME" = "v$VERSION" ] || { echo "::error::tag $GITHUB_REF_NAME is not v$VERSION"; exit 1; }
+          mkdir assets && cd assets
+          gh run download "$GITHUB_RUN_ID" --name "project-vekta-$VERSION" --dir .
+          src="project-vekta-$VERSION-source.tar.gz"
+          test -s "$src" && test -s "$src.sha256" && sha256sum -c "$src.sha256"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::a release for $GITHUB_REF_NAME already exists; refusing to touch it"; exit 1
+          fi
+          sha256sum "$src" > SHA256SUMS
+          cat SHA256SUMS
+          pre=""; case "$VERSION" in 0.*) pre="--prerelease" ;; esac
+          test -s release-body.md   # written by the source job from the tag's CHANGELOG.md entry; not an asset
+          gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag --title "$GITHUB_REF_NAME" \
+            --notes-file release-body.md "$src" "$src.sha256" SHA256SUMS

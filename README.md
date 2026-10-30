@@ -78,7 +78,9 @@ repository's `work/` folder, and nothing is written into your game files.
 
 ## Getting it
 
-There is no download yet: build it from source ([docs/BUILDING.md](docs/BUILDING.md)). You need:
+Latest release: <!-- release -->none yet<!-- /release -->. Releases are source archives (this tree with ps3recomp at
+its pinned commit, checked by SHA-256); either way the port is built on your machine from your own game
+([docs/BUILDING.md](docs/BUILDING.md)). You need:
 
 - the Killzone HD package from your own **Killzone Trilogy** disc, installed, plus its decrypted
   EBOOT and data archive, and the decrypted `libsre` from your own PS3 firmware: what each must be, and how the

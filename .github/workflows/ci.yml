@@ -30,7 +30,7 @@ jobs:
         run: |
           set -e
           for f in tools/*.sh; do if head -1 "$f" | grep -q bash; then bash -n "$f"; else sh -n "$f"; fi; done
-          python3 -m py_compile tools/*.py
+          python3 -m py_compile tools/*.py tools/release/*.py
           python3 -c "import json; json.load(open('.recomp.json'))"
       - name: Lint (shellcheck at warning level, ruff with ruff.toml)
         run: |

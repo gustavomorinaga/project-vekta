@@ -267,6 +267,36 @@ def requirements(root, problems):
     return " ".join(game.split()), [head[i] for i in idx], body
 
 
+def current_release(root, log, problems):
+    """The CHANGELOG entry of VERSION when it is released (dated, "(pre-release)" or "(release)"), else None: until
+    tools/release/bump_version.py has made that entry the page says there is no release yet."""
+    v = read(root, "VERSION", problems).strip()
+    if not re.fullmatch(r"\d+\.\d+\.\d+", v):
+        problems.append(f"VERSION holds {v!r}, not MAJOR.MINOR.PATCH")
+        return None
+    e = next((e for e in log if e["name"] == v), None)
+    return e if e and e["date"] and e["note"] in ("pre-release", "release") else None
+
+
+def download_block(release, headline):
+    """The version and download block: the source archive of the current release, or the way to build without one."""
+    if release:
+        v = release["name"]
+        tag_url = f"{REPO}/releases/tag/v{v}"
+        kind = "pre-release" if v.startswith("0.") else "release"
+        return ("<div class=\"dl\">\n"
+                f"<p class=\"ver\"><a href=\"{tag_url}\">v{esc(v)}</a> <span>{kind}</span></p>\n"
+                f"<p class=\"small\">{esc(long_date(release['date']))} · {esc(headline.lower())} · source for Linux x64</p>\n"
+                f"<p class=\"btns\"><a class=\"btn\" href=\"{tag_url}\">Download v{esc(v)}</a>"
+                f"<a class=\"btn alt\" href=\"{REPO}/releases\">All releases</a></p>\n"
+                f"<p>The release page has project-vekta-{esc(v)}-source.tar.gz (this version's tree with ps3recomp at "
+                "its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no "
+                "installer yet: the archive builds the port as below.</p>\n</div>\n")
+    return ("<div class=\"dl\">\n<p class=\"ver\">No release yet</p>\n<p>Nothing has been published yet. When a release "
+            f"is, it appears on the <a href=\"{REPO}/releases\">releases page</a>; until then the port is built from "
+            "source.</p>\n</div>\n")
+
+
 def table(rows, head):
     o = ["<div class=\"tw\"><table>\n<thead><tr><th>Feature</th>"
          + "".join(f"<th>{esc(h)}</th>" for h in head) + "</tr></thead>\n<tbody>\n"]
@@ -303,6 +333,13 @@ def render(root, problems):
     log = entries(root, problems)
     news = log[:NEWS_N]
     version, patches = recomp(root, problems)
+    release = current_release(root, log, problems)
+    if release:
+        cta = (f"<a class=\"cta-box\" href=\"#install\"><b>v{esc(release['name'])}</b>source pre-release</a>"
+               if release["name"].startswith("0.") else
+               f"<a class=\"cta-box\" href=\"#install\"><b>v{esc(release['name'])}</b>source release</a>")
+    else:
+        cta = "<a class=\"cta-box\" href=\"#install\"><b>Build it</b>no release yet</a>"
     all_pct, kz_pct = estimate(root, problems)
     game_text, req_head, req_rows = requirements(root, problems)
 
@@ -339,7 +376,7 @@ def render(root, problems):
       "height=\"320\" alt=\"Project Vekta: Killzone HD PC\"><span class=\"sticker\">Work in progress</span></div>\n"
       f"<ul class=\"util\"><li><a href=\"{REPO}\">GitHub</a></li><li><a href=\"{REPO}/releases\">Releases</a></li>"
       f"<li><a href=\"{gh(CHANGELOG)}\">Changelog</a></li><li><a href=\"{REPO}/issues\">Issues</a></li></ul>\n"
-      f"<nav class=\"tabs\">{tab_html}<a class=\"cta-box\" href=\"#install\"><b>Build it</b>no release yet</a></nav>\n"
+      f"<nav class=\"tabs\">{tab_html}{cta}</nav>\n"
       "<div class=\"intro\">\n<h1>Project Vekta<span>" + esc(DESC) + "</span></h1>\n"
       "<p class=\"lead\">A native Linux and Windows x64 port of the 2011 PS3 remaster of the first Killzone, made by "
       "static recompilation: the game's PowerPC and SPU code is translated to C++ ahead of time and compiled into a "
@@ -455,10 +492,8 @@ def render(root, problems):
         w(f"<li>{status_badge(s)} <b>{counts[s]}</b></li>\n")
     w("</ul>\n<p class=\"small\"><a href=\"#status\">Full status</a></p>\n</section>\n")
 
-    w("<section id=\"install\" class=\"promo\">\n<h2>Install</h2>\n<div class=\"dl\">\n<p class=\"ver\">No release "
-      "yet</p>\n<p>No installer has been published yet. When one is, it appears on the "
-      f"<a href=\"{REPO}/releases\">releases page</a>; until then the port is built from source.</p>\n</div>\n"
-      "<p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. "
+    w("<section id=\"install\" class=\"promo\">\n<h2>Install</h2>\n" + download_block(release, headline)
+      + "<p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. "
       "Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must "
       f"contain: <a href=\"{gh('docs/GETTING-FILES.md')}\">Getting your files</a>.</p>\n"
       f"<pre>git clone --recurse-submodules \\\n  {REPO}\ncd project-vekta\ntools/check-game-files.py\n"

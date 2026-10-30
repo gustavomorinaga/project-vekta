@@ -16,7 +16,7 @@ TOOL = ROOT / "tools" / "website.py"
 spec = importlib.util.spec_from_file_location("website", TOOL)
 website = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(website)
-SOURCES = ("CHANGELOG.md", ".recomp.json", "port/patches/series", "docs/features.tsv", "docs/SCREENSHOTS.md",
+SOURCES = ("VERSION", "CHANGELOG.md", ".recomp.json", "port/patches/series", "docs/features.tsv", "docs/SCREENSHOTS.md",
            "docs/ROADMAP.md", "docs/requirements.md", "site/index.html", "site/style.css")
 fails = 0
 

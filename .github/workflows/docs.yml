@@ -5,10 +5,10 @@ name: docs
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "site/**", "CHANGELOG.md", ".recomp.json", "port/patches/series", "tools/features.py",
+    paths: ["docs/**", "site/**", "CHANGELOG.md", "VERSION", ".recomp.json", "port/patches/series", "tools/features.py",
             "tools/website.py", ".github/workflows/docs.yml"]
   pull_request:
-    paths: ["docs/**", "site/**", "CHANGELOG.md", ".recomp.json", "port/patches/series", "tools/features.py",
+    paths: ["docs/**", "site/**", "CHANGELOG.md", "VERSION", ".recomp.json", "port/patches/series", "tools/features.py",
             "tools/website.py", ".github/workflows/docs.yml"]
 permissions:
   contents: read
