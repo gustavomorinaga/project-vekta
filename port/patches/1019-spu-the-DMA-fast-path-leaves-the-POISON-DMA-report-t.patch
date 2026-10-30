@@ -1,0 +1,38 @@
+From e0b7f62e56193d0bd0f4ead33d125e526aa30089 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 30 Oct 2026 21:28:23 +0000
+Subject: [PATCH] spu: the DMA fast path leaves the POISON-DMA report to the
+ full path
+
+Patch 1010's fast path is taken only while no DMA diagnostic is set, but it
+listed SPU_POISON_DMA, not the SPU_POISON_DMA_WATCH the full path reads, so
+the watch had no effect; and it copied PUTs into the singleton object region
+(0x40003000-0x40005000), which the full path always reports, without the
+report. ps3recomp's test_spu_poison_scan failed on both. The fast path now
+names the variable the full path reads and hands those PUTs to it.
+---
+ runtime/spu/spu_dma.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
+index c80f63c..9ece7e0 100644
+--- a/runtime/spu/spu_dma.h
++++ b/runtime/spu/spu_dma.h
+@@ -205,7 +205,7 @@ static int mfc_fast_ok(void)
+         "SPU_DMA_WATCH", "SPU_DMA_RANGE", "SPU_DMA_LAX", "SPU_DMACHK", "SPU_GETHIST",
+         "SPU_PUTHIST", "SPU_MFC_TRACE", "SPU_DMA_SKIP_DUMP", "SPU_STACKEA_WATCH",
+         "SPU_DMATRACE_ALL", "YDKJ_DMA_IMG", "SPU_DUMP_GET", "SPU_DSP_IMAGE_EA",
+-        "LBP_SKIP_NULL_DMA", "SPU_OVL_DIAG", "SPU_SMC_WATCH", "SPU_POISON_DMA", "SPU_DMA_STATS" };
++        "LBP_SKIP_NULL_DMA", "SPU_OVL_DIAG", "SPU_SMC_WATCH", "SPU_POISON_DMA_WATCH", "SPU_DMA_STATS" };
+     int any = 0;
+     for (unsigned i = 0; i < sizeof vars / sizeof vars[0]; i++) any |= getenv(vars[i]) != NULL;
+ #ifdef SPU_DMA_LOG
+@@ -225,6 +225,8 @@ static inline int mfc_do_transfer_fast(spu_context* spu, uint32_t lsa, uint64_t
+     if ((size == 0) || (size > 0x4000) || (size >= 16 && (size & 15)) ||
+         (((lsa ^ (uint32_t)ea) & 15) != 0) || (put && (uint32_t)ea < 0x10000u))
+         return 0;                                    /* malformed: reported there */
++    /* A PUT into the singleton object region is always reported (POISON-DMA). */
++    if (put && (uint32_t)ea < 0x40005000u && (uint32_t)ea + size > 0x40003000u) return 0;
+     if (size > MFC_MAX_DMA_SIZE) { *rc = -1; return 1; }
+     lsa &= SPU_LS_MASK;
+     if ((uint64_t)lsa + size > (uint64_t)SPU_LS_SIZE) { *rc = -1; return 1; }

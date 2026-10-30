@@ -1,0 +1,350 @@
+From 61975bfb28cd9e7732985ed398fd963e276eea1f Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 30 Oct 2026 21:25:54 +0000
+Subject: [PATCH] tests: upstream's host tests follow the port's patches
+
+ps3recomp's own tests, run on the patched tree, failed where the port changed a
+design on purpose or added a call from a unit the tests compile on its own:
+
+- test_spurs_coordinator_kick: the coordinator sleeps on its own condition
+  variable (kwake, patch 1015), so the waiter sleeps there.
+- test_spu_coherency (test_spu_context_registries): a store that ends a line's
+  last reservation drops its mark (patch 0002); the old expectation holds with
+  SPU_COH_KEEP_MARKS=1, and the test now checks both.
+- The GCM fixtures that compile cellGcmSys.c in: the tracing spans (patches 2009, 3021)
+  and the GPU MLAA call (patch 2036), from libs/video/tests/port_links.h;
+  test_rsx_immediate_vertices links runtime/ps3_trace.c.
+- test_sail_boot_callback, test_sysmodule_unload_module_ex: ppu_prof_stamp_host
+  (patch 3014). test_mfc_resume_elements, test_spu_poison_scan: g_spu_dma_hook
+  (patch 1012).
+- test_lwcond_layout: the lwcond wait's host condition variable and its trace span
+  (patches 3005, 3021).
+- The SPU interpreter fixtures and test_spu_program_pipeline: spu_wrch is a
+  function-like macro outside spu_channels.c (the inline MFC latch, patch
+  1004), so a stub definition parenthesises the name.
+---
+ libs/video/tests/port_links.h                   |  6 ++++++
+ libs/video/tests/test_gcm_flip_stream.c         |  1 +
+ libs/video/tests/test_gcm_get_on_jump.c         |  1 +
+ libs/video/tests/test_gcm_get_on_release.c      |  1 +
+ libs/video/tests/test_gcm_legacy_state_filter.c |  1 +
+ libs/video/tests/test_gcm_nop_runs.c            |  1 +
+ libs/video/tests/test_gcm_park_reuse.c          |  1 +
+ libs/video/tests/test_gcm_resync_labels.c       |  1 +
+ libs/video/tests/test_gcm_walker_prof.c         |  1 +
+ runtime/spu/tests/spu_interp_selftest.c         |  2 +-
+ runtime/spu/tests/test_mfc_resume_elements.c    |  1 +
+ runtime/spu/tests/test_spu_coherency.c          |  6 ++++--
+ runtime/spu/tests/test_spu_interpreter_ilh.c    |  2 +-
+ runtime/spu/tests/test_spu_poison_scan.c        |  1 +
+ tests/test_sail_boot_callback.cpp               |  1 +
+ tests/test_spurs_coordinator_kick.c             | 12 +++++++-----
+ tests/test_sysmodule_unload_module_ex.cpp       |  1 +
+ tools/test_lwcond_layout.py                     | 10 ++++++++++
+ tools/test_rsx_immediate_vertices.py            |  2 +-
+ tools/test_spu_program_pipeline.py              |  4 ++++
+ 20 files changed, 46 insertions(+), 10 deletions(-)
+ create mode 100644 libs/video/tests/port_links.h
+
+diff --git a/libs/video/tests/port_links.h b/libs/video/tests/port_links.h
+new file mode 100644
+index 0000000..8fed634
+--- /dev/null
++++ b/libs/video/tests/port_links.h
+@@ -0,0 +1,6 @@
++/* What cellGcmSys.c calls outside itself since the port's patches, for the
++ * fixtures that compile it in: the tracing spans (runtime/ps3_trace.c itself,
++ * off unless PS3_TRACE asks) and the GPU MLAA pass, which answers "not run" as
++ * the draw engine does before it is ready. Include it after cellGcmSys.c. */
++#include "../../../runtime/ps3_trace.c"
++int rsx_draw_engine_mlaa(u32 location, u32 offset) { (void)location; (void)offset; return 0; }
+diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
+index 832f0fb..99ce147 100644
+--- a/libs/video/tests/test_gcm_flip_stream.c
++++ b/libs/video/tests/test_gcm_flip_stream.c
+@@ -28,6 +28,7 @@
+  *   -o /tmp/test_gcm_flip_stream        (clang on macOS: -Wl,-dead_strip)
+  */
+ #include "../cellGcmSys.c"
++#include "port_links.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ uint8_t* vm_base;
+diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
+index 07e5a95..07df6b5 100644
+--- a/libs/video/tests/test_gcm_get_on_jump.c
++++ b/libs/video/tests/test_gcm_get_on_jump.c
+@@ -17,6 +17,7 @@
+  *   (clang on macOS: -Wl,-dead_strip)
+  */
+ #include "../cellGcmSys.c"
++#include "port_links.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ uint8_t* vm_base;
+diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
+index 830f672..37e4d30 100644
+--- a/libs/video/tests/test_gcm_get_on_release.c
++++ b/libs/video/tests/test_gcm_get_on_release.c
+@@ -22,6 +22,7 @@
+  *   (clang on macOS: -Wl,-dead_strip)
+  */
+ #include "../cellGcmSys.c"
++#include "port_links.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/libs/video/tests/test_gcm_legacy_state_filter.c b/libs/video/tests/test_gcm_legacy_state_filter.c
+index 7fe49e3..ea0684f 100644
+--- a/libs/video/tests/test_gcm_legacy_state_filter.c
++++ b/libs/video/tests/test_gcm_legacy_state_filter.c
+@@ -11,6 +11,7 @@
+  *   (gcc: -Wl,--gc-sections -pthread -lm)
+  */
+ #include "../cellGcmSys.c"
++#include "port_links.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/libs/video/tests/test_gcm_nop_runs.c b/libs/video/tests/test_gcm_nop_runs.c
+index b4713b8..2d5b842 100644
+--- a/libs/video/tests/test_gcm_nop_runs.c
++++ b/libs/video/tests/test_gcm_nop_runs.c
+@@ -12,6 +12,7 @@
+  *   (clang on macOS: -Wl,-dead_strip)
+  */
+ #include "../cellGcmSys.c"
++#include "port_links.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ uint8_t* vm_base;
+diff --git a/libs/video/tests/test_gcm_park_reuse.c b/libs/video/tests/test_gcm_park_reuse.c
+index 1efb7a8..7168866 100644
+--- a/libs/video/tests/test_gcm_park_reuse.c
++++ b/libs/video/tests/test_gcm_park_reuse.c
+@@ -20,6 +20,7 @@
+  *   (clang on macOS: -Wl,-dead_strip)
+  */
+ #include "../cellGcmSys.c"
++#include "port_links.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+diff --git a/libs/video/tests/test_gcm_resync_labels.c b/libs/video/tests/test_gcm_resync_labels.c
+index 5f99a3f..50985fa 100644
+--- a/libs/video/tests/test_gcm_resync_labels.c
++++ b/libs/video/tests/test_gcm_resync_labels.c
+@@ -18,6 +18,7 @@
+  *   (clang on macOS: -Wl,-dead_strip)
+  */
+ #include "../cellGcmSys.c"
++#include "port_links.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <time.h>
+diff --git a/libs/video/tests/test_gcm_walker_prof.c b/libs/video/tests/test_gcm_walker_prof.c
+index ba32a57..d61d586 100644
+--- a/libs/video/tests/test_gcm_walker_prof.c
++++ b/libs/video/tests/test_gcm_walker_prof.c
+@@ -11,6 +11,7 @@
+  *      /tmp/test_gcm_walker_prof off <file>  (RSX_WALKER_PROF unset)
+  */
+ #include "../cellGcmSys.c"
++#include "port_links.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/runtime/spu/tests/spu_interp_selftest.c b/runtime/spu/tests/spu_interp_selftest.c
+index 21bc39e..dd958ca 100644
+--- a/runtime/spu/tests/spu_interp_selftest.c
++++ b/runtime/spu/tests/spu_interp_selftest.c
+@@ -15,7 +15,7 @@
+ /* This snippet issues no channel ops; stub the channel ABI so the test links
+  * without the full runtime (spu_channels.c pulls in unrelated globals). */
+ u128 spu_rdch(spu_context* c, uint32_t ch) { (void)c;(void)ch; u128 z; memset(&z,0,sizeof z); return z; }
+-void spu_wrch(spu_context* c, uint32_t ch, u128 v) { (void)c;(void)ch;(void)v; }
++void (spu_wrch)(spu_context* c, uint32_t ch, u128 v) { (void)c;(void)ch;(void)v; }
+ uint32_t spu_rchcnt(spu_context* c, uint32_t ch) { (void)c;(void)ch; return 1; }
+ 
+ /* The rest of the runtime the interpreter reaches: probes off, nothing lifted. */
+diff --git a/runtime/spu/tests/test_mfc_resume_elements.c b/runtime/spu/tests/test_mfc_resume_elements.c
+index 2a930b5..ac51d63 100644
+--- a/runtime/spu/tests/test_mfc_resume_elements.c
++++ b/runtime/spu/tests/test_mfc_resume_elements.c
+@@ -17,6 +17,7 @@ int g_cri_video_dma;
+ uint32_t g_spu_image_src_ea, g_spu_image_ls_start, g_spu_image_span;
+ uint32_t g_barrier_sync_watch;
+ void (*g_spu_put_hook)(uint32_t, uint32_t);
++void (*g_spu_dma_hook)(spu_context*, uint32_t, uint32_t, uint32_t, int);
+ void* volatile g_sn_defer_ctx;
+ volatile unsigned g_sn_defer;
+ unsigned long long ps3_ms_now(void) { return 0; }
+diff --git a/runtime/spu/tests/test_spu_coherency.c b/runtime/spu/tests/test_spu_coherency.c
+index b9c714d..4407ccb 100644
+--- a/runtime/spu/tests/test_spu_coherency.c
++++ b/runtime/spu/tests/test_spu_coherency.c
+@@ -160,8 +160,10 @@ static void test_ppu_store_raises_lr(void)
+     TEST("...and the store itself still lands, big-endian");
+     CHECK_EQ_U32(vm_read32(LINE_A + 8), 0xDEADBEEFu);
+ 
+-    TEST("the line stays marked after the notify (reservations recur)");
+-    CHECK(spu_coh_is_reserved(LINE_A) != 0);
++    /* The store ended the line's only reservation, so its mark is dropped
++     * (the notifier's walk stays short); SPU_COH_KEEP_MARKS=1 keeps every mark. */
++    TEST("the line's mark is dropped once no reservation is left (kept with SPU_COH_KEEP_MARKS=1)");
++    CHECK((spu_coh_is_reserved(LINE_A) != 0) == (getenv("SPU_COH_KEEP_MARKS") != NULL));
+ 
+     TEST("a second store with no live reservation raises nothing more");
+     vm_write32(LINE_A + 8, 0x11111111u);
+diff --git a/runtime/spu/tests/test_spu_interpreter_ilh.c b/runtime/spu/tests/test_spu_interpreter_ilh.c
+index 35a5669..c4060bf 100644
+--- a/runtime/spu/tests/test_spu_interpreter_ilh.c
++++ b/runtime/spu/tests/test_spu_interpreter_ilh.c
+@@ -9,7 +9,7 @@
+ 
+ /* CPU-only instructions never reach these external channel/diagnostic hooks. */
+ u128 spu_rdch(spu_context* c, uint32_t ch) { (void)c; (void)ch; abort(); }
+-void spu_wrch(spu_context* c, uint32_t ch, u128 v) { (void)c; (void)ch; (void)v; abort(); }
++void (spu_wrch)(spu_context* c, uint32_t ch, u128 v) { (void)c; (void)ch; (void)v; abort(); }
+ uint32_t spu_rchcnt(spu_context* c, uint32_t ch) { (void)c; (void)ch; abort(); }
+ int g_spu_ls_watch_n, g_spu_ls_probe, g_wws_read_probe, g_wws_code_probe, g_spu_smc_watch;
+ spu_lifted_fn spu_lifted_lookup(const spu_context* c, uint32_t a) { (void)c; (void)a; abort(); }
+diff --git a/runtime/spu/tests/test_spu_poison_scan.c b/runtime/spu/tests/test_spu_poison_scan.c
+index 710392d..4300d81 100644
+--- a/runtime/spu/tests/test_spu_poison_scan.c
++++ b/runtime/spu/tests/test_spu_poison_scan.c
+@@ -18,6 +18,7 @@ int g_cri_video_dma;
+ uint32_t g_spu_image_src_ea, g_spu_image_ls_start, g_spu_image_span;
+ uint32_t g_barrier_sync_watch;
+ void (*g_spu_put_hook)(uint32_t, uint32_t);
++void (*g_spu_dma_hook)(spu_context*, uint32_t, uint32_t, uint32_t, int);
+ void* volatile g_sn_defer_ctx;
+ volatile unsigned g_sn_defer;
+ unsigned long long ps3_ms_now(void) { return 0; }
+diff --git a/tests/test_sail_boot_callback.cpp b/tests/test_sail_boot_callback.cpp
+index 2b92932..5482f20 100644
+--- a/tests/test_sail_boot_callback.cpp
++++ b/tests/test_sail_boot_callback.cpp
+@@ -19,6 +19,7 @@ uint32_t prx_resolve_export(uint32_t) { return 0; }
+ void ps3_indirect_call(ppu_context*) { std::abort(); }
+ uint64_t ppu_guest_call(uint32_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t) { std::abort(); }
+ void ppu_prof_stamp(void*,unsigned) {}
++void ppu_prof_stamp_host(void*,void*) {}
+ void ppu_gcm_pump() {}
+ uint32_t ppu_prof_resolve_host(void*) { return 0; }
+ void ps3_msf(const char*,...) {}
+diff --git a/tests/test_spurs_coordinator_kick.c b/tests/test_spurs_coordinator_kick.c
+index 8d67906..0a97f0b 100644
+--- a/tests/test_spurs_coordinator_kick.c
++++ b/tests/test_spurs_coordinator_kick.c
+@@ -30,7 +30,7 @@ static DWORD WINAPI waiter(LPVOID p)
+     AcquireSRWLockExclusive(&si->lock);
+     waiting = 1;
+     while (!__atomic_load_n(&si->kick, __ATOMIC_ACQUIRE))
+-        SleepConditionVariableSRW(&si->wake, &si->lock, INFINITE, 0);
++        SleepConditionVariableSRW(&si->kwake, &si->lock, INFINITE, 0);
+     woken = 1;
+     ReleaseSRWLockExclusive(&si->lock);
+     return 0;
+@@ -43,6 +43,7 @@ int main(void)
+     si = &s_inst[0];
+     InitializeSRWLock(&si->lock);
+     InitializeConditionVariable(&si->wake);
++    InitializeConditionVariable(&si->kwake);
+     __atomic_store_n(&si->ea, SPURS_EA, __ATOMIC_RELEASE);
+     si->kernel_live = 1;
+ 
+@@ -66,10 +67,11 @@ int main(void)
+     assert(take_kick() == 0);
+     si->kernel_live = 1;
+ 
+-    /* The commit wakes a thread sleeping on the coordinator's condition with no
+-     * timeout. Taking the lock after `waiting` is set proves the waiter is
+-     * inside the wait (it releases the lock only by sleeping), so the wake
+-     * cannot fall before it; a missing wake hangs here. */
++    /* The commit wakes a thread sleeping on the coordinator's own condition
++     * (kwake; the workers sleep on wake) with no timeout. Taking the lock
++     * after `waiting` is set proves the waiter is inside the wait (it releases
++     * the lock only by sleeping), so the wake cannot fall before it; a missing
++     * wake hangs here. */
+     HANDLE t = CreateThread(NULL, 0, waiter, NULL, 0, NULL);
+     assert(t);
+     for (;;) {
+diff --git a/tests/test_sysmodule_unload_module_ex.cpp b/tests/test_sysmodule_unload_module_ex.cpp
+index c254688..5e6e184 100644
+--- a/tests/test_sysmodule_unload_module_ex.cpp
++++ b/tests/test_sysmodule_unload_module_ex.cpp
+@@ -20,6 +20,7 @@ uint32_t prx_resolve_export(uint32_t) { return 0; }
+ void ps3_indirect_call(ppu_context*) { std::abort(); }
+ uint64_t ppu_guest_call(uint32_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t) { std::abort(); }
+ void ppu_prof_stamp(void*,unsigned) {}
++void ppu_prof_stamp_host(void*,void*) {}
+ void ppu_gcm_pump() {}
+ uint32_t ppu_prof_resolve_host(void*) { return 0; }
+ void ps3_msf(const char*,...) {}
+diff --git a/tools/test_lwcond_layout.py b/tools/test_lwcond_layout.py
+index 7423261..676c502 100644
+--- a/tools/test_lwcond_layout.py
++++ b/tools/test_lwcond_layout.py
+@@ -31,9 +31,13 @@ def extract(src, name):
+ 
+ 
+ HARNESS = r'''
++#include <chrono>
++#include <condition_variable>
+ #include <cstdint>
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
++#include <mutex>
+ static uint8_t mem[0x10000];
+ static void vm_write32(uint32_t a, uint32_t v) { for (int i = 0; i < 4; i++) mem[a + i] = (uint8_t)(v >> (24 - 8 * i)); }
+ static void vm_write64(uint32_t a, uint64_t v) { vm_write32(a, (uint32_t)(v >> 32)); vm_write32(a + 4, (uint32_t)v); }
+@@ -51,6 +55,12 @@ static void lwm_release(struct LwmSlot*) {}
+ static int lwm_acquire(struct LwmSlot*, uint64_t) { return 1; }
+ static void Sleep(unsigned) {}
+ static void ppu_thread_note_block(uint64_t) {}
++/* The wait sleeps on one host condition variable for every lwcond (signals wake it). */
++static std::mutex s_lwc_m;
++static std::condition_variable s_lwc_cv;
++static uint64_t s_lwc_gen;
++#define PS3_TRACE_BEGIN(v) uint64_t v = 0
++#define PS3_TRACE_END(v, name, arg) (void)(v)
+ %s
+ %s
+ int main() {
+diff --git a/tools/test_rsx_immediate_vertices.py b/tools/test_rsx_immediate_vertices.py
+index 4722489..d6a2ff3 100644
+--- a/tools/test_rsx_immediate_vertices.py
++++ b/tools/test_rsx_immediate_vertices.py
+@@ -12,7 +12,7 @@ def main():
+     root = Path(__file__).resolve().parents[1]
+     sources = ["tests/test_rsx_draw_engine.c", "rsx_draw_engine.c",
+                "rsx_dispatch.c", "rsx_vertex_compact.c", "rsx_texture_layout.c",
+-               "rsx_vp_decompiler.c", "rsx_fp_decompiler.c"]
++               "rsx_vp_decompiler.c", "rsx_fp_decompiler.c", "../../runtime/ps3_trace.c"]
+     with tempfile.TemporaryDirectory(prefix="rsx-immediate-") as directory:
+         binary = Path(directory) / "test_rsx_draw_engine"
+         subprocess.run([os.environ.get("CC", "cc"), "-std=gnu17",
+diff --git a/tools/test_spu_program_pipeline.py b/tools/test_spu_program_pipeline.py
+index cdfa2ad..05af223 100644
+--- a/tools/test_spu_program_pipeline.py
++++ b/tools/test_spu_program_pipeline.py
+@@ -226,6 +226,8 @@ class Pipeline(unittest.TestCase):
+                     'extern void spu_register_all(void);\n'
+                     'SPU_THREAD_LOCAL void (*g_spu_trampoline_fn)(spu_context*);\n'
+                     'void spu_indirect_branch(spu_context* ctx) { (void)ctx; assert(0); }\n'
++                    # The inline MFC latch in spu_context.h hands every other channel to the out-of-line spu_wrch.
++                    'void (spu_wrch)(spu_context* ctx, uint32_t ch, u128 v) { (void)ctx; (void)ch; (void)v; assert(0); }\n'
+                     'unsigned char image[] = {' + byte_list + '};\n'
+                     'int main(void) { unsigned char ls[SPU_LS_SIZE] = {0}; uint32_t entry;\n'
+                     'assert(spu_elf_load_to_ls(image, sizeof image, ls, &entry));\n'
+@@ -282,6 +284,8 @@ class Pipeline(unittest.TestCase):
+             'extern spu_lifted_entry_fn spu_lookup(uint32_t, int);\n'
+             'SPU_THREAD_LOCAL void (*g_spu_trampoline_fn)(spu_context*);\n'
+             'void spu_indirect_branch(spu_context* ctx) { (void)ctx; assert(0); }\n'
++            # The inline MFC latch in spu_context.h hands every other channel to the out-of-line spu_wrch.
++            'void (spu_wrch)(spu_context* ctx, uint32_t ch, u128 v) { (void)ctx; (void)ch; (void)v; assert(0); }\n'
+             'int main(void) { spu_register_all();\n' + '\n'.join(body) + '\nreturn 0; }\n')
+         # Minimal consumer uses the same CMake generation helper as the template.
+         cmake_source = 'cmake_minimum_required(VERSION 3.20)\nproject(proof C)\n'
