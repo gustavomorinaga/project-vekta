@@ -25,7 +25,8 @@ otherwise. Last checked 2026-10-30.
 | Controls | Rumble | pad vibration | **works** | SDL |
 | Controls | Controller options (sensitivity, invert) | Pause > Controls | **works** | the game's own menu |
 | Graphics | 1280x720 picture | 720p | **works**, at any window size | |
-| Graphics | Post-processing on the SPUs (MLAA, motion blur, glow) | `jm_post` job chain | **works**: the game's SPU jobs run; in normal play the chain is MLAA only | [dev/wws-jm-post.md](dev/wws-jm-post.md) |
+| Graphics | Anti-aliasing (MLAA on the SPUs) | `jm_post` job chain | **works**: the game's own MLAA reimplemented as a GPU pass, equal to the SPU code except at about 0.6 % of edge pixels (`KZ_MLAA=gpu`, default; `spu` runs the original jobs, slowly; `off`) | [dev/wws-jm-post.md](dev/wws-jm-post.md) |
+| Graphics | Glow and motion blur (`jm_post`) | event-driven SPU jobs | **partial**: zero in normal play; only the slow `KZ_MLAA=spu` path computes them | [dev/wws-jm-post.md](dev/wws-jm-post.md) |
 | Graphics | HUD, menus, fonts | as shipped | **works** | |
 | Sound | Music, effects, dialogue | MultiStream on the SPUs, MP3 streams | **works** | the firmware's MP3 decoder runs translated |
 | Sound | Surround | the console's output setting | **works**: stereo, 5.1, 7.1 | per channel on Linux; 6 and 8 channels through WASAPI under Wine |

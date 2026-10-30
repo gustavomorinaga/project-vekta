@@ -1,0 +1,348 @@
+From b2987ba485628078ff4a27a114488912631d65fc Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 29 Oct 2026 13:45:49 -0300
+Subject: [PATCH] NV0039 memory-to-memory copies on subchannel 1
+ (PS3RECOMP_NV0039), coherent with the draw engine's surfaces
+
+Killzone HD's MLAA (FUN_001109E8) copies the finished frame from the display
+buffer to a 1280x720 image in main memory with NV0039 and the previous one,
+which its SPU post chain processed (MLAA, glow, motion blur), back. The title
+binds NV4097 to subchannel 1 as well, so the walker sends that subchannel to
+the 3D engine and the copies were dropped. A transfer is told apart by its
+shape (0x184/0x188 with two 0xFEED000x handles, then 0x30C..0x328 as one run
+of 8); the source rows are read back from an engine surface first and the
+destination rows uploaded after. Off by default.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/cellGcmSys.c                       | 128 ++++++++++++++++++
+ libs/video/rsx_draw_engine.c                  |  13 ++
+ libs/video/rsx_draw_engine.h                  |   2 +
+ libs/video/tests/test_gcm_fifo_user_command.c |   1 +
+ libs/video/tests/test_gcm_flip_stream.c       |   1 +
+ libs/video/tests/test_gcm_flip_wrap.c         |   1 +
+ libs/video/tests/test_gcm_get_on_jump.c       |   1 +
+ libs/video/tests/test_gcm_get_on_release.c    |   1 +
+ .../tests/test_gcm_legacy_state_filter.c      |   1 +
+ libs/video/tests/test_gcm_nop_runs.c          |   1 +
+ libs/video/tests/test_gcm_park_reuse.c        |   1 +
+ libs/video/tests/test_gcm_resync_labels.c     |   1 +
+ libs/video/tests/test_gcm_walker_prof.c       |   1 +
+ libs/video/tests/test_nv3089_engine_read.c    |   1 +
+ 14 files changed, 154 insertions(+)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index f1647738..be8a2c8b 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -1163,6 +1163,130 @@ static void gcm_row_copy(u32 d, u32 s, u32 n)
+     spu_lockline_unlock();
+ }
+ 
++/* NV0039 (memory to memory), on subchannel 1. PS3RECOMP_NV0039=1.
++ * Killzone HD binds NV4097 to subchannel 1 as well (its texture offsets), so
++ * the walker sends that subchannel to the 3D engine; an NV0039 transfer is
++ * told apart by its shape: SET_CONTEXT_DMA_BUFFER_IN/OUT (0x184, 0x188) with
++ * two 0xFEED000x handles, then OFFSET_IN..BUFFER_NOTIFY (0x30C..0x328) as
++ * one run of 8, then a lone OFFSET_OUT. Killzone HD's MLAA copies the
++ * finished frame from the display buffer to main memory and the previous one,
++ * which its SPUs processed, back (FUN_001109E8): both directions cross a
++ * surface the draw engine keeps on the GPU, so the source rows are read back
++ * first and the destination rows uploaded after. Off by default: two
++ * readbacks a frame, and without the SPU chain (KZ_JM_SKIP) the frame shown
++ * is just the previous one. */
++static struct { u32 dma_in, dma_out; int armed; } s_nv0039;
++
++static int nv0039_enabled(void)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("PS3RECOMP_NV0039"); on = e ? atoi(e) : 0; }
++    return on;
++}
++
++/* The engine surface a linear copy (pitch 0) starts at, as rows of its pitch. */
++static void nv0039_engine_sync(int to_guest, u32 loc, u32 off, u32 pitch, u32 len, u32 lines)
++{
++    if (!rsx_draw_engine_enabled()) return;
++    const u32 sp = rsx_draw_engine_surface_pitch(loc, off);
++    if (!sp) return;
++    const u32 bytes = pitch * (lines - 1u) + len;
++    const u32 rows = (bytes + sp - 1u) / sp;
++    if (to_guest) rsx_draw_engine_guest_read(loc, off, sp, sp / 4u, rows);
++    else          rsx_draw_engine_guest_wrote(loc, off, sp, sp / 4u, rows);
++}
++
++static void nv0039_copy(const u32* r)
++{
++    const u32 off_in = r[0], off_out = r[1], len = r[4], lines = r[5], fmt = r[6];
++    const u32 pitch_in = r[2] ? r[2] : len, pitch_out = r[3] ? r[3] : len;
++    if (!len || !lines) return;
++    if (fmt != 0x101u) {   /* byte to byte only: 1-byte input and output strides */
++        static int n; if (PS3_LOG_FIRST(n, 8))
++            fprintf(stderr, "[NV0039] format 0x%X not handled\n", fmt);
++        return;
++    }
++    const u32 loc_in  = s_nv0039.dma_in  == 0xFEED0001u ? RSX_LOCATION_MAIN : RSX_LOCATION_LOCAL;
++    const u32 loc_out = s_nv0039.dma_out == 0xFEED0001u ? RSX_LOCATION_MAIN : RSX_LOCATION_LOCAL;
++    const u32 ea_in  = cellGcmResolveLocated(loc_in  == RSX_LOCATION_LOCAL, off_in);
++    const u32 ea_out = cellGcmResolveLocated(loc_out == RSX_LOCATION_LOCAL, off_out);
++    if (!ea_in || !ea_out) return;
++    { static int n; if (PS3_LOG_FIRST(n, 8))
++        fprintf(stderr, "[NV0039] %u:0x%08X -> %u:0x%08X, %u x %u bytes (pitch %u -> %u)\n",
++                loc_in, off_in, loc_out, off_out, lines, len, pitch_in, pitch_out); }
++    nv0039_engine_sync(1, loc_in, off_in, pitch_in, len, lines);
++    for (u32 i = 0; i < lines; i++)
++        gcm_row_copy(ea_out + i * pitch_out, ea_in + i * pitch_in, len);
++    nv0039_engine_sync(0, loc_out, off_out, pitch_out, len, lines);
++    /* NV0039_DUMP=<dir>: while <dir>/go exists, the main-memory side of the next
++     * 1280x720 copies as PPM (seq_dir_offset.ppm): the frame going to the SPUs
++     * ("out") and the one coming back ("in"), so the post chain's effect on one
++     * frame can be told from a scene change. */
++    { static const char* d = (const char*)-1; static unsigned seq;
++      if (d == (const char*)-1) d = getenv("NV0039_DUMP");
++      if (d && len == 1280u * 720u * 4u && lines == 1) {
++          char path[1024]; snprintf(path, sizeof path, "%s/go", d);
++          FILE* g = fopen(path, "rb");
++          if (g) { fclose(g);
++              const int out = loc_out == RSX_LOCATION_MAIN;
++              const u32 ea = out ? ea_out : ea_in;
++              snprintf(path, sizeof path, "%s/%04u_%s_%07X.ppm", d, seq++, out ? "out" : "in", out ? off_out : off_in);
++              extern u8* vm_base;
++              /* NV0039_PATTERN=<P6 1280x720 file>: the frame going to the SPUs is
++               * replaced by it (alpha kept), to measure the chain on known input. */
++              { static const char* pat = (const char*)-1;
++                if (pat == (const char*)-1) pat = getenv("NV0039_PATTERN");
++                FILE* pf = (out && pat) ? fopen(pat, "rb") : NULL;
++                if (pf) { int w = 0, h = 0, mx = 0;
++                    if (fscanf(pf, "P6 %d %d %d", &w, &h, &mx) == 3 && w == 1280 && h == 720 && fgetc(pf) != EOF) {
++                        u8* q = vm_base + ea;
++                        for (u32 i = 0; i < 1280u * 720u; i++) if (fread(q + i * 4u + 1, 1, 3, pf) != 3) break;
++                    }
++                    fclose(pf); } }
++              FILE* f = fopen(path, "wb");
++              if (f) {
++                  fprintf(f, "P6 1280 720 255\n");
++                  const u8* p = vm_base + ea;
++                  for (u32 i = 0; i < 1280u * 720u; i++) fwrite(p + i * 4u + 1, 1, 3, f);   /* A,R,G,B */
++                  fclose(f); }
++              path[strlen(path) - 4] = 0; strcat(path, ".a.pgm");
++              f = fopen(path, "wb");
++              if (f) {
++                  fprintf(f, "P5 1280 720 255\n");
++                  const u8* p = vm_base + ea;
++                  for (u32 i = 0; i < 1280u * 720u; i++) fwrite(p + i * 4u, 1, 1, f);
++                  fclose(f); }
++              if (seq >= 8) { snprintf(path, sizeof path, "%s/go", d); remove(path); seq = 0; }
++          } } }
++}
++
++/* One subchannel-1 packet: 1 when it was NV0039's (handled, not for the 3D engine). */
++static int nv0039_packet(u32 method, u32 count, u32 io)
++{
++    if (!nv0039_enabled()) return 0;
++    u32 v[8];
++    if (count > 8) return 0;
++    for (u32 i = 0; i < count; i++) {
++        const u32 ea = gcm_io2ea(io + i * 4u);
++        if (!ea) return 0;
++        v[i] = vm_read32(ea);
++    }
++    if (method == 0x0184u && count == 2) {
++        if ((v[0] & ~1u) != 0xFEED0000u || (v[1] & ~1u) != 0xFEED0000u) return 0;
++        s_nv0039.dma_in = v[0]; s_nv0039.dma_out = v[1]; s_nv0039.armed = 1;
++        { static int n; if (getenv("NV0039_DBG") && PS3_LOG_FIRST(n, 16)) fprintf(stderr, "[NV0039] dma 0x%08X -> 0x%08X\n", v[0], v[1]); }
++        return 1;
++    }
++    if (method == 0x030Cu && count == 8 && s_nv0039.armed) {
++        nv0039_copy(v);
++        s_nv0039.armed = 2;
++        return 1;
++    }
++    if (method == 0x0310u && count == 1 && s_nv0039.armed == 2) { s_nv0039.armed = 0; return 1; }
++    s_nv0039.armed = 0;
++    return 0;
++}
++
+ static void nv3089_blit(void)
+ {
+     u32 out_w = s_nv3089.out_sz & 0xFFFF, out_h = s_nv3089.out_sz >> 16;
+@@ -2599,6 +2723,10 @@ static void gcm_rsx_process_fifo_unlocked(void)
+                 s_fifo_getoff += 4 + count * 4;
+                 continue;
+             }
++            if (subch == 1 && type == 0 && nv0039_packet(method, count, s_fifo_getoff + 4)) {
++                s_fifo_getoff += 4 + count * 4;
++                continue;
++            }
+             static int s1_2d = -1;
+             if (s1_2d < 0) { const char* e = getenv("GCM_SUBCH1_2D"); s1_2d = e ? atoi(e) : 0; }
+             /* A run of 3D methods inside one 1 MB IO page, with no per-word
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 7895d9be..e083eceb 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -979,6 +979,19 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
+     g.be->color_target_write(g.be->user, s->handle, x, y, w, h, rows, w * 4u);
+ }
+ 
++/* The pitch of the colour surface based exactly at location:offset, or 0: a
++ * linear NV0039 copy names a byte count, not the surface's geometry. */
++u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset)
++{
++    if (!g.ready) return 0;
++    for (u32 i = 0; i < g.n_surfaces; i++) {
++        const eng_surface* s = &g.surfaces[i];
++        if (s->handle && s->location == location && s->offset == offset && eng_transfer_bpp(s->fmt))
++            return s->pitch;
++    }
++    return 0;
++}
++
+ /* PS3RECOMP_ENG_MAIN_COHERENCE=1: a colour target in main memory is the
+  * CPU's and the SPUs' too, as on the console. At each label release (the
+  * point a title syncs on before its PPU or SPUs read what the RSX drew) the
+diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
+index 73271cf9..e8cdff1f 100644
+--- a/libs/video/rsx_draw_engine.h
++++ b/libs/video/rsx_draw_engine.h
+@@ -365,6 +365,8 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
+ /* A label release in the command stream: with PS3RECOMP_ENG_MAIN_COHERENCE,
+  * the main-memory colour targets drawn since go to guest memory. */
+ void rsx_draw_engine_label_released(void);
++/* The pitch of the colour surface based exactly at location:offset, or 0. */
++u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset);
+ 
+ /* --- test hooks ---------------------------------------------------------- */
+ 
+diff --git a/libs/video/tests/test_gcm_fifo_user_command.c b/libs/video/tests/test_gcm_fifo_user_command.c
+index 427b1031..9cfde1e3 100644
+--- a/libs/video/tests/test_gcm_fifo_user_command.c
++++ b/libs/video/tests/test_gcm_fifo_user_command.c
+@@ -44,6 +44,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
+index eeb427fa..832f0fbd 100644
+--- a/libs/video/tests/test_gcm_flip_stream.c
++++ b/libs/video/tests/test_gcm_flip_stream.c
+@@ -73,6 +73,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_flip_wrap.c b/libs/video/tests/test_gcm_flip_wrap.c
+index f028669e..b32f8137 100644
+--- a/libs/video/tests/test_gcm_flip_wrap.c
++++ b/libs/video/tests/test_gcm_flip_wrap.c
+@@ -47,6 +47,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
+index 47b8ee10..07e5a959 100644
+--- a/libs/video/tests/test_gcm_get_on_jump.c
++++ b/libs/video/tests/test_gcm_get_on_jump.c
+@@ -56,6 +56,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
+index df647c8f..830f6724 100644
+--- a/libs/video/tests/test_gcm_get_on_release.c
++++ b/libs/video/tests/test_gcm_get_on_release.c
+@@ -54,6 +54,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_legacy_state_filter.c b/libs/video/tests/test_gcm_legacy_state_filter.c
+index 2992d1fc..7fe49e37 100644
+--- a/libs/video/tests/test_gcm_legacy_state_filter.c
++++ b/libs/video/tests/test_gcm_legacy_state_filter.c
+@@ -47,6 +47,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_nop_runs.c b/libs/video/tests/test_gcm_nop_runs.c
+index 0bde8aab..b4713b87 100644
+--- a/libs/video/tests/test_gcm_nop_runs.c
++++ b/libs/video/tests/test_gcm_nop_runs.c
+@@ -51,6 +51,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_park_reuse.c b/libs/video/tests/test_gcm_park_reuse.c
+index 289cb825..1efb7a8c 100644
+--- a/libs/video/tests/test_gcm_park_reuse.c
++++ b/libs/video/tests/test_gcm_park_reuse.c
+@@ -60,6 +60,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_resync_labels.c b/libs/video/tests/test_gcm_resync_labels.c
+index 23f95fe8..5f99a3f2 100644
+--- a/libs/video/tests/test_gcm_resync_labels.c
++++ b/libs/video/tests/test_gcm_resync_labels.c
+@@ -59,6 +59,7 @@ void rsx_draw_engine_set_display_buffer(u32 id, u32 location, u32 offset, u32 pi
+ { (void)id; (void)location; (void)offset; (void)pitch; (void)width; (void)height; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_walker_prof.c b/libs/video/tests/test_gcm_walker_prof.c
+index 6e267344..ba32a572 100644
+--- a/libs/video/tests/test_gcm_walker_prof.c
++++ b/libs/video/tests/test_gcm_walker_prof.c
+@@ -45,6 +45,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_nv3089_engine_read.c b/libs/video/tests/test_nv3089_engine_read.c
+index 667fe26a..de9470d5 100644
+--- a/libs/video/tests/test_nv3089_engine_read.c
++++ b/libs/video/tests/test_nv3089_engine_read.c
+@@ -69,6 +69,7 @@ static int s_reads;
+ 
+ /* What the engine does for a transfer: the pixels of the surface in this rectangle, as 32-bit guest words. */
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_read(u32 loc, u32 off, u32 pitch, u32 w, u32 h)
+ {
+     s_reads++;

@@ -3,7 +3,14 @@
 What each release contains, newest first. Until a release that calls itself playable
 ([docs/ROADMAP.md](docs/ROADMAP.md)), every version is a pre-release.
 
-## Unreleased: the first public tree (2026-10-30)
+## Unreleased
+
+- The game's own MLAA anti-aliasing, reimplemented as a GPU compute pass equal to the SPU code (patches 2035 to 2037,
+  `KZ_MLAA=gpu|spu|off`); the first frame no longer waits for the driver to compile it.
+- In-game key capture for remapping screens (patch 4011).
+- `tools/mlaa_harness` and `tools/mlaa_probe`: the lifted MLAA jobs run outside the game, test patterns and checks.
+
+## The first public tree (2026-10-30)
 
 - The port of Killzone HD (NPUA80856) on ps3recomp v0.18.0 with 93 patches, built on Linux, and on Linux for Windows.
 - Scripts that build it from the player's own files with no fixed paths (`tools/`), a checker for those files, and

@@ -100,3 +100,7 @@ older series on v0.14.0, which do not appear here. This table maps the v0.18.0 s
 | 0091 | 3027 | Audio: 5.1 and 7.1 output, |
 | 0092 | 5001 | sceNpTrophy: the title's own trophy set (TROPHY.TRP), |
 | 0093 | 2034 | Draw engine: main-memory colour targets coherent with |
+| 0094 | 4011 | cellPad: key capture for a title's remapping screen; key map reload |
+| 0095 | 2035 | NV0039 memory-to-memory copies on subchannel 1 (PS3RECOMP_NV0039) |
+| 0096 | 2036 | Killzone HD's MLAA on the GPU (PS3RECOMP_MLAA_GPU) |
+| 0097 | 2037 | MLAA pass: no frame waits for the driver to compile it |

@@ -1,0 +1,87 @@
+From 7fb973ef4f259749aa0abbbc2df216e02a3519b0 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 29 Oct 2026 13:38:26 -0300
+Subject: [PATCH] cellPad: key capture for a title's remapping screen;
+ key map reload
+
+pad_capture_arm() takes the next key or mouse button (or wheel step)
+pressed, and the keyboard reaches no port until it is taken and everything
+is let go; pad_capture_take() hands out its name as PAD_KEYMAP writes it
+(SDL's key name, MouseLeft...). pad_keymap_reload() reads the key map file
+again at the next poll.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c | 52 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 52 insertions(+)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 6e758d34..8290c32f 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -1074,6 +1074,51 @@ static void pad_poll_mouse(PadHostState* hs)
+  * count only while one of this process's SDL windows (the Vulkan backend's,
+  * PS3RECOMP_VK_WINDOW=1) has keyboard focus. Same map as on Windows, plus
+  * W/A/S/D on the left stick and I/J/K/L on the right one. */
++/* Key capture for a title's remapping screen: pad_capture_arm() takes the
++ * next key or mouse button pressed (not held before), and the keyboard
++ * reaches no port until it is taken and everything is let go;
++ * pad_capture_take() hands out its name as the key map writes it (SDL's key
++ * name, MouseLeft...), once. pad_keymap_reload() reads PAD_KEYMAP again. */
++static volatile int s_cap_armed, s_cap_quiet, s_cap_ready;
++static char s_cap_name[64];
++void pad_capture_arm(void) { s_cap_ready = 0; s_cap_armed = 1; s_cap_quiet = 1; }
++int pad_capture_take(char* out, int n)
++{
++    if (!s_cap_ready || n <= 0) return 0;
++    snprintf(out, (size_t)n, "%s", s_cap_name);
++    s_cap_ready = 0;
++    return 1;
++}
++void pad_keymap_reload(void) { s_nbinds = -1; }
++/* Whether capture holds the keyboard this poll (and does the capture). */
++static int pad_capture_poll(const Uint8* k)
++{
++    static Uint8 prev[SDL_NUM_SCANCODES];
++    static Uint32 prev_mb;
++    int nk = 0;
++    const Uint32 mb = SDL_GetMouseState(NULL, NULL);
++    if (s_cap_armed) {
++        for (int sc = 0; sc < SDL_NUM_SCANCODES && s_cap_armed; sc++)
++            if (k[sc] && !prev[sc] && SDL_GetScancodeName((SDL_Scancode)sc)[0]) {
++                snprintf(s_cap_name, sizeof s_cap_name, "%s", SDL_GetScancodeName((SDL_Scancode)sc));
++                s_cap_armed = 0; s_cap_ready = 1;
++            }
++        static const struct { int b; const char* n; } ms[] = {
++            {SDL_BUTTON_LEFT,"MouseLeft"},{SDL_BUTTON_RIGHT,"MouseRight"},{SDL_BUTTON_MIDDLE,"MouseMiddle"},
++            {SDL_BUTTON_X1,"Mouse4"},{SDL_BUTTON_X2,"Mouse5"} };
++        for (unsigned i = 0; i < 5 && s_cap_armed; i++)
++            if ((mb & SDL_BUTTON(ms[i].b)) && !(prev_mb & SDL_BUTTON(ms[i].b))) {
++                snprintf(s_cap_name, sizeof s_cap_name, "%s", ms[i].n); s_cap_armed = 0; s_cap_ready = 1; }
++        const int wh = __atomic_exchange_n(&g_pad_mouse_wheel, 0, __ATOMIC_ACQ_REL);
++        if (s_cap_armed && wh) { snprintf(s_cap_name, sizeof s_cap_name, "%s", wh > 0 ? "WheelUp" : "WheelDown");
++                                 s_cap_armed = 0; s_cap_ready = 1; }
++    }
++    for (int sc = 0; sc < SDL_NUM_SCANCODES; sc++) { nk |= k[sc]; prev[sc] = k[sc]; }
++    prev_mb = mb;
++    if (s_cap_quiet && !s_cap_armed && !nk && !mb) s_cap_quiet = 0;
++    return s_cap_quiet;
++}
++
+ static void pad_poll_keyboard(void)
+ {
+     static int off = -1;
+@@ -1093,6 +1138,13 @@ static void pad_poll_keyboard(void)
+         hs->trigger_l2 = hs->trigger_r2 = 0;
+         return;
+     }
++    if (pad_capture_poll(k)) {   /* a remapping screen is taking a key */
++        if (pad) return;
++        hs->buttons = 0;
++        hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
++        hs->trigger_l2 = hs->trigger_r2 = 0;
++        return;
++    }
+     if (s_nbinds < 0) pad_keymap_load();
+     int st[9] = {0};
+     PadHostState kb;

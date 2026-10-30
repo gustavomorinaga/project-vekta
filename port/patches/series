@@ -95,3 +95,7 @@
 3027-Audio-5.1-and-7.1-output-PS3RECOMP_AUDIO_CHANNELS-2-.patch
 5001-sceNpTrophy-the-title-s-own-trophy-set-TROPHY.TRP-pl.patch
 2034-Draw-engine-main-memory-colour-targets-coherent-with.patch
+4011-cellPad-key-capture-for-a-title-s-remapping-screen-k.patch
+2035-NV0039-memory-to-memory-copies-on-subchannel-1-PS3RE.patch
+2036-Killzone-HD-s-MLAA-on-the-GPU-PS3RECOMP_MLAA_GPU-a-c.patch
+2037-MLAA-pass-no-frame-waits-for-the-driver-to-compile-i.patch

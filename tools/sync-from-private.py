@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Brings changes from the maintainer's private working repositories into this public tree, for review before a commit.
 
-    tools/sync-from-private.py --private <repo> [--private-ref main]
+    tools/sync-from-private.py --private <repo> [--private-ref main] [--private-work <dir>]
                                --ps3recomp <repo> --ps3recomp-ref <branch> [--base v0.18.0] [--dry-run]
 
 What it does, and nothing else (it never commits, pushes or touches the private repositories):
@@ -51,7 +51,22 @@ REWRITES = [
     ("port/kz1hd/build-win.sh", "tools/build-win.sh"), ("port/kz1hd/lift.sh", "tools/lift.sh"),
     ("port/kz1hd/run.sh", "tools/run.sh"), ("port/kz1hd/play.sh", "tools/play.sh"), ("port/kz1hd/pgo.sh", "tools/pgo.sh"),
     ("port/tools/", "tools/"),
+    # The MLAA tools' defaults: work/ of this tree instead of the maintainer's folders; the private test kit by name.
+    ("'{W}/recomp/kz1hd/mlaa_cap'",
+     "os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'work', 'mlaa_cap')"),
+    ("{W}/recomp/kz1hd/mlaa_cap", "$H/../../work/mlaa_cap"),
+    ("{W}/recomp/ps3recomp-v018", "$H/../../work/ps3recomp-patched"),
+    ("{W}/recomp-v018/kz1hd/spu", "$H/../../work/lift/spu"),
+    ("T={W}/recomp/kz1hd/testkit",
+     "T=${KZ_TESTKIT:?set KZ_TESTKIT to a test kit with b7.sh and a Level 7 save (not published)}"),
+    ('$(cd "$(dirname "$0")/../../kz1hd" && pwd)/build-v018/KZ1HD', '${KZ_BIN:-$(cd "$(dirname "$0")/../.." && pwd)/work/build/KZ1HD}'),
+    ("{P}/port/kz1hd/build-v018/KZ1HD", '${KZ_BIN:-$(cd "$(dirname "$0")/../.." && pwd)/work/build/KZ1HD}'),
+    ('"$H/../../kz1hd/', '"$H/../../port/kz1hd/'),
+    ('"../../kz1hd/native/', '"../../port/kz1hd/native/'),
 ]
+
+
+CTX = {}   # {P}: the private repository, {W}: the maintainer's work folder (--private-work)
 
 
 def rewrite(data):
@@ -60,7 +75,9 @@ def rewrite(data):
     except UnicodeDecodeError:
         return data
     for a, b in REWRITES:
-        text = text.replace(a, b)
+        if "{W}" in a and "W" not in CTX:
+            continue
+        text = text.replace(a.replace("{W}", CTX.get("W", "")).replace("{P}", CTX["P"]), b)
     return text.encode("utf-8")
 
 
@@ -205,7 +222,7 @@ def sync_patches(args, report):
 
 def changed_docs(args, report):
     since = args.since or git(ROOT, "log", "-1", "--format=%cI").strip()
-    out = git(args.private, "log", f"--since={since}", "--name-only", "--format=", args.private_ref, "--",
+    out = git(args.private, "log", f"--since={since}", "--diff-merges=first-parent", "--name-only", "--format=", args.private_ref, "--",
               "docs", "ROADMAP.md", "README.md")
     for path in sorted({l for l in out.splitlines() if l}):
         report.append(f"private doc changed since {since[:10]} (translate into docs/ by hand): {path}")
@@ -219,12 +236,16 @@ def main():
     ap.add_argument("--ps3recomp-ref", required=True, help="its branch, e.g. kz-windows")
     ap.add_argument("--base", default="v0.18.0", help="the release our patches sit on (the submodule's pin)")
     ap.add_argument("--since", help="list private doc changes since this date (default: this tree's last commit)")
+    ap.add_argument("--private-work", help="the maintainer's work folder the private scripts default to (rewritten to work/)")
     ap.add_argument("--dry-run", action="store_true", help="report only")
     args = ap.parse_args()
     pin = git(ROOT, "-C", "third_party/ps3recomp", "rev-parse", "HEAD").strip()
     base = git(args.ps3recomp, "rev-parse", f"{args.base}^{{commit}}").strip()
     if pin != base:
         sys.exit(f"--base {args.base} is {base[:10]}, but the submodule is pinned at {pin[:10]}: move the pin first")
+    CTX["P"] = os.path.abspath(args.private)
+    if args.private_work:
+        CTX["W"] = os.path.abspath(args.private_work)
     report = []
     sync_port(args, report)
     sync_patches(args, report)

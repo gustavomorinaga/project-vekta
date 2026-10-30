@@ -20,6 +20,11 @@
  * 10 cures it at ~15% of the frame rate (docs/dev/ps3recomp-v018-migration.md).
  * KZ_JM_DUMPIMG=<flip>: (with KZ_JM_WATCH) the chain's main buffers as PPMs in
  * /tmp/claude-1000 once that many flips went by.
+ * KZ_JM_CAPTURE=<dir>: once <dir>/go exists, for 3 flips, every transfer of
+ * jm_post's SPUs goes to <dir>/dma.log (one line each: ctx, get/put, EA, LSA,
+ * size, offset of its bytes in <dir>/dma.bin), and each MLAA/Transpose job
+ * entry (modules 203, 206) adds a line and writes the 128 registers and the
+ * local store to <dir>/job<n>.bin: what tools/mlaa_harness replays.
  */
 #include "native.h"
 #include <pthread.h>
@@ -464,9 +469,60 @@ static void report(void)
                 200 + m, s_jobs[m], s_cmp[m], s_bad[m], s_ns[m] / 1e3 / s_jobs[m]);
 }
 
+/* KZ_JM_CAPTURE */
+static const char* s_cap_dir;
+static FILE *s_cap_log, *s_cap_bin;
+static unsigned s_cap_end, s_cap_jobs;
+static long s_cap_off;
+static int cap_on(void)
+{
+    extern unsigned cellGcm_flip_request_count(void);
+    if (!s_cap_dir) return 0;
+    const unsigned f = cellGcm_flip_request_count();
+    if (!s_cap_log) {
+        char b[512]; snprintf(b, sizeof b, "%s/go", s_cap_dir);
+        static unsigned last;
+        if (f == last || access(b, F_OK)) { last = f; return 0; }
+        pthread_mutex_lock(&s_mu);
+        if (!s_cap_log) {
+            snprintf(b, sizeof b, "%s/dma.bin", s_cap_dir); s_cap_bin = fopen(b, "wb");
+            snprintf(b, sizeof b, "%s/dma.log", s_cap_dir); s_cap_log = fopen(b, "w");
+            s_cap_end = f + 3;
+        }
+        pthread_mutex_unlock(&s_mu);
+    }
+    if (f < s_cap_end) return 1;
+    pthread_mutex_lock(&s_mu);
+    if (s_cap_bin) { fclose(s_cap_bin); fclose(s_cap_log); s_cap_bin = NULL; s_cap_dir = NULL; fprintf(stderr, "[kz-jm] capture done\n"); }
+    pthread_mutex_unlock(&s_mu);
+    return 0;
+}
+static void cap_dma(spu_context* ctx, uint32_t ea, uint32_t lsa, uint32_t size, int put)
+{
+    pthread_mutex_lock(&s_mu);
+    if (s_cap_bin) {
+        fprintf(s_cap_log, "%p %c %08X %05X %X %lX\n", (void*)ctx, put ? 'P' : 'G', ea, lsa & SPU_LS_MASK, size, s_cap_off);
+        fwrite(put ? ctx->ls + (lsa & SPU_LS_MASK) : vm_base + ea, 1, size, s_cap_bin);
+        s_cap_off += size;
+    }
+    pthread_mutex_unlock(&s_mu);
+}
+static void cap_job(spu_context* ctx, int module)
+{
+    pthread_mutex_lock(&s_mu);
+    if (s_cap_bin) {
+        char b[512]; snprintf(b, sizeof b, "%s/job%03u.bin", s_cap_dir, s_cap_jobs);
+        FILE* f = fopen(b, "wb");
+        if (f) { fwrite(ctx->gpr, 16, 128, f); fwrite(ctx->ls, 1, SPU_LS_SIZE, f); fclose(f); }
+        fprintf(s_cap_log, "%p J %d %u\n", (void*)ctx, module, s_cap_jobs++);
+    }
+    pthread_mutex_unlock(&s_mu);
+}
+
 static void dma_hook(spu_context* ctx, uint32_t ea, uint32_t lsa, uint32_t size, int put)
 {
     if (!ctx->policy_mode || ctx->ls[0x1DF] != 1) return;   /* workload 1 only */
+    if (s_cap_dir && cap_on()) cap_dma(ctx, ea, lsa, size, put);
     kz_slot* s = slot_of(ctx);
     if (!s) return;
     if (!put && guest_ok(ea, size) && size >= 0x70 && size <= 0xA0 && !(size & 15)) {
@@ -501,6 +557,7 @@ static void job_hook(spu_context* ctx)
     if (!s || !s->desc_n) return;
     kz_job j;
     const int module = ctx->resident_ovl;
+    if (s_cap_dir && (module == 203 || module == 206) && cap_on()) cap_job(ctx, module);
     if (!parse_job(s, module, &j)) return;
     if (module >= 200 && module < 216) __atomic_add_fetch(&s_jobs[module - 200], 1, __ATOMIC_RELAXED);
     extern unsigned cellGcm_flip_request_count(void);
@@ -588,6 +645,16 @@ static void jm_found(uint32_t spurs_ea, uint32_t wid, const char* cls, const cha
 
 __attribute__((constructor)) static void kz_jm_init(void)
 {
+    /* KZ_MLAA: where jm_post's MLAA (the only post effect in normal play) comes
+     * from. gpu (default): the renderer runs it on the display buffer where the
+     * game copies its frame to the SPUs (ps3recomp PS3RECOMP_MLAA_GPU, same
+     * rules as native/mlaa_ref.c); spu: the game's own SPU chain, with the
+     * render targets kept coherent and the NV0039 copies done (exact, slow);
+     * off: none. Glow and motion blur only exist on the spu path. */
+    { const char* m = getenv("KZ_MLAA");
+      if (m && !strcmp(m, "spu")) {
+          setenv("KZ_JM_SKIP", "0", 0); setenv("PS3RECOMP_ENG_MAIN_COHERENCE", "1", 0); setenv("PS3RECOMP_NV0039", "1", 0);
+      } else if (!m || strcmp(m, "off")) setenv("PS3RECOMP_MLAA_GPU", "1", 0); }
     { const char* e = getenv("KZ_JM_HLE_PM"); s_hle_pm = !e || atoi(e); }
     { const char* e = getenv("KZ_JM_SKIP"); s_skip = !e || atoi(e); }
     { const char* e = getenv("KZ_JM_SKIP_US"); s_skip_us = e ? atol(e) : 0; }
@@ -608,5 +675,6 @@ __attribute__((constructor)) static void kz_jm_init(void)
     s_verify = getenv("KZ_JM_VERIFY") != NULL;
     s_time = getenv("KZ_JM_TIME") != NULL;
     if (l) s_log = fopen(l, "w");
-    if (s_log || s_verify || s_time) { g_spu_dma_hook = dma_hook; g_spu_job_hook = job_hook; }
+    s_cap_dir = getenv("KZ_JM_CAPTURE");
+    if (s_log || s_verify || s_time || s_cap_dir) { g_spu_dma_hook = dma_hook; g_spu_job_hook = job_hook; }
 }
