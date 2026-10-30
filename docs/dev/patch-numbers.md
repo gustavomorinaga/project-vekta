@@ -108,6 +108,7 @@ older series on v0.14.0, which do not appear here. This table maps the v0.18.0 s
 | (none) | 0004 | tests: upstream's host tests follow the port's patches |
 | (none) | 2039 | cellGcm: the SPU PUT reject reads its own page map, which unmaps never clear |
 | (none) | 1019 | spu: the DMA fast path leaves the POISON-DMA report to the full path |
+| (none) | 1020 | spu: a PUT that found no reserved line checks again after its copy, fenced |
 
-The last three were written in this tree (2026-10-30), from ps3recomp's own tests run on the patched tree
-(`tools/tests/test_upstream_suite.sh`); they have no private number until the private branch takes them.
+The last four were written in this tree (2026-10-30): 0004 to 1019 from ps3recomp's own tests run on the patched tree
+(`tools/tests/test_upstream_suite.sh`), 1020 from `tools/tests/test_spu_put_recheck.sh`. They have no private number until the private branch takes them.
