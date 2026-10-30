@@ -136,7 +136,13 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] VRR (G-Sync/FreeSync) checked on a compatible monitor (with a 60 limit the monitor shows about 60 Hz; in that
       mode presents follow 59.94 instead of 144)
 - [x] Frame-rate limit (30, 60, 144)
-- [ ] NVIDIA Reflex (`VK_NV_low_latency2`; low_latency_layer on AMD/Intel)
+- [x] NVIDIA Reflex: Off / On / On + Boost on the PC page (`reflex` in the ini), applied at once; `VK_NV_low_latency2`
+      with present ids, the game's thread sleeping after each flip (patch 2038). Without the extension the row reads
+      "not available" (AMD/Intel get it through low_latency_layer, untested). Measured on an RTX 3070 Ti, Level 7: no fps
+      cost (129.9 against 131.4 at 144) and no latency change (about 13.6 ms from simulation start to present, at 144
+      and at 60 with FIFO), since the GPU works about 1 ms a frame and the delay is the guest's vblank pacing and the RSX
+      drain. `PS3RECOMP_VK_REFLEX_LOG=1` prints the driver's frame reports; under Wine they come out wrong. Checked on a
+      real Windows (NVIDIA): the game runs normally with it on
 - [x] Anisotropic filtering: the game's own per texture, off, or 2x to 16x forced on mipmapped textures
 - [x] FSR 1 and RCAS sharpening on the PC page, applied at once
 - [x] Xbox, DualSense/DualShock, 8BitDo and generic controllers (SDL, together with keyboard and mouse), button

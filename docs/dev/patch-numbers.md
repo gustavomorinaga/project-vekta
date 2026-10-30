@@ -104,3 +104,4 @@ older series on v0.14.0, which do not appear here. This table maps the v0.18.0 s
 | 0095 | 2035 | NV0039 memory-to-memory copies on subchannel 1 (PS3RECOMP_NV0039) |
 | 0096 | 2036 | Killzone HD's MLAA on the GPU (PS3RECOMP_MLAA_GPU) |
 | 0097 | 2037 | MLAA pass: no frame waits for the driver to compile it |
+| 0098 | 2038 | Vulkan: NVIDIA Reflex through VK_NV_low_latency2 |

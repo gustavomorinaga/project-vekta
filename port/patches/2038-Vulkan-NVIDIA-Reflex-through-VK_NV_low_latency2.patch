@@ -1,0 +1,335 @@
+From e0b25f7a604652d7b775e96350f0f93288cbcfec Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 30 Oct 2026 05:19:06 -0300
+Subject: [PATCH] Vulkan: NVIDIA Reflex through VK_NV_low_latency2
+
+PS3RECOMP_VK_REFLEX=0|1|2 (off, on, on + boost), set at all asks for the
+device extension (with VK_KHR_present_id when there, Vulkan 1.2 for the
+timeline semaphore), so rsx_vulkan_set_reflex can change the mode at run
+time. Windowed only; without the extension, or when the device refuses
+it, the backend goes on without Reflex and says so.
+
+The guest's thread sleeps in rsx_vulkan_latency_sleep once
+_cellGcmSetFlipCommand has queued a flip (g_gcm_flip_queued_hook, so
+cellGcmSys does not link the backend): SIMULATION_END for the frame it
+flipped, vkLatencySleepNV on a timeline semaphore (100 ms at most),
+SIMULATION_START for the next. The present carries the flipped frame's
+number as its present id, with PRESENT_START/END around it. Swapchain
+creation and the sleep share a mutex. PS3RECOMP_VK_REFLEX_LOG=1 prints
+the driver's frame reports every 300 presents.
+
+Killzone HD, level 7 on an RTX GPU (driver 615.78): 129.9 fps with it on
+against 131.4 off at 144 Hz, and from simulation start to present
+~13.6 ms either way, at 144 and at 60 fps with FIFO. The GPU works ~1 ms
+a frame here, so the driver's sleep has no queue to shorten; the latency
+is the guest's vblank pacing and the RSX thread's drain.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/cellGcmSys.c         |  11 +-
+ libs/video/rsx_vulkan_backend.c | 202 +++++++++++++++++++++++++++++++-
+ libs/video/rsx_vulkan_backend.h |   5 +
+ 3 files changed, 212 insertions(+), 6 deletions(-)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index fe5cd586..22411b8b 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -4233,6 +4233,10 @@ s32 cellGcmSetDefaultFifoSize(u32 size)
+  * import-based flip (LBP: cellGcmSetFlip -> stub 0x7482FC(ctx, id)) landed
+  * in the label getter and no flip was EVER issued: the intro-movie pump ran,
+  * drew, "flipped" into the wrong function, and the screen stayed black. */
++/* Called on the guest's thread once a flip is queued: the Vulkan backend's
++ * NVIDIA Reflex sleep (rsx_vulkan_latency_sleep), NULL otherwise. */
++void (*g_gcm_flip_queued_hook)(void);
++
+ /* NID: 0x21397818 */
+ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+ {
+@@ -4256,9 +4260,10 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+           }
+           PS3_TRACE_END(_tr, "flip_wait", 0);
+       } }
+-    if (gcm_flip_into_fifo((u32)(uintptr_t)ctx, bufferId))
+-        return gcm_flip_request(bufferId, 1);
+-    return cellGcmSetFlipCommand(bufferId);
++    s32 rc = gcm_flip_into_fifo((u32)(uintptr_t)ctx, bufferId)
++           ? gcm_flip_request(bufferId, 1) : cellGcmSetFlipCommand(bufferId);
++    if (g_gcm_flip_queued_hook) g_gcm_flip_queued_hook();
++    return rc;
+ }
+ 
+ /* NID: 0xD8F88E1A */
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 7b33af01..0f9095b1 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -263,6 +263,27 @@ typedef struct vk_state {
+ static vk_state s_vk;
+ 
+ #define VK_LOG(...)  fprintf(stderr, "[RSX vulkan] " __VA_ARGS__)
++
++/* NVIDIA Reflex through VK_NV_low_latency2 (definitions after the device
++ * functions, vk_reflex_*). PS3RECOMP_VK_REFLEX=1 on, 2 on with boost (the
++ * GPU's clocks kept up); rsx_vulkan_set_reflex changes it at run time. */
++static struct {
++    int want, ext, present_id, ok, mode, boost;
++    VkSemaphore sem;
++    u64 value, frame, flipped, last_presented, presents;
++    PFN_vkSetLatencySleepModeNV set_mode;
++    PFN_vkLatencySleepNV sleep;
++    PFN_vkSetLatencyMarkerNV marker;
++    PFN_vkGetLatencyTimingsNV timings;
++    PFN_vkWaitSemaphores wait;
++} s_reflex;
++static void vk_reflex_wanted(void);
++static void vk_reflex_init(void);
++static void vk_reflex_mode(void);
++static void vk_reflex_lock(void);
++static void vk_reflex_unlock(void);
++static void vk_reflex_marker(u64 frame, VkLatencyMarkerNV m);
++static void vk_reflex_report(void);
+ #define VK_CHECK(call, what)                                               \
+     do { VkResult r_ = (call);                                             \
+          if (r_ != VK_SUCCESS) {                                           \
+@@ -373,6 +394,141 @@ static int vk_has_device_extension(VkPhysicalDevice pd, const char* name)
+     return found;
+ }
+ 
++/* ---------------------------------------------------------------------------
++ * NVIDIA Reflex (VK_NV_low_latency2). The game's thread sleeps in
++ * rsx_vulkan_latency_sleep, after it queued a flip, until the driver says
++ * the next frame should start: input is then read as late as the GPU allows.
++ * A frame's markers: SIMULATION_START when the game's thread wakes,
++ * SIMULATION_END when it flips, PRESENT_START/END around the present (by
++ * the present id, which carries the same frame number).
++ * -------------------------------------------------------------------------*/
++static pthread_mutex_t s_reflex_mutex = PTHREAD_MUTEX_INITIALIZER;
++static void vk_reflex_lock(void)   { pthread_mutex_lock(&s_reflex_mutex); }
++static void vk_reflex_unlock(void) { pthread_mutex_unlock(&s_reflex_mutex); }
++
++static void vk_reflex_wanted(void)
++{
++    const char* e = getenv("PS3RECOMP_VK_REFLEX");
++    s_reflex.want = e && *e;            /* "0" too: the PC screen turns it on later */
++    s_reflex.mode = e ? atoi(e) : 0;
++    s_reflex.boost = s_reflex.mode >= 2;
++}
++
++static void vk_reflex_init(void)
++{
++#define LOAD_RX(field, name) \
++    s_reflex.field = (PFN_##name)pvkGetDeviceProcAddr(s_vk.device, #name);
++    LOAD_RX(set_mode, vkSetLatencySleepModeNV) LOAD_RX(sleep, vkLatencySleepNV)
++    LOAD_RX(marker, vkSetLatencyMarkerNV) LOAD_RX(timings, vkGetLatencyTimingsNV)
++    LOAD_RX(wait, vkWaitSemaphores)
++#undef LOAD_RX
++    PFN_vkCreateSemaphore create = (PFN_vkCreateSemaphore)pvkGetDeviceProcAddr(s_vk.device, "vkCreateSemaphore");
++    if (!s_reflex.set_mode || !s_reflex.sleep || !s_reflex.marker || !s_reflex.wait || !create) {
++        VK_LOG("Reflex: device functions missing, off\n"); return;
++    }
++    VkSemaphoreTypeCreateInfo tci = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
++                                      .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE, .initialValue = 0 };
++    VkSemaphoreCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = &tci };
++    if (create(s_vk.device, &sci, NULL, &s_reflex.sem) != VK_SUCCESS) {
++        VK_LOG("Reflex: no timeline semaphore, off\n"); return;
++    }
++    s_reflex.ok = 1;
++    { extern void (*g_gcm_flip_queued_hook)(void); g_gcm_flip_queued_hook = rsx_vulkan_latency_sleep; }
++    VK_LOG("Reflex: VK_NV_low_latency2%s, mode %s\n", s_reflex.present_id ? " + present id" : "",
++           s_reflex.mode <= 0 ? "off" : s_reflex.boost ? "on + boost" : "on");
++}
++
++/* Under the lock, after the swapchain is made: the sleep mode belongs to it */
++static void vk_reflex_mode(void)
++{
++    if (!s_reflex.ok || !s_vk.swapchain) return;
++    VkLatencySleepModeInfoNV mi = { .sType = VK_STRUCTURE_TYPE_LATENCY_SLEEP_MODE_INFO_NV,
++                                    .lowLatencyMode = s_reflex.mode > 0, .lowLatencyBoost = s_reflex.boost };
++    VkResult r = s_reflex.set_mode(s_vk.device, s_vk.swapchain, &mi);
++    if (r != VK_SUCCESS) VK_LOG("Reflex: vkSetLatencySleepModeNV failed (VkResult %d)\n", (int)r);
++}
++
++static void vk_reflex_marker(u64 frame, VkLatencyMarkerNV m)
++{
++    if (!s_reflex.ok || !frame || s_reflex.mode <= 0) return;
++    vk_reflex_lock();
++    if (s_vk.swapchain) {
++        VkSetLatencyMarkerInfoNV mi = { .sType = VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV,
++                                        .presentID = frame, .marker = m };
++        s_reflex.marker(s_vk.device, s_vk.swapchain, &mi);
++    }
++    vk_reflex_unlock();
++}
++
++/* PS3RECOMP_VK_REFLEX_LOG=1: the driver's frame reports, averaged over ~5 s */
++static void vk_reflex_report(void)
++{
++    static int log = -1;
++    if (log < 0) { const char* e = getenv("PS3RECOMP_VK_REFLEX_LOG"); log = e && *e && *e != '0'; }
++    if (!log || !s_reflex.ok || !s_reflex.timings || s_reflex.mode <= 0) return;
++    if (++s_reflex.presents % 300) return;
++    VkLatencyTimingsFrameReportNV rep[64];
++    for (int i = 0; i < 64; i++) rep[i] = (VkLatencyTimingsFrameReportNV){ .sType = VK_STRUCTURE_TYPE_LATENCY_TIMINGS_FRAME_REPORT_NV };
++    VkGetLatencyMarkerInfoNV gi = { .sType = VK_STRUCTURE_TYPE_GET_LATENCY_MARKER_INFO_NV,
++                                    .timingCount = 64, .pTimings = rep };
++    vk_reflex_lock();
++    if (s_vk.swapchain) s_reflex.timings(s_vk.device, s_vk.swapchain, &gi);
++    else gi.timingCount = 0;
++    vk_reflex_unlock();
++    double sim = 0, toPresent = 0, gpu = 0, total = 0; int n = 0;
++    for (u32 i = 0; i < gi.timingCount && i < 64; i++) {
++        const VkLatencyTimingsFrameReportNV* t = &rep[i];
++        if (!t->simStartTimeUs || !t->gpuRenderEndTimeUs || t->gpuRenderEndTimeUs < t->simStartTimeUs) continue;
++        sim       += (double)(t->simEndTimeUs - t->simStartTimeUs);
++        toPresent += (double)(t->presentStartTimeUs - t->simStartTimeUs);
++        gpu       += (double)(t->gpuRenderEndTimeUs - t->gpuRenderStartTimeUs);
++        total     += (double)(t->gpuRenderEndTimeUs - t->simStartTimeUs);
++        n++;
++    }
++    if (n) VK_LOG("Reflex: %d frames, ms: simulation %.2f, to present %.2f, gpu %.2f, start to gpu end %.2f\n",
++                  n, sim / n / 1000.0, toPresent / n / 1000.0, gpu / n / 1000.0, total / n / 1000.0);
++    else VK_LOG("Reflex: no frame reports (%u)\n", gi.timingCount);
++}
++
++void rsx_vulkan_set_reflex(int mode)
++{
++    vk_reflex_lock();
++    s_reflex.mode = mode;
++    s_reflex.boost = mode >= 2;
++    vk_reflex_mode();
++    vk_reflex_unlock();
++    if (s_reflex.ok) VK_LOG("Reflex: mode %s\n", mode <= 0 ? "off" : s_reflex.boost ? "on + boost" : "on");
++}
++
++int rsx_vulkan_reflex_available(void) { return s_reflex.ok; }
++
++/* The game's thread, after it queued a flip: this frame's simulation ended,
++ * sleep until the driver wants the next one to start. */
++void rsx_vulkan_latency_sleep(void)
++{
++    if (!s_reflex.ok || s_reflex.mode <= 0) return;
++    const u64 done = s_reflex.frame;
++    vk_reflex_marker(done, VK_LATENCY_MARKER_SIMULATION_END_NV);
++    s_reflex.flipped = done;
++    vk_reflex_lock();
++    VkResult r = VK_ERROR_UNKNOWN;
++    u64 target = 0;
++    if (s_vk.swapchain) {
++        target = ++s_reflex.value;
++        VkLatencySleepInfoNV si = { .sType = VK_STRUCTURE_TYPE_LATENCY_SLEEP_INFO_NV,
++                                    .signalSemaphore = s_reflex.sem, .value = target };
++        r = s_reflex.sleep(s_vk.device, s_vk.swapchain, &si);
++    }
++    vk_reflex_unlock();
++    if (r == VK_SUCCESS) {
++        VkSemaphoreWaitInfo wi = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
++                                   .semaphoreCount = 1, .pSemaphores = &s_reflex.sem, .pValues = &target };
++        s_reflex.wait(s_vk.device, &wi, 100000000ull);   /* 100 ms at most: a swapchain remade under it */
++    }
++    s_reflex.frame = done + 1;
++    vk_reflex_marker(s_reflex.frame, VK_LATENCY_MARKER_SIMULATION_START_NV);
++}
++
+ static int vk_pick_device(void)
+ {
+     u32 n = 0;
+@@ -2076,12 +2232,18 @@ static int vk_create_swapchain(void)
+         .presentMode = mode,
+         .clipped = VK_TRUE, .oldSwapchain = old,
+     };
++    VkSwapchainLatencyCreateInfoNV lci = { .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_LATENCY_CREATE_INFO_NV,
++                                           .latencyModeEnable = VK_TRUE };
++    if (s_reflex.ok) sci.pNext = &lci;
+     VkSwapchainKHR sc = VK_NULL_HANDLE;
++    vk_reflex_lock();   /* the game's thread sleeps on the swapchain (rsx_vulkan_latency_sleep) */
+     VkResult r = pvkCreateSwapchainKHR(s_vk.device, &sci, NULL, &sc);
+     if (old) pvkDestroySwapchainKHR(s_vk.device, old, NULL);
+     s_vk.swapchain = VK_NULL_HANDLE;
+-    if (r != VK_SUCCESS) { VK_LOG("vkCreateSwapchainKHR failed (VkResult %d)\n", (int)r); return -1; }
++    if (r != VK_SUCCESS) { vk_reflex_unlock(); VK_LOG("vkCreateSwapchainKHR failed (VkResult %d)\n", (int)r); return -1; }
+     s_vk.swapchain = sc;
++    vk_reflex_mode();
++    vk_reflex_unlock();
+ 
+     u32 n = 0;
+     VK_CHECK(pvkGetSwapchainImagesKHR(s_vk.device, sc, &n, NULL), "vkGetSwapchainImagesKHR");
+@@ -2401,7 +2563,15 @@ static void vk_present_window(void)
+         .waitSemaphoreCount = 1, .pWaitSemaphores = &s_vk.sc_done[idx],
+         .swapchainCount = 1, .pSwapchains = &s_vk.swapchain, .pImageIndices = &idx,
+     };
++    /* Reflex: this present closes the frame the game's thread last woke for */
++    const u64 frame_id = s_reflex.ok ? s_reflex.flipped : 0;
++    VkPresentIdKHR pid = { .sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR, .swapchainCount = 1, .pPresentIds = &frame_id };
++    if (s_reflex.ok && s_reflex.present_id && frame_id > s_reflex.last_presented) pi.pNext = &pid;
++    vk_reflex_marker(frame_id, VK_LATENCY_MARKER_PRESENT_START_NV);
+     r = pvkQueuePresentKHR(s_vk.queue, &pi);
++    vk_reflex_marker(frame_id, VK_LATENCY_MARKER_PRESENT_END_NV);
++    if (frame_id) s_reflex.last_presented = frame_id;
++    vk_reflex_report();
+     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) vk_swapchain_lost();
+     else if (r != VK_SUCCESS) VK_LOG("vkQueuePresentKHR failed (VkResult %d)\n", (int)r);
+ }
+@@ -4786,9 +4956,12 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     vk_window_open(title);           /* no-op unless PS3RECOMP_VK_WINDOW is set */
+     if (vk_load_library()) return -1;
+ 
++    /* NVIDIA Reflex (PS3RECOMP_VK_REFLEX, below) needs timeline semaphores:
++     * Vulkan 1.2 then, the 1.0 the backend promises otherwise. */
++    vk_reflex_wanted();
+     VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+                               .pApplicationName = "ps3recomp", .pEngineName = "ps3recomp RSX",
+-                              .apiVersion = VK_API_VERSION_1_0 };
++                              .apiVersion = s_reflex.want ? VK_API_VERSION_1_2 : VK_API_VERSION_1_0 };
+     VkInstanceCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                                 .pApplicationInfo = &app };
+     if (s_vk.windowed) {
+@@ -4845,8 +5018,31 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+                                .enabledExtensionCount = s_vk.windowed ? 1u : 0u,
+                                .ppEnabledExtensionNames = s_vk.windowed ? dev_exts : NULL,
+                                .pEnabledFeatures = &want };
+-    VK_CHECK(pvkCreateDevice(s_vk.phys, &dci, NULL, &s_vk.device), "vkCreateDevice");
++    /* Reflex: VK_NV_low_latency2 (and VK_KHR_present_id, which ties the
++     * latency markers to the presents) when the device has them */
++    const char* rx_exts[3] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_NV_LOW_LATENCY_2_EXTENSION_NAME, VK_KHR_PRESENT_ID_EXTENSION_NAME };
++    VkPhysicalDevicePresentIdFeaturesKHR pid_feat = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR,
++                                                      .presentId = VK_TRUE };
++    VkPhysicalDeviceVulkan12Features v12 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
++                                             .timelineSemaphore = VK_TRUE };
++    if (s_reflex.want && s_vk.windowed && vk_has_device_extension(s_vk.phys, VK_NV_LOW_LATENCY_2_EXTENSION_NAME)) {
++        const int pid = vk_has_device_extension(s_vk.phys, VK_KHR_PRESENT_ID_EXTENSION_NAME);
++        dci.enabledExtensionCount = pid ? 3u : 2u;
++        dci.ppEnabledExtensionNames = rx_exts;
++        if (pid) v12.pNext = &pid_feat;
++        dci.pNext = &v12;
++        s_reflex.ext = 1; s_reflex.present_id = pid;
++    } else if (s_reflex.want) VK_LOG("Reflex: %s, off\n", s_vk.windowed ? "the device has no VK_NV_low_latency2" : "no window");
++    VkResult devr = pvkCreateDevice(s_vk.phys, &dci, NULL, &s_vk.device);
++    if (devr != VK_SUCCESS && s_reflex.ext) {   /* without Reflex, then */
++        VK_LOG("Reflex: vkCreateDevice with VK_NV_low_latency2 failed (VkResult %d), off\n", (int)devr);
++        s_reflex.ext = s_reflex.present_id = 0;
++        dci.pNext = NULL; dci.enabledExtensionCount = s_vk.windowed ? 1u : 0u; dci.ppEnabledExtensionNames = s_vk.windowed ? dev_exts : NULL;
++        devr = pvkCreateDevice(s_vk.phys, &dci, NULL, &s_vk.device);
++    }
++    VK_CHECK(devr, "vkCreateDevice");
+     if (vk_load_device_functions()) return -1;
++    if (s_reflex.ext) vk_reflex_init();
+     if (s_vk.windowed && vk_load_wsi_device_functions())
+         vk_window_drop("the driver has no swapchain functions");
+     pvkGetDeviceQueue(s_vk.device, s_vk.queue_family, 0, &s_vk.queue);
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 02f62a8e..735c6968 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -85,6 +85,11 @@ void rsx_vulkan_set_stretch(int on);
+  * sharpness in stops (0 = sharpest); as PS3RECOMP_VK_FSR and
+  * PS3RECOMP_VK_FSR_SHARPNESS, from the next presented frame. */
+ void rsx_vulkan_set_fsr(int on, float sharpness);
++/* NVIDIA Reflex (VK_NV_low_latency2): 0 off, 1 on, 2 on + boost. Needs
++ * PS3RECOMP_VK_REFLEX set (any value) at start, for the device extension. */
++void rsx_vulkan_set_reflex(int mode);
++int  rsx_vulkan_reflex_available(void);
++void rsx_vulkan_latency_sleep(void);   /* the game's thread, after a flip */
+ void rsx_vulkan_set_crop(float f);
+ int  rsx_vulkan_output_size(int* w, int* h);
+ 

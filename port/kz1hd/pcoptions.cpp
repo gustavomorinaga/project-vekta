@@ -145,7 +145,12 @@ static void ini_save(void)
  *                             surround channels; at the next start, PS3RECOMP_AUDIO_CHANNELS)
  *   language   = system | en | en-gb | fr | es   (voices, subtitles and menus: the console
  *                             language the game is told, PS3_LANG; system = the host's, and
- *                             English for a language the game does not have) */
+ *                             English for a language the game does not have)
+ *   reflex     = off | on | boost   (NVIDIA Reflex, VK_NV_low_latency2: the game's thread
+ *                             waits after each flip until the driver wants the next frame;
+ *                             boost also keeps the GPU's clocks up. PS3RECOMP_VK_REFLEX,
+ *                             always set so the device gets the extension and the row
+ *                             applies at once; nothing without an NVIDIA GPU) */
 static const char* present_mode(const std::string& v);   /* below, with the PC screen */
 static const struct { const char* key; const char* def; } kVideo[] = {
     { "display", "window" }, { "resolution", "1280x720" }, { "refresh", "0" },
@@ -153,6 +158,7 @@ static const struct { const char* key; const char* def; } kVideo[] = {
     { "overlay", "off" }, { "widescreen", "on" }, { "fov", "56.25" }, { "hud_size", "1" },
     { "hud_position", "1" }, { "intro", "on" }, { "anisotropic", "game" },
     { "upscaler", "linear" }, { "sharpness", "0.2" }, { "speakers", "2" }, { "language", "system" },
+    { "reflex", "off" },
 };
 /* MangoHUD with a preset for recording the game's progress: frame rate and
  * frame time, CPU per core, GPU, memory, resolution and driver. A
@@ -179,6 +185,8 @@ extern "C" volatile unsigned kz_view_3d = 0, kz_view_menu = 0;
 extern "C" {
 void rsx_vulkan_set_stretch(int on);
 void rsx_vulkan_set_fsr(int on, float sharpness);
+void rsx_vulkan_set_reflex(int mode);
+int  rsx_vulkan_reflex_available(void);
 int  rsx_vulkan_output_size(int* w, int* h);
 }
 static bool s_widescreen = true;
@@ -259,6 +267,7 @@ extern "C" void kz_pc_settings_env(void)
     setenv("PS3RECOMP_VK_FSR_SHARPNESS", s_ini["sharpness"].c_str(), 0);
     setenv("PS3RECOMP_AUDIO_CHANNELS", s_ini["speakers"].c_str(), 0);
     if (s_ini["language"] != "system") setenv("PS3_LANG", s_ini["language"].c_str(), 0);
+    setenv("PS3RECOMP_VK_REFLEX", s_ini["reflex"] == "boost" ? "2" : s_ini["reflex"] == "on" ? "1" : "0", 0);
     overlay_env();
     view_load();
 }
@@ -457,6 +466,13 @@ static void get_language(ppu_context* c) { attr_log("get_language", c); int i = 
     wrf((uint32_t)c->gpr[4], (float)i); }
 static void set_language(ppu_context* c) { attr_log("set_language", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["language"] = kLanguages[std::clamp((int)lroundf(in_f(c)), 0, 4)]; ini_write(); }
+static const char* const kReflex[] = { "off", "on", "boost" };
+static void get_reflex(ppu_context* c) { attr_log("get_reflex", c); int i = 0;
+    for (int k = 0; k < 3; k++) if (s_ini["reflex"] == kReflex[k]) i = k;
+    wrf((uint32_t)c->gpr[4], (float)i); }
+static void set_reflex(ppu_context* c) { attr_log("set_reflex", c); if ((int32_t)c->gpr[5] != 2) return;
+    const int i = std::clamp((int)lroundf(in_f(c)), 0, 2);
+    s_ini["reflex"] = kReflex[i]; ini_write(); rsx_vulkan_set_reflex(i); }
 /* Presets: a set of the options above, written at once (internal resolution
  * and anisotropy at the next start, the rest at once; reopen the screen to see
  * the rows follow). Custom: whatever does not match one. Original is the
@@ -569,6 +585,7 @@ static void kz_pc_inject_attrs(ppu_context* ctx)
         { kSysClass, "Sharpness",             kFloatVtbl, get_sharp,   set_sharp },
         { kSysClass, "Speakers",              kFloatVtbl, get_speakers, set_speakers },
         { kSysClass, "Language",              kFloatVtbl, get_language, set_language },
+        { kSysClass, "Reflex",                kFloatVtbl, get_reflex,  set_reflex },
         { kSysClass, "Preset",                kFloatVtbl, get_preset,  set_preset },
     };
     const uint32_t pc_cat = guest_str(ctx, "PC settings");
@@ -624,19 +641,21 @@ static std::string kz_lua(void)
     "  b:SetItem(6, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDPosition', 'HUD Position'))\n"
     "  b:SetItem(7, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.VSync|0.0;1.0;2.0;3.0|On;Off;Adaptive;FIFO (VRR)', 'V-Sync'))\n"
     "  b:SetItem(8, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FrameRate|0.0;1.0;2.0|30;60;144', 'Frame Rate Limit'))\n"
-    "  b:SetItem(9, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
-    "  b:SetItem(10, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution (on restart)'))\n"
-    "  b:SetItem(11, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering (on restart)'))\n"
-    "  b:SetItem(12, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
-    "  b:SetItem(13, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
-    "  b:SetItem(14, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MouseYaw', 'Mouse Left/Right Sensitivity'))\n"
-    "  b:SetItem(15, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MousePitch', 'Mouse Up/Down Sensitivity'))\n"
-    "  b:SetItem(16, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MouseInvert|true;false|$Conditions.On$;$Conditions.Off$', 'Mouse Invert Look'))\n"
-    "  b:SetItem(17, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
-    "  b:SetItem(18, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
-    "  b:SetItem(19, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
+    "  b:SetItem(9, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Reflex|0.0;1.0;2.0|$Conditions.Off$;$Conditions.On$;On + Boost', '" +
+        std::string(rsx_vulkan_reflex_available() ? "NVIDIA Reflex" : "NVIDIA Reflex (not available)") + "'))\n"
+    "  b:SetItem(10, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
+    "  b:SetItem(11, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution (on restart)'))\n"
+    "  b:SetItem(12, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering (on restart)'))\n"
+    "  b:SetItem(13, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
+    "  b:SetItem(14, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
+    "  b:SetItem(15, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MouseYaw', 'Mouse Left/Right Sensitivity'))\n"
+    "  b:SetItem(16, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MousePitch', 'Mouse Up/Down Sensitivity'))\n"
+    "  b:SetItem(17, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MouseInvert|true;false|$Conditions.On$;$Conditions.Off$', 'Mouse Invert Look'))\n"
+    "  b:SetItem(18, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
+    "  b:SetItem(19, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
+    "  b:SetItem(20, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
 #ifndef _WIN32   /* MangoHUD is a Linux Vulkan layer (under Proton: mangohud %command%) */
-    "  b:SetItem(20, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
+    "  b:SetItem(21, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
 #endif
     " end\n"
     "end\n"

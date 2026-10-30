@@ -7,6 +7,7 @@ What each release contains, newest first. Until a release that calls itself play
 
 - The game's own MLAA anti-aliasing, reimplemented as a GPU compute pass equal to the SPU code (patches 2035 to 2037,
   `KZ_MLAA=gpu|spu|off`); the first frame no longer waits for the driver to compile it.
+- NVIDIA Reflex (Off, On, On + Boost) on the PC page, through `VK_NV_low_latency2` (patch 2038).
 - In-game key capture for remapping screens (patch 4011).
 - `tools/mlaa_harness` and `tools/mlaa_probe`: the lifted MLAA jobs run outside the game, test patterns and checks.
 

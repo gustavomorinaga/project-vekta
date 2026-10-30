@@ -47,6 +47,7 @@ are off by default; display and input improvements may be on.
 | Output resolution and refresh rate | 1280x720, the monitor's rate | `resolution`, `refresh`; resizable window, aspect kept |
 | Internal resolution scale, 50 % to 200 % | 100 % | `scale`; applies on the next start |
 | V-Sync on, off, adaptive; VRR | on | `vsync` |
+| NVIDIA Reflex: off, on, on + boost (`VK_NV_low_latency2`) | off | `reflex`; "not available" without the extension; no measured fps or latency change in Level 7 |
 | Frame-rate limit 30, 60, 144 (the game clock follows) | 60 | `fps_limit`; 30 is the PS3's |
 | AMD FSR 1 upscaling and RCAS sharpening | bilinear | `upscaler`, `sharpness` |
 | Anisotropic filtering: the game's own, off, 2x to 16x | the game's | `anisotropic` |

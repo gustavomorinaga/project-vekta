@@ -55,7 +55,7 @@ What works and what does not, item by item: [docs/FEATURES.md](docs/FEATURES.md)
 All optional, set in a **PC** page inside the game's own Options and Pause menus and kept in `kz1hd_pc.ini`:
 
 - display mode (window, borderless, fullscreen), output resolution, internal resolution scale, V-Sync (on, off,
-  adaptive), VRR, frame-rate limit (30, 60, 144)
+  adaptive), VRR, frame-rate limit (30, 60, 144), NVIDIA Reflex
 - AMD FSR 1 upscaling and RCAS sharpening, anisotropic filtering (the game's own or 2x to 16x)
 - widescreen (Hor+ for 21:9, 32:9 and wider, with the menus and movies kept 16:9), field of view, HUD size and position
 - presets: Original (PS3), Performance, Balanced, Quality
