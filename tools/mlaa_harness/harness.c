@@ -1,6 +1,6 @@
 /*
- * Offline harness for jm_post's MLAA (docs/dev/wws-jm-post.md, "O MLAA fora do
- * jogo"): runs the lifted SPU code of Gfx.Post.Transpose (85fc) and
+ * Offline harness for jm_post's MLAA (docs/dev/wws-jm-post.md, "The MLAA outside
+ * the game"): runs the lifted SPU code of Gfx.Post.Transpose (85fc) and
  * Gfx.Post.MLAA (af58) on arbitrary images, outside the game.
  *
  * Input: a capture made with KZ_JM_CAPTURE (port/kz1hd/native/jm.c): the

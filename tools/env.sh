@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared paths for the build and run scripts (sourced, not run). Every value can be set in the environment
 # first; the defaults keep everything inside the repository, in folders git ignores:
 #

@@ -75,6 +75,12 @@ files it writes (`kz1hd_pc.ini`, `kz1hd_keys.ini`, saves under `gamedata/`) are 
 Headless runs for tests: `PS3RECOMP_VK_WINDOW=0 tools/run.sh SECONDS LOG`, with `PAD_SCRIPT="seconds:buttons,..."`
 for scripted input (see `tools/run.sh` and `docs/dev/testing.md`).
 
+## Tests without the game
+
+What CI runs on every push and pull request needs no game files and no GPU: `tools/ps3recomp-patched.sh`,
+`tools/check-tree.sh`, `tools/lint.sh` (shellcheck and ruff) and `tools/run-host-tests.sh` (the list is
+`tools/host-tests.txt`; bash, Python 3 and a C compiler). Write a new test in `tools/tests/` and add it to the list.
+
 ## Windows x64 (cross-built on Linux)
 
 ```sh

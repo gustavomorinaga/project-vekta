@@ -26,6 +26,7 @@ Overview: [README.md](README.md) and [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md
 | `port/cmake/` | the clang + MinGW-w64 toolchain file for the Windows cross build |
 | `third_party/ps3recomp/` | the recompiler, a pinned submodule (never edited in place) |
 | `tools/` | `env.sh` (paths), `ps3recomp-patched.sh`, `lift.sh`, `setup-vfs.sh`, `build.sh`, `build-win.sh`, `pgo.sh`, `run.sh`, `play.sh`; `sync-from-private.py` (the maintainer's import from the private working repositories); data and profiling tools (`psarc_ls.py`, `lua4dis.py`, `extract_spu_modules.py`, `prof_report.py`, `spu_capture.py`, ...) |
+| `tools/tests/`, `tools/host-tests.txt` | the host tests (no game data, no GPU) and their list; `tools/run-host-tests.sh` runs them, `tools/lint.sh` lints |
 | `re/` | tables the tools read (`function_seeds.txt`); numbers only |
 | `site/`, `assets/` | the project web page and its images |
 | `docs/` | public documentation; `docs/dev/` holds engineering notes |
@@ -70,7 +71,12 @@ Build steps: [docs/BUILDING.md](docs/BUILDING.md). **Never write into the player
 of the repository.
 
 - **Before every pull request** run what CI runs (no game data, no GPU): `tools/ps3recomp-patched.sh` must apply
-  every patch, and `tools/check-tree.sh` must find no game files, personal paths or secrets.
+  every patch, `tools/check-tree.sh` must find no game files, personal paths or secrets, `tools/lint.sh` must be
+  clean (shellcheck at warning level, ruff with `ruff.toml`), and `tools/run-host-tests.sh` must pass.
+- **Host tests are self-contained.** A runtime fix comes with a focused host test (in `tools/tests/`) that fails
+  without the fix and passes with it, listed in `tools/host-tests.txt`. A test needs no game data, no GPU and no
+  network, writes only to its own temporary folder, and fails loudly instead of skipping. When a change alters what
+  an old test checks, update that test in the same change.
 - A change to the runtime or a patch is checked in the game before it is called working: say which level, how long,
   with what input (`PAD_SCRIPT`, by hand) and what the log or a screenshot showed. Headless runs use
   `PS3RECOMP_VK_WINDOW=0` (see `tools/run.sh`).

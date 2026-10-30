@@ -51,6 +51,10 @@ REWRITES = [
     ("port/kz1hd/build-win.sh", "tools/build-win.sh"), ("port/kz1hd/lift.sh", "tools/lift.sh"),
     ("port/kz1hd/run.sh", "tools/run.sh"), ("port/kz1hd/play.sh", "tools/play.sh"), ("port/kz1hd/pgo.sh", "tools/pgo.sh"),
     ("port/tools/", "tools/"),
+    # Headings of docs/dev/wws-jm-post.md that the private code cites in Portuguese.
+    ('"O MLAA em C"', '"The MLAA in C"'), ('"O MLAA fora do jogo"', '"The MLAA outside the game"'),
+    ('"O MLAA fora do\n * jogo"', '"The MLAA outside\n * the game"'),
+    ('"O MLAA medido no pr\u00f3prio m\u00f3dulo"', '"The MLAA measured on the game\'s own module"'),
     # The MLAA tools' defaults: work/ of this tree instead of the maintainer's folders; the private test kit by name.
     ("'{W}/recomp/kz1hd/mlaa_cap'",
      "os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'work', 'mlaa_cap')"),

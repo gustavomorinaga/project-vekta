@@ -1,0 +1,8 @@
+# Python lint for tools/ and re/ (tools/lint.sh, CI). Lint only, no reformatting: the rules catch real bugs (syntax,
+# undefined names, unused imports and variables, a bare except, mutable defaults); the style stays as written.
+# (The same rule set as Project Helghast's ruff.toml, MIT.)
+line-length = 120
+extend-exclude = ["third_party", "work", "Game"]
+
+[lint]
+select = ["E9", "E722", "F", "B006", "B008"]

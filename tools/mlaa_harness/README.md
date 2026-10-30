@@ -1,4 +1,4 @@
-# MLAA harness (docs/dev/wws-jm-post.md, "O MLAA fora do jogo")
+# MLAA harness (docs/dev/wws-jm-post.md, "The MLAA outside the game")
 
 Runs the lifted SPU code of `Gfx.Post.Transpose` (`85fc`) and `Gfx.Post.MLAA` (`af58`) outside the game,
 on any 1280x720 image, from a capture of the jobs' entry states. Nothing here is game data; the captures,

@@ -10,7 +10,6 @@ if a required file is missing or different. Standard library only; reads, never 
 """
 import hashlib
 import os
-import struct
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
