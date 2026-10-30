@@ -1,7 +1,7 @@
 /*
  * jm_post's MLAA (Gfx.Post.MLAA, SPU module af58, with Gfx.Post.Transpose 85fc)
  * as plain C: the reference the GPU pass is checked against. Every rule comes
- * from the SPU code; docs/dev/wws-jm-post.md, "O MLAA em C".
+ * from the SPU code; docs/dev/wws-jm-post.md, "The MLAA in C".
  */
 #ifndef KZ_MLAA_REF_H
 #define KZ_MLAA_REF_H

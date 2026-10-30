@@ -1,5 +1,5 @@
 /*
- * jm_post's MLAA in C (see mlaa_ref.h and docs/dev/wws-jm-post.md, "O MLAA em C").
+ * jm_post's MLAA in C (see mlaa_ref.h and docs/dev/wws-jm-post.md, "The MLAA in C").
  *
  * The SPU chain: Transpose (85fc) x2, MLAA (af58) x5 over the columns,
  * Transpose x2, MLAA x5 over the rows. One MLAA pass walks its lines (columns,
