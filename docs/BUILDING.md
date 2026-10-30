@@ -11,6 +11,18 @@ git clone --recurse-submodules https://github.com/gustavomorinaga/project-vekta
 cd project-vekta
 ```
 
+Or, from a release, the source archive (`project-vekta-X.Y.Z-source.tar.gz` on the
+[releases page](https://github.com/gustavomorinaga/project-vekta/releases)): it is the release's tree with ps3recomp at
+its pinned commit, so no submodule step. Check it first, then unpack it:
+
+```sh
+sha256sum -c project-vekta-X.Y.Z-source.tar.gz.sha256
+tar xzf project-vekta-X.Y.Z-source.tar.gz
+cd project-vekta-X.Y.Z
+```
+
+The steps below are the same from there; only `tools/check-tree.sh` and the lint need a git checkout.
+
 An existing clone without the submodule: `git submodule update --init`. On Windows checkouts keep
 `core.autocrlf=false`: some ps3recomp sources are CRLF and the patches carry those bytes.
 

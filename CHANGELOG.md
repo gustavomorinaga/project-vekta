@@ -14,6 +14,10 @@ no release yet: the port is built from source. Until a release that calls itself
 - `tools/wine-test.sh` runs the Windows build under Wine or Proton for a minute and says whether it held its frame
   rate; it passed at 144 fps under both on the maintainer's machine.
 - `tools/mlaa_harness` and `tools/mlaa_probe`: the lifted MLAA jobs run outside the game, test patterns and checks.
+- Releases: `VERSION` holds the one version string; `tools/release/bump_version.py` moves it everywhere and turns
+  this section into the release's entry; a pushed tag builds a reproducible source archive (the tree with ps3recomp
+  at its pinned commit) and opens a draft pre-release with notes from this file and SHA-256 sums
+  ([docs/RELEASE-CRITERIA.md](docs/RELEASE-CRITERIA.md)).
 
 ### Changed
 - The project page is generated whole from the repository (the feature table, the screenshots, this changelog,
@@ -21,6 +25,7 @@ no release yet: the port is built from source. Until a release that calls itself
   `docs/FEATURES.md` gains a section on the port itself (builds, frame rate, installer).
 
 ### Fixed
+- `tools/ps3recomp-patched.sh` also works in an unpacked source archive, where there is no git checkout.
 - An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039),
   and the SPU poison-write diagnostic works with `SPU_POISON_DMA_WATCH` (patch 1019); both found by ps3recomp's own
   tests, which now run on the patched tree in CI (patch 0004).

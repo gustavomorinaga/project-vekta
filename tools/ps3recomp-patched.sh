@@ -14,7 +14,8 @@ PT="$PS3RECOMP_DIR"
 [[ -f "$SUB/CMakeLists.txt" ]] || { echo "ps3recomp-patched: $SUB is empty; run: git submodule update --init" >&2; exit 1; }
 
 # Git for Windows' core.autocrlf=true checks the submodule out with CRLF and the patches stop applying part-way.
-crlf="$(git -C "$SUB" ls-files --eol 2>/dev/null | awk '$1 == "i/lf" && $2 == "w/crlf" { n++ } END { print n + 0 }')"
+# (Not a git checkout, as in a source release: no index to ask, so nothing to check.)
+crlf="$( { git -C "$SUB" ls-files --eol 2>/dev/null || true; } | awk '$1 == "i/lf" && $2 == "w/crlf" { n++ } END { print n + 0 }')"
 if (( crlf > 0 )); then
   cat >&2 <<EOF
 ps3recomp-patched: $crlf file(s) in $SUB are checked out with Windows (CRLF) line endings but stored with LF,
@@ -85,4 +86,6 @@ print(f"synced: {changed} file(s) changed, {removed} removed")
 PY
 rm -rf "$NEW"
 # The patch set this tree was made from, so a build can tell a stale tree.
-echo "$(cat port/patches/series port/patches/*.patch | sha256sum | cut -c1-16)-$(git -C "$SUB" rev-parse --short HEAD)" > "$PT/.patchset"
+# The pinned commit: the submodule's HEAD, or in a source release (no git) the one tools/release/pack_source.py wrote.
+pin="$(git -C "$SUB" rev-parse --short HEAD 2>/dev/null || cut -c1-7 "$SUB.pin" 2>/dev/null || echo unknown)"
+echo "$(cat port/patches/series port/patches/*.patch | sha256sum | cut -c1-16)-$pin" > "$PT/.patchset"

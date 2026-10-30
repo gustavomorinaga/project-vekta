@@ -9,12 +9,32 @@ is measured against. The first preview will be v0.1.0.
 
 1. **CI green** on the commit that is tagged.
 2. **A build anyone can repeat:** the tagged commit builds from the player's own files with the steps in
-   [BUILDING.md](BUILDING.md), on a machine other than the maintainer's.
+   [BUILDING.md](BUILDING.md), on a machine other than the maintainer's. **Relaxed for v0.1.0 only** (the
+   maintainer's decision, 2026-10-30): the first preview may ship when the tagged release's own source archive,
+   unpacked in a fresh folder, builds and plays on the maintainer's machine; its release notes say that no other
+   machine has built it yet. From v0.1.1 on the gate applies as written.
 3. **Known issues listed** in [KNOWN_ISSUES.md](KNOWN_ISSUES.md), and a `CHANGELOG.md` section for the version.
 4. **One version string** in the tag, `CHANGELOG.md` and `CITATION.cff`.
 5. **SHA256SUMS** published beside any file the release carries.
 6. **Tags are never moved**; a fix is a new tag.
 7. **Published as a pre-release** while the version is 0.x.
+
+## How a release is made
+
+A release is the source for now: `project-vekta-X.Y.Z-source.tar.gz` (the tagged tree with ps3recomp at its pinned
+commit, made by `tools/release/pack_source.py`, the same bytes from the same commit), its `.sha256` and `SHA256SUMS`.
+There is no installer yet; the archive builds the port as [BUILDING.md](BUILDING.md) says.
+
+1. With the gates above met, on an up-to-date `main`: `python3 tools/release/bump_version.py X.Y.Z`. It writes
+   `VERSION`, `CITATION.cff`, the README's release link and the `CHANGELOG.md` entry (from `## [Unreleased]`),
+   regenerates the project page and checks the version mentions and the release notes.
+2. Commit that ("Release vX.Y.Z"), merge it through a pull request, then tag the merge commit `vX.Y.Z` and push the tag.
+3. `.github/workflows/release.yml` checks the tag against `VERSION`, writes the notes from the `CHANGELOG.md` entry,
+   builds the archive and opens a **draft** pre-release with it. Read the draft and publish it by hand.
+4. Publishing runs `.github/workflows/release-check.yml`, which checks the published release against the tag
+   (`tools/release/release_check.py`): title, pre-release flag, the three files, their sums, and the links.
+
+A dry run (Actions, release, "Run workflow") builds the archive and previews the notes without publishing anything.
 
 ## Release criteria for v1.0.0 (playable)
 

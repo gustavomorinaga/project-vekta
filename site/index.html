@@ -203,7 +203,9 @@
 <li><span class="sec">Added</span>In-game key capture for remapping screens (patch 4011).</li>
 <li><span class="sec">Added</span><code>tools/wine-test.sh</code> runs the Windows build under Wine or Proton for a minute and says whether it held its frame rate; it passed at 144 fps under both on the maintainer&#x27;s machine.</li>
 <li><span class="sec">Added</span><code>tools/mlaa_harness</code> and <code>tools/mlaa_probe</code>: the lifted MLAA jobs run outside the game, test patterns and checks.</li>
+<li><span class="sec">Added</span>Releases: <code>VERSION</code> holds the one version string; <code>tools/release/bump_version.py</code> moves it everywhere and turns this section into the release&#x27;s entry; a pushed tag builds a reproducible source archive (the tree with ps3recomp at its pinned commit) and opens a draft pre-release with notes from this file and SHA-256 sums (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/RELEASE-CRITERIA.md">docs/RELEASE-CRITERIA.md</a>).</li>
 <li><span class="sec">Changed</span>The project page is generated whole from the repository (the feature table, the screenshots, this changelog, the requirements and the patch series) and laid out like the Killzone 2 and Killzone 3 ports&#x27; pages; <code>docs/FEATURES.md</code> gains a section on the port itself (builds, frame rate, installer).</li>
+<li><span class="sec">Fixed</span><code>tools/ps3recomp-patched.sh</code> also works in an unpacked source archive, where there is no git checkout.</li>
 <li><span class="sec">Fixed</span>An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039), and the SPU poison-write diagnostic works with <code>SPU_POISON_DMA_WATCH</code> (patch 1019); both found by ps3recomp&#x27;s own tests, which now run on the patched tree in CI (patch 0004).</li>
 <li><span class="sec">Fixed</span>An SPU that reserves a line while another SPU&#x27;s plain write to it is being copied now loses the reservation at once, not at the next 10 ms poll (patch 1020).</li>
 </ul>
@@ -237,9 +239,9 @@
 <li><time>next</time><span><b>Unreleased</b> In-game key capture for remapping screens (patch 4011).</span></li>
 <li><time>next</time><span><b>Unreleased</b> tools/wine-test.sh runs the Windows build under Wine or Proton for a minute and says whether it held its frame rate...</span></li>
 <li><time>next</time><span><b>Unreleased</b> tools/mlaa_harness and tools/mlaa_probe: the lifted MLAA jobs run outside the game, test patterns and checks.</span></li>
+<li><time>next</time><span><b>Unreleased</b> Releases: VERSION holds the one version string; tools/release/bump_version.py moves it everywhere and turns this...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The project page is generated whole from the repository (the feature table, the screenshots, this changelog, the...</span></li>
-<li><time>next</time><span><b>Unreleased</b> An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039), and...</span></li>
-<li><time>next</time><span><b>Unreleased</b> An SPU that reserves a line while another SPU&#x27;s plain write to it is being copied now loses the reservation at once...</span></li>
+<li><time>next</time><span><b>Unreleased</b> tools/ps3recomp-patched.sh also works in an unpacked source archive, where there is no git checkout.</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -273,7 +275,7 @@
 <h2>Install</h2>
 <div class="dl">
 <p class="ver">No release yet</p>
-<p>No installer has been published yet. When one is, it appears on the <a href="https://github.com/gustavomorinaga/project-vekta/releases">releases page</a>; until then the port is built from source.</p>
+<p>Nothing has been published yet. When a release is, it appears on the <a href="https://github.com/gustavomorinaga/project-vekta/releases">releases page</a>; until then the port is built from source.</p>
 </div>
 <p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <pre>git clone --recurse-submodules \
