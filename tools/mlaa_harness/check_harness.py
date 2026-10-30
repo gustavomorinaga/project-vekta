@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """check_harness.py <cap>...: every captured job rerun alone (its PUTs against the game's), then
 every full chain of the capture rerun on the frame the game gave it, against what the game left."""
-import sys, subprocess, numpy as np, mlaa, capframes
+import sys, subprocess, mlaa, capframes
 bad = 0
 for cap in sys.argv[1:]:
     info = subprocess.run([mlaa.C + '/hb/harness', mlaa.C + '/' + cap, 'info'], capture_output=True, text=True).stdout

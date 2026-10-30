@@ -1,5 +1,4 @@
 import os
-import os, sys
 from PIL import Image
 def pair(d):
     fs=sorted(f for f in os.listdir(d) if f.endswith('.ppm'))

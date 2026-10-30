@@ -2,7 +2,7 @@
 # and after (that buffer with every PUT of the 14 jobs applied), as the game had them
 import numpy as np
 def chains(cap):
-    recs=[];jobs=[]
+    jobs=[]
     cur=None
     for l in open(cap+'/dma.log'):
         f=l.split()
