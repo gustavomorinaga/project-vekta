@@ -96,7 +96,8 @@ of the repository.
   in `docs/GETTING-FILES.md`, known problems in `docs/KNOWN_ISSUES.md`, feature status in `docs/features.tsv`,
   credits in `NOTICE.md`, and a line in `CHANGELOG.md` for anything a player would notice.
 - `docs/FEATURES.md` is generated from `docs/features.tsv` by `tools/features.py`, and `site/index.html` by
-  `tools/website.py` from that table, `docs/SCREENSHOTS.md`, `docs/ROADMAP.md`, `CHANGELOG.md` and the patch series;
+  `tools/website.py` from that table, `docs/SCREENSHOTS.md`, `docs/requirements.md`, `docs/ROADMAP.md`,
+  `CHANGELOG.md` (Keep a Changelog: `## [name] - YYYY-MM-DD`, `### Added`/`Changed`/`Fixed`) and the patch series;
   never edit either by hand. Change the source (a status with its evidence: a run, a log line, a screenshot), run
   `python3 tools/features.py && python3 tools/website.py` and commit the lot; the host tests and the docs workflow run
   both with `--check`. A status changes only with evidence.
