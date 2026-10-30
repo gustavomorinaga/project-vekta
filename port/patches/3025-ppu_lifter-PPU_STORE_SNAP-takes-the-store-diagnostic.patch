@@ -1,0 +1,155 @@
+From 64a588060676c47c116784cc366fbeae0504b501 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 18:42:47 -0300
+Subject: [PATCH] ppu_lifter: PPU_STORE_SNAP takes the store diagnostics
+ and the bitmap per function; plain accesses on x86
+
+With PPU_STORE_SNAP (a port's build choice) the barrier watch, the null sweep and the reservation bitmap pointer are read with the rest of the memory model at function entry, not reloaded after every store; on x86 the inline loads and stores are plain accesses (aligned ones are single-copy atomic there anyway). KZ1 HD Level 7 with PGO: 116 -> 120 -> 124 fps (v0.14.0 base: ~135).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ tools/ppu_lifter.py | 56 +++++++++++++++++++++++++++++++++------------
+ 1 file changed, 42 insertions(+), 14 deletions(-)
+
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index 2de0da82..06d2ec10 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -193,7 +193,7 @@ extern const unsigned char* g_spu_coh_bits;   /* SPU-reserved lines, NULL until
+  * one compare. The range is the old checks' or narrower. The one address
+  * they also turned away, the gcm ref-poll word, is only special to vm_read32,
+  * so only the 32-bit load still tests it. */
+-typedef struct ppu_mm { uint8_t* vb; int64_t ld_span, st_span; uint32_t poll; } ppu_mm;
++typedef struct ppu_mm { uint8_t* vb; int64_t ld_span, st_span; uint32_t poll; const unsigned char* bits; } ppu_mm;
+ static inline __attribute__((always_inline)) ppu_mm ppu_mm_take(void)
+ {
+     const uint32_t hi = (ppu_vm_size != 0 && ppu_vm_size < 0xE0000000u) ? ppu_vm_size : 0xE0000000u;
+@@ -203,6 +203,17 @@ static inline __attribute__((always_inline)) ppu_mm ppu_mm_take(void)
+     m.ld_span = vm_inline_ok ? span : 0;
+     m.st_span = (vm_inline_ok && vm_inline_st_ok) ? span : 0;
+     m.poll = ppu_hle_inject_base + 0x2008u;   /* the gcm ref-poll word: vm_read32 */
++#ifdef PPU_STORE_SNAP
++    /* PPU_STORE_SNAP (a port's build choice): the store diagnostics and the
++     * reservation bitmap are taken with the rest at entry instead of being
++     * reloaded after every store. A watch armed, or the first SPU line
++     * reserved, while a function runs reaches that function's stores only
++     * from its next call. */
++    if (g_barrier_sync_watch | g_null_sweep_hi) m.st_span = 0;
++    m.bits = g_spu_coh_bits;
++#else
++    m.bits = 0;
++#endif
+     return m;
+ }
+ /* [ea, ea + n) inside [0x10000, 0x10000 + span). Below 0x10000 the 32-bit
+@@ -218,6 +229,11 @@ static inline __attribute__((always_inline)) int vm_mm_ok(const ppu_mm* m, uint3
+ }
+ static inline __attribute__((always_inline)) int vm_mm_st_ok(const ppu_mm* m, uint32_t ea, uint32_t n)
+ {
++#ifdef PPU_STORE_SNAP
++    if (!__builtin_expect(vm_mm_in(m->st_span, ea, n), 1)) return 0;
++    if (m->bits) { const uint32_t line = ea >> 7; if ((m->bits[line >> 3] >> (line & 7)) & 1u) return 0; }
++    return 1;
++#endif
+     if (!__builtin_expect(vm_mm_in(m->st_span, ea, n), 1) ||
+         __builtin_expect((g_barrier_sync_watch | g_null_sweep_hi) != 0, 0))
+         return 0;
+@@ -225,6 +241,19 @@ static inline __attribute__((always_inline)) int vm_mm_st_ok(const ppu_mm* m, ui
+     if (bits) { const uint32_t line = ea >> 7; if ((bits[line >> 3] >> (line & 7)) & 1u) return 0; }
+     return 1;
+ }
++/* An aligned access is single-copy atomic, as on Cell. On x86 every aligned
++ * load and store already is, so with PPU_STORE_SNAP the plain access is
++ * used: the compiler may then keep, combine and reorder ordinary accesses
++ * around it as it would any other memory operation. */
++#if defined(PPU_STORE_SNAP) && (defined(__x86_64__) || defined(_M_X64))
++#define PPU_MM_LOAD(v, T, p, mis)  memcpy(&(v), (p), sizeof(T))
++#define PPU_MM_STORE(T, p, be, mis) memcpy((p), &(be), sizeof(T))
++#else
++#define PPU_MM_LOAD(v, T, p, mis)  do { if (!(mis)) (v) = __atomic_load_n((const T*)(p), __ATOMIC_RELAXED); \
++                                        else memcpy(&(v), (p), sizeof(T)); } while (0)
++#define PPU_MM_STORE(T, p, be, mis) do { if (!(mis)) __atomic_store_n((T*)(p), (be), __ATOMIC_RELAXED); \
++                                        else memcpy((p), &(be), sizeof(T)); } while (0)
++#endif
+ static inline __attribute__((always_inline)) uint8_t vm_read8_mm(const ppu_mm* m, uint64_t a)
+ {
+     const uint32_t ea = (uint32_t)a;
+@@ -236,8 +265,7 @@ static inline __attribute__((always_inline)) uint16_t vm_read16_mm(const ppu_mm*
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_ok(m, ea, 2), 1)) {   /* aligned: single-copy atomic, as on Cell */
+         uint16_t v;
+-        if (!(ea & 1u)) v = __atomic_load_n((const uint16_t*)(m->vb + ea), __ATOMIC_RELAXED);
+-        else memcpy(&v, m->vb + ea, 2);
++        PPU_MM_LOAD(v, uint16_t, m->vb + ea, ea & 1u);
+         return __builtin_bswap16(v); }
+     return vm_read16(a);
+ }
+@@ -246,8 +274,7 @@ static inline __attribute__((always_inline)) uint32_t vm_read32_mm(const ppu_mm*
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_ok(m, ea, 4), 1) && __builtin_expect(ea != m->poll, 1)) {   /* aligned: single-copy atomic, as on Cell */
+         uint32_t v;
+-        if (!(ea & 3u)) v = __atomic_load_n((const uint32_t*)(m->vb + ea), __ATOMIC_RELAXED);
+-        else memcpy(&v, m->vb + ea, 4);
++        PPU_MM_LOAD(v, uint32_t, m->vb + ea, ea & 3u);
+         return __builtin_bswap32(v); }
+     return vm_read32(a);
+ }
+@@ -256,8 +283,7 @@ static inline __attribute__((always_inline)) uint64_t vm_read64_mm(const ppu_mm*
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_ok(m, ea, 8), 1)) {   /* aligned: single-copy atomic, as on Cell */
+         uint64_t v;
+-        if (!(ea & 7u)) v = __atomic_load_n((const uint64_t*)(m->vb + ea), __ATOMIC_RELAXED);
+-        else memcpy(&v, m->vb + ea, 8);
++        PPU_MM_LOAD(v, uint64_t, m->vb + ea, ea & 7u);
+         return __builtin_bswap64(v); }
+     return vm_read64(a);
+ }
+@@ -272,8 +298,7 @@ static inline __attribute__((always_inline)) void vm_write16_mm(const ppu_mm* m,
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_st_ok(m, ea, 2), 1)) {   /* aligned: single-copy atomic, as on Cell */
+         const uint16_t be = __builtin_bswap16(v);
+-        if (!(ea & 1u)) __atomic_store_n((uint16_t*)(m->vb + ea), be, __ATOMIC_RELAXED);
+-        else memcpy(m->vb + ea, &be, 2);
++        PPU_MM_STORE(uint16_t, m->vb + ea, be, ea & 1u);
+         return; }
+     vm_write16(a, v);
+ }
+@@ -282,8 +307,7 @@ static inline __attribute__((always_inline)) void vm_write32_mm(const ppu_mm* m,
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_st_ok(m, ea, 4), 1)) {
+         const uint32_t be = __builtin_bswap32(v);
+-        if (!(ea & 3u)) __atomic_store_n((uint32_t*)(m->vb + ea), be, __ATOMIC_RELAXED);
+-        else memcpy(m->vb + ea, &be, 4);
++        PPU_MM_STORE(uint32_t, m->vb + ea, be, ea & 3u);
+         return; }
+     vm_write32(a, v);
+ }
+@@ -292,8 +316,7 @@ static inline __attribute__((always_inline)) void vm_write64_mm(const ppu_mm* m,
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_st_ok(m, ea, 8), 1)) {
+         const uint64_t be = __builtin_bswap64(v);
+-        if (!(ea & 7u)) __atomic_store_n((uint64_t*)(m->vb + ea), be, __ATOMIC_RELAXED);
+-        else memcpy(m->vb + ea, &be, 8);
++        PPU_MM_STORE(uint64_t, m->vb + ea, be, ea & 7u);
+         return; }
+     vm_write64(a, v);
+ }
+@@ -662,9 +685,14 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+ #define vm_write16_stk(a, v) vm_write_stk_mm(&_mm, a, (uint16_t)(v), 2, vm_write16)
+ #define vm_write32_stk(a, v) vm_write_stk_mm(&_mm, a, (uint32_t)(v), 4, vm_write32)
+ #define vm_write64_stk(a, v) vm_write_stk_mm(&_mm, a, (uint64_t)(v), 8, vm_write64)
++#ifdef PPU_STORE_SNAP
++#define PPU_STK_LIVE_WATCH 1            /* the barrier watch is in the snapshot's span */
++#else
++#define PPU_STK_LIVE_WATCH !g_barrier_sync_watch
++#endif
+ #define vm_write_stk_mm(m, a, v, n, slow) do {                                        \
+         const uint32_t ea_ = (uint32_t)(a);                                          \
+-        if (__builtin_expect(vm_mm_in((m)->st_span, ea_, n) && !g_barrier_sync_watch, 1)) { \
++        if (__builtin_expect(vm_mm_in((m)->st_span, ea_, n) && PPU_STK_LIVE_WATCH, 1)) { \
+             if (n == 1) { (m)->vb[ea_] = (uint8_t)(v); }                             \
+             else if (n == 2) { const uint16_t be_ = __builtin_bswap16((uint16_t)(v)); memcpy((m)->vb + ea_, &be_, 2); } \
+             else if (n == 4) { const uint32_t be_ = __builtin_bswap32((uint32_t)(v)); memcpy((m)->vb + ea_, &be_, 4); } \
+-- 
+2.56.0
+

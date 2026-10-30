@@ -1,0 +1,226 @@
+From 0ed63befa7f9cecc7b5b4e207a5262922f4ed0b7 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 10:05:53 -0300
+Subject: [PATCH] rsx engine: a draw sampling its own colour target reads
+ a copy through guest memory; debug knobs
+
+Killzone HD's last scene draw is a full-screen colour-correction pass that
+samples the frame it writes through a 256x1 ramp. The own-target read fell
+through to the guest bytes the host never wrote and blacked out the scene.
+
+Debug: RSX_ENGINE_PASS_DUMP_EVERY, RSX_ENGINE_PASS_DUMP_CONSTS, per-draw
+depth/stencil state, texture bytes, clear masks and first vertex in the
+pass dump; RSX_ENGINE_PS_DEBUG, RSX_ENGINE_NO_BLEND/NO_STENCIL/NO_DEPTH,
+RSX_ENGINE_SKIP_PARTIAL_CLEAR; RSX_VK_DRAW_STATS.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_draw_engine.c    | 65 ++++++++++++++++++++++++++++++++-
+ libs/video/rsx_vulkan_backend.c | 33 ++++++++++++-----
+ 2 files changed, 87 insertions(+), 11 deletions(-)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 8dff6011..275efa0e 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -326,6 +326,8 @@ void rsx_draw_engine_decode_render_state(const rsx_dispatch* rsx,
+     rs->alpha_ref_format = sf.color_format;
+     rs->rt_fp16 = sf.color_format == RSX_SURFACE_FMT_F_W16Z16Y16X16;
+     rs->blend_enable = rsx_dsp_reg(rsx, M_BLEND_ENABLE) & 1;
++    { static int nb = -1; if (nb < 0) nb = getenv("RSX_ENGINE_NO_BLEND") ? 1 : 0;
++      if (nb) rs->blend_enable = 0; }   /* debug: is the colour there but transparent? */
+     const u32 sfac = rsx_dsp_reg(rsx, M_BLEND_SFACTOR);
+     const u32 dfac = rsx_dsp_reg(rsx, M_BLEND_DFACTOR);
+     const u32 eq   = rsx_dsp_reg(rsx, M_BLEND_EQUATION);
+@@ -357,6 +359,10 @@ void rsx_draw_engine_decode_render_state(const rsx_dispatch* rsx,
+     rs->bs_zfail     = rsx_dsp_reg(rsx, M_BACK_STENCIL_OP_ZFAIL);
+     rs->bs_zpass     = rsx_dsp_reg(rsx, M_BACK_STENCIL_OP_ZPASS);
+     rs->depth_bounds_test = rsx_dsp_reg(rsx, M_DEPTH_BOUNDS_ENABLE) & 1;
++    { static int ns = -1, nd = -1;
++      if (ns < 0) { ns = getenv("RSX_ENGINE_NO_STENCIL") ? 1 : 0; nd = getenv("RSX_ENGINE_NO_DEPTH") ? 1 : 0; }
++      if (ns) rs->stencil_enable = 0;                       /* debug */
++      if (nd) rs->depth_test = 0; }                         /* debug */
+ }
+ 
+ u64 rsx_draw_engine_hash_render_state(const rsx_be_render_state* rs, u64 hash)
+@@ -2077,6 +2083,20 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+                                              rs->alpha_func) < 0)
+             fi = -1;
+     }
++    /* RSX_ENGINE_PS_DEBUG: 1 magenta, 2 |tc0|, 3 the program's r0 unguarded,
++     * 4 tc2 as colour -- where a guest pixel program's colour goes missing. */
++    { const char* e = getenv("RSX_ENGINE_PS_DEBUG"); char* at;
++      if (!fixed && fi > 0 && e && (at = strstr(s_ps_hlsl, "    return _out;"))) {
++          static const char* const k[] = { "",
++              "    _out.t0 = float4(1,0,1,1);\n",
++              "    _out.t0 = float4(abs(input.tc0.xyz), 1);\n",
++              "    _out.t0 = float4(r[0].xyz, 1);\n",
++              "    _out.t0 = float4(frac(input.tc2.xy), 0, 1);\n" };
++          const int m = atoi(e);
++          if (m > 0 && m < 5) {
++              char tail[64]; snprintf(tail, sizeof tail, "%s", at);
++              snprintf(at, sizeof s_ps_hlsl - (size_t)(at - s_ps_hlsl), "%s%s", k[m], tail);
++          } } }
+     if (vi > 0 && fi > 0)
+         handle = g.be->pipeline_create(g.be->user, s_vs_hlsl, s_ps_hlsl, rs,
+                                        layout, layout->stride, rt_fmt, rt_count);
+@@ -2873,9 +2893,11 @@ static void pd_note(const u32* targets, u32 n_targets, u32 zslot,
+     }
+     if (s_pd.draws_log) {
+         fprintf(s_pd.draws_log, "pass %03u draw %u: pipe %u cmask %08X blend %u %X/%X"
+-                " dt %u dw %u at %u |", s_pd.pass, s_pd.draws, pipeline, rs->color_mask,
++                " dt %u dw %u df %X at %u st %u f %X ref %u m %X ops %X/%X/%X |", s_pd.pass, s_pd.draws, pipeline, rs->color_mask,
+                 rs->blend_enable, rs->sf_rgb, rs->df_rgb, rs->depth_test, rs->depth_write,
+-                rs->alpha_test_enable);
++                rs->depth_func, rs->alpha_test_enable, rs->stencil_enable, rs->s_func,
++                rsx_dsp_reg(&g.rsx, M_STENCIL_FUNC_REF) & 0xFFu, rs->s_func_mask,
++                rs->s_fail, rs->s_zfail, rs->s_zpass);
+         if (rsx_dsp_reg(&g.rsx, M_POLY_OFFSET_FILL) & 1u) {
+             const u32 f = rsx_dsp_reg(&g.rsx, M_POLY_OFFSET_FACTOR);
+             const u32 b = rsx_dsp_reg(&g.rsx, M_POLY_OFFSET_BIAS);
+@@ -2890,7 +2912,23 @@ static void pd_note(const u32* targets, u32 n_targets, u32 zslot,
+             rsx_dsp_get_texture(&g.rsx, u, &t);
+             fprintf(s_pd.draws_log, " t%u %u:0x%08X f%02X %ux%u", u, t.location, t.offset,
+                     t.format & 0xFFu, t.width, t.height);
++            { const u8* b = eng_guest_ptr(NULL, t.location, t.offset, 16);
++              if (b) fprintf(s_pd.draws_log, " [%02X%02X%02X%02X%02X%02X%02X%02X]",
++                             b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]); }
+         }
++        /* RSX_ENGINE_PASS_DUMP_CONSTS=<lo>,<hi>: the draw's vertex constants in
++         * that range and its fragment program's inline constants. */
++        { static int lo = -2, hi = -1;
++          if (lo == -2) { const char* e = getenv("RSX_ENGINE_PASS_DUMP_CONSTS"); lo = -1;
++                          if (e) sscanf(e, "%d,%d", &lo, &hi); }
++          for (int c = lo; lo >= 0 && c <= hi && c < RSX_DSP_NUM_CONSTANTS; c++) {
++              float f[4]; memcpy(f, g.rsx.constants[c], sizeof f);
++              fprintf(s_pd.draws_log, " vc%d(%g %g %g %g)", c, f[0], f[1], f[2], f[3]);
++          }
++          for (u32 c = 0; lo >= 0 && c < g.fp_constants.count; c++) {
++              float f[4]; memcpy(f, g.fp_constants.values[c], sizeof f);
++              fprintf(s_pd.draws_log, " fc%u(%g %g %g %g)", c, f[0], f[1], f[2], f[3]);
++          } }
+         fprintf(s_pd.draws_log, "\n");
+     }
+     if (s_pd.draws++) return;
+@@ -3163,6 +3201,17 @@ static void sink_end(void* user, const rsx_dispatch* r)
+       alpha[3] = 0.0f; }
+ 
+     pd_note(targets, n_targets, zslot, &rs, pipeline, tex_mask);
++    /* Pass dump: each input's guest format and the first vertex as fetched. */
++    if (s_pd.draws_log && pd_capturing()) {
++        fprintf(s_pd.draws_log, "    verts %u:", dc.n_verts);
++        for (u32 k = 0; k < layout.count; k++) {
++            const u32 a = layout.attrs[k];
++            const float* f = (const float*)(dc.verts + k * 16u);
++            fprintf(s_pd.draws_log, " a%u[fmt %08X](%g %g %g %g)", a,
++                    rsx_dsp_reg(&g.rsx, 0x1740u + a * 4u), f[0], f[1], f[2], f[3]);
++        }
++        fprintf(s_pd.draws_log, "\n");
++    }
+ 
+     /* The depth attachment is cleared the first time it is bound, so a title
+      * that never clears its shadow zeta still tests against something. */
+@@ -3231,6 +3280,13 @@ static void sink_end(void* user, const rsx_dispatch* r)
+      * the test hook means: a draw through the built-in pair is a draw, not
+      * evidence that the decompile-translate-compile path worked. */
+     if (!pipeline_is_fixed) g.guest_draws++;
++    /* RSX_ENGINE_PASS_DUMP_EVERY=k: target A after every k-th draw of a pass. */
++    { static int every = -1; if (every < 0) { const char* e = getenv("RSX_ENGINE_PASS_DUMP_EVERY"); every = e ? atoi(e) : 0; }
++      if (every > 0 && s_pd.index && pd_capturing() && s_pd.draws % (u32)every == 0) {
++          char path[1024];
++          snprintf(path, sizeof path, "%s/pass%03u_d%04u.ppm", s_pd.dir, s_pd.pass, s_pd.draws);
++          pd_write_surface(target, path);
++      } }
+ 
+     if (rs.color_mask) eng_surfaces_wrote(targets, n_targets);
+     if (zslot != ENG_INVALID && rs.depth_test && rs.depth_write) {
+@@ -3256,6 +3312,11 @@ static void sink_clear(void* user, const rsx_dispatch* r, u32 mask)
+ 
+     rsx_dsp_surface sf;
+     rsx_dsp_get_surface(&g.rsx, &sf);
++    if (s_pd.draws_log && pd_capturing())
++        fprintf(s_pd.draws_log, "pass %03u clear mask 0x%02X color 0x%08X cmask %08X\n", s_pd.pass,
++                mask, rsx_dsp_clear_color(&g.rsx), rsx_dsp_reg(&g.rsx, M_COLOR_MASK));
++    { static int sp = -1; if (sp < 0) sp = getenv("RSX_ENGINE_SKIP_PARTIAL_CLEAR") ? 1 : 0;
++      if (sp && (mask & 0xF0u) && (mask & 0xF0u) != 0xF0u) mask &= ~0xF0u; }
+     if (mask & (RSX_CLEAR_COLOR_R | RSX_CLEAR_COLOR_G |
+                 RSX_CLEAR_COLOR_B | RSX_CLEAR_COLOR_A)) {
+         const u32 c = rsx_dsp_clear_color(&g.rsx);
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index cb422e75..94fd7bf7 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -3614,39 +3614,53 @@ static VkDescriptorSet vk_eng_write_descriptors_to(const vk_eng_pipe* P, VkDescr
+     return set;
+ }
+ 
++/* RSX_VK_DRAW_STATS: why engine draws do not reach the GPU (0 = drawn). */
++static void vk_draw_why(int why)
++{
++    static int on = -1; static unsigned long long n[32], total;
++    if (on < 0) on = getenv("RSX_VK_DRAW_STATS") ? 1 : 0;
++    if (!on) return;
++    n[why & 31]++;
++    if (++total % 20000 == 0) {
++        fprintf(stderr, "[RSX vulkan] draw stats:");
++        for (int i = 0; i < 32; i++) if (n[i]) fprintf(stderr, " %d:%llu", i, n[i]);
++        fprintf(stderr, "\n");
++    }
++}
++
+ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices, u32 vertex_count,
+                         u32 stride, const u32* indices, u32 index_count)
+ {
+     (void)user;
+-    if (!s_e2.pipeline || !vertices || !vertex_count || !stride) return;
+-    if (topology < RSX_TOPOLOGY_POINTS || topology > RSX_TOPOLOGY_TRIANGLE_STRIP) return;
++    if (!s_e2.pipeline || !vertices || !vertex_count || !stride) { vk_draw_why(1); return; }
++    if (topology < RSX_TOPOLOGY_POINTS || topology > RSX_TOPOLOGY_TRIANGLE_STRIP) { vk_draw_why(2); return; }
+     vk_eng_pipe* P = &s_epipe[s_e2.pipeline - 1];
+-    if (!P->used || stride != P->stride) return;
++    if (!P->used || stride != P->stride) { vk_draw_why(3); return; }
+ 
+     /* Targets: every member of a set is target A's size (engine contract). */
+     const u32 n = s_eng_bound.nrt;
+     if (n < 1 || n != P->rt_count) {
+         if (!(s_e2.warned & 16u)) { VK_LOG("engine: draw with %u colour targets for a %u-target pipeline skipped\n", n, P->rt_count); s_e2.warned |= 16u; }
+-        return;
++        { vk_draw_why(4); return; }
+     }
+     vk_eng_obj* rt0 = vk_eng_get(s_eng_bound.rt[0], VK_ENG_COLOR);
+-    if (!rt0) return;
++    if (!rt0) { vk_draw_why(5); return; }
+     for (u32 i = 1; i < n; i++)
+-        if (!vk_eng_get(s_eng_bound.rt[i], VK_ENG_COLOR)) return;
++        if (!vk_eng_get(s_eng_bound.rt[i], VK_ENG_COLOR)) { vk_draw_why(6); return; }
+     if (rt0->fmt != P->rt_fmt) {
+         if (!(s_e2.warned & 32u)) { VK_LOG("engine: draw into colour format %d with a pipeline built for %d skipped\n", (int)rt0->fmt, (int)P->rt_fmt); s_e2.warned |= 32u; }
+-        return;
++        { vk_draw_why(7); return; }
+     }
+     const u32 w = rt0->w, h = rt0->h;
+     vk_eng_obj* zo = vk_eng_get(s_eng_bound.depth, VK_ENG_DEPTH);
+     VkImageView dview = (zo && zo->w >= w && zo->h >= h) ? zo->im.view : vk_eng_scratch_depth(w, h);
+-    if (!dview) return;
++    if (!dview) { vk_draw_why(8); return; }
+     const u32 dkey = (zo && dview == zo->im.view) ? s_eng_bound.depth : 0xFFFFFFFFu;
+ 
+     VkPipeline pipe = vk_eng_variant(P, (u32)topology - 1u);
+     VkRenderPass rp = vk_eng_render_pass(P->rt_fmt, n);
+     VkFramebuffer fb = vk_eng_framebuffer(rp, s_eng_bound.rt, n, dview, dkey, w, h);
+-    if (!pipe || !rp || !fb) return;
++    if (!pipe || !rp || !fb) { vk_draw_why(9); return; }
+ 
+     const VkDeviceSize vbytes = (VkDeviceSize)vertex_count * stride;
+     const VkDeviceSize ibytes = (indices && index_count) ? (VkDeviceSize)index_count * 4u : 0;
+@@ -3748,6 +3762,7 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
+         pvkCmdDraw(s_vk.cmd, vertex_count, 1, 0, 0);
+     }
+     pvkCmdEndRenderPass(s_vk.cmd);
++    vk_draw_why(0);
+     if (!batched) { vk_submit_and_wait(); return; }
+     s_eb.draws++;
+     if (++s_eb_pending >= s_eb.max_draws) vk_eng_flush();
+-- 
+2.56.0
+

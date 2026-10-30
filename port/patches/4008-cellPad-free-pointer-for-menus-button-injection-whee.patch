@@ -1,0 +1,134 @@
+From 6e31ed4e116a2fa921eadc5804d3c70a5acb9556 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 17 Oct 2026 09:46:48 -0300
+Subject: [PATCH] cellPad: free pointer for menus, button injection,
+ wheel; mouse with a controller too
+
+g_pad_mouse_ui (set by a title hook) releases the pointer and pad_mouse_ui_state
+reads it, with the wheel the Vulkan backend's event loop counts; pad_inject
+presses buttons for the next reads of port 0. Leaving the menu captures the
+pointer again. The mouse is polled whether or not a controller is connected.
+PAD_MOUSE_POS=x,y,w,h stands in for the pointer in tests.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c            | 45 ++++++++++++++++++++++++++++++++-
+ libs/video/rsx_vulkan_backend.c |  4 +++
+ 2 files changed, 48 insertions(+), 1 deletion(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index a815fe4b..f63cf621 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -190,6 +190,10 @@ static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
+     *lo = (u16)(large * 257u);
+     *hi = small_on ? 0xFFFFu : 0u;
+ }
++/* Buttons a title hook presses for the next reads of port 0 (menus with the mouse). */
++static volatile unsigned s_inj_mask;
++static volatile int s_inj_reads;
++void pad_inject(unsigned mask, int reads) { s_inj_mask = mask; s_inj_reads = reads; }
+ 
+ /* ---------------------------------------------------------------------------
+  * XInput backend
+@@ -198,6 +202,7 @@ static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
+ #if PAD_BACKEND_XINPUT
+ 
+ /* Deadzone for analog sticks (same as XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) */
++
+ #define PAD_STICK_DEADZONE  7849
+ #define PAD_TRIGGER_THRESHOLD 30
+ 
+@@ -729,6 +734,25 @@ void pad_mouse_take(int* dx, int* dy)
+     if (fake) { *dx += fx; *dy += fy; }
+ }
+ 
++/* Menus (g_pad_mouse_ui = 1, set by a title hook while one is up): the
++ * pointer is free and the hook reads it with pad_mouse_ui_state, then
++ * presses buttons for the title with pad_inject. The wheel is counted by the
++ * video backend's event loop. Back in play the pointer is captured again. */
++volatile int g_pad_mouse_ui;
++volatile int g_pad_mouse_wheel;
++void pad_mouse_ui_state(int* x, int* y, int* w, int* h, unsigned* buttons, int* wheel)
++{
++    *x = *y = *w = *h = 0; *buttons = 0;
++    *wheel = __atomic_exchange_n(&g_pad_mouse_wheel, 0, __ATOMIC_ACQ_REL);
++    SDL_Window* win = SDL_GetMouseFocus();
++    static int fake = -1, fx, fy, fw, fh;   /* PAD_MOUSE_POS="x,y,w,h": tests without a window */
++    if (fake < 0) { const char* e = getenv("PAD_MOUSE_POS"); fake = e && sscanf(e, "%d,%d,%d,%d", &fx, &fy, &fw, &fh) == 4; }
++    if (fake) { *x = fx; *y = fy; *w = fw; *h = fh; return; }
++    if (!win) return;
++    *buttons = SDL_GetMouseState(x, y);
++    SDL_GetWindowSize(win, w, h);
++}
++
+ static void pad_poll_mouse(PadHostState* hs)
+ {
+     static int off = -1;
+@@ -744,6 +768,17 @@ static void pad_poll_mouse(PadHostState* hs)
+     static float sx, sy;
+     int dx = 0, dy = 0;
+     Uint32 mb;
++    static int was_ui;
++    if (g_pad_mouse_ui) {
++        if (SDL_GetRelativeMouseMode()) SDL_SetRelativeMouseMode(SDL_FALSE);
++        was_ui = 1; sx = sy = 0;
++        return;
++    }
++    if (was_ui) {   /* back in play: capture again, no click needed */
++        was_ui = 0;
++        SDL_SetRelativeMouseMode(SDL_TRUE);
++        SDL_GetRelativeMouseState(NULL, NULL);
++    }
+     if (!SDL_GetRelativeMouseMode()) {
+         /* The first click into the window captures the pointer and does not shoot. */
+         if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+@@ -818,7 +853,6 @@ static void pad_poll_keyboard(void)
+     hs->analog_ly = (u8)(k[SDL_SCANCODE_W] ? 0 : k[SDL_SCANCODE_S] ? 255 : 128);
+     hs->analog_rx = (u8)(k[SDL_SCANCODE_J] ? 0 : k[SDL_SCANCODE_L] ? 255 : 128);
+     hs->analog_ry = (u8)(k[SDL_SCANCODE_I] ? 0 : k[SDL_SCANCODE_K] ? 255 : 128);
+-    pad_poll_mouse(hs);
+     btns = hs->buttons;
+     hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
+     hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
+@@ -844,6 +878,10 @@ static void pad_poll_backend(void)
+ #endif
+ #if defined(_WIN32) || PAD_BACKEND_SDL2
+     if (!s_host_state[0].connected) pad_poll_keyboard();
++#endif
++#if !defined(_WIN32) && PAD_BACKEND_SDL2
++    /* With a controller too: the mouse adds to whatever drives port 0. */
++    if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus()) pad_poll_mouse(&s_host_state[0]);
+ #endif
+     pad_track_assign();
+     pad_unlock();
+@@ -1126,6 +1164,11 @@ skip_inject: ;
+               data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((held_mask >> 8) & 0xFF); }
+       } }
+ 
++    /* Buttons a title hook presses (pad_inject), for that many reads. */
++    if (port_no == 0 && s_inj_reads > 0) { s_inj_reads--;
++        data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(s_inj_mask & 0xFF);
++        data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((s_inj_mask >> 8) & 0xFF); }
++
+     /* Analog sticks */
+     /* PAD_STICK="lx,ly,rx,ry" (0-255, 128 = centred): hold the analog sticks at
+      * fixed positions. Rubber Ducky drives its camera from the sticks and never
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index eacf71e7..0fe216fc 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -4233,6 +4233,10 @@ int rsx_vulkan_backend_pump_messages(void)
+     SDL_Event e;
+     while (SDL_PollEvent(&e)) {
+         if (e.type == SDL_QUIT) quit = 1;
++        else if (e.type == SDL_MOUSEWHEEL) {   /* cellPad: menus scroll with it */
++            extern volatile int g_pad_mouse_wheel;
++            __atomic_add_fetch(&g_pad_mouse_wheel, e.wheel.y, __ATOMIC_ACQ_REL);
++        }
+         else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) quit = 1;
+     }
+     return quit ? -1 : 0;
+-- 
+2.56.0
+

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Killzone HD",
+  "system": "PS3",
+  "type": "recomp",
+  "original": {
+    "region": "US",
+    "serial": "NPUA80856",
+    "revision": "01.00 (from the Killzone Trilogy disc's PS3_EXTRA package)"
+  },
+  "project": "Project Vekta",
+  "status": "in-progress",
+  "targets": ["PC (Linux)", "PC (Windows)"],
+  "toolchain": ["ps3recomp"],
+  "approach": "Static recompilation of the PPU and SPU code to C++ with ps3recomp v0.18.0 and this project's patches, HLE system libraries, Vulkan RSX backend",
+  "maintainers": [{"name": "gustavomorinaga", "link": "https://github.com/gustavomorinaga"}],
+  "links": [
+    {"label": "Features", "url": "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md"},
+    {"label": "Known issues", "url": "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md"},
+    {"label": "Roadmap", "url": "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md"}
+  ],
+  "help": ["Testing on other GPUs (AMD, Intel) and CPUs", "Testing on a clean Windows machine", "Playing levels 2 to 11 to their end"],
+  "tags": ["cell", "spurs", "vulkan", "linux"],
+  "notes": "Needs your own copy of the game (the Killzone HD package from the Killzone Trilogy disc, decrypted EBOOT and archive, and libsre from your own PS3 firmware); the build happens on your PC. Playable: Level 1 played to its end, all 11 levels load; 60 fps by default, an optional 144 Hz mode."
+}

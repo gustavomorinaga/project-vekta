@@ -1,0 +1,272 @@
+From baa520ea5b4bcb352dd366a73bbcf4c30ca4c469 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 19:52:37 -0300
+Subject: [PATCH] PPU: AltiVec helpers in host SIMD; native replacements
+ for lifted functions
+
+The VMX helpers assembled every lane byte by byte, and the lifter emitted
+vperm, lvlx and lvrx as 16-iteration byte loops, and the compiler
+vectorizes none of it. With AVX2 and FMA (x86-64-v3), vmaddfp,
+vnmsubfp, vaddfp, vsubfp, vslw, vsrw, vrlw, vsraw, vcfsx, vperm, lvlx and
+lvrx now run as a handful of SSE instructions each, computing the same bits
+as the portable code (the same flush-to-zero and NaN rules, the same fused
+multiply-add; 3 million random cases per op, NaNs and denormals included,
+match at -O1 and -O2). VMX_NO_SIMD keeps the portable code.
+
+PPU_LIFT_NATIVE (comma-separated function names) makes the lifter emit those
+functions as <name>_lifted, the same switch the SPU lifter has: a port can
+then define <name> natively and fall back to, or verify against, the lifted
+body.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/ppu/ppu_vmx.h | 102 ++++++++++++++++++++++++++++++++++++++++++
+ tools/ppu_lifter.py   |  30 +++++++------
+ 2 files changed, 118 insertions(+), 14 deletions(-)
+
+diff --git a/runtime/ppu/ppu_vmx.h b/runtime/ppu/ppu_vmx.h
+index 35052c67..bbb9a770 100644
+--- a/runtime/ppu/ppu_vmx.h
++++ b/runtime/ppu/ppu_vmx.h
+@@ -76,6 +76,27 @@ VMX_INL uint32_t vmx_vnan1(uint32_t r, uint32_t b) {
+     return vmx_fix(r);
+ }
+ 
++/* ---- host SIMD (x86-64-v3: AVX2 + FMA) ----
++ * The helpers below that have a VMX_SIMD version compute the same bits as the
++ * portable code: lanes byte-swapped into host order, the same flush and NaN
++ * rules, the same fused multiply-add. The compiler does not vectorize
++ * the portable loops (their lanes are assembled byte by byte). */
++#if defined(__AVX2__) && defined(__FMA__) && !defined(VMX_NO_SIMD)
++#define VMX_SIMD 1
++#include <immintrin.h>
++VMX_INL __m128i vmx_bswap_mask(void) { return _mm_setr_epi8(3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12); }
++VMX_INL __m128i vmx_ld4(const void* p) { return _mm_shuffle_epi8(_mm_loadu_si128((const __m128i*)p), vmx_bswap_mask()); }
++VMX_INL void vmx_st4(void* p, __m128i v) { _mm_storeu_si128((__m128i*)p, _mm_shuffle_epi8(v, vmx_bswap_mask())); }
++VMX_INL __m128i vmx_flush4(__m128i x, uint32_t vscr) {
++    if (!(vscr & VMX_NJ)) return x;
++    __m128i z = _mm_cmpeq_epi32(_mm_and_si128(x, _mm_set1_epi32(0x7F800000)), _mm_setzero_si128());
++    return _mm_blendv_epi8(x, _mm_and_si128(x, _mm_set1_epi32((int)0x80000000u)), z);
++}
++VMX_INL __m128 vmx_ldf4(const void* p, uint32_t vscr) { return _mm_castsi128_ps(vmx_flush4(vmx_ld4(p), vscr)); }
++VMX_INL __m128i vmx_isnan4(__m128 x) { return _mm_castps_si128(_mm_cmpunord_ps(x, x)); }
++VMX_INL __m128i vmx_fix4(__m128 r) { return _mm_blendv_epi8(_mm_castps_si128(r), _mm_set1_epi32(0x7FC00000), vmx_isnan4(r)); }
++#endif
++
+ /* ======================================================================
+  * integer element-wise
+  * ==================================================================== */
+@@ -89,16 +110,33 @@ VMX_INL void vmx_sb(uint8_t* v, int i, uint8_t x) { v[i] = x; }
+ /* rotates / shifts: count from the low bits of the matching element of B */
+ VMX_BIN(vmx_vrlb, 16, vmx_b, vmx_sb, (uint8_t)((x << (y & 7)) | (x >> ((8 - (y & 7)) & 7))))
+ VMX_BIN(vmx_vrlh, 8, vmx_h, vmx_sh, (uint16_t)((x << (y & 15)) | (x >> ((16 - (y & 15)) & 15))))
++#ifdef VMX_SIMD
++VMX_INL void vmx_vrlw(VMX_D, VMX_A, VMX_B) { __m128i x = vmx_ld4(a_), n = _mm_and_si128(vmx_ld4(b_), _mm_set1_epi32(31));
++    vmx_st4(d_, _mm_or_si128(_mm_sllv_epi32(x, n), _mm_srlv_epi32(x, _mm_sub_epi32(_mm_set1_epi32(32), n)))); }
++#else
+ VMX_BIN(vmx_vrlw, 4, vmx_w, vmx_sw, (uint32_t)((x << (y & 31)) | (x >> ((32 - (y & 31)) & 31))))
++#endif
+ VMX_BIN(vmx_vslb, 16, vmx_b, vmx_sb, (uint8_t)(x << (y & 7)))
+ VMX_BIN(vmx_vslh, 8, vmx_h, vmx_sh, (uint16_t)(x << (y & 15)))
++#ifdef VMX_SIMD
++VMX_INL void vmx_vslw(VMX_D, VMX_A, VMX_B) { vmx_st4(d_, _mm_sllv_epi32(vmx_ld4(a_), _mm_and_si128(vmx_ld4(b_), _mm_set1_epi32(31)))); }
++#else
+ VMX_BIN(vmx_vslw, 4, vmx_w, vmx_sw, (uint32_t)(x << (y & 31)))
++#endif
+ VMX_BIN(vmx_vsrb, 16, vmx_b, vmx_sb, (uint8_t)(x >> (y & 7)))
+ VMX_BIN(vmx_vsrh, 8, vmx_h, vmx_sh, (uint16_t)(x >> (y & 15)))
++#ifdef VMX_SIMD
++VMX_INL void vmx_vsrw(VMX_D, VMX_A, VMX_B) { vmx_st4(d_, _mm_srlv_epi32(vmx_ld4(a_), _mm_and_si128(vmx_ld4(b_), _mm_set1_epi32(31)))); }
++#else
+ VMX_BIN(vmx_vsrw, 4, vmx_w, vmx_sw, (uint32_t)(x >> (y & 31)))
++#endif
+ VMX_BIN(vmx_vsrab, 16, vmx_b, vmx_sb, (uint8_t)((int8_t)x >> (y & 7)))
+ VMX_BIN(vmx_vsrah, 8, vmx_h, vmx_sh, (uint16_t)((int16_t)x >> (y & 15)))
++#ifdef VMX_SIMD
++VMX_INL void vmx_vsraw(VMX_D, VMX_A, VMX_B) { vmx_st4(d_, _mm_srav_epi32(vmx_ld4(a_), _mm_and_si128(vmx_ld4(b_), _mm_set1_epi32(31)))); }
++#else
+ VMX_BIN(vmx_vsraw, 4, vmx_w, vmx_sw, (uint32_t)((int32_t)x >> (y & 31)))
++#endif
+ 
+ /* averages: (a + b + 1) >> 1 without overflow */
+ VMX_BIN(vmx_vavgub, 16, vmx_b, vmx_sb, (uint8_t)((x + y + 1) >> 1))
+@@ -250,6 +288,40 @@ VMX_INL void vmx_vslo(VMX_D, VMX_A, VMX_B) { VMX_ARGS_PREP; int n = (b[15] >> 3)
+ VMX_INL void vmx_vsro(VMX_D, VMX_A, VMX_B) { VMX_ARGS_PREP; int n = (b[15] >> 3) & 15;
+     for (int i = 0; i < 16; i++) r[i] = i - n >= 0 ? a[i - n] : 0; VMX_OUT; }
+ 
++/* ---- byte moves on the raw big-endian bytes ---- */
++/* vperm: byte i of D is byte (C[i] & 31) of A:B */
++VMX_INL void vmx_vperm(VMX_D, VMX_A, VMX_B, VMX_C) {
++#ifdef VMX_SIMD
++    __m128i c = _mm_loadu_si128((const __m128i*)c_), i = _mm_and_si128(c, _mm_set1_epi8(15));
++    __m128i ra = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i*)a_), i);
++    __m128i rb = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i*)b_), i);
++    __m128i hi = _mm_cmpeq_epi8(_mm_and_si128(c, _mm_set1_epi8(16)), _mm_set1_epi8(16));
++    _mm_storeu_si128((__m128i*)d_, _mm_blendv_epi8(ra, rb, hi));
++#else
++    VMX_ARGS_PREP; const uint8_t* c = (const uint8_t*)c_;
++    for (int i = 0; i < 16; i++) { uint8_t sel = c[i] & 0x1F; r[i] = sel < 16 ? a[sel] : b[sel - 16]; } VMX_OUT;
++#endif
++}
++/* lvlx: bytes sh..15 of the aligned quadword m, left-justified, zero-filled;
++ * lvrx: bytes 0..sh-1, right-justified (sh = EA & 15). */
++VMX_INL void vmx_lvlx(VMX_D, const uint8_t* m, uint32_t sh) {
++#ifdef VMX_SIMD
++    __m128i i = _mm_add_epi8(_mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15), _mm_set1_epi8((char)sh));
++    i = _mm_or_si128(i, _mm_cmpgt_epi8(i, _mm_set1_epi8(15)));          /* past the end: 0x80+ = zero */
++    _mm_storeu_si128((__m128i*)d_, _mm_shuffle_epi8(_mm_loadu_si128((const __m128i*)m), i));
++#else
++    uint8_t* d = (uint8_t*)d_; for (int i = 0; i < 16; i++) d[i] = (sh + (uint32_t)i < 16) ? m[sh + i] : 0;
++#endif
++}
++VMX_INL void vmx_lvrx(VMX_D, const uint8_t* m, uint32_t sh) {
++#ifdef VMX_SIMD
++    __m128i i = _mm_add_epi8(_mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15), _mm_set1_epi8((char)(sh - 16)));
++    _mm_storeu_si128((__m128i*)d_, _mm_shuffle_epi8(_mm_loadu_si128((const __m128i*)m), i));   /* negative = zero */
++#else
++    uint8_t* d = (uint8_t*)d_; for (int i = 0; i < 16; i++) d[i] = ((uint32_t)i >= 16u - sh) ? m[i - (int)(16u - sh)] : 0;
++#endif
++}
++
+ /* ======================================================================
+  * floating point
+  * ==================================================================== */
+@@ -270,11 +342,34 @@ VMX_INL float vmx_minf(float x, float y) {
+     if (x == 0 && y == 0) return signbit(x) ? x : y;      /* min(-0,+0) = -0 */
+     return x < y ? x : y;
+ }
++#ifdef VMX_SIMD
++/* vmx_vnan2 per lane: A's NaN (quieted), else B's, else the fixed result */
++VMX_INL __m128i vmx_vnan2_4(__m128 z, __m128 x, __m128 y) {
++    const __m128i q = _mm_set1_epi32(0x7FC00000);
++    __m128i r = _mm_blendv_epi8(vmx_fix4(z), _mm_or_si128(_mm_castps_si128(y), q), vmx_isnan4(y));
++    return _mm_blendv_epi8(r, _mm_or_si128(_mm_castps_si128(x), q), vmx_isnan4(x));
++}
++VMX_INL void vmx_vaddfp(VMX_D, VMX_A, VMX_B, uint32_t vscr) { __m128 x = vmx_ldf4(a_, vscr), y = vmx_ldf4(b_, vscr);
++    vmx_st4(d_, vmx_flush4(vmx_vnan2_4(_mm_add_ps(x, y), x, y), vscr)); }
++VMX_INL void vmx_vsubfp(VMX_D, VMX_A, VMX_B, uint32_t vscr) { __m128 x = vmx_ldf4(a_, vscr), y = vmx_ldf4(b_, vscr);
++    vmx_st4(d_, vmx_flush4(vmx_vnan2_4(_mm_sub_ps(x, y), x, y), vscr)); }
++#else
+ VMX_FBIN(vmx_vaddfp, vmx_f(x) + vmx_f(y), 1)
+ VMX_FBIN(vmx_vsubfp, vmx_f(x) - vmx_f(y), 1)
++#endif
+ VMX_FBIN(vmx_vmaxfp, vmx_maxf(vmx_f(x), vmx_f(y)), 0)
+ VMX_FBIN(vmx_vminfp, vmx_minf(vmx_f(x), vmx_f(y)), 0)
+ 
++#ifdef VMX_SIMD
++VMX_INL void vmx_vmaddfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) {
++    __m128 x = vmx_ldf4(a_, vscr), y = vmx_ldf4(b_, vscr), z = vmx_ldf4(c_, vscr);
++    vmx_st4(d_, vmx_flush4(vmx_fix4(_mm_fmadd_ps(x, z, y)), vscr)); }
++/* -(x*z - y), negated after rounding: an exact zero comes out -0 as in fmaf */
++VMX_INL void vmx_vnmsubfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) {
++    __m128 x = vmx_ldf4(a_, vscr), y = vmx_ldf4(b_, vscr), z = vmx_ldf4(c_, vscr);
++    __m128 r = _mm_xor_ps(_mm_fmsub_ps(x, z, y), _mm_castsi128_ps(_mm_set1_epi32((int)0x80000000u)));
++    vmx_st4(d_, vmx_flush4(vmx_fix4(r), vscr)); }
++#else
+ VMX_INL void vmx_vmaddfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_PREP; const uint8_t* c = (const uint8_t*)c_;
+     for (int i = 0; i < 4; i++) {
+         float x = vmx_f(vmx_flush(vmx_w(a, i), vscr)), y = vmx_f(vmx_flush(vmx_w(b, i), vscr)),
+@@ -285,6 +380,7 @@ VMX_INL void vmx_vnmsubfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_
+         float x = vmx_f(vmx_flush(vmx_w(a, i), vscr)), y = vmx_f(vmx_flush(vmx_w(b, i), vscr)),
+               z = vmx_f(vmx_flush(vmx_w(c, i), vscr));
+         vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(-fmaf(x, z, -y))), vscr)); } VMX_OUT; }
++#endif
+ 
+ #define VMX_FUN(name, expr, flush_in, nanmode) \
+ VMX_INL void name(VMX_D, VMX_B, uint32_t vscr) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16]; \
+@@ -303,8 +399,14 @@ VMX_FUN(vmx_vrfim, floorf(f), 1, 2)
+ /* int <-> float with a 2^uimm scale */
+ VMX_INL void vmx_vcfux(VMX_D, VMX_B, unsigned uimm) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16];
+     for (int i = 0; i < 4; i++) vmx_sw(r, i, vmx_u(ldexpf((float)vmx_w(b, i), -(int)uimm))); VMX_OUT; }
++#ifdef VMX_SIMD
++/* the conversion rounds once; the power-of-two scale is exact (2^-31 at most) */
++VMX_INL void vmx_vcfsx(VMX_D, VMX_B, unsigned uimm) {
++    vmx_st4(d_, _mm_castps_si128(_mm_mul_ps(_mm_cvtepi32_ps(vmx_ld4(b_)), _mm_set1_ps(ldexpf(1.0f, -(int)uimm))))); }
++#else
+ VMX_INL void vmx_vcfsx(VMX_D, VMX_B, unsigned uimm) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16];
+     for (int i = 0; i < 4; i++) vmx_sw(r, i, vmx_u(ldexpf((float)(int32_t)vmx_w(b, i), -(int)uimm))); VMX_OUT; }
++#endif
+ VMX_INL void vmx_vctsxs(VMX_D, VMX_B, unsigned uimm, uint32_t* vscr) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16];
+     for (int i = 0; i < 4; i++) { float f = vmx_f(vmx_w(b, i)) * ldexpf(1.0f, (int)uimm); int32_t v;
+         if (f != f) v = 0;
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index ff2f53fc..a5540e35 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -898,6 +898,11 @@ def _crval_to_c(val: str, mask: int, decl_a: str, a_expr: str, b_expr: str) -> s
+     return " || ".join(conds)
+ 
+ 
++def _native_overrides() -> set[str]:
++    """PPU_LIFT_NATIVE: comma-separated function names the port implements natively."""
++    return {n.strip() for n in os.environ.get("PPU_LIFT_NATIVE", "").split(",") if n.strip()}
++
++
+ def _fuse_cr(body_lines: list[str]) -> list[str]:
+     out = []
+     i = 0
+@@ -3032,8 +3037,7 @@ class PPULifter:
+             return (f"{{ uint64_t ea = {_xea(ra,rb)}; "
+                     f"uint32_t sh = (uint32_t)(ea & 0xF); "
+                     f"uint8_t* m = vm_base + (uint32_t)(ea & ~0xFULL); "
+-                    f"uint8_t* d = (uint8_t*)&ctx->vr[{vd}]; "
+-                    f"for (int i = 0; i < 16; i++) d[i] = (sh + (uint32_t)i < 16) ? m[sh + i] : 0; }}")
++                    f"vmx_lvlx(&ctx->vr[{vd}], m, sh); }}")
+ 
+         if mn == "lvrx" or mn == "lvrxl":
+             vd = int(ops[0][1:]) if ops[0].startswith("v") else _reg_idx(ops[0])
+@@ -3042,8 +3046,7 @@ class PPULifter:
+             return (f"{{ uint64_t ea = {_xea(ra,rb)}; "
+                     f"uint32_t sh = (uint32_t)(ea & 0xF); "
+                     f"uint8_t* m = vm_base + (uint32_t)(ea & ~0xFULL); "
+-                    f"uint8_t* d = (uint8_t*)&ctx->vr[{vd}]; "
+-                    f"for (int i = 0; i < 16; i++) d[i] = ((uint32_t)i >= 16u - sh) ? m[i - (int)(16u - sh)] : 0; }}")
++                    f"vmx_lvrx(&ctx->vr[{vd}], m, sh); }}")
+ 
+         if mn == "lvebx" or mn == "lvehx" or mn == "lvewx":
+             vd = int(ops[0][1:]) if ops[0].startswith("v") else _reg_idx(ops[0])
+@@ -3089,15 +3092,7 @@ class PPULifter:
+             va = int(ops[1][1:])
+             vb = int(ops[2][1:])
+             vc = int(ops[3][1:])
+-            return (f"{{ uint8_t* a = (uint8_t*)&ctx->vr[{va}]; "
+-                    f"uint8_t* b = (uint8_t*)&ctx->vr[{vb}]; "
+-                    f"uint8_t* c = (uint8_t*)&ctx->vr[{vc}]; "
+-                    f"uint8_t* d = (uint8_t*)&ctx->vr[{vd}]; "
+-                    f"uint8_t tmp[16]; "
+-                    f"for (int i = 0; i < 16; i++) {{ "
+-                    f"uint8_t sel = c[i] & 0x1F; "
+-                    f"tmp[i] = (sel < 16) ? a[sel] : b[sel - 16]; }} "
+-                    f"memcpy(d, tmp, 16); }}")
++            return f"vmx_vperm(&ctx->vr[{vd}], &ctx->vr[{va}], &ctx->vr[{vb}], &ctx->vr[{vc}]);"
+ 
+         # VMX splat (vspltw, vsplth, vspltb) — duplicate one element across vector
+         if mn == "vspltw":
+@@ -4041,8 +4036,11 @@ class PPULifter:
+                     if self.prefix else HEADER_PREAMBLE)
+         lines = [preamble]
+         # Forward declarations
++        native = _native_overrides()
+         for func in self.functions:
+             lines.append(f"void {func.name}(ppu_context* ctx);")
++            if func.name in native:
++                lines.append(f"void {func.name}_lifted(ppu_context* ctx); /* {func.name} is native */")
+         # Also declare any call targets that aren't defined
+         defined = {f.start_addr for f in self.functions}
+         for target in sorted((self.call_targets | self.branch_targets) - defined):
+@@ -4223,7 +4221,11 @@ class PPULifter:
+         for g in guards:
+             lines += ["#ifdef __cplusplus", f'extern "C" int {g};', "#else",
+                       f"extern int {g};", "#endif"]
+-        lines.append(f"void {weak}{func.name}(ppu_context* ctx) {{")
++        # A function the port reimplements natively (PPU_LIFT_NATIVE) is
++        # emitted as <name>_lifted; the port defines <name>, and may call the
++        # lifted one (for the cases it does not handle, or to verify).
++        suffix = "_lifted" if func.name in _native_overrides() else ""
++        lines.append(f"void {weak}{func.name}{suffix}(ppu_context* ctx) {{")
+         lines.append("    PPU_MM_SNAP")
+         for bline in _fuse_cr(func.body_lines):
+             lines.append(f"    {bline}" if not bline.endswith(":") else bline)
+-- 
+2.56.0
+

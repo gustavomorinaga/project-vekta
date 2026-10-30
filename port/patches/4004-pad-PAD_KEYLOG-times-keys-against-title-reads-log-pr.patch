@@ -1,0 +1,101 @@
+From 60783d93dbc530404b3acbc1c81c24d1fc0520ba Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 15 Oct 2026 23:02:19 -0300
+Subject: [PATCH] pad: PAD_KEYLOG times keys against title reads; log
+ present mode
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c            | 25 +++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c | 18 +++++++++++++++++-
+ 2 files changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 5b2533b9..4e9000cd 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -681,6 +681,20 @@ static void pad_shutdown_backend(void)
+  * including one sampling for button-press edges. */
+ #define PAD_POLL_INTERVAL_MS 4
+ 
++/* PAD_KEYLOG=<file> ("1" = stderr): input latency log, line-buffered. */
++static FILE* pad_keylog_file(void)
++{
++    static int init; static FILE* f;
++    if (!init) {
++        init = 1;
++        const char* e = getenv("PAD_KEYLOG");
++        if (e && *e) {
++            f = strcmp(e, "1") ? fopen(e, "w") : stderr;
++            if (f) setvbuf(f, NULL, _IOLBF, 0);
++        }
++    }
++    return f;
++}
+ static unsigned long long pad_now_ms(void)
+ {
+ #ifdef _WIN32
+@@ -726,6 +740,12 @@ static void pad_poll_keyboard(void)
+     u16 btns = 0;
+     for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
+         if (k[map[i].sc]) btns |= map[i].btn;
++    /* PAD_KEYLOG=1: when the keyboard state changes, and (in cellPadGetData)
++     * when the title reads it -- to time input latency end to end. */
++    { static u16 last;
++      FILE* kf = pad_keylog_file();
++      if (kf && btns != last) { last = btns;
++          fprintf(kf, "[keylog] %llu ms key state %04X\n", pad_now_ms(), btns); } }
+     hs->buttons = btns;
+     hs->analog_lx = (u8)(k[SDL_SCANCODE_A] ? 0 : k[SDL_SCANCODE_D] ? 255 : 128);
+     hs->analog_ly = (u8)(k[SDL_SCANCODE_W] ? 0 : k[SDL_SCANCODE_S] ? 255 : 128);
+@@ -1165,6 +1185,11 @@ emit:
+      * PAD_ALWAYS_CHANGE=1 restores the old always-a-packet behaviour. */
+     {
+     }
++    { static u16 last1, last2;
++      FILE* kf = pad_keylog_file();
++      if (kf && data->len && (data->button[2] != last1 || data->button[3] != last2)) {
++          last1 = data->button[2]; last2 = data->button[3];
++          { struct timespec _r; clock_gettime(CLOCK_REALTIME, &_r); fprintf(kf, "[keylog] %llu ms title read d1 %02X d2 %02X real %ld.%03ld\n", pad_now_ms(), last1, last2, (long)_r.tv_sec, _r.tv_nsec / 1000000); } } }
+     /* PAD_TRACE=1: every 2 s, how many reads, how many carried a packet, and the last one. */
+     { static int tr = -1; static unsigned long long t_last = 0; static unsigned n = 0, nfull = 0;
+       if (tr < 0) tr = getenv("PAD_TRACE") ? 1 : 0;
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 121307e4..eacf71e7 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -1842,6 +1842,22 @@ static int vk_create_swapchain(void)
+     for (size_t k = 0; k < 4; k++)
+         if (caps.supportedCompositeAlpha & alphas[k]) { alpha = alphas[k]; break; }
+ 
++    /* MAILBOX where the driver has it: the newest frame replaces a queued one,
++     * so a 30 fps game on a 144 Hz display is never a queue of refreshes
++     * behind. PS3RECOMP_VK_PRESENT=fifo|mailbox|immediate overrides. */
++    VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;   /* the one mode every driver has */
++    {
++        const char* e = getenv("PS3RECOMP_VK_PRESENT");
++        VkPresentModeKHR want = !e ? VK_PRESENT_MODE_MAILBOX_KHR
++                              : !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR
++                              : !strcmp(e, "mailbox") ? VK_PRESENT_MODE_MAILBOX_KHR
++                              : VK_PRESENT_MODE_FIFO_KHR;
++        VkPresentModeKHR modes[16]; u32 n = 16;
++        if (want != VK_PRESENT_MODE_FIFO_KHR &&
++            pvkGetPhysicalDeviceSurfacePresentModesKHR(s_vk.phys, s_vk.surface, &n, modes) >= 0)
++            for (u32 k = 0; k < n; k++) if (modes[k] == want) mode = want;
++    }
++    VK_LOG("window present mode %d (0 immediate, 1 mailbox, 2 fifo)\n", (int)mode);
+     VkSwapchainKHR old = s_vk.swapchain;
+     VkSwapchainCreateInfoKHR sci = {
+         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+@@ -1851,7 +1867,7 @@ static int vk_create_swapchain(void)
+         .imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+         .preTransform = caps.currentTransform, .compositeAlpha = alpha,
+-        .presentMode = VK_PRESENT_MODE_FIFO_KHR,   /* the one mode every driver has */
++        .presentMode = mode,
+         .clipped = VK_TRUE, .oldSwapchain = old,
+     };
+     VkSwapchainKHR sc = VK_NULL_HANDLE;
+-- 
+2.56.0
+

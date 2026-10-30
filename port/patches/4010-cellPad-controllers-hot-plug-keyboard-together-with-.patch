@@ -1,0 +1,350 @@
+From 91e4804538ede5b0e1342dd53c1e3bf580bb6bc1 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 05:22:36 -0300
+Subject: [PATCH] cellPad: controllers hot-plug, keyboard together with a
+ pad, merged ports, active device; texture-seen hook
+
+Controllers open into the first free port as they are plugged in and keep
+it; unplugged, the port goes neutral. The keyboard and mouse add to the
+controller on port 0 instead of only working without one. PAD_MERGE=1 has
+every controller drive port 0 (single-player titles read one pad), and
+rumble goes to all of them. Buttons are read by position (CROSS is the
+bottom face button on Nintendo layouts too), DualShock 4 and DualSense rumble
+over Bluetooth, and a DualSense light bar is set. pad_active_device() says
+which family the player last touched (keyboard and mouse, Xbox and generic,
+PlayStation, Nintendo), for titles that draw button prompts.
+PAD_VIRTUAL=xbox|ps5|switch with PAD_VIRTUAL_FILE adds a virtual controller
+for tests.
+
+rsx_texture_seen_hook: called once when a texture first comes into use, with
+its writable guest bytes, so a title can recognise and rewrite it (cached
+textures are re-hashed every frame, so later rewrites show too).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c         | 180 +++++++++++++++++++++++++++++++++--
+ libs/video/rsx_draw_engine.c |   9 ++
+ libs/video/rsx_draw_engine.h |   6 ++
+ 3 files changed, 186 insertions(+), 9 deletions(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 16aba8f6..01162b24 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -448,6 +448,93 @@ static u8 pad_sdl_trigger_to_u8(int raw)
+     return (u8)val;
+ }
+ 
++/* Device families for pad_active_device(). */
++enum { PAD_DEV_KEYBOARD = 0, PAD_DEV_XBOX = 1, PAD_DEV_PLAYSTATION = 2, PAD_DEV_NINTENDO = 3 };
++
++/* Which device the player last touched, for titles that draw button prompts
++ * (PAD_DEV_*): any key, mouse button or mouse motion makes it the keyboard,
++ * a controller's button, trigger or stick past half its dead zone makes it
++ * that controller's family. */
++static volatile int s_active_dev = PAD_DEV_KEYBOARD;
++int pad_active_device(void) { return s_active_dev; }
++static void pad_set_active(int dev)
++{
++    if (s_active_dev == dev) return;
++    s_active_dev = dev;
++    static const char* const names[] = { "keyboard and mouse", "Xbox", "PlayStation", "Nintendo" };
++    printf("[cellPad] input device: %s\n", names[dev & 3]);
++}
++
++static int s_port0_pad;   /* a controller drives port 0 (the keyboard adds to it) */
++static int s_pad_merge;
++static int s_sdl_family[PAD_MAX_HOST_PORTS];
++
++static int pad_sdl_family(SDL_GameController* gc)
++{
++    switch (SDL_GameControllerGetType(gc)) {
++    case SDL_CONTROLLER_TYPE_PS3: case SDL_CONTROLLER_TYPE_PS4: case SDL_CONTROLLER_TYPE_PS5:
++        return PAD_DEV_PLAYSTATION;
++    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO:
++    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
++    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
++    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
++        return PAD_DEV_NINTENDO;
++    default:   /* unknown and virtual pads: by maker */
++        switch (SDL_GameControllerGetVendor(gc)) {
++        case 0x054C: return PAD_DEV_PLAYSTATION;
++        case 0x057E: return PAD_DEV_NINTENDO;
++        default:     return PAD_DEV_XBOX;   /* Xbox, 8BitDo in X-input, Steam and generic pads */
++        }
++    }
++}
++
++/* PAD_VIRTUAL=xbox|ps5|switch: a virtual controller of that kind (no hardware
++ * needed), driven by PAD_VIRTUAL_FILE: "buttons lx ly rx ry lt rt" with
++ * buttons an SDL_CONTROLLER_BUTTON_* bit mask (hex), sticks -32768..32767 and
++ * triggers 0..32767. */
++static int s_virt_index = -1;
++static void pad_virtual_attach(void)
++{
++    const char* kind = getenv("PAD_VIRTUAL");
++    if (!kind || !*kind) return;
++    SDL_VirtualJoystickDesc d;
++    SDL_zero(d);
++    d.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
++    d.type = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
++    d.naxes = SDL_CONTROLLER_AXIS_MAX;
++    d.nbuttons = SDL_CONTROLLER_BUTTON_MAX;
++    if (!SDL_strcasecmp(kind, "ps5"))         { d.vendor_id = 0x054C; d.product_id = 0x0CE6; d.name = "Virtual DualSense"; }
++    else if (!SDL_strcasecmp(kind, "switch")) { d.vendor_id = 0x057E; d.product_id = 0x2009; d.name = "Virtual Switch Pro"; }
++    else                                      { d.vendor_id = 0x045E; d.product_id = 0x0B12; d.name = "Virtual Xbox"; }
++    s_virt_index = SDL_JoystickAttachVirtualEx(&d);
++    printf("[cellPad] virtual %s controller: device %d%s%s\n", d.name, s_virt_index,
++           s_virt_index < 0 ? " " : "", s_virt_index < 0 ? SDL_GetError() : "");
++}
++static void pad_virtual_feed(void)
++{
++    static SDL_Joystick* js;
++    static unsigned long long next;
++    const char* path = getenv("PAD_VIRTUAL_FILE");
++    if (s_virt_index < 0 || !path) return;
++    const unsigned long long now = pad_now_ms();
++    if (now < next) return;
++    next = now + 20;
++    if (!js) {
++        for (int j = 0; j < SDL_NumJoysticks() && !js; j++)
++            if (SDL_JoystickIsVirtual(j)) js = SDL_JoystickOpen(j);
++        if (!js) return;
++    }
++    FILE* f = fopen(path, "r");
++    if (!f) return;
++    unsigned b = 0; int ax[6] = {0};
++    if (fscanf(f, "%x %d %d %d %d %d %d", &b, &ax[0], &ax[1], &ax[2], &ax[3], &ax[4], &ax[5]) >= 1) {
++        for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX; i++) SDL_JoystickSetVirtualButton(js, i, (b >> i) & 1);
++        for (int i = 0; i < 6; i++)   /* a virtual trigger's raw range is the full axis */
++            SDL_JoystickSetVirtualAxis(js, i, (Sint16)(i < 4 ? ax[i] : ax[i] * 2 - 32768));
++    }
++    fclose(f);
++}
++
+ /* Send port i's rumble state to its controller, with a fresh duration. */
+ static void pad_sdl_rumble_send(int i)
+ {
+@@ -531,6 +618,9 @@ static void pad_sdl_scan(void)
+         s_sdl_had[port] = 1;
+         memset(&s_rumble[port], 0, sizeof s_rumble[port]);   /* nothing left over from before */
+         SDL_GameControllerRumble(gc, 0, 0, 0);
++        s_sdl_family[port] = pad_sdl_family(gc);
++        if (SDL_GameControllerHasLED(gc)) SDL_GameControllerSetLED(gc, 255, 48, 0);   /* Helghast orange */
++        SDL_GameControllerSetPlayerIndex(gc, port);
+         const char* name = SDL_GameControllerName(gc);
+         fprintf(stderr, "[cellPad] SDL controller %s on port %d: %s (instance %d)%s\n",
+                 back ? "reconnected" : "connected", port, name ? name : "?", (int)id,
+@@ -568,6 +658,7 @@ static void pad_sdl_hotplug(int force)
+ static void pad_poll_sdl2(void)
+ {
+     SDL_GameControllerUpdate();
++    pad_virtual_feed();
+     pad_sdl_hotplug(0);
+ 
+     for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
+@@ -629,7 +720,37 @@ static void pad_poll_sdl2(void)
+         s_host_state[i].press_square   = (btns & CELL_PAD_CTRL_SQUARE)   ? 255 : 0;
+         s_host_state[i].press_l1       = (btns & CELL_PAD_CTRL_L1)       ? 255 : 0;
+         s_host_state[i].press_r1       = (btns & CELL_PAD_CTRL_R1)       ? 255 : 0;
++
++        const PadHostState* h = &s_host_state[i];
++        if (btns || h->trigger_l2 > 40 || h->trigger_r2 > 40 ||
++            abs(h->analog_lx - 128) > 48 || abs(h->analog_ly - 128) > 48 ||
++            abs(h->analog_rx - 128) > 48 || abs(h->analog_ry - 128) > 48)
++            pad_set_active(s_sdl_family[i]);
+     }
++
++    /* PAD_MERGE=1: every controller drives port 0 (single-player titles
++     * read one pad; whichever the player picks up just works). Buttons add
++     * up, each stick and trigger comes from the pad pushing it furthest. */
++    static int merge = -1;
++    if (merge < 0) { const char* e = getenv("PAD_MERGE"); merge = s_pad_merge = e && *e == '1'; }
++    PadHostState* p0 = &s_host_state[0];
++    s_port0_pad = p0->connected;
++    if (!merge) return;
++    for (int i = 1; i < PAD_MAX_HOST_PORTS; i++) {
++        PadHostState* h = &s_host_state[i];
++        if (!h->connected) continue;
++        if (!p0->connected) { *p0 = *h; h->connected = 0; continue; }
++        p0->buttons |= h->buttons;
++#define PAD_FAR(f) if (abs(h->f - 128) > abs(p0->f - 128)) p0->f = h->f
++        PAD_FAR(analog_lx); PAD_FAR(analog_ly); PAD_FAR(analog_rx); PAD_FAR(analog_ry);
++#undef PAD_FAR
++        if (h->trigger_l2 > p0->trigger_l2) p0->trigger_l2 = h->trigger_l2;
++        if (h->trigger_r2 > p0->trigger_r2) p0->trigger_r2 = h->trigger_r2;
++        u8* pd = &p0->press_right; const u8* ps = &h->press_right;
++        for (int k = 0; k < 10; k++) if (ps[k] > pd[k]) pd[k] = ps[k];
++        h->connected = 0;
++    }
++    s_port0_pad = p0->connected;
+ }
+ 
+ static void pad_init_backend(void)
+@@ -648,8 +769,15 @@ static void pad_init_backend(void)
+              * cared. SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=0 in the
+              * environment still wins over this. */
+             SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
++            /* Buttons by position (CROSS is always the bottom face button,
++             * Nintendo layouts too), and rumble on DualShock 4 and DualSense
++             * over Bluetooth as well. */
++            SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
++            SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
++            SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
+             SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+         }
++        pad_virtual_attach();
+         s_sdl_inited = 1;
+     }
+     memset(s_sdl_controllers, 0, sizeof(s_sdl_controllers));
+@@ -888,6 +1016,11 @@ static void pad_poll_mouse(PadHostState* hs)
+     static int was_ui;
+     if (g_pad_mouse_ui) {
+         if (SDL_GetRelativeMouseMode()) SDL_SetRelativeMouseMode(SDL_FALSE);
++        static int lx = -1, ly = -1;
++        int x, y;
++        const Uint32 b = SDL_GetMouseState(&x, &y);
++        if (b || (lx >= 0 && (abs(x - lx) > 2 || abs(y - ly) > 2))) pad_set_active(PAD_DEV_KEYBOARD);
++        lx = x; ly = y;
+         was_ui = 1; sx = sy = 0;
+         return;
+     }
+@@ -906,6 +1039,7 @@ static void pad_poll_mouse(PadHostState* hs)
+         return;
+     }
+     mb = SDL_GetRelativeMouseState(&dx, &dy);
++    if (dx || dy || mb) pad_set_active(PAD_DEV_KEYBOARD);
+     if (g_pad_mouse_direct) {
+         __atomic_add_fetch(&s_mouse_dx, dx, __ATOMIC_ACQ_REL);
+         __atomic_add_fetch(&s_mouse_dy, dy, __ATOMIC_ACQ_REL);
+@@ -946,10 +1080,14 @@ static void pad_poll_keyboard(void)
+     if (off < 0) off = getenv("PAD_NO_KEYBOARD") ? 1 : 0;
+     if (off || SDL_WasInit(SDL_INIT_VIDEO) == 0) return;
+ 
++    /* With a controller on port 0 the keyboard adds to it (either can be
++     * used at any moment); without one the keyboard is port 0. */
+     PadHostState* hs = &s_host_state[0];
++    const int pad = s_port0_pad && hs->connected;
+     hs->connected = 1;
+     const Uint8* k = SDL_GetKeyboardState(NULL);
+     if (!k || !SDL_GetKeyboardFocus()) {
++        if (pad) return;
+         hs->buttons = 0;
+         hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
+         hs->trigger_l2 = hs->trigger_r2 = 0;
+@@ -957,20 +1095,36 @@ static void pad_poll_keyboard(void)
+     }
+     if (s_nbinds < 0) pad_keymap_load();
+     int st[9] = {0};
+-    hs->buttons = 0;
+-    hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
+-    pad_binds_apply(hs, BIND_KEY, k, 0, st);
+-    pad_sticks_from(hs, st);
+-    u16 btns = hs->buttons;
++    PadHostState kb;
++    memset(&kb, 0, sizeof kb);
++    kb.analog_lx = kb.analog_ly = kb.analog_rx = kb.analog_ry = 128;
++    pad_binds_apply(&kb, BIND_KEY, k, 0, st);
++    pad_sticks_from(&kb, st);
++    u16 btns = kb.buttons;
+     /* PAD_KEYLOG=1: when the keyboard state changes, and (in cellPadGetData)
+      * when the title reads it -- to time input latency end to end. */
+     { static u16 last;
+       FILE* kf = pad_keylog_file();
+       if (kf && btns != last) { last = btns;
+           fprintf(kf, "[keylog] %llu ms key state %04X\n", pad_now_ms(), btns); } }
+-    btns = hs->buttons;
+-    hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
+-    hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
++    int any = btns != 0;
++    for (int i = 1; i < 9; i++) any |= st[i];
++    if (any) pad_set_active(PAD_DEV_KEYBOARD);
++    if (!pad) {
++        hs->buttons = btns;
++        hs->analog_lx = kb.analog_lx; hs->analog_ly = kb.analog_ly;
++        hs->analog_rx = kb.analog_rx; hs->analog_ry = kb.analog_ry;
++        hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
++        hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
++        return;
++    }
++    hs->buttons |= btns;
++    if (st[LS_L] || st[LS_R]) hs->analog_lx = kb.analog_lx;
++    if (st[LS_U] || st[LS_D]) hs->analog_ly = kb.analog_ly;
++    if (st[RS_L] || st[RS_R]) hs->analog_rx = kb.analog_rx;
++    if (st[RS_U] || st[RS_D]) hs->analog_ry = kb.analog_ry;
++    if (btns & CELL_PAD_CTRL_L2) hs->trigger_l2 = 255;
++    if (btns & CELL_PAD_CTRL_R2) hs->trigger_r2 = 255;
+ }
+ #endif
+ 
+@@ -991,7 +1145,9 @@ static void pad_poll_backend(void)
+ #elif PAD_BACKEND_SDL2
+     pad_poll_sdl2();
+ #endif
+-#if defined(_WIN32) || PAD_BACKEND_SDL2
++#if PAD_BACKEND_SDL2
++    pad_poll_keyboard();   /* merges with a controller on port 0 */
++#elif defined(_WIN32)
+     if (!s_host_state[0].connected) pad_poll_keyboard();
+ #endif
+ #if !defined(_WIN32) && PAD_BACKEND_SDL2
+@@ -1725,6 +1881,12 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+ #if PAD_BACKEND_SDL2
+     pad_lock();
+     pad_sdl_rumble_send((int)port_no);
++    /* Merged (PAD_MERGE), port 0 is every controller. */
++    if (s_pad_merge && port_no == 0)
++        for (int i = 1; i < PAD_MAX_HOST_PORTS; i++) {
++            s_rumble[i].lo = lo; s_rumble[i].hi = hi;
++            pad_sdl_rumble_send(i);
++        }
+     pad_unlock();
+ #endif
+ 
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index dd6333d2..c1f5623b 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -1357,6 +1357,8 @@ static u32 eng_texture_upload_body(u32 location, u32 offset, u32 fmt, u32 w, u32
+  * cache full evicts the least recently used entry rather than returning
+  * nothing: returning white "made the recovered orphanage render as flat
+  * green/black geometry" (rsx_live_draw.c:2326-2334). */
++void (*rsx_texture_seen_hook)(u8* bytes, u32 fmt, u32 w, u32 h, u32 span);
++
+ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+                             u32 levels, u32 pitch, int cube, u32 remap, u32 depth)
+ {
+@@ -1449,6 +1451,13 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+         evicted = g.textures[index].handle;
+     }
+ 
++    /* A title may recognise and rewrite a texture's bytes as it comes into
++     * use (button prompts that follow the player's device). */
++    if (rsx_texture_seen_hook) {
++        u8* p = (u8*)eng_guest_ptr(NULL, location, offset, span);
++        if (p) rsx_texture_seen_hook(p, fmt, w, h, span);
++    }
++
+     eng_texture e;
+     memset(&e, 0, sizeof(e));
+     e.location = location; e.offset = offset; e.format = fmt;
+diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
+index a25ecc29..77ec778f 100644
+--- a/libs/video/rsx_draw_engine.h
++++ b/libs/video/rsx_draw_engine.h
+@@ -400,6 +400,12 @@ void rsx_draw_engine_write_topology_indices(u32 primitive, u32 source_refs,
+                                             const u32* occurrence_to_unique,
+                                             u32* indices);
+ 
++/* Called once when a texture first comes into use (a cache miss), with its
++ * guest bytes (host pointer, writable), its raw RSX format and size. Bytes the
++ * hook changes, now or later, are what gets sampled: cached textures are
++ * re-hashed every frame. */
++extern void (*rsx_texture_seen_hook)(u8* bytes, u32 fmt, u32 w, u32 h, u32 span);
++
+ #ifdef __cplusplus
+ }
+ #endif
+-- 
+2.56.0
+

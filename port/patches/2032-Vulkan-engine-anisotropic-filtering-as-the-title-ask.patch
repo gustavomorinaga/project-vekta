@@ -1,0 +1,114 @@
+From 28915ebe7bc1797c64cce5ac95a63ce2967d8715 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 29 Oct 2026 01:00:23 -0300
+Subject: [PATCH] Vulkan engine: anisotropic filtering as the title asks
+ (TEXTURE_CONTROL0 [6:4]); PS3RECOMP_VK_ANISO
+
+The draw engine's sampler ignored the maximum anisotropy the title sets per
+unit, which the RSX applies and the D3D12 backend already honours (Killzone 1
+HD asks 4x on some mipmapped textures in its jungle levels). The engine now
+decodes it and the Vulkan sampler enables samplerAnisotropy with it when
+min and mag filters are linear, as D3D12's ANISOTROPIC filter does.
+PS3RECOMP_VK_ANISO: 0 or unset = the title's, 1 = off, N = at least N on
+mipmapped linear units (a PC option); capped at the device's limit.
+PS3RECOMP_VK_ANISO_LOG=1 prints each sampler made.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_draw_engine.c    |  2 ++
+ libs/video/rsx_draw_engine.h    |  3 +++
+ libs/video/rsx_vulkan_backend.c | 24 +++++++++++++++++++++++-
+ 3 files changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 4b8c16fa..576c41f4 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -1705,6 +1705,8 @@ static void eng_decode_sampler(u32 filter, u32 wrap, u32 control0,
+     out->wrap_s = (u8)(wrap & 0xFu);
+     out->wrap_t = (u8)((wrap >> 8) & 0xFu);
+     out->wrap_r = (u8)((wrap >> 16) & 0xFu);
++    static const u8 aniso[8] = { 1, 2, 4, 6, 8, 10, 12, 16 };
++    out->aniso = aniso[(control0 >> 4) & 7u];
+     out->min_lod = (float)((control0 >> 19) & 0xFFFu) / 256.0f;
+     out->max_lod = out->mip_present ? (float)((control0 >> 7) & 0xFFFu) / 256.0f
+                                     : 0.0f;
+diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
+index 3ddc1de2..bf52b59d 100644
+--- a/libs/video/rsx_draw_engine.h
++++ b/libs/video/rsx_draw_engine.h
+@@ -73,6 +73,9 @@ typedef struct rsx_be_sampler_desc {
+      * edge texel instead -- nearer than black for the colours seen (a video
+      * title's chroma planes border at 0x80, neutral). */
+     u8  border;
++    /* SET_TEXTURE_CONTROL0 [6:4], the maximum anisotropy the title asks
++     * for: 1, 2, 4, 6, 8, 10, 12 or 16 (1 = off). */
++    u8  aniso;
+     float min_lod, max_lod;
+ } rsx_be_sampler_desc;
+ 
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 38cd9a5e..abefc7e5 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -215,6 +215,8 @@ typedef struct vk_state {
+      * additionally blits the frame into the window's swapchain. */
+     int              eng_active;      /* the register-file engine drives us */
+     int              bc_ok;           /* textureCompressionBC enabled       */
++    int              aniso_ok;        /* samplerAnisotropy enabled          */
++    u32              aniso_max;       /* maxSamplerAnisotropy, at most 16   */
+     u32              max_dim;         /* maxImageDimension2D of the device  */
+     int              windowed;
+     SDL_Window*      window;
+@@ -4070,12 +4072,22 @@ static VkImageView vk_eng_scratch_depth(u32 w, u32 h)
+  * stay the guest's 1..8, which vk_gcm_wrap already translates. */
+ static VkSampler vk_eng_sampler(const rsx_be_sampler_desc* d)
+ {
++    /* The anisotropy: the title's (SET_TEXTURE_CONTROL0, used when the min
++     * and mag filters are both linear, as D3D12's ANISOTROPIC filter needs),
++     * raised to PS3RECOMP_VK_ANISO for mipmapped linear units (a PC option;
++     * 0 or unset = the title's own, 1 = off), within the device's limit. */
++    static int force = -1;
++    if (force < 0) { const char* e = getenv("PS3RECOMP_VK_ANISO"); force = e ? atoi(e) : 0; }
++    u32 aniso = (d->min_linear && d->mag_linear) ? d->aniso : 1u;
++    if (force > 1 && d->min_linear && d->mag_linear && d->mip_present && (u32)force > aniso) aniso = (u32)force;
++    if (!s_vk.aniso_ok || force == 1) aniso = 1;
++    else if (aniso > s_vk.aniso_max) aniso = s_vk.aniso_max;
+     u32 lo, hi;
+     memcpy(&lo, &d->min_lod, 4); memcpy(&hi, &d->max_lod, 4);
+     const u64 key = (u64)d->min_linear | ((u64)d->mag_linear << 1) | ((u64)d->mip_linear << 2)
+                   | ((u64)d->mip_present << 3) | ((u64)(d->wrap_s & 0xF) << 4)
+                   | ((u64)(d->wrap_t & 0xF) << 8) | ((u64)(d->wrap_r & 0xF) << 12)
+-                  | ((u64)(lo >> 16) << 16) | ((u64)(hi >> 16) << 32);
++                  | ((u64)(lo >> 16) << 16) | ((u64)(hi >> 16) << 32) | ((u64)(aniso & 0x1F) << 48);
+     for (u32 i = 0; i < s_esamp_count; i++) if (s_esamp[i].key == key) return s_esamp[i].s;
+     if (s_esamp_count >= VK_ENG_SAMP_CACHE) return s_vk.sampler;
+     float min_lod = d->min_lod, max_lod = d->mip_present ? d->max_lod : d->min_lod;
+@@ -4088,7 +4100,11 @@ static VkSampler vk_eng_sampler(const rsx_be_sampler_desc* d)
+         .addressModeU = vk_gcm_wrap(d->wrap_s), .addressModeV = vk_gcm_wrap(d->wrap_t),
+         .addressModeW = vk_gcm_wrap(d->wrap_r),
+         .minLod = min_lod, .maxLod = max_lod,
++        .anisotropyEnable = aniso > 1 ? VK_TRUE : VK_FALSE, .maxAnisotropy = (float)aniso,
+         .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK };
++    { static int log = -1; if (log < 0) log = getenv("PS3RECOMP_VK_ANISO_LOG") != NULL;
++      if (log) fprintf(stderr, "[vk-aniso] sampler %u: title %u, used %u (min %u mag %u mip %u)\n",
++                       s_esamp_count, d->aniso, aniso, d->min_linear, d->mag_linear, d->mip_present); }
+     VkSampler smp;
+     if (pvkCreateSampler(s_vk.device, &sci, NULL, &smp) != VK_SUCCESS) return s_vk.sampler;
+     s_esamp[s_esamp_count].key = key;
+@@ -4488,6 +4504,12 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     pvkGetPhysicalDeviceFeatures(s_vk.phys, &have);
+     want.textureCompressionBC = have.textureCompressionBC;
+     s_vk.bc_ok = have.textureCompressionBC ? 1 : 0;
++    /* Anisotropic filtering: what the title asks for in TEXTURE_CONTROL0,
++     * as the RSX does (and the D3D12 backend). */
++    want.samplerAnisotropy = have.samplerAnisotropy;
++    s_vk.aniso_ok = have.samplerAnisotropy ? 1 : 0;
++    { VkPhysicalDeviceProperties dp; pvkGetPhysicalDeviceProperties(s_vk.phys, &dp);
++      s_vk.aniso_max = dp.limits.maxSamplerAnisotropy >= 16.0f ? 16u : (u32)dp.limits.maxSamplerAnisotropy; }
+     VkDeviceCreateInfo dci = { .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+                                .queueCreateInfoCount = 1, .pQueueCreateInfos = &qci,
+                                .enabledExtensionCount = s_vk.windowed ? 1u : 0u,
+-- 
+2.56.0
+

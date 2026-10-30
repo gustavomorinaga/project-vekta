@@ -1,0 +1,91 @@
+From 70b643b4836ae57c3c3a3804dfc43f10378284d1 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 28 Oct 2026 14:44:46 -0300
+Subject: [PATCH] MinGW (clang): SEH-free sampler stack read,
+ ppu_resv_break linkage, SPURS poll sleep, capture mkdir
+
+The sampler's stack read and the ppu_resv_break linkage follow
+project-helghast's patch 0002 (MIT).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/spurs/cellSpurs.c       |  4 ++++
+ libs/video/rsx_draw_engine.c |  7 +++++++
+ runtime/ppu/ppu_loader.cpp   | 10 +++++++++-
+ 3 files changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index 3ca804ae..799eca37 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -1861,8 +1861,12 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+             kick_pass = ++kick_run < 16;
+         } else if (s_poll_us < 1000) {
+             ReleaseSRWLockExclusive(&si->lock);
++#ifdef _WIN32
++            if (s_poll_us > 0) Sleep(1); else SwitchToThread();   /* no sub-ms sleep */
++#else
+             if (s_poll_us > 0) { struct timespec t = { 0, s_poll_us * 1000L }; nanosleep(&t, NULL); }
+             else sched_yield();
++#endif
+             AcquireSRWLockExclusive(&si->lock);
+             (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
+         } else {
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 219ccf26..4b8c16fa 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -25,6 +25,9 @@
+ #include <time.h>
+ #include "ps3emu/log_first.h"
+ #include <sys/stat.h>
++#ifdef _WIN32
++#include <direct.h>
++#endif
+ 
+ /* Each pipeline's two programs, kept for an F12 capture to write the ones
+  * its draws use (RSX_ENGINE_SHADER_DUMP writes them as they are made). */
+@@ -2792,7 +2795,11 @@ static int pd_capturing(void)
+         static char dir[64];
+         const time_t now = time(NULL);
+         strftime(dir, sizeof dir, "capture_%Y%m%d_%H%M%S", localtime(&now));
++#ifdef _WIN32
++        _mkdir(dir);
++#else
+         mkdir(dir, 0755);
++#endif
+         s_pd.dir = dir; s_pd.requested = 1;
+         { const char* x = getenv("RSX_ENGINE_PASS_DUMP_MAX"); s_pd.max_passes = x ? (u32)strtoul(x, NULL, 0) : 16u; }
+         s_pd.pass = 0; s_pd.draws = 0; s_pd.clears = 0; s_pd.first[0] = 0;
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index e49ae880..3622f05a 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -632,7 +632,14 @@ static uint32_t samp_stack_guest(HANDLE h, const CONTEXT* c)
+     const uintptr_t* sp = (const uintptr_t*)c->Rsp;
+     for (int i = 0; i < 512; i++) {          /* 4 KB of stack */
+         uintptr_t v;
++#if defined(_MSC_VER)
+         __try { v = sp[i]; } __except (1) { return 0; }
++#else
++        /* MinGW has no __try/__except: ReadProcessMemory on our own process
++         * fails instead of faulting (project-helghast patch 0002, MIT). */
++        SIZE_T got = 0;
++        if (!ReadProcessMemory(GetCurrentProcess(), &sp[i], &v, sizeof v, &got) || got != sizeof v) return 0;
++#endif
+         uint32_t g = samp_lookup(v);
+         if (g) return g;
+     }
+@@ -996,7 +1003,8 @@ static inline volatile LONG* resv_slot(uint64_t ea) { return &g_resv_locks[((uin
+ static inline volatile LONG* resv_line_slot(uint64_t ea) { return &g_resv_locks[((uint32_t)ea >> 7) & (PPU_RESV_LOCKS - 1)]; }
+ static inline void resv_lock(volatile LONG* L)   { while (_InterlockedExchange(L, 1)) { while (*L) YieldProcessor(); } }
+ static inline void resv_unlock(volatile LONG* L) { _InterlockedExchange(L, 0); }
+-static inline void ppu_resv_break(uint64_t addr)   /* MUST hold g_resv_lock */
++/* extern "C", as declared above: clang and GCC reject extern-then-static */
++extern "C" void ppu_resv_break(uint64_t addr)   /* MUST hold g_resv_lock */
+ {
+     uint64_t a = (uint32_t)addr;   /* match the inline guard: reserve_addr holds (uint32_t)ea */
+     long n = g_resv_ctx_n; if (n > PPU_RESV_MAX) n = PPU_RESV_MAX;
+-- 
+2.56.0
+

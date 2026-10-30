@@ -1,0 +1,78 @@
+From a628783fd1aee24c95e60c1a446126ea4c647f3c Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 07:37:09 -0300
+Subject: [PATCH] Vulkan window: display mode, size and V-Sync while
+ running; cellPad: pad_set_merge
+
+rsx_vulkan_set_display(mode, w, h, hz) and rsx_vulkan_set_present(mode),
+callable from any thread, are applied on the window's thread at its next
+event pump and the swapchain is rebuilt at the next present.
+rsx_vulkan_display_sizes lists the display's modes, read when the window
+opens. pad_set_merge switches PAD_MERGE while running.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c            | 10 +++++-----
+ libs/video/rsx_vulkan_backend.h |  9 +++++++++
+ 2 files changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 01162b24..0119ddb8 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -466,7 +466,8 @@ static void pad_set_active(int dev)
+ }
+ 
+ static int s_port0_pad;   /* a controller drives port 0 (the keyboard adds to it) */
+-static int s_pad_merge;
++static int s_pad_merge = -1;   /* PAD_MERGE; pad_set_merge changes it */
++void pad_set_merge(int on) { s_pad_merge = on != 0; }
+ static int s_sdl_family[PAD_MAX_HOST_PORTS];
+ 
+ static int pad_sdl_family(SDL_GameController* gc)
+@@ -731,11 +732,10 @@ static void pad_poll_sdl2(void)
+     /* PAD_MERGE=1: every controller drives port 0 (single-player titles
+      * read one pad; whichever the player picks up just works). Buttons add
+      * up, each stick and trigger comes from the pad pushing it furthest. */
+-    static int merge = -1;
+-    if (merge < 0) { const char* e = getenv("PAD_MERGE"); merge = s_pad_merge = e && *e == '1'; }
++    if (s_pad_merge < 0) { const char* e = getenv("PAD_MERGE"); s_pad_merge = e && *e == '1'; }
+     PadHostState* p0 = &s_host_state[0];
+     s_port0_pad = p0->connected;
+-    if (!merge) return;
++    if (!s_pad_merge) return;
+     for (int i = 1; i < PAD_MAX_HOST_PORTS; i++) {
+         PadHostState* h = &s_host_state[i];
+         if (!h->connected) continue;
+@@ -1882,7 +1882,7 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+     pad_lock();
+     pad_sdl_rumble_send((int)port_no);
+     /* Merged (PAD_MERGE), port 0 is every controller. */
+-    if (s_pad_merge && port_no == 0)
++    if (s_pad_merge > 0 && port_no == 0)
+         for (int i = 1; i < PAD_MAX_HOST_PORTS; i++) {
+             s_rumble[i].lo = lo; s_rumble[i].hi = hi;
+             pad_sdl_rumble_send(i);
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 788b9864..dcb2e6ca 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -72,6 +72,15 @@ void rsx_vulkan_backend_shutdown(void);
+  * window has been closed or Esc pressed. */
+ int  rsx_vulkan_backend_pump_messages(void);
+ 
++/* Display settings while running, from any thread (applied on the window's
++ * thread): mode "window" (w x h), "borderless" or "fullscreen" (the mode
++ * closest to w x h at hz, 0 = any); present "fifo" (V-Sync), "relaxed"
++ * (adaptive), "immediate" (off) or "mailbox". display_sizes: the display's
++ * modes (w, h), largest first; returns the count. */
++void rsx_vulkan_set_display(const char* mode, int w, int h, int hz);
++void rsx_vulkan_set_present(const char* mode);
++int  rsx_vulkan_display_sizes(int (*out)[2], int max);
++
+ /* Read the frame back to host memory (and to PS3RECOMP_VK_DUMP if set), and
+  * show it in the window if there is one. Same as _present_begin() followed
+  * by _present_finish(). */
+-- 
+2.56.0
+

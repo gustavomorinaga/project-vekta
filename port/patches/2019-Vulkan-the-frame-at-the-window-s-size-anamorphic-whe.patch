@@ -1,0 +1,36 @@
+From a7842185c6b371ec8d36b07bff492ad8b6f9a1b8 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 21 Oct 2026 20:32:22 -0300
+Subject: [PATCH] Vulkan: the frame at the window's size, anamorphic when
+ asked
+
+PS3RECOMP_VK_SCALE_XY=<x>,<y> scales the two axes of the internal resolution
+apart. PS3RECOMP_VK_SCALE_FIT=fit|fill takes the scale from the window's size
+in pixels (the display mode's, fullscreen) times PS3RECOMP_VK_SCALE: fit is
+the largest 16:9 frame the window holds, fill scales each axis to the window,
+for a title whose cameras were widened to the window's aspect.
+rsx_vulkan_set_stretch (or PS3RECOMP_VK_STRETCH=1) presents the frame over
+the whole window instead of with bars, and rsx_vulkan_output_size gives the
+window's drawable size.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_vulkan_backend.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index dcb2e6ca..03e73616 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -80,6 +80,8 @@ int  rsx_vulkan_backend_pump_messages(void);
+ void rsx_vulkan_set_display(const char* mode, int w, int h, int hz);
+ void rsx_vulkan_set_present(const char* mode);
+ int  rsx_vulkan_display_sizes(int (*out)[2], int max);
++void rsx_vulkan_set_stretch(int on);
++int  rsx_vulkan_output_size(int* w, int* h);
+ 
+ /* Read the frame back to host memory (and to PS3RECOMP_VK_DUMP if set), and
+  * show it in the window if there is one. Same as _present_begin() followed
+-- 
+2.56.0
+

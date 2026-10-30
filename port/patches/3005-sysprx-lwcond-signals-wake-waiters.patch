@@ -1,0 +1,81 @@
+From ad4d549b7ea919c1d81f6f93c3124fe555874e6c Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 15 Oct 2026 19:48:16 -0300
+Subject: [PATCH] sysprx: lwcond signals wake waiters
+
+sys_lwcond_wait was a 1 ms poll and the signals were no-ops, so every
+hand-off between guest threads cost about a millisecond. Killzone HD's level
+loader makes thousands of them: Level 1 loaded in ~42 s, now ~8 s. The poll
+stays as a fallback (PS3_LWCOND_POLL_MS, default 10), which also takes idle
+worker threads from 1000 wake-ups a second to 100.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/ppu/ppu_sysprx.cpp | 33 +++++++++++++++++++++++++++++----
+ 1 file changed, 29 insertions(+), 4 deletions(-)
+
+diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
+index 9cb50400..89cf1631 100644
+--- a/runtime/ppu/ppu_sysprx.cpp
++++ b/runtime/ppu/ppu_sysprx.cpp
+@@ -17,6 +17,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <chrono>
++#include <condition_variable>
++#include <mutex>
+ /* win32_compat.h is <windows.h> on Windows (CRITICAL_SECTION for the real
+  * lwmutex exclusion) and the POSIX shims elsewhere -- Sleep, DWORD, QPC. */
+ #include "../platform/win32_compat.h"
+@@ -409,9 +412,23 @@ static void sys_lwcond_create(ppu_context* ctx)
+     ctx->gpr[3] = 0;
+ }
+ static void sys_lwcond_destroy(ppu_context* ctx)    { ctx->gpr[3] = 0; }
+-static void sys_lwcond_signal(ppu_context* ctx)     { ctx->gpr[3] = 0; }
+-static void sys_lwcond_signal_all(ppu_context* ctx) { ctx->gpr[3] = 0; }
+-static void sys_lwcond_signal_to(ppu_context* ctx)  { ctx->gpr[3] = 0; }
++/* One host condition variable for every lwcond: a signal wakes all waiters,
++ * each re-checks its own predicate in guest code (the wait already returned
++ * spuriously, being a poll). Waking on the signal instead of only on the poll
++ * period turns a hand-off between guest threads from ~1 ms into microseconds;
++ * Killzone HD's loader makes thousands of them. The poll stays as a fallback
++ * (PS3_LWCOND_POLL_MS, default 10), for a signal raced past the wait. */
++static std::mutex              s_lwc_m;
++static std::condition_variable s_lwc_cv;
++static uint64_t                s_lwc_gen;
++static void lwcond_wake(void)
++{
++    { std::lock_guard<std::mutex> l(s_lwc_m); s_lwc_gen++; }
++    s_lwc_cv.notify_all();
++}
++static void sys_lwcond_signal(ppu_context* ctx)     { lwcond_wake(); ctx->gpr[3] = 0; }
++static void sys_lwcond_signal_all(ppu_context* ctx) { lwcond_wake(); ctx->gpr[3] = 0; }
++static void sys_lwcond_signal_to(ppu_context* ctx)  { lwcond_wake(); ctx->gpr[3] = 0; }
+ /* Now that the lwmutex is REAL, a no-op wait that keeps holding it deadlocks the
+  * signaler. Release the paired lwmutex, wait briefly, reacquire (poll-style: the
+  * guest's while(!predicate) loop re-checks; signalers stay no-ops). Handles the
+@@ -424,11 +441,19 @@ static void sys_lwcond_wait(ppu_context* ctx)
+     if (sl) {
+         uint32_t own = vm_read32(lwmutex + LWM_OWNER);
+         uint32_t rc  = vm_read32(lwmutex + LWM_RECUR);
++        static int poll_ms = -1;
++        if (poll_ms < 0) { const char* e = getenv("PS3_LWCOND_POLL_MS"); poll_ms = e ? atoi(e) : 10; }
++        uint64_t gen;
++        { std::lock_guard<std::mutex> l(s_lwc_m); gen = s_lwc_gen; }   /* before the mutex goes */
+         vm_write32(lwmutex + LWM_RECUR, 0);
+         vm_write32(lwmutex + LWM_OWNER, 0);
+         ppu_thread_note_block(ctx->thread_id);
+         lwm_release(sl);
+-        Sleep(1);
++        {
++            std::unique_lock<std::mutex> l(s_lwc_m);
++            s_lwc_cv.wait_for(l, std::chrono::milliseconds(poll_ms > 0 ? poll_ms : 1),
++                              [&] { return s_lwc_gen != gen; });
++        }
+         lwm_acquire(sl, 0);
+         vm_write32(lwmutex + LWM_OWNER, own);
+         vm_write32(lwmutex + LWM_RECUR, rc ? rc : 1);
+-- 
+2.56.0
+

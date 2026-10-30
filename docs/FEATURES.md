@@ -1,0 +1,69 @@
+# Features: the PS3 game and the port
+
+What the PS3 version of Killzone HD does and how far the port reproduces it (section 1), and what the port adds
+(section 2). Every status comes from a dated run on the maintainer's machine (Linux, RTX 3070 Ti) unless it says
+otherwise. Last checked 2026-10-30.
+
+| Status | Meaning |
+|---|---|
+| **works** | checked in a run |
+| **partial** | runs, with known gaps |
+| **not yet** | not reached or not checked |
+| **n/a** | has no equivalent on PC |
+
+## 1. Parity with the PS3 version
+
+| Area | Feature | On the PS3 | In the port | Evidence |
+|---|---|---|---|---|
+| Boot and menus | Logos, opening movie, front end, options, pause menu | as shipped | **works** | every run since 2026-10-14 |
+| Campaign | Level 1 | first level | **works** | played by hand from start to end |
+| Campaign | Levels 2 to 11 | the rest of the campaign | **partial**: all load and reach gameplay; not each played to its end | 2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20 |
+| Campaign | Cutscene and level movies | AVI movies through `cellSail` | **works** (FFmpeg) | 30 movies; runs without FFmpeg skip them |
+| Campaign | Game logic timing | 30 Hz | **works** at 30 and 60 Hz; 144 Hz with one known problem ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)) | hints, movement and rate of fire checked at 60 Hz |
+| Saves | Profile, checkpoints, Continue | one profile save | **works**: Continue returns to the checkpoint; a checkpoint save checked end to end is still to do | 2026-10-20 |
+| Controls | DualShock 3 layout | pad | **works** with any SDL controller | Xbox, DualSense/DualShock, 8BitDo, generic |
+| Controls | Rumble | pad vibration | **works** | SDL |
+| Controls | Controller options (sensitivity, invert) | Pause > Controls | **works** | the game's own menu |
+| Graphics | 1280x720 picture | 720p | **works**, at any window size | |
+| Graphics | Post-processing on the SPUs (MLAA, motion blur, glow) | `jm_post` job chain | **works**: the game's SPU jobs run; in normal play the chain is MLAA only | [dev/wws-jm-post.md](dev/wws-jm-post.md) |
+| Graphics | HUD, menus, fonts | as shipped | **works** | |
+| Sound | Music, effects, dialogue | MultiStream on the SPUs, MP3 streams | **works** | the firmware's MP3 decoder runs translated |
+| Sound | Surround | the console's output setting | **works**: stereo, 5.1, 7.1 | per channel on Linux; 6 and 8 channels through WASAPI under Wine |
+| Languages | Voice, subtitles, menus | English, French, Spanish (by console language) | **works**, chosen on the PC page | |
+| Trophies | Trophy unlocks | PSN trophies | **partial**: unlocked and logged locally with names, grades and platinum; no on-screen notice | `gamedata/trophies/NPWR03819.log` |
+| Multiplayer | "One / Two Player" in the menu | local | **not yet** checked | |
+| Online | PSN | sign-in, trophies sync | **n/a** | no network is used |
+
+## 2. Features the PS3 version does not have
+
+All on the **PC** page in the game's Options and Pause menus, applied at once unless noted, and kept in
+`kz1hd_pc.ini` in the run folder. Environment variables override the file. Features that change how the game plays
+are off by default; display and input improvements may be on.
+
+| Feature | Default | `kz1hd_pc.ini`, switches, notes |
+|---|---|---|
+| Display mode: window, borderless, fullscreen; Alt+Enter | window | `display`; `KZ_FULLSCREEN=1` in `tools/play.sh` |
+| Output resolution and refresh rate | 1280x720, the monitor's rate | `resolution`, `refresh`; resizable window, aspect kept |
+| Internal resolution scale, 50 % to 200 % | 100 % | `scale`; applies on the next start |
+| V-Sync on, off, adaptive; VRR | on | `vsync` |
+| Frame-rate limit 30, 60, 144 (the game clock follows) | 60 | `fps_limit`; 30 is the PS3's |
+| AMD FSR 1 upscaling and RCAS sharpening | bilinear | `upscaler`, `sharpness` |
+| Anisotropic filtering: the game's own, off, 2x to 16x | the game's | `anisotropic` |
+| Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9 | on | `widescreen` |
+| Field of view, 40 to 90 degrees vertical (the game's is 56.25) | the game's | `fov`; zoom and the first-person weapon keep the game's framing |
+| HUD size and position | the game's | `hud_size`, `hud_position` |
+| Presets: Original (PS3), Performance, Balanced, Quality | Custom when nothing matches | |
+| Keyboard and mouse: direct mouse look with its own sensitivity and invert, mouse in menus and dialogs | on | `mouse_yaw`, `mouse_pitch`, `mouse_invert`; keys in `kz1hd_keys.ini` (written on the first run; edit to remap) |
+| Controllers through SDL, with keyboard and mouse at the same time | merged | `controllers`; `PAD_MOUSE_STICK=1` puts the mouse on the right stick instead |
+| Button prompts and the Controls picture follow the device (keyboard and mouse, Xbox, PlayStation, Nintendo) | auto | |
+| Sound output: stereo, 5.1, 7.1 | stereo | `speakers` |
+| Language: system, English (US, UK), French, Spanish | system | `language` |
+| Skip the opening movie (the logos stay) | off | `intro = off`, `KZ_SKIP_INTRO=1` |
+| Statistics overlay (MangoHUD, Linux) | off | `overlay = mangohud`, `KZ_MANGOHUD=1` |
+| Quit Game in the Options sub-menu; closing the window waits for a save in progress | on | |
+| The game's own Debug Options in the pause menu (God Mode, Next Level, ...) | off | `KZ_DEBUG_MENU=1` |
+| All 11 levels selectable in the campaign menu | off | `KZ_UNLOCK_LEVELS=1` |
+| Local trophy log from the game's own trophy set | on | needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`) |
+
+Planned items (post-processing toggles, HDR, FSR 3.1 and DLSS, an in-game key remapping page, narrower aspect
+ratios, a steady 144 fps): [ROADMAP.md](ROADMAP.md).

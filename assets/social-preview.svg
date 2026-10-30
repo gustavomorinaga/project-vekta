@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="640" viewBox="0 0 1280 640">
+  <!-- GitHub social preview: the banner on the site's background, with the project's one-line pitch. Our own art. -->
+  <rect width="1280" height="640" fill="#0a0d0b"/>
+  <image href="banner.svg" x="0" y="120" width="1280" height="320"/>
+  <text x="64" y="520" font-family="Fira Sans Condensed" font-weight="500" font-size="30" letter-spacing="2"
+        fill="#e3e8e2">The PS3 game's own code, translated to C++ and running natively on your PC.</text>
+  <text x="64" y="566" font-family="Fira Sans Condensed" font-weight="500" font-size="24" letter-spacing="3"
+        fill="#8a9a5b">FAN PROJECT · NOT AFFILIATED WITH SONY INTERACTIVE ENTERTAINMENT OR GUERRILLA GAMES</text>
+</svg>

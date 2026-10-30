@@ -1,0 +1,31 @@
+From e9756153b79a5916ddd680654e40cbb404eb717c Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 03:20:01 -0300
+Subject: [PATCH] cellGcm: a JUMP-to-self park gets a 250 ms grace before
+ the walker leaves it (GCM_PARK_SKIP=1 steps over it instead of resyncing)
+
+---
+ libs/video/cellGcmSys.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 270ffd39..626a03e9 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -2386,6 +2386,13 @@ static void gcm_rsx_process_fifo_unlocked(void)
+                                  vm_read32(gcm_io2ea(s_fifo_getoff)) == w) {
+                           park_off = 0;
+                           gcm_fifo_dump_around(s_fifo_getoff);
++                          /* GCM_PARK_SKIP=1: step over the park word only and
++                           * run what the title wrote after it, up to `put`,
++                           * instead of dropping all of it (Killzone HD's PSGL
++                           * ring patches the park last, after moving `put`). */
++                          static int skip = -1;
++                          if (skip < 0) { const char* e = getenv("GCM_PARK_SKIP"); skip = e ? atoi(e) : 0; }
++                          if (skip) { s_fifo_getoff += 4; continue; }
+                           gcm_fifo_resync_why("jump-park", &s_fifo_getoff, put);
+                       }
+                   }
+-- 
+2.56.0
+

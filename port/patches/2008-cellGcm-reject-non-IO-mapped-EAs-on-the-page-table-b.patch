@@ -1,0 +1,39 @@
+From 2047d396d54e715532c6d5ffe7bc532ee025f43f Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 19:11:59 -0300
+Subject: [PATCH] cellGcm: reject non-IO-mapped EAs on the page table
+ before scanning the mappings
+
+gcm_note_spu_put asks for every SPU DMA put, and nearly all of them are not
+IO-mapped; the full scan of the 512-entry mapping table was 3% of Killzone
+HD's SPU time.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/cellGcmSys.c | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 5f64a730..b59339d0 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -1563,9 +1563,13 @@ static int s_spu_blk_w = 0;
+ /* EA -> IO through the mapping list (range lookup; the by-ea helper is exact). */
+ static u32 gcm_ea2io_range(u32 ea, u32* room)
+ {
+-    /* Called for every SPU PUT. The table has CELL_GCM_MAX_IO_MAPPINGS slots
+-     * and a title uses a handful, all below the high-water mark; the first
+-     * match in slot order is the one a full scan returns. */
++    /* Called for every SPU PUT, and nearly all of them are not IO-mapped:
++     * reject those on the 1 MB page table first (scanning the mappings for
++     * each cost Killzone HD 3% of its SPU time). The table has
++     * CELL_GCM_MAX_IO_MAPPINGS slots and a title uses a handful, all below
++     * the high-water mark; the first match in slot order is the one a full
++     * scan returns. */
++    if (s_io_address_table[(ea >> 20) & 0xFFFFu] == 0xFFFFu) return 0xFFFFFFFFu;
+     const int n = __atomic_load_n(&s_io_mapping_hw, __ATOMIC_RELAXED);
+     for (int i = 0; i < n; i++) {
+         IoMapping* m = &s_io_mappings[i];
+-- 
+2.56.0
+

@@ -1,0 +1,58 @@
+From 4573227f7d6abd00c68b9c81e84232ce702084dc Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 16 Oct 2026 13:54:47 -0300
+Subject: [PATCH] spu: hooks to observe SPU transfers and job-module
+ entries
+
+g_spu_dma_hook sees every fast-path GET/PUT (context, EA, LSA, size,
+direction); g_spu_job_hook sees each entry of a resident job overlay at
+LS 0x4030. Both are NULL unless a title installs them.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/spu/spu_channels.c | 7 +++++++
+ runtime/spu/spu_dma.h      | 3 +++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
+index 6957480d..2c132af3 100644
+--- a/runtime/spu/spu_channels.c
++++ b/runtime/spu/spu_channels.c
+@@ -180,6 +180,8 @@ void (*g_spu_out_mbox_hook)(uint32_t group_id, uint32_t spu_id,
+  * stream is, so the only evidence is the DMA that writes it. NULL until
+  * installed, so a title with no SPU-built FIFO pays nothing. */
+ void (*g_spu_put_hook)(uint32_t ea, uint32_t size) = 0;
++void (*g_spu_dma_hook)(spu_context*, uint32_t ea, uint32_t lsa, uint32_t size, int put) = 0;
++void (*g_spu_job_hook)(spu_context*) = 0;
+ 
+ void spu_halt(spu_context* ctx)
+ {
+@@ -3035,6 +3037,11 @@ void spu_indirect_branch(spu_context* ctx)
+             }
+         }
+     }
++    /* g_spu_job_hook: a title's observer of each job-module entry (a resident
++     * overlay entered at LS 0x4030, the WWS job entry); NULL = none. */
++    if (__builtin_expect(g_spu_job_hook != 0, 0) && fn && (ctx->pc & SPU_LS_MASK) == 0x4030 &&
++        ctx->resident_ovl >= 200)
++        g_spu_job_hook(ctx);
+     if (fn && ctx->pc >= 0x4000 && ctx->resident_ovl >= 200) {
+         static int s_je = -1;
+         if (s_je < 0) { const char* e = getenv("SPU_JOBEXEC"); s_je = e ? 1 : 0; }
+diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
+index 2ec1b0fc..57be2a7c 100644
+--- a/runtime/spu/spu_dma.h
++++ b/runtime/spu/spu_dma.h
+@@ -240,6 +240,9 @@ static inline int mfc_do_transfer_fast(spu_context* spu, uint32_t lsa, uint64_t
+     uint8_t* ls_ptr = &spu->ls[lsa];
+     uint8_t* ea_ptr = vm_base + (uint32_t)ea;
+     if (spu->image_id == 22 && get && size > 0x100) { extern int g_cri_video_dma; g_cri_video_dma = 1; }
++    /* g_spu_dma_hook: a title's observer of every SPU transfer (NULL = none). */
++    { extern void (*g_spu_dma_hook)(spu_context*, uint32_t, uint32_t, uint32_t, int);
++      if (__builtin_expect(g_spu_dma_hook != 0, 0)) g_spu_dma_hook(spu, (uint32_t)ea, lsa, size, put ? 1 : 0); }
+     if (get) {
+         { int n; (void)spu_ls_watch_list(&n); if (n) return 0; }   /* reported by the full path */
+         memcpy(ls_ptr, ea_ptr, size);
+-- 
+2.56.0
+

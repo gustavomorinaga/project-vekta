@@ -1,0 +1,43 @@
+# Third-party components and credits
+
+Every piece of code, patch, idea or text that came from outside this repository is listed here with its author,
+source, licence and what was used. Licence texts are in [licenses/](licenses/). Per-patch credit is also in each
+patch's header in `port/patches/`. The port's own code is MIT ([LICENSE](LICENSE)).
+
+## Toolkit
+
+| Project | Author | Source | Licence | What was used |
+|---|---|---|---|---|
+| ps3recomp | Ned Heller (sp00nznet) and its contributors | <https://github.com/sp00nznet/ps3recomp> (submodule `third_party/ps3recomp`, pinned at release v0.18.0) | MIT ([licenses/ps3recomp-LICENSE.txt](licenses/ps3recomp-LICENSE.txt)) | the PPU and SPU lifters, the PS3 runtime and the HLE system libraries the port is built on; our changes are the patches in `port/patches/`, applied on top of that exact release |
+
+## Other ports
+
+| Project | Author | Source | Licence | What was used |
+|---|---|---|---|---|
+| Project Helghast (Killzone 3 PC port) | undecuple | <https://github.com/undecuple/project-helghast> | MIT ([licenses/Project-Helghast-LICENSE.txt](licenses/Project-Helghast-LICENSE.txt)) | the SPURS kernel's admission rule and `cellSpursRequestIdleSpu` as its patch 1074 ports them (our 1017); the policy-module `selectWorkload` answer of its patch 1058 (our 1018); the MinGW sampler stack read and `ppu_resv_break` linkage of its patch 0002 (our 0003); `tools/ps3recomp-patched.sh` (line-ending check, Python lookup, content-only sync); the repository layout, the patch number blocks and the shape of `AGENTS.md`, `CONTRIBUTING.md` and the docs |
+| Project Pyrrhus (Killzone 2 PC port) | undecuple | <https://github.com/undecuple/project-pyrrhus> | MIT ([licenses/Project-Pyrrhus-LICENSE.txt](licenses/Project-Pyrrhus-LICENSE.txt)) | the shape of the public documentation (README sections, getting-files and release-criteria pages) and of the project site |
+| Upstream ps3recomp pull request #213 | NoahBPeterson | <https://github.com/sp00nznet/ps3recomp/pull/213> | MIT | the real SPURS kernel's rule for which workload runs, through Project Helghast's patch 1074 (our 1017) |
+
+## Graphics
+
+| Component | Author | Licence | What was used |
+|---|---|---|---|
+| FidelityFX Super Resolution 1 (`ffx_a.h`, `ffx_fsr1.h`) | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-FSR1-LICENSE.txt](licenses/AMD-FidelityFX-FSR1-LICENSE.txt)) | the EASU upscaler and RCAS sharpener, unmodified, added by patch 2033 under `libs/video/vulkan/ffx/` |
+
+## Libraries the build links or loads (not part of this repository)
+
+SDL2 (zlib licence), zlib (zlib licence), glslang (BSD-3-Clause and others), the Vulkan loader (Apache-2.0) and
+FFmpeg (LGPL-2.1 or later, loaded at run time from the player's own copy; the port only includes its headers).
+They come from your system or toolchain; see [docs/BUILDING.md](docs/BUILDING.md).
+
+## The game
+
+Killzone and Killzone HD are (c) Sony Interactive Entertainment. Killzone was created by Guerrilla Games. This
+project is not affiliated with or endorsed by Sony Interactive Entertainment or Guerrilla Games. It contains no game code, data, assets, keys or firmware: every player
+builds the port from their own copy of the game. Addresses, structure layouts and formulas recovered from the game
+(in code comments, `re/` and the docs) are facts needed for interoperability, not copied code.
+
+## How AI was used
+
+This project is developed by one person with AI coding agents (Claude Code). Patches written with an agent say so
+in a `Co-Authored-By:` line. See the README's "How AI was used".

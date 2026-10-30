@@ -1,0 +1,217 @@
+From 09ca6f56d6bdc3bcc7f25fc43e2f95decae1ec16 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 22:00:48 -0300
+Subject: [PATCH] spu: lighter per-step dispatch, inline MFC parameter
+ channels, pmaddwd mpy*
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/spu/spu_channels.c |  4 ++++
+ runtime/spu/spu_context.h  | 24 +++++++++++++++++++++++-
+ runtime/spu/spu_drain.c    | 11 +++++++++--
+ runtime/spu/spu_helpers.h  | 30 ++++++++++++++++++++++++------
+ runtime/spu/spu_lockstep.c |  2 +-
+ runtime/spu/spu_lockstep.h |  6 +++++-
+ 6 files changed, 66 insertions(+), 11 deletions(-)
+
+diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
+index 5fc50208..7bc69847 100644
+--- a/runtime/spu/spu_channels.c
++++ b/runtime/spu/spu_channels.c
+@@ -12,6 +12,10 @@
+  * embed one), in a small lazily-populated registry.
+  */
+ 
++#if defined(__SSE__) || defined(_M_X64)
++#define SPU_CHANNELS_IMPL   /* the real spu_wrch, not the inline latch (spu_context.h) */
++#include <xmmintrin.h>
++#endif
+ #include "spu_dma.h"
+ #include "spu_coherency.h" /* lock-line lock + PPU-write coherence bitmap */
+ #include "spu_helpers.h"   /* spu_splat_u32 / spu_ls_read128 (SMC microstep) */
+diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
+index c5ccbec7..10103727 100644
+--- a/runtime/spu/spu_context.h
++++ b/runtime/spu/spu_context.h
+@@ -876,7 +876,7 @@ extern SPU_THREAD_LOCAL uint32_t g_spu_pch[8];
+ extern SPU_THREAD_LOCAL unsigned g_spu_pch_n;
+ 
+ /* Central per-transfer hooks (stubbed in spu_drain.c until their milestones). */
+-void yz_lockstep_tick(spu_context* ctx);             /* round-robin token gate */
++#include "spu_lockstep.h"                           /* yz_lockstep_tick: round-robin token gate */
+ void spu_task_launch_check(spu_context* ctx, void* fn); /* SPURS task-launch    */
+ /* Complete ordered hop; the launch-only ABI above does not tick lockstep. */
+ void spu_drain_hop(spu_context* ctx, void (*fn)(spu_context*));
+@@ -1063,6 +1063,28 @@ void spu_direct_init(void);
+  * host-frame return as SPU_RET, publishing the register actually branched. */
+ #define SPU_RET_REG(ctx, n) do {                                       (ctx)->pc = (ctx)->gpr[n]._u32[0];                             if ((ctx)->host_depth == 0)                                        g_spu_trampoline_fn = spu_indirect_branch;                 return;                                                    } while (0)
+ 
++/* The MFC parameter channels (LSA, EA, size, tag, tag mask) only latch a
++ * value; lifted code writes five of them per DMA, and the out-of-line
++ * spu_wrch (diagnostics, the atomic check, the engine lookup) was ~6% of the
++ * SPU threads in Killzone HD. Latch them inline; everything else still goes
++ * through spu_wrch. SPU_CHHIST no longer counts these five. */
++#if !defined(__cplusplus) && !defined(SPU_CHANNELS_IMPL)
++void spu_wrch(spu_context* ctx, uint32_t channel, u128 value);
++static inline void spu_wrch_inline(spu_context* ctx, uint32_t channel, u128 value)
++{
++    switch (channel) {
++    case MFC_LSA:       ctx->mfc_lsa = value._u32[0]; return;
++    case MFC_EAH:       ctx->mfc_eah = value._u32[0]; return;
++    case MFC_EAL:       ctx->mfc_eal = value._u32[0]; return;
++    case MFC_Size:      ctx->mfc_size = value._u32[0]; return;
++    case MFC_TagID:     ctx->mfc_tag = value._u32[0] & 0x1F; return;
++    case MFC_WrTagMask: ctx->mfc_tag_mask = value._u32[0]; return;
++    default:            spu_wrch(ctx, channel, value); return;
++    }
++}
++#define spu_wrch(ctx, channel, value) spu_wrch_inline(ctx, channel, value)   /* unparenthesized: also rewrites declarations */
++#endif
++
+ #ifdef __cplusplus
+ } /* extern "C" */
+ #endif
+diff --git a/runtime/spu/spu_drain.c b/runtime/spu/spu_drain.c
+index 49bc2b94..04a569cd 100644
+--- a/runtime/spu/spu_drain.c
++++ b/runtime/spu/spu_drain.c
+@@ -173,12 +173,18 @@ static void spu_task_launch_slow(spu_context* ctx)
+      * every step, so catch it here too. Step 0 is the real entry. */
+     static int s_no_ls0 = -1;
+     if (s_no_ls0 < 0) s_no_ls0 = getenv("SPU_NO_LS0_END") ? 1 : 0;
++    /* One flag for the per-step traces below: this runs on every trampoline
++     * step, and a handful of separately cached getenv checks were ~2% of
++     * the SPU threads. */
++    static int s_diag = -1;
++    if (s_diag < 0) s_diag = (getenv("SPU_EXITTRACE") || getenv("SPU_STEPTRACE") ||
++                              getenv("SPU_JOBDRAIN")) ? 1 : 0;
+     /* SPU_EXITTRACE=<img>: remember the last PCs this image executed and dump
+      * them when the job ends. "Why did it exit here" is a question about the
+      * path taken, and a forward trace from the entry never reaches far enough
+      * to show it. */
+     static int64_t s_et = -2;
+-    if (s_et == -2) { const char* e = getenv("SPU_EXITTRACE");
++    if (s_diag && s_et == -2) { const char* e = getenv("SPU_EXITTRACE");
+                       s_et = e ? strtol(e, 0, 0) : -1; }
+     static uint32_t s_ring[64]; static uint32_t s_ri;
+     if (s_et >= 0 && ctx->image_id == s_et)
+@@ -199,7 +205,7 @@ static void spu_task_launch_slow(spu_context* ctx)
+     /* SPU_STEPTRACE=<img>: pc and the argument registers at every trampoline
+      * step. This runs on each drain iteration, so it is the finest-grained
+      * view of a register file changing under a running job. */
+-    { static int64_t s_t = -2;
++    if (s_diag) { static int64_t s_t = -2;
+       if (s_t == -2) { const char* e = getenv("SPU_STEPTRACE"); s_t = e ? strtol(e,0,0) : -1; }
+       static int64_t s_from = -2;
+       if (s_from == -2) { const char* e = getenv("SPU_STEPTRACE_FROM");
+@@ -219,6 +225,7 @@ static void spu_task_launch_slow(spu_context* ctx)
+     if (g_pm_flow_ctx == (void*)ctx && g_pm_flow_n < 8192)
+         g_pm_flow_buf[g_pm_flow_n++] = ctx->pc;
+ 
++    if (!s_diag) return;
+     static int s_on = -1;
+     if (s_on < 0) s_on = getenv("SPU_JOBDRAIN") ? 1 : 0;
+     if (!s_on || ctx->image_id != 2 || !ctx->policy_mode) return;
+diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
+index df207654..4e6daa23 100644
+--- a/runtime/spu/spu_helpers.h
++++ b/runtime/spu/spu_helpers.h
+@@ -1980,8 +1980,26 @@ static inline u128 spu_cg(u128 a, u128 b) {
+ static inline u128 spu_bg(u128 a, u128 b) {
+     return spu__st(vshrq_n_u32(vcgeq_u32(spu__ld(b), spu__ld(a)), 31));
+ }
++/* Signed low halfword x low halfword, a 32-bit product per word: mpy, mpys,
++ * mpya. On x86 one pmaddwd against b with its high halves cleared (the second
++ * pair then contributes 0) instead of four shifts and a pmulld. */
++#if defined(__AVX2__) && !defined(__ARM_NEON)
++static inline int32x4_t spu__mul16s(uint32x4_t a, uint32x4_t b) {
++    return _mm_madd_epi16(a, _mm_and_si128(b, _mm_set1_epi32(0xFFFF)));
++}
++static inline int32x4_t spu__mul16hs(uint32x4_t a, uint32x4_t b) {   /* high x high: mpyhh, mpyhha */
++    return _mm_madd_epi16(_mm_and_si128(a, _mm_set1_epi32((int)0xFFFF0000u)), b);
++}
++#else
++static inline int32x4_t spu__mul16s(uint32x4_t a, uint32x4_t b) {
++    return vmulq_s32(vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(a), 16), 16), vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(b), 16), 16));
++}
++static inline int32x4_t spu__mul16hs(uint32x4_t a, uint32x4_t b) {
++    return vmulq_s32(vshrq_n_s32(vreinterpretq_s32_u32(a), 16), vshrq_n_s32(vreinterpretq_s32_u32(b), 16));
++}
++#endif
+ static inline u128 spu_mpy(u128 a, u128 b) {
+-    return spu__st(vreinterpretq_u32_s32(vmulq_s32(vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(spu__ld(a)), 16), 16), vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(spu__ld(b)), 16), 16))));
++    return spu__st(vreinterpretq_u32_s32(spu__mul16s(spu__ld(a), spu__ld(b))));
+ }
+ static inline u128 spu_mpyu(u128 a, u128 b) {
+     const uint32x4_t m = vdupq_n_u32(0xFFFFu);
+@@ -1991,13 +2009,13 @@ static inline u128 spu_mpyh(u128 a, u128 b) {
+     return spu__st(vshlq_n_u32(vmulq_u32(vshrq_n_u32(spu__ld(a), 16), spu__ld(b)), 16));
+ }
+ static inline u128 spu_mpyhh(u128 a, u128 b) {
+-    return spu__st(vreinterpretq_u32_s32(vmulq_s32(vshrq_n_s32(vreinterpretq_s32_u32(spu__ld(a)), 16), vshrq_n_s32(vreinterpretq_s32_u32(spu__ld(b)), 16))));
++    return spu__st(vreinterpretq_u32_s32(spu__mul16hs(spu__ld(a), spu__ld(b))));
+ }
+ static inline u128 spu_mpyhhu(u128 a, u128 b) {
+     return spu__st(vmulq_u32(vshrq_n_u32(spu__ld(a), 16), vshrq_n_u32(spu__ld(b), 16)));
+ }
+ static inline u128 spu_mpys(u128 a, u128 b) {
+-    const int32x4_t p = vmulq_s32(vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(spu__ld(a)), 16), 16), vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(spu__ld(b)), 16), 16));
++    const int32x4_t p = spu__mul16s(spu__ld(a), spu__ld(b));
+     return spu__st(vreinterpretq_u32_s32(vshrq_n_s32(p, 16)));
+ }
+ static inline u128 spu_sumb(u128 a, u128 b) {
+@@ -2029,7 +2047,7 @@ static inline u128 spu_sfhi(u128 a, int32_t imm) {
+     return spu__st(vreinterpretq_u32_u16(vsubq_u16(vdupq_n_u16((uint16_t)imm), vreinterpretq_u16_u32(spu__ld(a)))));
+ }
+ static inline u128 spu_mpyi(u128 a, int32_t imm) {
+-    return spu__st(vreinterpretq_u32_s32(vmulq_s32(vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(spu__ld(a)), 16), 16), vdupq_n_s32((int16_t)imm))));
++    return spu__st(vreinterpretq_u32_s32(spu__mul16s(spu__ld(a), vdupq_n_u32((uint16_t)imm))));
+ }
+ static inline u128 spu_mpyui(u128 a, int32_t imm) {
+     return spu__st(vmulq_u32(vandq_u32(spu__ld(a), vdupq_n_u32(0xFFFFu)), vdupq_n_u32((uint16_t)imm)));
+@@ -2049,10 +2067,10 @@ static inline u128 spu_rotmai(u128 a, int i7) {
+     return spu__st(vreinterpretq_u32_s32(vshlq_s32(vreinterpretq_s32_u32(spu__ld(a)), vdupq_n_s32(-((0 - i7) & 0x3F)))));
+ }
+ static inline u128 spu_mpya(u128 a, u128 b, u128 c) {
+-    return spu__st(vaddq_u32(vreinterpretq_u32_s32(vmulq_s32(vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(spu__ld(a)), 16), 16), vshrq_n_s32(vshlq_n_s32(vreinterpretq_s32_u32(spu__ld(b)), 16), 16))), spu__ld(c)));
++    return spu__st(vaddq_u32(vreinterpretq_u32_s32(spu__mul16s(spu__ld(a), spu__ld(b))), spu__ld(c)));
+ }
+ static inline u128 spu_mpyhha(u128 a, u128 b, u128 t) {
+-    return spu__st(vaddq_u32(vreinterpretq_u32_s32(vmulq_s32(vshrq_n_s32(vreinterpretq_s32_u32(spu__ld(a)), 16), vshrq_n_s32(vreinterpretq_s32_u32(spu__ld(b)), 16))), spu__ld(t)));
++    return spu__st(vaddq_u32(vreinterpretq_u32_s32(spu__mul16hs(spu__ld(a), spu__ld(b))), spu__ld(t)));
+ }
+ static inline u128 spu_mpyhhau(u128 a, u128 b, u128 t) {
+     return spu__st(vmlaq_u32(spu__ld(t), vshrq_n_u32(spu__ld(a), 16), vshrq_n_u32(spu__ld(b), 16)));
+diff --git a/runtime/spu/spu_lockstep.c b/runtime/spu/spu_lockstep.c
+index 22f2e29d..2e15df7d 100644
+--- a/runtime/spu/spu_lockstep.c
++++ b/runtime/spu/spu_lockstep.c
+@@ -231,7 +231,7 @@ void yz_lockstep_unregister(spu_context* ctx)
+     LS_UNLOCK();
+ }
+ 
+-void yz_lockstep_tick(spu_context* ctx)
++void yz_lockstep_tick_slow(spu_context* ctx)
+ {
+     if (!ls_hot()) return;
+     if (++ctx->lockstep_quantum_ctr < s_quantum) return;
+diff --git a/runtime/spu/spu_lockstep.h b/runtime/spu/spu_lockstep.h
+index 0388d45c..1917c2e9 100644
+--- a/runtime/spu/spu_lockstep.h
++++ b/runtime/spu/spu_lockstep.h
+@@ -40,7 +40,11 @@ void yz_lockstep_unregister(struct spu_context* ctx);
+ /* Per-tick-site call (SPU_DRAIN): counts one quantum unit and hands the token
+  * to the next runnable member once the quantum expires, blocking until granted
+  * the token again. First line is a single g_yz_lockstep_on==0 check when off. */
+-void yz_lockstep_tick(struct spu_context* ctx);
++void yz_lockstep_tick_slow(struct spu_context* ctx);
++static inline void yz_lockstep_tick(struct spu_context* ctx)
++{
++    if (g_yz_lockstep_on) yz_lockstep_tick_slow(ctx);
++}
+ 
+ /* Bracket a blocking channel wait: release the token before the OS wait, rejoin
+  * the rotation on wake. No-ops when unset. */
+-- 
+2.56.0
+

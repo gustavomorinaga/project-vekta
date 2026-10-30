@@ -1,0 +1,60 @@
+From 08c40a16796a8699b28807bb5d38c12c547679de Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 19:11:59 -0300
+Subject: [PATCH] spu: SSE absdb/avgb; sync is a compiler barrier on x86
+
+The scalar absdb/avgb loops stayed out-of-line calls (absdb was 4% of
+Killzone HD's SPU time). On x86 (TSO) the lifted sync/dsync needs no mfence:
+other threads reach an SPU's LS only through the runtime's locked DMA calls.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/spu/spu_helpers.h | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
+index f04fda63..ec5594d0 100644
+--- a/runtime/spu/spu_helpers.h
++++ b/runtime/spu/spu_helpers.h
+@@ -43,6 +43,13 @@ static inline int spu_clz32(uint32_t x) { return x ? __builtin_clz(x) : 32; }
+  * optimizer. */
+ #ifdef _MSC_VER
+ static inline void spu_arch_fence(void) { long spu_fence_tmp = 0; _InterlockedExchange(&spu_fence_tmp, 1); }
++#elif defined(__x86_64__) || defined(__i386__)
++/* x86 is TSO: stores are already seen in order, and the only reordering left,
++ * a later load passing an earlier store, cannot be observed here -- another
++ * thread reaches an SPU's LS only through the runtime's locked DMA calls. So
++ * the compiler barrier is the whole of it. The mfence it was cost Killzone HD's
++ * sync-heavy jm module (10k sync sites) a full serialisation each. */
++static inline void spu_arch_fence(void) { __asm__ __volatile__("" ::: "memory"); }
+ #else
+ static inline void spu_arch_fence(void) { __atomic_thread_fence(__ATOMIC_SEQ_CST); }
+ #endif
+@@ -2268,8 +2275,24 @@ static inline u128 spu_fsm(u128 a) { return spu_fsm_ref(a); }
+ static inline u128 spu_fsmh(u128 a) { return spu_fsmh_ref(a); }
+ static inline u128 spu_fsmb(u128 a) { return spu_fsmb_ref(a); }
+ #else
++#if defined(__SSE2__) && !defined(SPU_SCALAR_HELPERS)
++/* Byte-wise, so the lanes' order inside the u128 does not matter. The scalar loops
++ * stayed out-of-line calls (absdb was 4% of Killzone HD's SPU time). */
++#include <emmintrin.h>
++static inline u128 spu_absdb(u128 a, u128 b) {
++    __m128i x, y; memcpy(&x, &a, 16); memcpy(&y, &b, 16);
++    const __m128i r = _mm_or_si128(_mm_subs_epu8(x, y), _mm_subs_epu8(y, x));
++    u128 o; memcpy(&o, &r, 16); return o;
++}
++static inline u128 spu_avgb(u128 a, u128 b) {
++    __m128i x, y; memcpy(&x, &a, 16); memcpy(&y, &b, 16);
++    const __m128i r = _mm_avg_epu8(x, y);   /* (x + y + 1) >> 1, as the SPU */
++    u128 o; memcpy(&o, &r, 16); return o;
++}
++#else
+ static inline u128 spu_absdb(u128 a, u128 b) { return spu_absdb_ref(a, b); }
+ static inline u128 spu_avgb(u128 a, u128 b) { return spu_avgb_ref(a, b); }
++#endif
+ static inline u128 spu_ceqb(u128 a, u128 b) { return spu_ceqb_ref(a, b); }
+ static inline u128 spu_cgtb(u128 a, u128 b) { return spu_cgtb_ref(a, b); }
+ static inline u128 spu_clgtb(u128 a, u128 b) { return spu_clgtb_ref(a, b); }
+-- 
+2.56.0
+

@@ -1,0 +1,61 @@
+From 67a3d0e04b3a37e9c8626645d30fb2a236d1e76a Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 16 Oct 2026 12:04:47 -0300
+Subject: [PATCH] spurs: taskset bitset updates from the host are atomic
+ with SPU lock-line ops
+
+spurs_bitset_set/clear read and wrote the word in two steps, so an SPU
+PUTLLC committing the same line in between was overwritten (or overwrote
+the host's bit). The update now runs under the lock-line lock and breaks
+any reservation on the line, as a PPU store does.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/spurs/spurs_taskset.h | 26 ++++++++++++++++++++------
+ 1 file changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/libs/spurs/spurs_taskset.h b/libs/spurs/spurs_taskset.h
+index 0c64b55e..cbb5b448 100644
+--- a/libs/spurs/spurs_taskset.h
++++ b/libs/spurs/spurs_taskset.h
+@@ -76,17 +76,31 @@ static inline uint32_t spurs_taskset_taskinfo_ea(uint32_t taskset_ea, uint32_t t
+ 
+ /* set/clear/test a task bit in a 128-bit bitset (bit 0 = MSB of word 0, per RPCS3
+  * atomic_tasks_bitset::get_bit). bitset_ea = taskset_ea + CSTS_READY etc. */
++/* The bitsets live in the taskset, which the SPU side updates with
++ * GETLLAR/PUTLLC on the same 128-byte lines. A plain read-modify-write from
++ * the host could land between an SPU's commit and lose it (or be lost), so
++ * the update is done under the lock-line lock, and an SPU holding a
++ * reservation on the line loses it and re-reads. */
++void spu_lockline_lock(void);
++void spu_lockline_unlock(void);
++int  spu_coh_is_reserved(uint32_t addr);
++void spu_coh_notify_write(uint32_t addr);
++static inline void spurs_bitset_rmw(uint32_t word_ea, uint32_t set, uint32_t clr)
++{
++    spu_lockline_lock();
++    uint32_t v; memcpy(&v, vm_base + word_ea, 4);
++    v = __builtin_bswap32((__builtin_bswap32(v) | set) & ~clr);
++    memcpy(vm_base + word_ea, &v, 4);
++    if (spu_coh_is_reserved(word_ea)) spu_coh_notify_write(word_ea);
++    spu_lockline_unlock();
++}
+ static inline void spurs_bitset_set(uint32_t bitset_ea, uint32_t taskId)
+ {
+-    uint32_t word_ea = bitset_ea + (taskId / 32) * 4;
+-    uint32_t mask = (1u << 31) >> (taskId % 32);
+-    vm_write32(word_ea, vm_read32(word_ea) | mask);
++    spurs_bitset_rmw(bitset_ea + (taskId / 32) * 4, (1u << 31) >> (taskId % 32), 0);
+ }
+ static inline void spurs_bitset_clear(uint32_t bitset_ea, uint32_t taskId)
+ {
+-    uint32_t word_ea = bitset_ea + (taskId / 32) * 4;
+-    uint32_t mask = (1u << 31) >> (taskId % 32);
+-    vm_write32(word_ea, vm_read32(word_ea) & ~mask);
++    spurs_bitset_rmw(bitset_ea + (taskId / 32) * 4, 0, (1u << 31) >> (taskId % 32));
+ }
+ static inline int spurs_bitset_test(uint32_t bitset_ea, uint32_t taskId)
+ {
+-- 
+2.56.0
+

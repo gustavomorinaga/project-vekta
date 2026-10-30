@@ -1,0 +1,44 @@
+# CI without the game (the layout follows Project Helghast and Project Pyrrhus, by undecuple, MIT). The program cannot
+# be built here: the translated code comes from the player's own EBOOT and is never committed. So this checks what can
+# be checked without game data: that every patch applies to the pinned ps3recomp, that the tree holds no game files,
+# personal paths, keys or untranslated text, that the scripts parse, and a secret scan of the whole history.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Patches apply to the pinned ps3recomp
+        run: bash tools/ps3recomp-patched.sh
+      - name: No game files, personal paths, keys or untranslated text
+        run: sh tools/check-tree.sh
+      - name: Scripts parse
+        run: |
+          set -e
+          for f in tools/*.sh; do sh -n "$f"; done
+          python3 -m py_compile tools/*.py
+          python3 -c "import json; json.load(open('.recomp.json'))"
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Gitleaks (full history)
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.18.4 git --redact --verbose --exit-code 1 /repo

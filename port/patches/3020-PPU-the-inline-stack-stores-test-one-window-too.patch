@@ -1,0 +1,39 @@
+From 94249efc76288ed5826f52efe60950e85d4d8da4 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 23:18:14 -0300
+Subject: [PATCH] PPU: the inline stack stores test one window too
+
+vm_write*_stk tested the store switch, the barrier watch, the low pages and
+the mapping's end; [0x10000, 0x10000 + g_stk_span) holds the same, computed
+with the store window. Killzone HD at 144 Hz: 106.5 -> 107.0 fps, within the
+benchmark's noise.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/ppu/ppu_loader.cpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index 91465f59..c9da2303 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -2128,10 +2128,15 @@ static inline int vm_st_plain(uint32_t a, uint32_t n)
+  * clears g_st_span too. (The lock-line bitmap is all zeros until an SPU
+  * reserves a line, so the window path reads it without g_spu_coh_armed.) */
+ extern "C" uint32_t g_st_span = 0;
++/* The lifted code's inline stack stores (vm_write*_stk, ppu_recomp.h) test
++ * [0x10000, 0x10000 + g_stk_span): no store diagnostic armed, inside the
++ * mapping. No SPU reserves a stack line, so they skip the lock-line bitmap. */
++extern "C" uint32_t g_stk_span = 0;
+ extern "C" void vm_st_window_refresh(void)
+ {
+-    if (g_barrier_sync_watch | g_null_sweep_hi | (uint32_t)s_st_watch_env) { g_st_span = 0; return; }
+     const uint32_t top = (ppu_vm_size && ppu_vm_size < SPU_RAW_BASE) ? ppu_vm_size : SPU_RAW_BASE;
++    g_stk_span = (vm_inline_st_ok && !g_barrier_sync_watch) ? top - 0x10000u - 8u : 0;
++    if (g_barrier_sync_watch | g_null_sweep_hi | (uint32_t)s_st_watch_env) { g_st_span = 0; return; }
+     g_st_span = top - 0x1000u - 8u;   /* room for the widest store */
+ }
+ #define VM_STORE_WINDOW(ea, val, n, bswap)                                    \
+-- 
+2.56.0
+

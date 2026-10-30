@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you refer to this project, please cite it as below."
+title: "Project Vekta: an unofficial PC port of Killzone HD by static recompilation"
+type: software
+authors:
+  - given-names: Gustavo
+    family-names: Morinaga
+    email: me@gustavomorinaga.dev
+license: MIT
+repository-code: "https://github.com/gustavomorinaga/project-vekta"
+keywords: [static recompilation, ps3recomp, PlayStation 3, Vulkan, PC port]

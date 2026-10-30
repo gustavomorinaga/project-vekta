@@ -1,0 +1,170 @@
+From a369d39021ee20e4aedc7d1bb80e2b4b8f521739 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 15 Oct 2026 00:59:26 -0300
+Subject: [PATCH] spu: DMA fast path without the env-gated diagnostics;
+ overlay signature pre-check
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/spu/spu_channels.c |  3 +-
+ runtime/spu/spu_dma.h      | 95 ++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 94 insertions(+), 4 deletions(-)
+
+diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
+index 7bc69847..6957480d 100644
+--- a/runtime/spu/spu_channels.c
++++ b/runtime/spu/spu_channels.c
+@@ -2155,7 +2155,8 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
+     if (size < 512 && !spu_ovl_ea_known(ea)) return;
+     for (int i = 0; i < nsrc; i++) {
+         const spu_ovl_src* o = &s_ovl_src[i];
+-        int hit = o->has_sig ? (size >= 512 && memcmp(ls, o->sig, 16) == 0)
++        /* first word before the memcmp: a GET of 512+ bytes checks every source */
++        int hit = o->has_sig ? (size >= 512 && ls[0] == o->sig[0] && ls[4] == o->sig[4] && memcmp(ls, o->sig, 16) == 0)
+                              : (o->src_ea == ea);
+         if (hit) {
+             if (o->span) {
+diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
+index 22d83614..2ec1b0fc 100644
+--- a/runtime/spu/spu_dma.h
++++ b/runtime/spu/spu_dma.h
+@@ -168,6 +168,16 @@ static inline int mfc_is_fence(uint32_t cmd)
+  * Execute a single DMA transfer between local store and main memory.
+  * Returns 0 on success, -1 on error.
+  */
++/* spu_coh_is_reserved inline (spu_coherency.c): a PUT asks once per 128-byte line. */
++extern volatile int g_spu_coh_armed;
++extern unsigned char g_spu_coh_bitmap[];
++static inline int spu_coh_line_reserved(uint32_t addr)
++{
++    if (!g_spu_coh_armed) return 0;
++    const uint32_t line = addr >> 7;
++    return (g_spu_coh_bitmap[line >> 3] >> (line & 7)) & 1u;
++}
++
+ /* SPU_DMA_STATS=1: GET/PUT counts and bytes per 4 s, by 256 MB region of the EA.
+  * Diagnostic only (unlocked counters). */
+ static inline void spu_dma_stats_note(int put, uint32_t ea, uint32_t size)
+@@ -187,6 +197,84 @@ static inline void spu_dma_stats_note(int put, uint32_t ea, uint32_t size)
+ }
+ #define SPU_DMA_STATS(put, ea, size) spu_dma_stats_note((put), (ea), (size))
+ 
++/* The transfer without the diagnostics. Every SPU DMA goes through
++ * mfc_do_transfer, and ~20 env-gated probes (each its own cached getenv, a
++ * branch and code in the way) were ~5% of the SPU threads in Killzone HD at
++ * three million transfers a second. With none of them set -- mfc_fast_ok --
++ * this is the whole transfer: the MFC's alignment rules, the bounds, the
++ * copy, and for a PUT the reservation coherence and the RSX put hook, as
++ * below. Anything unusual (an uncommitted EA, a sync watch, the null-page GET
++ * zeroing) goes back to the full path. */
++static int mfc_fast_ok(void)
++{
++    static int ok = -1;
++    if (__builtin_expect(ok >= 0, 1)) return ok;
++    static const char* const vars[] = {
++        "SPU_DMA_WATCH", "SPU_DMA_RANGE", "SPU_DMA_LAX", "SPU_DMACHK", "SPU_GETHIST",
++        "SPU_PUTHIST", "SPU_MFC_TRACE", "SPU_DMA_SKIP_DUMP", "SPU_STACKEA_WATCH",
++        "SPU_DMATRACE_ALL", "YDKJ_DMA_IMG", "SPU_DUMP_GET", "SPU_DSP_IMAGE_EA",
++        "LBP_SKIP_NULL_DMA", "SPU_OVL_DIAG", "SPU_SMC_WATCH", "SPU_POISON_DMA", "SPU_DMA_STATS" };
++    int any = 0;
++    for (unsigned i = 0; i < sizeof vars / sizeof vars[0]; i++) any |= getenv(vars[i]) != NULL;
++#ifdef SPU_DMA_LOG
++    any = 1;
++#endif
++    ok = !any;
++    return ok;
++}
++
++/* 1 = done (rc in *rc), 0 = take the full path. */
++static inline int mfc_do_transfer_fast(spu_context* spu, uint32_t lsa, uint64_t ea,
++                                       uint32_t size, uint32_t cmd, int* rc)
++{
++    extern uint32_t g_barrier_sync_watch;
++    if (g_barrier_sync_watch) return 0;
++    const int get = mfc_is_get(cmd), put = mfc_is_put(cmd);
++    if ((size == 0) || (size > 0x4000) || (size >= 16 && (size & 15)) ||
++        (((lsa ^ (uint32_t)ea) & 15) != 0) || (put && (uint32_t)ea < 0x10000u))
++        return 0;                                    /* malformed: reported there */
++    if (size > MFC_MAX_DMA_SIZE) { *rc = -1; return 1; }
++    lsa &= SPU_LS_MASK;
++    if ((uint64_t)lsa + size > (uint64_t)SPU_LS_SIZE) { *rc = -1; return 1; }
++    if (!mfc_ea_range_committed(ea, size)) return 0;
++    uint8_t* ls_ptr = &spu->ls[lsa];
++    uint8_t* ea_ptr = vm_base + (uint32_t)ea;
++    if (spu->image_id == 22 && get && size > 0x100) { extern int g_cri_video_dma; g_cri_video_dma = 1; }
++    if (get) {
++        { int n; (void)spu_ls_watch_list(&n); if (n) return 0; }   /* reported by the full path */
++        memcpy(ls_ptr, ea_ptr, size);
++        { extern void spu_overlay_note_get(spu_context*, uint32_t, const uint8_t*, uint32_t);
++          spu_overlay_note_get(spu, (uint32_t)ea, (const uint8_t*)ls_ptr, size); }
++    } else if (put) {
++        extern void spu_coh_notify_write_except(uint32_t, const void*);
++        extern void spu_lockline_lock(void);
++        extern void spu_lockline_unlock(void);
++        extern void spu_lockguard_check(spu_context*, uint32_t, const uint8_t*, uint32_t, const char*);
++        spu_lockguard_check(spu, (uint32_t)ea, (const uint8_t*)ls_ptr, size, "PUT");
++        const uint32_t a0 = (uint32_t)ea & ~127u, a1 = ((uint32_t)ea + size - 1u) & ~127u;
++        int span_reserved = 0;
++        for (uint32_t a = a0; ; a += 128u) {
++            if (spu_coh_line_reserved(a)) { span_reserved = 1; break; }
++            if (a == a1) break;
++        }
++        if (span_reserved) {
++            spu_lockline_lock();
++            memcpy(ea_ptr, ls_ptr, size);
++            for (uint32_t a = a0; ; a += 128u) {
++                if (spu_coh_line_reserved(a)) spu_coh_notify_write_except(a, spu);
++                if (a == a1) break;
++            }
++            spu_lockline_unlock();
++        } else {
++            memcpy(ea_ptr, ls_ptr, size);
++        }
++        { extern void (*g_spu_put_hook)(uint32_t ea, uint32_t size);
++          if (g_spu_put_hook) g_spu_put_hook((uint32_t)ea, size); }
++    }
++    *rc = 0;
++    return 1;
++}
++
+ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
+                                    uint32_t size, uint32_t cmd)
+ {
+@@ -223,6 +311,7 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
+         spu_lockline_unlock();
+         return 0;
+     }
++    { int rc; if (__builtin_expect(mfc_fast_ok(), 1) && mfc_do_transfer_fast(spu, lsa, ea, size, cmd, &rc)) return rc; }
+     /* SPU_DMA_WATCH=<hex>: report any transfer whose destination RANGE covers
+      * this guest address. A DMA landing in the loaded ELF image is always a
+      * bug, and it is invisible to the sampling traces -- YDKJ had an SPU job
+@@ -705,7 +794,7 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
+             uint32_t a1 = ((uint32_t)ea + size - 1u) & ~127u;
+             int span_reserved = 0;
+             for (uint32_t a = a0; ; a += 128u) {
+-                if (spu_coh_is_reserved(a)) { span_reserved = 1; break; }
++                if (spu_coh_line_reserved(a)) { span_reserved = 1; break; }
+                 if (a == a1) break;
+             }
+             /* Lines the unlocked pass left for the locked one: a 16 KiB
+@@ -740,7 +829,7 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
+                 memcpy(ea_ptr, ls_ptr, size);
+                 SPU_DMA_STATS(1, (uint32_t)ea, size);
+                 for (uint32_t a = a0; ; a += 128u) {
+-                    if (spu_coh_is_reserved(a)) spu_coh_notify_write_except(a, spu);
++                    if (spu_coh_line_reserved(a)) spu_coh_notify_write_except(a, spu);
+                     if (a == a1) break;
+                 }
+                 spu_lockline_unlock();
+@@ -748,7 +837,7 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
+                 memcpy(ea_ptr, ls_ptr, size);
+                 SPU_DMA_STATS(1, (uint32_t)ea, size);
+                 for (uint32_t a = a0; ; a += 128u) {
+-                    if (spu_coh_is_reserved(a)) {
++                    if (spu_coh_line_reserved(a)) {
+                         spu_lockline_lock();
+                         spu_coh_notify_write_except(a, spu);
+                         spu_lockline_unlock();
+-- 
+2.56.0
+

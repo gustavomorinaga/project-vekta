@@ -1,0 +1,36 @@
+name: Performance report
+description: Frame rate, stutter or input lag on your hardware
+labels: [performance, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports from hardware other than the maintainer's (Linux, RTX 3070 Ti) are very welcome. Numbers are best from the `[kz-stats]` lines of the log (flips per 2 s) or an overlay such as MangoHUD.
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: "OS, CPU, GPU, driver, memory."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Port build
+      description: "The commit you built, and whether you ran tools/pgo.sh."
+    validations:
+      required: true
+  - type: input
+    id: settings
+    attributes:
+      label: Settings
+      description: "Frame-rate limit, resolution, internal scale, upscaler, V-Sync."
+    validations:
+      required: true
+  - type: textarea
+    id: numbers
+    attributes:
+      label: What you measured
+      description: "Where (level, place), for how long, and the frame rate or frame times you saw."
+    validations:
+      required: true

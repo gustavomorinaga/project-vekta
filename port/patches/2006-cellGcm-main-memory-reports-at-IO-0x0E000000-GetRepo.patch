@@ -1,0 +1,88 @@
+From b6edd3ca0f2e6f9578fcd69ab50c9d8e3020a77d Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 07:53:36 -0300
+Subject: [PATCH] cellGcm: main-memory reports at IO 0x0E000000;
+ GetReportDataLocation honors LOCATION_MAIN
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/cellGcmSys.c | 35 +++++++++++++++++++++++++++++++----
+ 1 file changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 6cd59df7..5f64a730 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -372,6 +372,7 @@ static u64 gcm_report_timestamp(void)
+  * pointer would be read as a guest offset and land out of bounds. */
+ #define GCM_LABEL_GUEST_BASE  (VM_HLE_INJECT_BASE + 0x0000u)
+ #define GCM_LABEL_STRIDE      0x10u
++#define GCM_REPORT_MAIN_IO    0x0E000000u   /* IO offset of main-memory reports */
+ static u32 s_labels[CELL_GCM_MAX_LABEL_COUNT];
+ 
+ /* GCM control register (put/get/ref). This MUST live in guest memory: the title
+@@ -2065,8 +2066,12 @@ static void gcm_3d_method(rsx_state* st, u32 m, u32 v, int legacy_state_live)
+         const int main_mem = s_report_dma == 0xFEED0001u || s_report_dma == 0xBAD68000u;
+         { static int rn = 0; if (PS3_LOG_FIRST(rn, 6)) printf("[GET_REPORT] type=%u off=0x%X dma=0x%08X%c", v >> 24, off, s_report_dma, 10); }
+         if (main_mem) {
+-            /* CellGcmReportData, big-endian: u64 timer, u32 value, u32 padding. */
+-            const u32 rea = gcm_io2ea(off);
++            /* CellGcmReportData, big-endian: u64 timer, u32 value, u32 padding.
++             * Main-memory reports live at IO offset 0x0E000000 + off (the title
++             * maps that window with cellGcmMapEaIoAddress; RPCS3 resolves
++             * REPORT_LOCATION_MAIN the same way). The offset alone pointed into
++             * the command buffer at IO 0. */
++            const u32 rea = gcm_io2ea(GCM_REPORT_MAIN_IO + off);
+             if (rea) {
+                 vm_write32(rea, (u32)(ts >> 32));
+                 vm_write32(rea + 4u, (u32)ts);
+@@ -2375,6 +2380,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
+             { static int _rd = -1; if (_rd < 0) _rd = getenv("GCM_RECDBG") ? 1 : 0;
+               if (_rd) fprintf(stderr, "[JMP] %08X -> %08X (put=%08X)\n",
+                                s_fifo_getoff, w & 0x1FFFFFFCu, put); }
++            { static int cd = -1; if (cd < 0) cd = getenv("GCM_CALLDBG") ? 1 : 0;
++              if (cd) { static u32 seen[64]; static int ns; u32 tg = w & 0x1FFFFFFCu; int k;
++                for (k = 0; k < ns && seen[k] != (tg & ~0xFFFFu); k++) {}
++                if (k == ns && ns < 64) { seen[ns++] = tg & ~0xFFFFu;
++                  fprintf(stderr, "[JUMP] from io=%08X to io=%08X (ea %08X)\n", s_fifo_getoff, tg, gcm_io2ea(tg)); } } }
+             { u32 tgt = w & 0x1FFFFFFCu;
+               if (!gcm_io2ea(tgt)) { gcm_fifo_bad_branch("JUMP", tgt, w); gcm_fifo_dump_around(s_fifo_getoff); gcm_fifo_resync_why("unmapped-JUMP", &s_fifo_getoff, put); break; }
+               /* A JUMP to its own address is the "park the RSX here" idiom:
+@@ -2442,6 +2452,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
+             continue;
+         }
+         if ((w & 3) == 2) {                    /* CALL: offset | 2 */
++            { static int cd = -1; if (cd < 0) cd = getenv("GCM_CALLDBG") ? 1 : 0;
++              if (cd) { static u32 seen[64]; static int ns; u32 tg = w & 0x1FFFFFFCu; int k;
++                for (k = 0; k < ns && seen[k] != (tg & ~0xFFFFu); k++) {}
++                if (k == ns && ns < 64) { seen[ns++] = tg & ~0xFFFFu;
++                  fprintf(stderr, "[CALL] from io=%08X to io=%08X (ea %08X)\n", s_fifo_getoff, tg, gcm_io2ea(tg)); } } }
+             { u32 tgt = w & 0x1FFFFFFCu;
+               if (!gcm_io2ea(tgt)) { gcm_fifo_bad_branch("CALL", tgt, w); gcm_fifo_resync_why("unmapped-CALL", &s_fifo_getoff, put); break; }
+               s_fifo_calloff = s_fifo_getoff + 4;
+@@ -4366,8 +4381,20 @@ CellGcmReportData* cellGcmGetReportDataAddressLocation(u32 index, u32 location)
+ /* Get report value at index with location */
+ u32 cellGcmGetReportDataLocation(u32 index, u32 location)
+ {
+-    (void)location;
+-
++    /* CELL_GCM_LOCATION_MAIN: the report the RSX wrote to guest memory (see
++     * GET_REPORT). Killzone HD reads its occlusion queries this way; answering
++     * from the local-memory array returned 0 pixels for every query and the
++     * whole world was culled. */
++    { static int n = 0; static int on = -1; if (on < 0) on = getenv("GCM_REPORT_DBG") ? 1 : 0;
++      if (on && n++ < 40) {
++          const u32 ea = gcm_io2ea(GCM_REPORT_MAIN_IO + index * 16u);
++          fprintf(stderr, "[report] GetReportDataLocation(index=0x%X, loc=%u) ea=0x%08X main=0x%08X local=0x%08X\n",
++                  index, location, ea, ea ? vm_read32(ea + 8u) : 0u,
++                  index < CELL_GCM_MAX_REPORT_COUNT ? s_report_data[index].value : 0u); } }
++    if (location == 1u) {
++        const u32 ea = gcm_io2ea(GCM_REPORT_MAIN_IO + index * 16u);
++        return ea ? vm_read32(ea + 8u) : 0u;
++    }
+     if (index >= CELL_GCM_MAX_REPORT_COUNT)
+         return 0;
+ 
+-- 
+2.56.0
+

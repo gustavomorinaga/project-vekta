@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Vekta</title>
+<meta name="description" content="Project Vekta: an unofficial PC port of Killzone HD (PS3) by static recompilation, built on your PC from your own game. Linux and Windows, Vulkan.">
+<meta property="og:title" content="Project Vekta">
+<meta property="og:description" content="Killzone HD's own PS3 code, translated to C++ and running natively on your PC. Built from your own game.">
+<meta property="og:image" content="../assets/social-preview.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="wrap">
+  <img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320"
+       alt="Project Vekta. Killzone HD: unofficial PC port by static recompilation, built from your own game">
+  <nav class="tabs" aria-label="Sections">
+    <a href="#about">About</a>
+    <a href="#status">Status</a>
+    <a href="#shots">Screens</a>
+    <a href="#features">PC features</a>
+    <a href="#build">Build it</a>
+    <a href="#roadmap">Roadmap</a>
+    <a class="gh" href="https://github.com/gustavomorinaga/project-vekta">GitHub</a>
+  </nav>
+</header>
+
+<main class="wrap">
+  <section id="about" class="box">
+    <p class="kicker">Unofficial PC port · work in progress</p>
+    <h1>Killzone HD, native on PC</h1>
+    <p class="lead">Project Vekta runs the PS3 remaster of the first Killzone as a native Linux or Windows program.
+      The game's own PowerPC and Cell SPU code is translated to C++ ahead of time with
+      <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> and compiled on your machine; the PS3's system
+      software is reimplemented around it, and the graphics are replayed on Vulkan. It is not an emulator and not a
+      rewrite.</p>
+    <p><strong>You need your own copy of the game.</strong> This project contains only the port: code, patches,
+      tools and documentation. No game code, data, assets, keys or firmware are included or downloaded.</p>
+    <div class="btns">
+      <a class="btn" href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">Build it</a>
+      <a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>
+      <a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">Known issues</a>
+    </div>
+  </section>
+
+  <div class="cols">
+    <section id="status" class="box">
+      <h2>Status</h2>
+      <p class="dim">As of 2026-10-30, Linux x64 with an RTX 3070 Ti (the maintainer's machine).</p>
+      <div class="table-wrap">
+      <table>
+        <tr><th>Area</th><th>State</th><th>Notes</th></tr>
+        <tr><td>Boot, menus, movies, saves</td><td><span class="tag ok">works</span></td><td>intro movies, front end, options, pause, Continue</td></tr>
+        <tr><td>Level 1</td><td><span class="tag ok">works</span></td><td>played by hand from start to end</td></tr>
+        <tr><td>Levels 2 to 11</td><td><span class="tag part">partial</span></td><td>all load and reach gameplay; not each played to its end</td></tr>
+        <tr><td>Frame rate</td><td><span class="tag ok">60 fps</span></td><td>steady by default; optional 144 Hz mode at about 131 to 134 fps</td></tr>
+        <tr><td>Sound</td><td><span class="tag ok">works</span></td><td>stereo, 5.1 and 7.1; music through the firmware's MP3 decoder</td></tr>
+        <tr><td>Windows</td><td><span class="tag part">partial</span></td><td>cross-built exe runs under Wine, Proton and on Windows; campaign not checked there</td></tr>
+        <tr><td>Installer</td><td><span class="tag no">not yet</span></td><td>build from source for now</td></tr>
+      </table>
+      </div>
+    </section>
+
+    <aside class="box">
+      <h2>At a glance</h2>
+      <ul class="ticks">
+        <li>Game: Killzone HD, PS3 (NPUA80856), from the Killzone Trilogy disc</li>
+        <li>Recompiler: ps3recomp v0.18.0 plus 93 patches</li>
+        <li>Platforms: Linux x64 native, Windows x64 (cross-built)</li>
+        <li>Graphics: Vulkan</li>
+        <li>CPU: x86-64 with AVX2</li>
+        <li>Online: nothing; the port makes no network connection</li>
+        <li>Licence: MIT</li>
+      </ul>
+    </aside>
+  </div>
+
+  <section id="shots" class="box">
+    <h2>Screens</h2>
+    <p class="dim">Captured from the port on 2026-10-30 (Linux, headless run, 1280x720).</p>
+    <div class="gallery">
+      <figure><img src="../docs/screenshots/20261030_level1-trench-artillery.png" width="1280" height="720" loading="lazy" alt="Level 1 in first person: a trench under artillery fire, with the HUD and the rifle"><figcaption>Level 1: the trenches under fire</figcaption></figure>
+      <figure><img src="../docs/screenshots/20261030_level1-helghast-advance.png" width="1280" height="720" loading="lazy" alt="Level 1 in first person: a Helghast soldier advancing through smoke"><figcaption>Level 1: the Helghast advance</figcaption></figure>
+      <figure><img src="../docs/screenshots/20261030_main-menu.png" width="1280" height="720" loading="lazy" alt="The game's main menu over its background movie"><figcaption>Main menu, with its background movie</figcaption></figure>
+      <figure><img src="../docs/screenshots/20261030_select-character.png" width="1280" height="720" loading="lazy" alt="The campaign's character selection screen"><figcaption>Campaign: character selection</figcaption></figure>
+    </div>
+  </section>
+
+  <div class="cols">
+    <section id="features" class="box">
+      <h2>PC features</h2>
+      <p>All optional, on a <strong>PC</strong> page inside the game's own Options and Pause menus:</p>
+      <ul class="ticks">
+        <li>Window, borderless or fullscreen; any resolution; internal resolution scale</li>
+        <li>V-Sync, VRR and a 30, 60 or 144 fps limit (the game clock follows)</li>
+        <li>AMD FSR 1 upscaling with RCAS sharpening; anisotropic filtering up to 16x</li>
+        <li>Widescreen Hor+ for 21:9, 32:9 and wider; field of view; HUD size and position</li>
+        <li>Presets: Original (PS3), Performance, Balanced, Quality</li>
+        <li>Keyboard and mouse with direct mouse look, mouse in menus, remappable keys</li>
+        <li>Xbox, PlayStation, Nintendo and generic controllers, with button prompts that follow the device</li>
+        <li>Stereo, 5.1 or 7.1 sound; game language; skip the opening movie</li>
+        <li>Local trophies, read from the game's own trophy set</li>
+      </ul>
+      <p><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">The full list, with the PS3 parity table</a></p>
+    </section>
+
+    <aside id="build" class="box">
+      <h2>Build it</h2>
+      <p>On Linux, with your files in <code>Game/</code>:</p>
+<pre>git clone --recurse-submodules \
+  https://github.com/gustavomorinaga/project-vekta
+cd project-vekta
+tools/check-game-files.py
+tools/ps3recomp-patched.sh
+tools/lift.sh
+tools/setup-vfs.sh
+tools/build.sh
+tools/play.sh</pre>
+      <p class="dim">Requirements and the Windows cross build:
+        <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a>.</p>
+    </aside>
+  </div>
+
+  <section id="roadmap" class="box">
+    <h2>Roadmap</h2>
+    <ul class="ticks">
+      <li>Translated, booting, menus and movies, Level 1 playable</li>
+      <li>60 fps by default, an optional 144 Hz mode, the PC options page</li>
+      <li>Windows exe (cross-built), tested under Wine, Proton and on Windows</li>
+      <li class="todo">Levels 2 to 11 played to their end and checked against the PS3</li>
+      <li class="todo">An installer that builds the port on the player's PC from their own game</li>
+      <li class="todo">A steady 144 fps; post-processing toggles; HDR; FSR 3.1 and DLSS</li>
+      <li class="todo">Working with the Killzone 2 and Killzone 3 ports toward the trilogy</li>
+    </ul>
+    <p><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">The roadmap, item by item</a></p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <h3>Project Vekta</h3>
+      <p>A fan project. Killzone and Killzone HD are (c) Sony Interactive Entertainment. Not affiliated with or endorsed
+        by Sony Interactive Entertainment or Guerrilla Games.</p>
+    </div>
+    <div>
+      <h3>Built on</h3>
+      <p><a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a>, and the work of
+        <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and
+        <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>.
+        Credits: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/NOTICE.md">NOTICE.md</a>.</p>
+    </div>
+    <div>
+      <h3>This page</h3>
+      <p>No trackers, no cookies, no external fonts or scripts. Port code MIT.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

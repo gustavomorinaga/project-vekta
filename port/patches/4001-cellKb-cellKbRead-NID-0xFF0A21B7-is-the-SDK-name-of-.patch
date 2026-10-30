@@ -1,0 +1,43 @@
+From 275704f7434670da71235d8a3222dab48193149b Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 04:20:08 -0300
+Subject: [PATCH] cellKb: cellKbRead (NID 0xFF0A21B7) is the SDK name of
+ cellKbGetData
+
+---
+ libs/input/cellKb.c | 6 ++++++
+ libs/input/cellKb.h | 1 +
+ 2 files changed, 7 insertions(+)
+
+diff --git a/libs/input/cellKb.c b/libs/input/cellKb.c
+index 6b4cdbc7..29bb3731 100644
+--- a/libs/input/cellKb.c
++++ b/libs/input/cellKb.c
+@@ -206,6 +206,12 @@ s32 cellKbGetData(u32 port_no, CellKbData* data)
+     return CELL_OK;
+ }
+ 
++/* cellKbRead is the SDK name of this call (NID 0xFF0A21B7); cellKbGetData is
++ * this file's. Without it the NID went unresolved and returned 0 over a
++ * CellKbData the title never initialised: Killzone HD read stack garbage as
++ * pressed keys and its key-event array overran the main thread's TLS. */
++s32 cellKbRead(u32 port_no, CellKbData* data) { return cellKbGetData(port_no, data); }
++
+ /* Guest CellKbInfo layout (big-endian): +0x00 max_connect u32, +0x04
+  * now_connect u32, +0x08 info u32, +0x0C status[] u8 PER KEYBOARD (bytes,
+  * not u32s -- SDK/RPCS3 layout). */
+diff --git a/libs/input/cellKb.h b/libs/input/cellKb.h
+index 49e13905..24f12d08 100644
+--- a/libs/input/cellKb.h
++++ b/libs/input/cellKb.h
+@@ -148,6 +148,7 @@ typedef struct CellKbInfo {
+ s32 cellKbInit(u32 max_connect);
+ s32 cellKbEnd(void);
+ s32 cellKbGetData(u32 port_no, CellKbData* data);
++s32 cellKbRead(u32 port_no, CellKbData* data);
+ s32 cellKbGetInfo(CellKbInfo* info);
+ s32 cellKbSetReadMode(u32 port_no, u32 rmode);
+ s32 cellKbSetCodeType(u32 port_no, u32 codetype);
+-- 
+2.56.0
+

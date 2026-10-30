@@ -1,0 +1,182 @@
+From d15dad3378372a5ff2610665df47df4972e22d28 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 22:59:06 -0300
+Subject: [PATCH] spu_lifter: promote leaf functions' registers to
+ host-vector locals
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/spu/spu_helpers.h | 57 ++++++++++++++++++++++++++-------
+ tools/spu_lifter.py       | 66 ++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 110 insertions(+), 13 deletions(-)
+
+diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
+index 4e6daa23..e33c053e 100644
+--- a/runtime/spu/spu_helpers.h
++++ b/runtime/spu/spu_helpers.h
+@@ -16,11 +16,33 @@
+ #include "spu_context.h"
+ #include <string.h>
+ #include <math.h>
++#if defined(__SSE2__) || defined(_M_X64)
++#include <emmintrin.h>
++#elif defined(__ARM_NEON)
++#include <arm_neon.h>
++#endif
+ 
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+ 
++/* A register-promoted SPU register (spu_lifter.py, promote_leaf): a host
++ * vector, so the compiler keeps it in a vector register; helpers still take
++ * and return u128, converted at the call. */
++#if defined(__SSE2__) || defined(_M_X64)
++typedef __m128i spu_vreg;
++#define SPU_V32(v) ((uint32_t)_mm_cvtsi128_si32(v))
++#elif defined(__ARM_NEON)
++typedef uint32x4_t spu_vreg;
++#define SPU_V32(v) vgetq_lane_u32((v), 0)
++#else
++typedef u128 spu_vreg;
++#define SPU_V32(v) ((v)._u32[0])
++#endif
++#define SPU_V16(v) ((uint16_t)SPU_V32(v))
++static inline spu_vreg SPU_U2V(u128 u) { spu_vreg v; memcpy(&v, &u, 16); return v; }
++static inline u128 SPU_V2U(spu_vreg v) { u128 u; memcpy(&u, &v, 16); return u; }
++
+ #ifdef _MSC_VER
+ #include <intrin.h>
+ static inline int spu_clz32(uint32_t x) {
+@@ -480,21 +502,32 @@ static inline u128 spu_selb(u128 a, u128 b, u128 c) { return spu_selb_ref(a, b,
+ #if defined(__SSE4_1__)
+ #include <smmintrin.h>
+ /* pshufb version: one of the hottest SPU ops (~11% of GH3's FMOD mixer task
+- * as the byte loop). SPU byte P lives at host byte SPU_W(P), i.e. the bytes
+- * of each 32-bit word reversed, so swap into SPU order, select, swap back. */
+-static inline u128 spu_shufb(u128 a, u128 b, u128 c) {
+-    const __m128i sw = _mm_setr_epi8(3,2,1,0, 7,6,5,4, 11,10,9,8, 15,14,13,12);
+-    __m128i A, B, C; memcpy(&A, &a, 16); memcpy(&B, &b, 16); memcpy(&C, &c, 16);
+-    A = _mm_shuffle_epi8(A, sw); B = _mm_shuffle_epi8(B, sw); C = _mm_shuffle_epi8(C, sw);
+-    const __m128i idx = _mm_and_si128(C, _mm_set1_epi8(0x0F));
++ * as the byte loop). SPU byte P lives at host byte P^3 (SPU_W), so the
++ * control byte for result host byte j is C's host byte j, and the source byte
++ * it names, SPU byte q, is host byte q^3 of a or b. The control is turned
++ * into two pshufb masks (0x80 lanes give 0) and an OR constant for the
++ * special selectors, then three shuffles-and-ORs of a and b as they are.
++ * Everything that depends only on c is in spu__shufb_prep, so a loop with
++ * a loop-invariant control (most of them) keeps the masks out of the loop. */
++typedef struct { __m128i ia, ib, orc; } spu__shufb_mask;
++static inline spu__shufb_mask spu__shufb_prep(__m128i C) {
++    const __m128i low   = _mm_xor_si128(_mm_and_si128(C, _mm_set1_epi8(0x0F)), _mm_set1_epi8(0x03));
++    const __m128i m80   = _mm_cmplt_epi8(C, _mm_setzero_si128());            /* special selector */
+     const __m128i fromb = _mm_cmpeq_epi8(_mm_and_si128(C, _mm_set1_epi8(0x10)), _mm_set1_epi8(0x10));
+-    __m128i r = _mm_blendv_epi8(_mm_shuffle_epi8(A, idx), _mm_shuffle_epi8(B, idx), fromb);
+-    /* Special selectors: 10x -> 0x00, 110 -> 0xFF, 111 -> 0x80. */
+-    const __m128i m80 = _mm_cmpeq_epi8(_mm_and_si128(C, _mm_set1_epi8((char)0x80)), _mm_set1_epi8((char)0x80));
++    const __m128i z     = _mm_set1_epi8((char)0x80);
++    spu__shufb_mask m;
++    m.ia = _mm_or_si128(low, _mm_and_si128(_mm_or_si128(m80, fromb), z));
++    m.ib = _mm_or_si128(low, _mm_and_si128(_mm_or_si128(m80, _mm_xor_si128(fromb, _mm_set1_epi8(-1))), z));
++    /* 10x -> 0x00, 110 -> 0xFF, 111 -> 0x80 */
+     const __m128i mC0 = _mm_cmpeq_epi8(_mm_and_si128(C, _mm_set1_epi8((char)0xC0)), _mm_set1_epi8((char)0xC0));
+     const __m128i mE0 = _mm_cmpeq_epi8(_mm_and_si128(C, _mm_set1_epi8((char)0xE0)), _mm_set1_epi8((char)0xE0));
+-    const __m128i special = _mm_blendv_epi8(mC0, _mm_set1_epi8((char)0x80), mE0);
+-    r = _mm_shuffle_epi8(_mm_blendv_epi8(r, special, m80), sw);
++    m.orc = _mm_blendv_epi8(mC0, z, mE0);
++    return m;
++}
++static inline u128 spu_shufb(u128 a, u128 b, u128 c) {
++    __m128i A, B, C; memcpy(&A, &a, 16); memcpy(&B, &b, 16); memcpy(&C, &c, 16);
++    const spu__shufb_mask m = spu__shufb_prep(C);
++    const __m128i r = _mm_or_si128(_mm_or_si128(_mm_shuffle_epi8(A, m.ia), _mm_shuffle_epi8(B, m.ib)), m.orc);
+     u128 out; memcpy(&out, &r, 16); return out;
+ }
+ #elif defined(__ARM_NEON)
+diff --git a/tools/spu_lifter.py b/tools/spu_lifter.py
+index 35d8d428..5d130203 100644
+--- a/tools/spu_lifter.py
++++ b/tools/spu_lifter.py
+@@ -1082,7 +1082,10 @@ class SPULifter:
+         weak = "__attribute__((weak)) " if getattr(self, "weak_emit", False) else ""
+         for f in self.functions:
+             lines.append(f"void {weak}{f.name}(spu_context* ctx) {{")
+-            for b in f.body_lines:
++            body = promote_leaf(f.body_lines)
++            if body is not None:
++                self.promoted = getattr(self, "promoted", 0) + 1
++            for b in body if body is not None else f.body_lines:
+                 lines.append(b if b.endswith(":") else f"    {b}")
+             lines.append("}")
+             lines.append("")
+@@ -1121,6 +1124,67 @@ class SPULifter:
+         lines.append("")
+         return "\n".join(lines)
+ 
++# ---------------------------------------------------------------------------
++# Register promotion for leaf functions
++# ---------------------------------------------------------------------------
++# A lifted function keeps the SPU registers in ctx->gpr, so every operation is
++# a load and a store, and a loop-invariant operand (a shufb control, a splat)
++# is recomputed every iteration because the compiler cannot prove nothing else
++# writes ctx. For a LEAF function -- only register operations, local-store
++# reads/writes, branches inside the function, SPU_RET and direct tail
++# transfers to the trampoline -- nothing else can see the registers while it
++# runs, so they are moved into locals: loaded at entry, stored back before
++# each exit. Anything else that may leave the function or look at ctx (a
++# call, a channel op, an indirect branch) disqualifies it and the body is
++# emitted unchanged.
++# Job-module inner loops are almost all leaves; 1.2x-2.4x on Killzone HD's.
++_PROMO_LINE = re.compile(
++    r"^(?:loc_[0-9A-F]+:"
++    r"|/\*[^*]*\*/;"
++    r"|ctx->gpr\[\d+\] = spu_[a-z0-9_]+\(.*\);"
++    r"|spu_ls_write128\(ctx, .*\);"
++    r"|if \(.*\) goto loc_[0-9A-F]+;"
++    r"|goto loc_[0-9A-F]+;"
++    r"|SPU_RET\(ctx\);"
++    r"|(?:if \(.*\) )?\{ ctx->pc = 0x[0-9A-F]+; g_spu_trampoline_fn = \w+; return; \})$")
++_PROMO_CTX_OK = re.compile(r"ctx->gpr\[\d+\]|spu_ls_(?:read|write)128\(ctx,|SPU_RET\(ctx\)|ctx->pc = 0x")
++_PROMO_DENY = ("spu_rdch", "spu_wrch", "spu_rchcnt", "spu_indirect", "spu_halt", "spu_stop")
++
++def promote_leaf(body):
++    if os.environ.get("SPU_LIFT_NO_PROMOTE"):
++        return None
++    if not any(b.strip() == "SPU_RET(ctx);" or "{ ctx->pc = 0x" in b for b in body):
++        return None
++    for b in body:
++        t = b.strip()
++        if not t:
++            continue
++        if not _PROMO_LINE.match(t) or any(d in t for d in _PROMO_DENY):
++            return None
++        if "ctx" in _PROMO_CTX_OK.sub("", t):
++            return None
++    text = "\n".join(body)
++    used = sorted({int(n) for n in re.findall(r"ctx->gpr\[(\d+)\]", text)})
++    written = sorted({int(n) for n in re.findall(r"ctx->gpr\[(\d+)\] = ", text)})
++    if not used:
++        return None
++    # The locals are host vectors (spu_vreg), not u128: a u128 union local is
++    # split by the compiler into two 64-bit integers, and every operation then
++    # moves it between general and vector registers (~1/3 of a loop's
++    # instructions); helpers still take and return u128 (SPU_V2U/SPU_U2V).
++    out = ["spu_vreg " + ", ".join(f"r{n} = SPU_U2V(ctx->gpr[{n}])" for n in used) + ";"]
++    spill = " ".join(f"ctx->gpr[{n}] = SPU_V2U(r{n});" for n in written)
++    for b in body:
++        b = re.sub(r"ctx->gpr\[(\d+)\]\._u32\[0\]", r"SPU_V32(r\1)", b)
++        b = re.sub(r"ctx->gpr\[(\d+)\]\._u16\[0\]", r"SPU_V16(r\1)", b)
++        b = re.sub(r"ctx->gpr\[(\d+)\] = (.*);$", r"r\1 = SPU_U2V(\2);", b)
++        b = re.sub(r"ctx->gpr\[(\d+)\]", r"SPU_V2U(r\1)", b)
++        if b.strip() == "SPU_RET(ctx);":
++            b = b.replace("SPU_RET(ctx);", "{ " + spill + " SPU_RET(ctx); }")
++        b = b.replace("{ ctx->pc = 0x", "{ " + spill + " ctx->pc = 0x")
++        out.append(b)
++    return out
++
+ # ---------------------------------------------------------------------------
+ # CLI
+ # ---------------------------------------------------------------------------
+-- 
+2.56.0
+

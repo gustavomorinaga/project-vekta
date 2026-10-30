@@ -1,0 +1,230 @@
+From 5e6266704e4052802d0a19b6d377daccc419c182 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 17 Oct 2026 04:44:28 -0300
+Subject: [PATCH] ppu lifter: --setjmp/--longjmp lift a title's own
+ setjmp/longjmp around the host's
+
+Lifted literally, the title's longjmp restores the guest registers and then
+returns to its own caller instead of the setjmp, with every host frame in
+between still on the host stack: guest and host stacks disagree from there
+on. Killzone 1 HD raises its Lua 4.0 script errors this way, and the first
+one corrupted memory and crashed the game.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ tools/ppu_lifter.py         | 62 ++++++++++++++++++++++++++--
+ tools/test_lifter_setjmp.py | 80 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 139 insertions(+), 3 deletions(-)
+ create mode 100644 tools/test_lifter_setjmp.py
+
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index 4d3c08a0..4f7e66f9 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -574,6 +574,32 @@ static inline uint64_t ppc_mulhdu(uint64_t a, uint64_t b) {
+ 
+ #include "ppu_vmx.h"   /* exact VMX semantics (runtime/ppu/ppu_vmx.h) */
+ 
++/* --setjmp/--longjmp: the title's jmp_bufs that are live on this thread, in
++ * stack order, each with the host jmp_buf of the lifted frame that called
++ * setjmp on it. A new setjmp drops every entry at or below its own buffer: a
++ * deeper frame's buffer belongs to a call that has returned.
++ * ponytail: the buffer is assumed to live on the guest stack (it does for
++ * Lua's error jumps); 64 nested at most, deeper ones overwrite the top. */
++#include <setjmp.h>
++struct ppu_sj_entry { uint32_t ea; jmp_buf hb; };
++inline thread_local ppu_sj_entry ppu_sj_tab[64];
++inline thread_local unsigned ppu_sj_n;
++static inline uint32_t ppu_sj_ea(ppu_context* ctx) { return (uint32_t)((ctx->gpr[3] + 15) & ~15ull); }
++static inline jmp_buf* ppu_sj_slot(ppu_context* ctx) {
++    uint32_t ea = ppu_sj_ea(ctx);
++    unsigned n = ppu_sj_n;
++    while (n && ppu_sj_tab[n - 1].ea <= ea) n--;
++    if (n == 64) n = 63;
++    ppu_sj_tab[n].ea = ea;
++    ppu_sj_n = n + 1;
++    return &ppu_sj_tab[n].hb;
++}
++/* Returns only when no live setjmp owns the buffer (the literal behaviour). */
++static inline void ppu_sj_longjmp(uint32_t ea) {
++    for (unsigned n = ppu_sj_n; n; n--)
++        if (ppu_sj_tab[n - 1].ea == ea) { ppu_sj_n = n; longjmp(ppu_sj_tab[n - 1].hb, 1); }
++}
++
+ /* VM base pointer (defined by game project) */
+ extern "C" uint8_t* vm_base;
+ 
+@@ -1038,6 +1064,14 @@ class PPULifter:
+         # `.lib.stub` trampoline (which derefs an import pointer table the recomp
+         # never populates -> bctrl to garbage). Populated from --hle-stubs.
+         self.hle_stub_nids: dict[int, int] = {}
++        # The title's own setjmp/longjmp (--setjmp/--longjmp). Lifted literally,
++        # longjmp restores the guest registers and then returns to its own
++        # caller, not to the setjmp, and every host frame in between survives:
++        # the guest stack and the host stack disagree from there on. A call to
++        # either is lifted around a host setjmp/longjmp instead (ppu_sj_* in
++        # the preamble).
++        self.setjmp_addrs: set[int] = set()
++        self.longjmp_addrs: set[int] = set()
+         # Module primary TOC (r2). Set by main() only when the ELF yields exactly
+         # one TOC candidate; enables the `ld r2, N(r1)` restore lowering below.
+         self.toc_base: int = 0
+@@ -2135,7 +2169,16 @@ class PPULifter:
+                 # PPC `bl` sets LR = return address (next instr). Emit it so mflr
+                 # reads the correct value AND stack-saved LRs are real return
+                 # addresses -> reliable back-chain unwinding for diagnostics.
+-                return f"ctx->lr = 0x{insn.addr + 4:08X}; {self.prefix}func_{tgt:08X}(ctx); DRAIN_TRAMPOLINE(ctx);"
++                call = f"{self.prefix}func_{tgt:08X}(ctx); DRAIN_TRAMPOLINE(ctx);"
++                if tgt in self.setjmp_addrs:
++                    # A host longjmp lands here, with the guest registers the
++                    # lifted longjmp restored: r3 = its value, as after a setjmp.
++                    return (f"ctx->lr = 0x{insn.addr + 4:08X}; "
++                            f"if (setjmp(*ppu_sj_slot(ctx)) == 0) {{ {call} }}")
++                if tgt in self.longjmp_addrs:
++                    return (f"ctx->lr = 0x{insn.addr + 4:08X}; "
++                            f"{{ uint32_t _sj = ppu_sj_ea(ctx); {call} ppu_sj_longjmp(_sj); }}")
++                return f"ctx->lr = 0x{insn.addr + 4:08X}; {call}"
+             except ValueError:
+                 return f"/* bl {target} */;"
+ 
+@@ -4907,7 +4950,9 @@ _WORKER_STATE: dict = {}
+ 
+ def _worker_init(segs, big_endian, name_map, prefix, hle_stub_nids=None,
+                  function_entries=None, code_lo=0, code_hi=None, jump_tables=None,
+-                 toc_base=0, insn_patches=None):
++                 toc_base=0, insn_patches=None, setjmp_addrs=None, longjmp_addrs=None):
++    _WORKER_STATE["setjmp_addrs"] = setjmp_addrs or set()
++    _WORKER_STATE["longjmp_addrs"] = longjmp_addrs or set()
+     _WORKER_STATE["segs"] = segs
+     _WORKER_STATE["be"] = big_endian
+     _WORKER_STATE["names"] = name_map
+@@ -4939,6 +4984,8 @@ def _worker_lift(task):
+     lifter.jump_tables = _WORKER_STATE.get("jump_tables", {})
+     lifter.toc_base = _WORKER_STATE.get("toc_base", 0)
+     lifter.insn_patches = _WORKER_STATE.get("insn_patches", {})
++    lifter.setjmp_addrs = _WORKER_STATE.get("setjmp_addrs", set())
++    lifter.longjmp_addrs = _WORKER_STATE.get("longjmp_addrs", set())
+     results = []
+     for start, end in bounds:
+         blob = b""
+@@ -4974,7 +5021,8 @@ def _parallel_lift(lifter, func_bounds, segs, big_endian, jobs):
+                              lifter.hle_stub_nids, lifter.function_entries,
+                              lifter.code_lo, lifter.code_hi, lifter.jump_tables,
+                              getattr(lifter, "toc_base", 0),
+-                             lifter.insn_patches))
++                             lifter.insn_patches,
++                             lifter.setjmp_addrs, lifter.longjmp_addrs))
+     try:
+         for idx0, results, ct, bt in pool.imap_unordered(_worker_lift, tasks):
+             results_by_idx[idx0] = results
+@@ -5066,6 +5114,12 @@ def main() -> None:
+                              "is emitted as `if (guard) {new} else {orig}`, guard "
+                              "being an int the port defines. The input must hold "
+                              "`orig` at `addr` or the lift stops.")
++    parser.add_argument("--setjmp", metavar="ADDR[,ADDR]", default="",
++                        help="Entry points of the title's own setjmp: calls to "
++                             "them are lifted around a host setjmp, so that a "
++                             "call to --longjmp unwinds the host stack too")
++    parser.add_argument("--longjmp", metavar="ADDR[,ADDR]", default="",
++                        help="Entry points of the title's own longjmp (see --setjmp)")
+     args = parser.parse_args()
+ 
+     # Load firmware-import stubs (addr -> NID) up front; applied to func_bounds
+@@ -5520,6 +5574,8 @@ def main() -> None:
+         lifter.code_lo = min(s for s, _ in func_bounds)
+         lifter.code_hi = max(e for _, e in func_bounds)
+     lifter.hle_stub_nids = hle_stubs
++    lifter.setjmp_addrs = {int(a, 0) for a in args.setjmp.split(",") if a}
++    lifter.longjmp_addrs = {int(a, 0) for a in args.longjmp.split(",") if a}
+     lifter.function_entries = _func_entries
+     lifter.jump_tables = jt_dispatchers
+     if args.insn_patches:
+diff --git a/tools/test_lifter_setjmp.py b/tools/test_lifter_setjmp.py
+new file mode 100644
+index 00000000..77c72ca8
+--- /dev/null
++++ b/tools/test_lifter_setjmp.py
+@@ -0,0 +1,80 @@
++#!/usr/bin/env python3
++"""--setjmp/--longjmp: a call to the title's longjmp lands back at its setjmp
++call site, with the host stack unwound and later setjmps tracked."""
++from pathlib import Path
++import json
++import re
++import subprocess
++import sys
++import tempfile
++
++TOOLS = Path(__file__).parent
++
++# Lifted shapes, as the lifter emits them for a bl to each kind of target.
++DRIVER = r"""
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++struct ppu_context { uint64_t gpr[32]; };
++%s
++static int depth;
++static void func_setjmp(ppu_context* c) { c->gpr[3] = 0; }
++static void func_longjmp(ppu_context* c) { c->gpr[1] = c->gpr[3] - 0x40; c->gpr[3] = c->gpr[4]; }
++#define DRAIN_TRAMPOLINE(c)
++static void thrower(ppu_context* ctx, int n) {
++    depth++;
++    if (n) { thrower(ctx, n - 1); return; }
++    ctx->gpr[3] = 0x1000; ctx->gpr[4] = 7;
++    { uint32_t _sj = ppu_sj_ea(ctx); func_longjmp(ctx); DRAIN_TRAMPOLINE(ctx); ppu_sj_longjmp(_sj); }
++    std::puts("FAIL: longjmp returned"); std::exit(1);
++}
++static int protected_call(ppu_context* ctx, uint32_t buf, int n) {
++    ctx->gpr[3] = buf;
++    if (setjmp(*ppu_sj_slot(ctx)) == 0) { func_setjmp(ctx); DRAIN_TRAMPOLINE(ctx); }
++    if (ctx->gpr[3]) return (int)ctx->gpr[3];
++    thrower(ctx, n);
++    return 0;
++}
++int main() {
++    ppu_context c{};
++    // An inner protected call at a deeper buffer that already returned must not
++    // shadow the outer one; the outer one is the one the longjmp reaches.
++    c.gpr[3] = 0x0F00; if (setjmp(*ppu_sj_slot(&c)) == 0) {}
++    int r = protected_call(&c, 0x1000, 5);
++    if (r != 7 || depth != 6 || c.gpr[1] != 0x1000 - 0x40) { std::printf("FAIL r=%%d depth=%%d\n", r, depth); return 1; }
++    if (ppu_sj_n != 1 || ppu_sj_tab[0].ea != 0x1000) { std::puts("FAIL: table"); return 1; }
++    // An unknown buffer keeps the literal behaviour: ppu_sj_longjmp returns.
++    ppu_sj_longjmp(0x2000);
++    std::puts("PASS"); return 0;
++}
++"""
++
++
++def main():
++    src = (TOOLS / 'ppu_lifter.py').read_text()
++    block = re.search(r'(/\* --setjmp/--longjmp:.*?void ppu_sj_longjmp.*?\n}\n)', src, re.S).group(1)
++    with tempfile.TemporaryDirectory() as tmp:
++        root = Path(tmp)
++        # The lifter emits the same shapes for real calls: 0x10000 bl 0x10010
++        # (setjmp), 0x10004 bl 0x10014 (longjmp).
++        code = bytes.fromhex('48000011' '48000011' '4e800020' '60000000' '4e800020' '4e800020')
++        (root / 'code.bin').write_bytes(code)
++        (root / 'functions.json').write_text(json.dumps([
++            {'start': '0x10000', 'end': '0x10010'}, {'start': '0x10010', 'end': '0x10014'},
++            {'start': '0x10014', 'end': '0x10018'}]))
++        subprocess.run([sys.executable, str(TOOLS / 'ppu_lifter.py'), str(root / 'code.bin'), '--raw',
++                        '--base', '0x10000', '--functions', str(root / 'functions.json'), '--jobs', '1',
++                        '--setjmp', '0x10010', '--longjmp', '0x10014', '--output', str(root / 'out')],
++                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
++        lifted = ''.join(p.read_text() for p in (root / 'out').glob('*.cpp'))
++        assert 'if (setjmp(*ppu_sj_slot(ctx)) == 0) { func_00010010(ctx);' in lifted, lifted
++        assert '{ uint32_t _sj = ppu_sj_ea(ctx); func_00010014(ctx); DRAIN_TRAMPOLINE(ctx); ppu_sj_longjmp(_sj); }' in lifted
++        (root / 't.cpp').write_text(DRIVER % block)
++        subprocess.run(['c++', '-std=c++20', '-O2', '-o', str(root / 't'), str(root / 't.cpp')], check=True)
++        out = subprocess.run([str(root / 't')], stdout=subprocess.PIPE, text=True).stdout
++        assert out.strip() == 'PASS', out
++    print('PASS: setjmp/longjmp lifted around the host setjmp/longjmp')
++
++
++if __name__ == '__main__':
++    main()
+-- 
+2.56.0
+

@@ -1,0 +1,58 @@
+From 83e2baee1ddb8304c342adbee40ef22c255ffa55 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 16 Oct 2026 07:41:38 -0300
+Subject: [PATCH] ppu lifter: FP helpers test the result for NaN first
+
+ppu_fp_bin and ppu_fmadd_core checked every operand for NaN before
+returning. A NaN operand always gives a NaN result, so a numeric result
+now returns after one compare and the operand checks run only when the
+result is a NaN; results are unchanged. KZ1 HD uncapped: ~44.9 -> ~45.4 fps.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ tools/ppu_lifter.py | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index a657ba61..4d3c08a0 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -408,10 +408,12 @@ static inline double ppu_fp_default_qnan(void)
+ #ifndef PPU_FAST_FP
+ static inline double ppu_fp_bin(double a, double b, double r)
+ {
++    /* A NaN operand always gives a NaN result, so a result that is a number
++     * needs no checks: the common case is one compare. */
++    if (__builtin_expect(r == r, 1)) return r;
+     if (a != a) return ppu_fp_quiet(a);
+     if (b != b) return ppu_fp_quiet(b);
+-    if (r != r) return ppu_fp_default_qnan();
+-    return r;
++    return ppu_fp_default_qnan();
+ }
+ #else
+ static inline double ppu_fp_bin(double a, double b, double r) { (void)a; (void)b; return r; }
+@@ -424,16 +426,16 @@ static inline double ppu_fdiv(double a, double b) { return ppu_fp_bin(a, b, a /
+  * NaN priority: FRA, FRB, FRC (negations never apply to propagated NaNs). */
+ static inline double ppu_fmadd_core(double a, double c, double b, int neg_b, int neg_res)
+ {
++    double r = fma(a, c, neg_b ? -b : b);
+ #ifndef PPU_FAST_FP
++    if (__builtin_expect(r == r, 1)) return neg_res ? -r : r;   /* as ppu_fp_bin */
+     if (a != a) return ppu_fp_quiet(a);
+     if (b != b) return ppu_fp_quiet(b);
+     if (c != c) return ppu_fp_quiet(c);
+-    double r = fma(a, c, neg_b ? -b : b);
+-    if (r != r) return ppu_fp_default_qnan();
++    return ppu_fp_default_qnan();
+ #else
+-    double r = fma(a, c, neg_b ? -b : b);
+-#endif
+     return neg_res ? -r : r;
++#endif
+ }
+ /* Round to single: the result must be representable in single format, NaNs
+  * included -- their payload is truncated to the single fraction (as RPCS3). */
+-- 
+2.56.0
+

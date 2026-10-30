@@ -1,0 +1,86 @@
+From f5039deb24a8d87a671fafa7fa84b1dae9cefdd1 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 19:24:37 -0300
+Subject: [PATCH] spurs: the coordinator sleeps on a condition variable
+ of its own
+
+Kicks, API calls and freed slots woke every worker of the instance along with the coordinator: in KZ1 HD the main thread's ready-count stores were a broadcast to five threads each. Workers now wake only for work or stop. Level 7: 119.7 -> 126.9 fps (v0.14.0 base 130.5 in the same session).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/spurs/cellSpurs.c | 17 ++++++++++-------
+ 1 file changed, 10 insertions(+), 7 deletions(-)
+
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index d8c19d15..6f1591c1 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -454,7 +454,10 @@ static struct SpursInst {
+     int kernel_live, stopping, starting;
+     int kick;   /* an SPU committed the request line since the coordinator last looked */
+     SRWLOCK lock;
+-    CONDITION_VARIABLE wake;
++    CONDITION_VARIABLE wake;   /* the workers: a slot was given work, or stop */
++    CONDITION_VARIABLE kwake;  /* the coordinator: a kick, an API change, a slot freed, or stop.
++                                * Its own variable, so the many kicks a frame do not wake
++                                * every worker too. */
+     HANDLE coordinator;
+     struct SpursPmSlot slots[6];
+     u8 active[16], idle[16];
+@@ -484,7 +487,7 @@ static void spurs_line_committed(uint32_t line)
+         if (!ea || (ea & ~127u) != line || !__atomic_load_n(&si->kernel_live, __ATOMIC_ACQUIRE))
+             continue;
+         __atomic_store_n(&si->kick, 1, __ATOMIC_RELEASE);
+-        WakeAllConditionVariable(&si->wake);
++        WakeAllConditionVariable(&si->kwake);
+     }
+ }
+ static void spurs_commit_hook(uint32_t line)
+@@ -524,7 +527,7 @@ static s32 spurs_api_lock(u32 ea, struct SpursInst** out)
+ static void spurs_api_unlock(struct SpursInst* si)
+ {
+     ReleaseSRWLockExclusive(&s_workload_registry_lock);
+-    WakeAllConditionVariable(&si->wake);
++    WakeAllConditionVariable(&si->kwake);
+     ReleaseSRWLockExclusive(&si->lock);
+ }
+ 
+@@ -1796,7 +1799,7 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
+         if (polls) si->idle[wid] = 0;
+         else if (si->idle[wid] < 4) si->idle[wid]++;
+         slot->busy = 0;
+-        WakeAllConditionVariable(&si->wake);
++        WakeAllConditionVariable(&si->kwake);
+     }
+     ReleaseSRWLockExclusive(&si->lock);
+     ps3_tprof_thread_exit();
+@@ -1863,7 +1866,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+             AcquireSRWLockExclusive(&si->lock);
+             (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
+         } else {
+-            SleepConditionVariableSRW(&si->wake, &si->lock, (DWORD)(s_poll_us / 1000), 0);
++            SleepConditionVariableSRW(&si->kwake, &si->lock, (DWORD)(s_poll_us / 1000), 0);
+             /* This full pass reads the line after any commit that woke it. */
+             (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
+         }
+@@ -1954,7 +1957,7 @@ static s32 spurs_scheduler_start(struct SpursInst* si)
+     return CELL_OK;
+ failed:
+     AcquireSRWLockExclusive(&si->lock);
+-    si->stopping = 1; WakeAllConditionVariable(&si->wake);
++    si->stopping = 1; WakeAllConditionVariable(&si->wake); WakeAllConditionVariable(&si->kwake);
+     ReleaseSRWLockExclusive(&si->lock);
+     for (u32 sn = 0; sn < si->nspus; sn++) {
+         HANDLE h = si->slots[sn].thread;
+@@ -1973,7 +1976,7 @@ static s32 spurs_scheduler_stop(struct SpursInst* si, u32 ea)
+     if (si->stopping || si->starting) { ReleaseSRWLockExclusive(&si->lock); return CELL_SPURS_CORE_ERROR_BUSY; }
+     for (u32 wid = 0; wid < 16; wid++)
+         if (si->active[wid]) { ReleaseSRWLockExclusive(&si->lock); return CELL_SPURS_CORE_ERROR_BUSY; }
+-    si->stopping = 1; WakeAllConditionVariable(&si->wake);
++    si->stopping = 1; WakeAllConditionVariable(&si->wake); WakeAllConditionVariable(&si->kwake);
+     ReleaseSRWLockExclusive(&si->lock);
+     if (si->coordinator) { WaitForSingleObject(si->coordinator, INFINITE); CloseHandle(si->coordinator); si->coordinator = NULL; }
+     for (u32 sn = 0; sn < si->nspus; sn++) {
+-- 
+2.56.0
+

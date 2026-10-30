@@ -1,0 +1,249 @@
+From d3746a07a92395d3cf080af9e10de3e515bbad71 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 17 Oct 2026 14:43:59 -0300
+Subject: [PATCH] cellPad: key map from a file for the keyboard and mouse
+ (PAD_KEYMAP); Esc can stay with the title
+
+Lines 'TARGET = input, input' bind keys, mouse buttons and the wheel to pad
+buttons and stick directions; without the file, the old fixed map. The mouse
+and wheel bindings count in play only. PS3RECOMP_ESC_QUITS=0 leaves Esc to
+the key map. PAD_MOUSE_POS_FILE gives tests a pointer that clicks.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c            | 162 +++++++++++++++++++++++++++-----
+ libs/video/rsx_vulkan_backend.c |   8 +-
+ 2 files changed, 146 insertions(+), 24 deletions(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index f63cf621..8163e8d5 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -713,6 +713,115 @@ static unsigned long long pad_now_ms(void)
+ }
+ 
+ #if !defined(_WIN32) && PAD_BACKEND_SDL2
++/* Key map for the keyboard and mouse fallback. PAD_KEYMAP=<file> reads lines
++ * "TARGET = input, input", '#' starts a comment and other lines are skipped
++ * (the file may hold other settings). Targets: CROSS CIRCLE SQUARE TRIANGLE
++ * L1 R1 L2 R2 L3 R3 START SELECT UP DOWN LEFT RIGHT and LS_/RS_ UP DOWN LEFT
++ * RIGHT (the sticks, full deflection). Inputs: SDL key names ("E", "Space",
++ * "Left Ctrl"; "Ctrl", "Shift" and "Alt" are either side), MouseLeft,
++ * MouseRight, MouseMiddle, Mouse4, Mouse5, WheelUp, WheelDown. The mouse and
++ * the wheel count only in play (pointer captured); in menus they are the
++ * pointer's. Without the file, the old fixed map. */
++enum { BIND_KEY, BIND_MOUSE, BIND_WHEEL_UP, BIND_WHEEL_DOWN };
++enum { STICK_NONE, LS_U, LS_D, LS_L, LS_R, RS_U, RS_D, RS_L, RS_R };
++typedef struct { int kind, code; u16 btn; int stick; } PadBind;
++static PadBind s_binds[192];
++static int s_nbinds = -1;
++
++static void pad_bind_add(int kind, int code, u16 btn, int stick)
++{
++    if (s_nbinds < (int)(sizeof s_binds / sizeof s_binds[0])) {
++        PadBind b = { kind, code, btn, stick }; s_binds[s_nbinds++] = b; }
++}
++static int pad_bind_target(const char* t, u16* btn, int* stick)
++{
++    static const struct { const char* n; u16 b; int s; } tg[] = {
++        {"CROSS",CELL_PAD_CTRL_CROSS,0},{"CIRCLE",CELL_PAD_CTRL_CIRCLE,0},{"SQUARE",CELL_PAD_CTRL_SQUARE,0},
++        {"TRIANGLE",CELL_PAD_CTRL_TRIANGLE,0},{"L1",CELL_PAD_CTRL_L1,0},{"R1",CELL_PAD_CTRL_R1,0},
++        {"L2",CELL_PAD_CTRL_L2,0},{"R2",CELL_PAD_CTRL_R2,0},{"L3",CELL_PAD_CTRL_L3,0},{"R3",CELL_PAD_CTRL_R3,0},
++        {"START",CELL_PAD_CTRL_START,0},{"SELECT",CELL_PAD_CTRL_SELECT,0},{"UP",CELL_PAD_CTRL_UP,0},
++        {"DOWN",CELL_PAD_CTRL_DOWN,0},{"LEFT",CELL_PAD_CTRL_LEFT,0},{"RIGHT",CELL_PAD_CTRL_RIGHT,0},
++        {"LS_UP",0,LS_U},{"LS_DOWN",0,LS_D},{"LS_LEFT",0,LS_L},{"LS_RIGHT",0,LS_R},
++        {"RS_UP",0,RS_U},{"RS_DOWN",0,RS_D},{"RS_LEFT",0,RS_L},{"RS_RIGHT",0,RS_R},
++    };
++    for (unsigned i = 0; i < sizeof tg / sizeof tg[0]; i++)
++        if (!SDL_strcasecmp(t, tg[i].n)) { *btn = tg[i].b; *stick = tg[i].s; return 1; }
++    return 0;
++}
++static void pad_bind_input(const char* in, u16 btn, int stick)
++{
++    static const struct { const char* n; int kind, code; } ms[] = {
++        {"MouseLeft",BIND_MOUSE,SDL_BUTTON_LEFT},{"MouseRight",BIND_MOUSE,SDL_BUTTON_RIGHT},
++        {"MouseMiddle",BIND_MOUSE,SDL_BUTTON_MIDDLE},{"Mouse4",BIND_MOUSE,SDL_BUTTON_X1},
++        {"Mouse5",BIND_MOUSE,SDL_BUTTON_X2},{"WheelUp",BIND_WHEEL_UP,0},{"WheelDown",BIND_WHEEL_DOWN,0},
++    };
++    for (unsigned i = 0; i < sizeof ms / sizeof ms[0]; i++)
++        if (!SDL_strcasecmp(in, ms[i].n)) { pad_bind_add(ms[i].kind, ms[i].code, btn, stick); return; }
++    static const struct { const char* n; SDL_Scancode a, b; } both[] = {
++        {"Ctrl",SDL_SCANCODE_LCTRL,SDL_SCANCODE_RCTRL},{"Shift",SDL_SCANCODE_LSHIFT,SDL_SCANCODE_RSHIFT},
++        {"Alt",SDL_SCANCODE_LALT,SDL_SCANCODE_RALT},
++    };
++    for (unsigned i = 0; i < sizeof both / sizeof both[0]; i++)
++        if (!SDL_strcasecmp(in, both[i].n)) {
++            pad_bind_add(BIND_KEY, both[i].a, btn, stick); pad_bind_add(BIND_KEY, both[i].b, btn, stick); return; }
++    SDL_Scancode sc = SDL_GetScancodeFromName(in);
++    if (sc != SDL_SCANCODE_UNKNOWN) pad_bind_add(BIND_KEY, sc, btn, stick);
++    else fprintf(stderr, "[cellPad] keymap: unknown input '%s'\n", in);
++}
++static void pad_keymap_load(void)
++{
++    s_nbinds = 0;
++    const char* path = getenv("PAD_KEYMAP");
++    FILE* f = path ? fopen(path, "r") : NULL;
++    if (!f) {
++        static const char* def[][2] = {
++            {"UP","Up"},{"DOWN","Down"},{"LEFT","Left"},{"RIGHT","Right"},{"CROSS","Z"},{"CROSS","Space"},
++            {"CIRCLE","X"},{"SQUARE","C"},{"TRIANGLE","V"},{"L1","Q"},{"R1","E"},{"L2","1"},{"R2","2"},
++            {"START","Return"},{"SELECT","Tab"},{"LS_UP","W"},{"LS_DOWN","S"},{"LS_LEFT","A"},{"LS_RIGHT","D"},
++            {"RS_UP","I"},{"RS_DOWN","K"},{"RS_LEFT","J"},{"RS_RIGHT","L"},
++            {"R1","MouseLeft"},{"L1","MouseRight"},{"R3","MouseMiddle"},
++        };
++        for (unsigned i = 0; i < sizeof def / sizeof def[0]; i++) {
++            u16 b; int st; pad_bind_target(def[i][0], &b, &st); pad_bind_input(def[i][1], b, st); }
++        return;
++    }
++    char line[256];
++    while (fgets(line, sizeof line, f)) {
++        char* h = strchr(line, '#'); if (h) *h = 0;
++        char* eq = strchr(line, '='); if (!eq) continue;
++        *eq = 0;
++        char tgt[64]; if (sscanf(line, " %63s", tgt) != 1) continue;
++        u16 b; int st;
++        if (!pad_bind_target(tgt, &b, &st)) continue;
++        for (char* tok = strtok(eq + 1, ",\r\n"); tok; tok = strtok(NULL, ",\r\n")) {
++            while (*tok == ' ' || *tok == '\t') tok++;
++            char* e = tok + strlen(tok); while (e > tok && (e[-1] == ' ' || e[-1] == '\t')) *--e = 0;
++            if (*tok) pad_bind_input(tok, b, st);
++        }
++    }
++    fclose(f);
++    printf("[cellPad] keymap: %d bindings from %s\n", s_nbinds, path);
++}
++/* The buttons and stick directions the binds of one kind hold down. */
++static void pad_binds_apply(PadHostState* hs, int kind, const Uint8* keys, Uint32 mouse, int stick_set[9])
++{
++    for (int i = 0; i < s_nbinds; i++) {
++        const PadBind* b = &s_binds[i];
++        if (b->kind != kind) continue;
++        int on = kind == BIND_KEY ? keys[b->code] : kind == BIND_MOUSE ? (mouse & SDL_BUTTON(b->code)) != 0 : 1;
++        if (!on) continue;
++        hs->buttons |= b->btn;
++        if (b->stick) stick_set[b->stick] = 1;
++    }
++}
++static void pad_sticks_from(PadHostState* hs, const int st[9])
++{
++    if (st[LS_L] || st[LS_R]) hs->analog_lx = st[LS_L] ? 0 : 255;
++    if (st[LS_U] || st[LS_D]) hs->analog_ly = st[LS_U] ? 0 : 255;
++    if (st[RS_L] || st[RS_R]) hs->analog_rx = st[RS_L] ? 0 : 255;
++    if (st[RS_U] || st[RS_D]) hs->analog_ry = st[RS_U] ? 0 : 255;
++}
++
+ /* Mouse on the right stick (the window captures the pointer on a click; PAD_NO_MOUSE=1
+  * turns it off). A stick is a turn rate, so the stick follows the mouse's speed: the
+  * motion of each poll goes into a value that decays by PAD_MOUSE_DECAY per 4 ms poll,
+@@ -743,11 +852,19 @@ volatile int g_pad_mouse_wheel;
+ void pad_mouse_ui_state(int* x, int* y, int* w, int* h, unsigned* buttons, int* wheel)
+ {
+     *x = *y = *w = *h = 0; *buttons = 0;
+-    *wheel = __atomic_exchange_n(&g_pad_mouse_wheel, 0, __ATOMIC_ACQ_REL);
++    /* In play the wheel is the key map's (pad_poll_mouse). */
++    *wheel = g_pad_mouse_ui ? __atomic_exchange_n(&g_pad_mouse_wheel, 0, __ATOMIC_ACQ_REL) : 0;
+     SDL_Window* win = SDL_GetMouseFocus();
+     static int fake = -1, fx, fy, fw, fh;   /* PAD_MOUSE_POS="x,y,w,h": tests without a window */
+     if (fake < 0) { const char* e = getenv("PAD_MOUSE_POS"); fake = e && sscanf(e, "%d,%d,%d,%d", &fx, &fy, &fw, &fh) == 4; }
+-    if (fake) { *x = fx; *y = fy; *w = fw; *h = fh; return; }
++    if (fake) {
++        *x = fx; *y = fy; *w = fw; *h = fh;
++        /* PAD_MOUSE_POS_FILE=<path>: "x y buttons" read from it each call (tests that click). */
++        const char* pf = getenv("PAD_MOUSE_POS_FILE");
++        FILE* f = pf ? fopen(pf, "r") : NULL;
++        if (f) { unsigned bb = 0; if (fscanf(f, "%d %d %u", x, y, &bb) >= 2) *buttons = bb; fclose(f); }
++        return;
++    }
+     if (!win) return;
+     *buttons = SDL_GetMouseState(x, y);
+     SDL_GetWindowSize(win, w, h);
+@@ -805,9 +922,18 @@ static void pad_poll_mouse(PadHostState* hs)
+         u8* stick = axis ? &hs->analog_ry : &hs->analog_rx;
+         if (d != 0) *stick = (u8)(128 + (int)d);
+     }
+-    if (mb & SDL_BUTTON(SDL_BUTTON_LEFT))   hs->buttons |= CELL_PAD_CTRL_R1;
+-    if (mb & SDL_BUTTON(SDL_BUTTON_RIGHT))  hs->buttons |= CELL_PAD_CTRL_L1;
+-    if (mb & SDL_BUTTON(SDL_BUTTON_MIDDLE)) hs->buttons |= CELL_PAD_CTRL_R3;
++    /* Buttons and the wheel, by the key map. A wheel step holds its target
++     * for 12 polls (~50 ms): long enough for a frame to see it. */
++    if (s_nbinds < 0) pad_keymap_load();
++    int st[9] = {0};
++    pad_binds_apply(hs, BIND_MOUSE, NULL, mb, st);
++    static int wheel_up, wheel_down;
++    const int wh = __atomic_exchange_n(&g_pad_mouse_wheel, 0, __ATOMIC_ACQ_REL);
++    if (wh > 0) wheel_up = 12;
++    if (wh < 0) wheel_down = 12;
++    if (wheel_up > 0)   { wheel_up--;   pad_binds_apply(hs, BIND_WHEEL_UP, NULL, 0, st); }
++    if (wheel_down > 0) { wheel_down--; pad_binds_apply(hs, BIND_WHEEL_DOWN, NULL, 0, st); }
++    pad_sticks_from(hs, st);
+ }
+ 
+ /* The same keyboard fallback off Windows, read from SDL's keyboard state: keys
+@@ -829,30 +955,19 @@ static void pad_poll_keyboard(void)
+         hs->trigger_l2 = hs->trigger_r2 = 0;
+         return;
+     }
+-    static const struct { SDL_Scancode sc; u16 btn; } map[] = {
+-        { SDL_SCANCODE_UP,    CELL_PAD_CTRL_UP },    { SDL_SCANCODE_DOWN,  CELL_PAD_CTRL_DOWN },
+-        { SDL_SCANCODE_LEFT,  CELL_PAD_CTRL_LEFT },  { SDL_SCANCODE_RIGHT, CELL_PAD_CTRL_RIGHT },
+-        { SDL_SCANCODE_Z,     CELL_PAD_CTRL_CROSS }, { SDL_SCANCODE_X,     CELL_PAD_CTRL_CIRCLE },
+-        { SDL_SCANCODE_C,     CELL_PAD_CTRL_SQUARE },{ SDL_SCANCODE_V,     CELL_PAD_CTRL_TRIANGLE },
+-        { SDL_SCANCODE_Q,     CELL_PAD_CTRL_L1 },    { SDL_SCANCODE_E,     CELL_PAD_CTRL_R1 },
+-        { SDL_SCANCODE_1,     CELL_PAD_CTRL_L2 },    { SDL_SCANCODE_2,     CELL_PAD_CTRL_R2 },
+-        { SDL_SCANCODE_RETURN,CELL_PAD_CTRL_START }, { SDL_SCANCODE_TAB,   CELL_PAD_CTRL_SELECT },
+-        { SDL_SCANCODE_SPACE, CELL_PAD_CTRL_CROSS },
+-    };
+-    u16 btns = 0;
+-    for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
+-        if (k[map[i].sc]) btns |= map[i].btn;
++    if (s_nbinds < 0) pad_keymap_load();
++    int st[9] = {0};
++    hs->buttons = 0;
++    hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
++    pad_binds_apply(hs, BIND_KEY, k, 0, st);
++    pad_sticks_from(hs, st);
++    u16 btns = hs->buttons;
+     /* PAD_KEYLOG=1: when the keyboard state changes, and (in cellPadGetData)
+      * when the title reads it -- to time input latency end to end. */
+     { static u16 last;
+       FILE* kf = pad_keylog_file();
+       if (kf && btns != last) { last = btns;
+           fprintf(kf, "[keylog] %llu ms key state %04X\n", pad_now_ms(), btns); } }
+-    hs->buttons = btns;
+-    hs->analog_lx = (u8)(k[SDL_SCANCODE_A] ? 0 : k[SDL_SCANCODE_D] ? 255 : 128);
+-    hs->analog_ly = (u8)(k[SDL_SCANCODE_W] ? 0 : k[SDL_SCANCODE_S] ? 255 : 128);
+-    hs->analog_rx = (u8)(k[SDL_SCANCODE_J] ? 0 : k[SDL_SCANCODE_L] ? 255 : 128);
+-    hs->analog_ry = (u8)(k[SDL_SCANCODE_I] ? 0 : k[SDL_SCANCODE_K] ? 255 : 128);
+     btns = hs->buttons;
+     hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
+     hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
+@@ -880,6 +995,7 @@ static void pad_poll_backend(void)
+     if (!s_host_state[0].connected) pad_poll_keyboard();
+ #endif
+ #if !defined(_WIN32) && PAD_BACKEND_SDL2
++    if (s_nbinds < 0) pad_keymap_load();
+     /* With a controller too: the mouse adds to whatever drives port 0. */
+     if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus()) pad_poll_mouse(&s_host_state[0]);
+ #endif
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 0fe216fc..593ad1d2 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -4237,7 +4237,13 @@ int rsx_vulkan_backend_pump_messages(void)
+             extern volatile int g_pad_mouse_wheel;
+             __atomic_add_fetch(&g_pad_mouse_wheel, e.wheel.y, __ATOMIC_ACQ_REL);
+         }
+-        else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) quit = 1;
++        /* Esc closes the window unless the title's key map uses it
++         * (PS3RECOMP_ESC_QUITS=0); closing the window always does. */
++        else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
++            static int esc = -1;
++            if (esc < 0) { const char* v = getenv("PS3RECOMP_ESC_QUITS"); esc = !v || atoi(v); }
++            if (esc) quit = 1;
++        }
+     }
+     return quit ? -1 : 0;
+ }
+-- 
+2.56.0
+

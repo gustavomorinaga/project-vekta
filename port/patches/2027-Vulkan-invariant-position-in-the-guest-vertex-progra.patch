@@ -1,0 +1,79 @@
+From 0856ccd734116e42fb991f42dc9e76d57e0ceb4d Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 22:59:14 -0300
+Subject: [PATCH] Vulkan: invariant position in the guest vertex programs
+
+A model drawn again by a second vertex program with a read-only LEQUAL
+depth test (Killzone HD's lighting passes) needs the same depth from both
+programs, as the RSX gives it; the driver optimising each program on its own
+gave depths a last bit apart and parts of the first-person weapon flickered.
+The SPIR-V's Position builtin is now decorated Invariant (as the Metal
+path's [[invariant]]); PS3RECOMP_SPIRV_INVARIANT=0 turns it off. The disk
+cache version goes to 2.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_shader_spirv.cpp | 40 +++++++++++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/libs/video/rsx_shader_spirv.cpp b/libs/video/rsx_shader_spirv.cpp
+index 4aa4a176..e615dd33 100644
+--- a/libs/video/rsx_shader_spirv.cpp
++++ b/libs/video/rsx_shader_spirv.cpp
+@@ -62,6 +62,45 @@ bool glslang_ready()
+     return true;
+ }
+ 
++/* An invariant position (as rsx_shader_msl.cpp does for Metal). Titles draw
++ * the same geometry again with another vertex program and SET_DEPTH_FUNC
++ * EQUAL against the first pass's depth (a lighting pass over the base one).
++ * The RSX executes the position arithmetic instruction by instruction, so
++ * both programs land on the same depth; a Vulkan driver optimises each
++ * program on its own (a multiply and an add fused into one FMA in one and
++ * not the other), the depths differ in the last bits and the EQUAL pass
++ * drops pieces of the model, a different set every frame (Killzone HD: the
++ * parts of the first-person weapon flicker in some areas). The Invariant
++ * decoration on the Position builtin makes the driver compute it the same
++ * way in every program that computes it the same way.
++ * PS3RECOMP_SPIRV_INVARIANT=0 turns it off. */
++bool spirv_invariant()
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("PS3RECOMP_SPIRV_INVARIANT"); on = !(e && *e && atoi(e) == 0); }
++    return on != 0;
++}
++
++void make_position_invariant(std::vector<unsigned int>& w)
++{
++    const unsigned kOpDecorate = 71, kOpMemberDecorate = 72, kBuiltIn = 11, kPosition = 0, kInvariant = 18;
++    for (size_t i = 5; i < w.size();) {
++        const unsigned n = w[i] >> 16, op = w[i] & 0xFFFF;
++        if (!n) return;
++        if (op == kOpDecorate && n == 4 && w[i + 2] == kBuiltIn && w[i + 3] == kPosition) {
++            const unsigned add[3] = { (3u << 16) | kOpDecorate, w[i + 1], kInvariant };
++            w.insert(w.begin() + (long)(i + n), add, add + 3);
++            return;
++        }
++        if (op == kOpMemberDecorate && n == 5 && w[i + 3] == kBuiltIn && w[i + 4] == kPosition) {
++            const unsigned add[4] = { (4u << 16) | kOpMemberDecorate, w[i + 1], w[i + 2], kInvariant };
++            w.insert(w.begin() + (long)(i + n), add, add + 4);
++            return;
++        }
++        i += n;
++    }
++}
++
+ int translate(const char* hlsl, int stage, std::vector<unsigned int>& spirv,
+               char* log, u32 log_size)
+ {
+@@ -114,6 +153,7 @@ int translate(const char* hlsl, int stage, std::vector<unsigned int>& spirv,
+         put_log(log, log_size, "SPIR-V generation", logger.getAllMessages().c_str());
+         return -1;
+     }
++    if (lang == EShLangVertex && spirv_invariant()) make_position_invariant(spirv);
+     return 0;
+ }
+ 
+-- 
+2.56.0
+

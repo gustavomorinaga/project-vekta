@@ -1,0 +1,63 @@
+From 0d5cc65be5546c72886e46f0aa256d7ed788d654 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 21 Oct 2026 11:19:37 -0300
+Subject: [PATCH] Trace spans for the flip-queue wait and lwcond waits
+
+PS3_TRACE now records flip_wait (the guest held in _cellGcmSetFlipCommand by
+PS3_GCM_MAX_QUEUED_FLIPS) and lwcond (sys_lwcond_wait, with the guest call
+site), so a timeline shows what a thread blocks on without a wall-clock
+profiler, which perturbs the FIFO thread enough to invent flip waits.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/cellGcmSys.c    | 2 ++
+ runtime/ppu/ppu_sysprx.cpp | 3 +++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 612a550a..1814fb98 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -4084,6 +4084,7 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+     { static int cap = -1;
+       if (cap < 0) { const char* e = getenv("PS3_GCM_MAX_QUEUED_FLIPS"); cap = e ? atoi(e) : 2; }
+       if (cap > 0) {
++          PS3_TRACE_BEGIN(_tr);
+           for (int i = 0; i < 1000 && (int)(s_flip_written_count - s_flip_request_count) >= cap; i++) {
+ #ifdef _WIN32
+               Sleep(0);
+@@ -4091,6 +4092,7 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+               usleep(100);
+ #endif
+           }
++          PS3_TRACE_END(_tr, "flip_wait", 0);
+       } }
+     if (gcm_flip_into_fifo((u32)(uintptr_t)ctx, bufferId))
+         return gcm_flip_request(bufferId, 1);
+diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
+index 64f4a122..a1b7b04f 100644
+--- a/runtime/ppu/ppu_sysprx.cpp
++++ b/runtime/ppu/ppu_sysprx.cpp
+@@ -11,6 +11,7 @@
+  * without hand-written NID literals.
+  */
+ #define PPU_NO_INLINE_LOADS   /* declares its own out-of-line vm_read* below */
++#include "../ps3_trace.h"
+ #include "ppu_recomp.h"     /* ppu_context */
+ #include "ps3emu/nid.h"     /* ps3_compute_nid */
+ #include <stdint.h>
+@@ -450,9 +451,11 @@ static void sys_lwcond_wait(ppu_context* ctx)
+         ppu_thread_note_block(ctx->thread_id);
+         lwm_release(sl);
+         {
++            PS3_TRACE_BEGIN(_tr);
+             std::unique_lock<std::mutex> l(s_lwc_m);
+             s_lwc_cv.wait_for(l, std::chrono::milliseconds(poll_ms > 0 ? poll_ms : 1),
+                               [&] { return s_lwc_gen != gen; });
++            PS3_TRACE_END(_tr, "lwcond", ctx->lr);
+         }
+         lwm_acquire(sl, 0);
+         vm_write32(lwmutex + LWM_OWNER, own);
+-- 
+2.56.0
+

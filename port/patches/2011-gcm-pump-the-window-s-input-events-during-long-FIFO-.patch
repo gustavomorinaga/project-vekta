@@ -1,0 +1,66 @@
+From 34c481d2f1e8168627bde00455dc9057c7f63bda Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 15 Oct 2026 17:20:59 -0300
+Subject: [PATCH] gcm: pump the window's input events during long FIFO
+ drains
+
+The keyboard state a pad read sees was only refreshed when the frame
+clock thread finished draining the FIFO, up to ~20 ms late in Killzone.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/cellGcmSys.c         | 12 ++++++++++++
+ libs/video/rsx_vulkan_backend.c |  5 +++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index d24b64ee..0d07d1cb 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -1987,6 +1987,9 @@ static void wprof_note_walker(void)
+ static void wprof_note_walker(void) {}
+ #endif
+ 
++/* Set by a windowed backend: pumps its input events from inside long drains. */
++void (*g_rsx_input_pump)(void);
++
+ /* Host thread that last walked the FIFO, for PS3_SAMPLE_DRAIN. */
+ volatile unsigned long g_gcm_drain_tid;
+ 
+@@ -2234,6 +2237,15 @@ static void gcm_rsx_process_fifo_unlocked(void)
+      * catch up, and the reason is the whole diagnosis. */
+     const char* why = "caught-up";
+     while (s_fifo_getoff != put && budget-- > 0) {
++        /* A long drain keeps the window's input events waiting on this
++         * thread: let the backend pump them every millisecond or so, so a pad
++         * read on a guest thread sees the keyboard as it is now. */
++        if (g_rsx_input_pump && (budget & 0x3FF) == 0) {
++            static unsigned long long last;
++            extern unsigned long long ps3_ms_now(void);
++            const unsigned long long now = ps3_ms_now();
++            if (now != last) { last = now; g_rsx_input_pump(); }
++        }
+         u32 ea = gcm_io2ea(s_fifo_getoff);
+         if (!ea) {
+             /* get is sitting on an IO offset with no mapping -- the title
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 96679ca5..081a742d 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -4181,8 +4181,13 @@ void rsx_vulkan_backend_shutdown(void)
+     memset(&s_vk, 0, sizeof s_vk);
+ }
+ 
++/* Called from inside long FIFO drains on the thread that owns the window
++ * (cellGcmSys.c): refreshes the keyboard state SDL hands the pad layer. */
++static void vk_input_pump(void) { if (s_vk.windowed) SDL_PumpEvents(); }
++
+ int rsx_vulkan_backend_pump_messages(void)
+ {
++    { extern void (*g_rsx_input_pump)(void); g_rsx_input_pump = vk_input_pump; }
+     if (!s_vk.windowed) return 0;
+     int quit = 0;
+     SDL_Event e;
+-- 
+2.56.0
+

@@ -1,0 +1,75 @@
+From db09860eba875953bae3d947b4cb7327d293573c Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 02:13:00 -0300
+Subject: [PATCH] Quieter logs in play; AUDIO_RATE/AUDIO_WAV on Linux;
+ SPU_GET_WATCH
+
+The policy-module poll line printed once per policy run (2 million lines,
+100 MB in a session) and cellPadSetPortSetting once per frame; both are
+quiet now (SPURS_PM_TRACE for the first). semaphore_wait read SEMTID with
+getenv on every wait. AUDIO_RATE (silent share every 5 s) and AUDIO_WAV
+(the mix) now work in the Linux mixing loop too. SPU_GET_WATCH=lo,hi logs
+GETs from an EA range.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/audio/cellAudio.c     | 9 +++++++++
+ libs/input/cellPad.c       | 4 ++--
+ runtime/spu/spu_channels.c | 6 ++++++
+ 3 files changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
+index 6bbfb0ac..800d17d7 100644
+--- a/libs/audio/cellAudio.c
++++ b/libs/audio/cellAudio.c
+@@ -674,6 +674,15 @@ static void* audio_mix_thread_func(void* arg)
+         }
+         blocks++;
+         audio_mix_one_block();
++        /* AUDIO_RATE=1: blocks per second and the share of silent ones;
++         * AUDIO_WAV=<file>: the mix as raw f32le stereo 48 kHz. */
++        { static int on = -1; static FILE* wf;
++          if (on < 0) { on = getenv("AUDIO_RATE") ? 1 : 0; const char* e = getenv("AUDIO_WAV"); wf = e ? fopen(e, "wb") : NULL; }
++          if (wf) fwrite(s_mix_buffer, sizeof(float), CELL_AUDIO_BLOCK_SAMPLES * 2, wf);
++          if (on) { static unsigned n, z; int nz = 0;
++            for (u32 i = 0; i < CELL_AUDIO_BLOCK_SAMPLES * 2; i++) if (s_mix_buffer[i] != 0.0f) { nz = 1; break; }
++            n++; z += !nz;
++            if (n == 937) { fprintf(stderr, "[audio-rate] silent %.1f%% of the last 5 s\n", 100.0 * z / n); n = z = 0; } } }
+         audio_backend_submit(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
+         audio_notify_event_queues();
+         /* AUDIO_QUEUE=1: the device queue (= output latency) every ~5 s. */
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 8163e8d5..16aba8f6 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -1592,8 +1592,8 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
+ 
+ s32 cellPadSetPortSetting(u32 port_no, u32 port_setting)
+ {
+-    printf("[cellPad] SetPortSetting(port=%u, setting=0x%X)\n",
+-           port_no, port_setting);
++    { static int n; if (n++ < 4)   /* some titles call it every frame */
++        printf("[cellPad] SetPortSetting(port=%u, setting=0x%X)\n", port_no, port_setting); }
+ 
+     if (!s_pad_initialized)
+         return CELL_PAD_ERROR_NOT_OPENED;
+diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
+index 2c132af3..7ac9c128 100644
+--- a/runtime/spu/spu_channels.c
++++ b/runtime/spu/spu_channels.c
+@@ -2138,6 +2138,12 @@ void spu_lockguard_check(spu_context* ctx, uint32_t ea, const uint8_t* src, uint
+ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint32_t size)
+ {
+     uint32_t lsa = (uint32_t)(ls - ctx->ls);
++    /* SPU_GET_WATCH=<lo>,<hi>: log GETs from that EA range (where a title
++     * keeps code or data it streams into local store). */
++    { static int on = -1; static uint32_t lo, hi;
++      if (on < 0) { const char* e = getenv("SPU_GET_WATCH"); on = e && sscanf(e, "%x,%x", &lo, &hi) == 2; }
++      if (on && ea >= lo && ea < hi) { static int n; if (n++ < 400)
++          fprintf(stderr, "[get-watch] img=%d ea=0x%08X -> LS 0x%05X size=%u\n", ctx->image_id, ea, lsa, size); } }
+     spu_ovl_dump(ctx, ea, lsa, ls, size);
+     for (unsigned slot = 0; slot < 4; ++slot) {
+         if (!ctx->resident_code[slot].image_id) continue;
+-- 
+2.56.0
+

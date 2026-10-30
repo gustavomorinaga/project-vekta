@@ -1,0 +1,54 @@
+From 8bff011329cd04e1824e37545333dd7ee08c5846 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 17 Oct 2026 09:34:02 -0300
+Subject: [PATCH] cellPad: raw mouse counts for a title hook
+ (g_pad_mouse_direct, pad_mouse_take)
+
+A title that turns its camera from the mouse itself takes the counts instead
+of the right stick. PAD_MOUSE_FAKE=dx,dy adds counts to every take for tests.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index c4b36578..a815fe4b 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -715,6 +715,20 @@ static unsigned long long pad_now_ms(void)
+  * title's dead zone. Left button = R1, right = L1, middle = R3.
+  * ponytail: speed mapped onto the stick, not the title's camera angles; a direct
+  * mouse needs the title's own camera code (per-game). */
++/* A title hook that turns the camera itself (g_pad_mouse_direct = 1) takes
++ * the mouse's raw counts here instead of the stick. PAD_MOUSE_FAKE="dx,dy"
++ * adds that much to every take (tests without a window). */
++volatile int g_pad_mouse_direct;
++static volatile int s_mouse_dx, s_mouse_dy;
++void pad_mouse_take(int* dx, int* dy)
++{
++    *dx = __atomic_exchange_n(&s_mouse_dx, 0, __ATOMIC_ACQ_REL);
++    *dy = __atomic_exchange_n(&s_mouse_dy, 0, __ATOMIC_ACQ_REL);
++    static int fake = -1, fx, fy;
++    if (fake < 0) { const char* e = getenv("PAD_MOUSE_FAKE"); fake = e && sscanf(e, "%d,%d", &fx, &fy) == 2; }
++    if (fake) { *dx += fx; *dy += fy; }
++}
++
+ static void pad_poll_mouse(PadHostState* hs)
+ {
+     static int off = -1;
+@@ -740,6 +754,11 @@ static void pad_poll_mouse(PadHostState* hs)
+         return;
+     }
+     mb = SDL_GetRelativeMouseState(&dx, &dy);
++    if (g_pad_mouse_direct) {
++        __atomic_add_fetch(&s_mouse_dx, dx, __ATOMIC_ACQ_REL);
++        __atomic_add_fetch(&s_mouse_dy, dy, __ATOMIC_ACQ_REL);
++        dx = dy = 0;
++    }
+     sx = sx * decay + (float)dx;
+     sy = sy * decay + (float)dy;
+     for (int axis = 0; axis < 2; axis++) {
+-- 
+2.56.0
+

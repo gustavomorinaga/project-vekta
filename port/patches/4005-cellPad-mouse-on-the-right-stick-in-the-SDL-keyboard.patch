@@ -1,0 +1,86 @@
+From d4d9a5057d37172a4117a0ca992885b0608770bc Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 17 Oct 2026 06:03:03 -0300
+Subject: [PATCH] cellPad: mouse on the right stick in the SDL keyboard
+ fallback
+
+The window captures the pointer on a click. Mouse speed drives the right
+stick (PAD_MOUSE_GAIN, PAD_MOUSE_DECAY, PAD_MOUSE_DEADZONE); left button R1,
+right L1, middle R3. PAD_NO_MOUSE=1 turns it off.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c | 50 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 50 insertions(+)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 4e9000cd..876e08d6 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -708,6 +708,54 @@ static unsigned long long pad_now_ms(void)
+ }
+ 
+ #if !defined(_WIN32) && PAD_BACKEND_SDL2
++/* Mouse on the right stick (the window captures the pointer on a click; PAD_NO_MOUSE=1
++ * turns it off). A stick is a turn rate, so the stick follows the mouse's speed: the
++ * motion of each poll goes into a value that decays by PAD_MOUSE_DECAY per 4 ms poll,
++ * scaled by PAD_MOUSE_GAIN, plus PAD_MOUSE_DEADZONE so slow motion still clears the
++ * title's dead zone. Left button = R1, right = L1, middle = R3.
++ * ponytail: speed mapped onto the stick, not the title's camera angles; a direct
++ * mouse needs the title's own camera code (per-game). */
++static void pad_poll_mouse(PadHostState* hs)
++{
++    static int off = -1;
++    static float gain = 6.0f, decay = 0.7f, dz = 20.0f;
++    if (off < 0) {
++        const char* e;
++        off = getenv("PAD_NO_MOUSE") ? 1 : 0;
++        if ((e = getenv("PAD_MOUSE_GAIN")))     gain  = (float)atof(e);
++        if ((e = getenv("PAD_MOUSE_DECAY")))    decay = (float)atof(e);
++        if ((e = getenv("PAD_MOUSE_DEADZONE"))) dz    = (float)atof(e);
++    }
++    if (off) return;
++    static float sx, sy;
++    int dx = 0, dy = 0;
++    Uint32 mb;
++    if (!SDL_GetRelativeMouseMode()) {
++        /* The first click into the window captures the pointer and does not shoot. */
++        if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
++            SDL_SetRelativeMouseMode(SDL_TRUE);
++            SDL_GetRelativeMouseState(NULL, NULL);
++        }
++        sx = sy = 0;
++        return;
++    }
++    mb = SDL_GetRelativeMouseState(&dx, &dy);
++    sx = sx * decay + (float)dx;
++    sy = sy * decay + (float)dy;
++    for (int axis = 0; axis < 2; axis++) {
++        float v = axis ? sy : sx;
++        float d = v == 0 ? 0 : (v > 0 ? dz + v * gain : -dz + v * gain);
++        if (d > 127) d = 127;
++        if (d < -128) d = -128;
++        if (v > -0.05f && v < 0.05f) d = 0;
++        u8* stick = axis ? &hs->analog_ry : &hs->analog_rx;
++        if (d != 0) *stick = (u8)(128 + (int)d);
++    }
++    if (mb & SDL_BUTTON(SDL_BUTTON_LEFT))   hs->buttons |= CELL_PAD_CTRL_R1;
++    if (mb & SDL_BUTTON(SDL_BUTTON_RIGHT))  hs->buttons |= CELL_PAD_CTRL_L1;
++    if (mb & SDL_BUTTON(SDL_BUTTON_MIDDLE)) hs->buttons |= CELL_PAD_CTRL_R3;
++}
++
+ /* The same keyboard fallback off Windows, read from SDL's keyboard state: keys
+  * count only while one of this process's SDL windows (the Vulkan backend's,
+  * PS3RECOMP_VK_WINDOW=1) has keyboard focus. Same map as on Windows, plus
+@@ -751,6 +799,8 @@ static void pad_poll_keyboard(void)
+     hs->analog_ly = (u8)(k[SDL_SCANCODE_W] ? 0 : k[SDL_SCANCODE_S] ? 255 : 128);
+     hs->analog_rx = (u8)(k[SDL_SCANCODE_J] ? 0 : k[SDL_SCANCODE_L] ? 255 : 128);
+     hs->analog_ry = (u8)(k[SDL_SCANCODE_I] ? 0 : k[SDL_SCANCODE_K] ? 255 : 128);
++    pad_poll_mouse(hs);
++    btns = hs->buttons;
+     hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
+     hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
+ }
+-- 
+2.56.0
+

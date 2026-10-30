@@ -1,0 +1,53 @@
+# GitHub Pages: publishes site/ and the images it loads from assets/ and docs/screenshots/. Dormant until the
+# maintainer sets the repository variable PAGES_ENABLED to "true" (Settings, Secrets and variables, Actions,
+# Variables) and Settings, Pages, Source to "GitHub Actions"; without the variable the jobs are skipped. (After
+# Project Pyrrhus's pages.yml, MIT.)
+name: pages
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "assets/**", "docs/screenshots/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    if: vars.PAGES_ENABLED == 'true'
+    permissions:
+      contents: read
+      pages: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+      - name: Stage _site/
+        run: |
+          set -euo pipefail
+          # The page loads ../assets/ and ../docs/screenshots/, as it does from a checkout, so the layout is kept.
+          mkdir -p _site/site _site/assets _site/docs
+          cp -a site/. _site/site/
+          cp -a assets/banner.png assets/banner@2x.png assets/social-preview.png _site/assets/
+          cp -a docs/screenshots _site/docs/
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=site/"><title>Project Vekta</title><a href="site/">Project Vekta</a>\n' > _site/index.html
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: _site
+  deploy:
+    needs: build
+    if: vars.PAGES_ENABLED == 'true'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1

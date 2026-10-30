@@ -1,0 +1,139 @@
+From 2062584f24547fe25af9f40c87765919a9fe2b0f Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 12:14:35 -0300
+Subject: [PATCH] spurs: poll period and idle cap knobs,
+ WID_LANES=<wid>:0, workload-added hook (Killzone port, in progress)
+
+PS3_SPURS_POLL_US / PS3_SPURS_IDLE_MAX on the #291 coordinator, PS3_SPURS_WID_LANES=<wid>:0 keeps a workload off the workers, and g_spurs_workload_added_hook names each workload with its instance and argument, for a port whose native code used heap addresses that moved with v0.18.0's memory domains (#296). Killzone HD runs Level 7 on this tree, but far slower than on v0.14.0: the SPURS tuning is not finished.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/spurs/cellSpurs.c | 66 ++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 61 insertions(+), 5 deletions(-)
+
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index 19810760..8eb57cec 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -41,6 +41,7 @@ uint32_t g_ydkj_real_spurs_ea   = 0;   /* real CellSpurs instance EA (for the ta
+ #else
+ #include <pthread.h>
+ #include <time.h>
++#include <sched.h>
+ #endif
+ #include "ps3emu/thread_name.h"
+ 
+@@ -1516,6 +1517,12 @@ static DWORD WINAPI pm_write_watch(LPVOID unused)
+     return 0;
+ }
+ 
++/* A port that runs a workload's work natively finds it here by name, with
++ * the instance and the workload argument the game gave it, instead of from
++ * addresses that move with the heap layout. */
++void (*g_spurs_workload_added_hook)(u32 spurs_ea, u32 wid, const char* name_class,
++                                    const char* name_instance, u64 data);
++
+ s32 cellSpursAddWorkloadWithAttribute(CellSpurs* spurs,
+                                        CellSpursWorkloadId* wid,
+                                        const CellSpursWorkloadAttribute* attr)
+@@ -1588,10 +1595,15 @@ s32 cellSpursAddWorkloadWithAttribute(CellSpurs* spurs,
+     }
+ 
+     /* Forward the BE-decoded values (priority as guest EA of the 8-byte table). */
+-    return cellSpursAddWorkload(spurs, wid, (const void*)(uintptr_t)pm_ea,
+-                               pm_sz, data,
+-                               (const u8*)(uintptr_t)(attr_ea + WKATTR_PRIORITY),
+-                               minc, maxc);
++    const s32 rc = cellSpursAddWorkload(spurs, wid, (const void*)(uintptr_t)pm_ea,
++                                        pm_sz, data,
++                                        (const u8*)(uintptr_t)(attr_ea + WKATTR_PRIORITY),
++                                        minc, maxc);
++    if (rc == CELL_OK && g_spurs_workload_added_hook)
++        g_spurs_workload_added_hook((u32)(uintptr_t)spurs, wid ? vm_read32((u32)(uintptr_t)wid) : ~0u,
++                                    nmcls ? (const char*)(vm_base + nmcls) : "",
++                                    nmins ? (const char*)(vm_base + nmins) : "", data);
++    return rc;
+ }
+ 
+ /* The SDK-versioned workload-attribute initializer (the import the game links;
+@@ -1778,6 +1790,29 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
+     return 0;
+ }
+ 
++/* PS3_SPURS_WID_LANES=<wid>:0[,<wid>:0...]: keep a workload off the SPU
++ * workers entirely, for a port that runs its jobs natively (Killzone HD's
++ * jm_post: native/jm.c takes and finishes them). Other counts are accepted
++ * and ignored: the scheduler gives each workload its maxContention. */
++static int spurs_wid_off(u32 wid)
++{
++    static int s_off = -1;   /* bit per workload */
++    if (s_off < 0) {
++        int m = 0;
++        const char* e = getenv("PS3_SPURS_WID_LANES");
++        while (e && *e) {
++            char* end;
++            const long w = strtol(e, &end, 0);
++            if (end == e || *end != ':') break;
++            const long n = strtol(end + 1, &end, 0);
++            if (w >= 0 && w < 16 && n == 0) m |= 1 << w;
++            e = *end == ',' ? end + 1 : end;
++        }
++        s_off = m;
++    }
++    return (s_off >> wid) & 1;
++}
++
+ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+ {
+     struct SpursInst* si = (struct SpursInst*)p;
+@@ -1792,11 +1827,30 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+          * line (a probed policy module that writes it cannot feed itself more
+          * probes). Every 16th kick pass in a row is a full one, so a steady
+          * stream of commits cannot starve the probes either. */
++        /* PS3_SPURS_POLL_US: the pass period (default 1000). A WWS job list is
++         * not kicked -- the PPU appends jobs and spins until the SPUs drain
++         * them, and no request line is committed -- so every list a frame
++         * submits waits up to one period plus the idle back-off below
++         * (PS3_SPURS_IDLE_MAX caps its log2 passes, default 4). Killzone HD
++         * submits dozens of lists a frame and needs a much shorter period. */
++        static long s_poll_us = -1, s_idle_max = -1;
++        if (s_poll_us < 0) {
++            const char* e = getenv("PS3_SPURS_IDLE_MAX");
++            s_idle_max = e ? atol(e) : 4;
++            e = getenv("PS3_SPURS_POLL_US");
++            s_poll_us = e ? atol(e) : 1000;
++        }
+         int kick_pass = 0;
+         if (__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL)) {
+             kick_pass = ++kick_run < 16;
++        } else if (s_poll_us < 1000) {
++            ReleaseSRWLockExclusive(&si->lock);
++            if (s_poll_us > 0) { struct timespec t = { 0, s_poll_us * 1000L }; nanosleep(&t, NULL); }
++            else sched_yield();
++            AcquireSRWLockExclusive(&si->lock);
++            (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
+         } else {
+-            SleepConditionVariableSRW(&si->wake, &si->lock, 1, 0);
++            SleepConditionVariableSRW(&si->wake, &si->lock, (DWORD)(s_poll_us / 1000), 0);
+             /* This full pass reads the line after any commit that woke it. */
+             (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
+         }
+@@ -1819,6 +1873,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+                     continue;
+                 if (!vm_read8(ea + SPURS_WKL_INFO1 + wid * SPURS_WKL_INFO_SZ + 0x18 + sn))
+                     continue; /* priority zero makes this physical lane ineligible */
++                if (spurs_wid_off(wid)) continue;
+                 u32 maxcont = vm_read8(ea + SPURS_WKL_MAXCONT + wid);
+                 if (!maxcont || si->active[wid] >= maxcont) continue;
+                 WklPm* pm = spurs_resolve_pm(wid);
+@@ -1827,6 +1882,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+                 u32 ready = vm_read8(ea + SPURS_WKL_READY1 + wid);
+                 int kicked = ready || (signal & (0x8000u >> wid));
+                 if (kicked) si->idle[wid] = 0;
++                if (si->idle[wid] > s_idle_max) si->idle[wid] = (u8)s_idle_max;
+                 if (!kicked && (kick_pass || (si->pass_no & ((1u << si->idle[wid]) - 1))))
+                     continue;
+                 spu_lockline_lock();
+-- 
+2.56.0
+

@@ -1,0 +1,257 @@
+From 32370e946588180975f71b9bd3674a9f1d7074bf Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 13:00:56 -0300
+Subject: [PATCH] PPU: leaner hot paths for guest stores, indirect calls
+ and the profiler breadcrumb
+
+- vm_write*: the plain store is a leaf with no stack frame; a store to a line
+  an SPU has reserved goes to an out-of-line helper.
+- ps3_indirect_call_impl: with no indirect-call diagnostic armed (read once
+  from the environment) a call is the lookup, the bookkeeping and the call;
+  the full path keeps every probe.
+- syscalls and HLE calls stamp the host return address and resolve it to a
+  guest function only when read (it was a binary search over every lifted
+  function on each call).
+
+Killzone HD, 144 Hz clock, Level 1 in play: ~89 -> ~91-94 fps.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/host/host_stubs.c         |  4 +++
+ runtime/ppu/ppu_hle.cpp           |  3 +-
+ runtime/ppu/ppu_loader.cpp        | 59 ++++++++++++++++++++++++++++---
+ runtime/syscalls/sys_ppu_thread.c | 22 +++++++++---
+ runtime/syscalls/sys_ppu_thread.h |  1 +
+ 5 files changed, 79 insertions(+), 10 deletions(-)
+
+diff --git a/runtime/host/host_stubs.c b/runtime/host/host_stubs.c
+index 6e79ec31..fc02987c 100644
+--- a/runtime/host/host_stubs.c
++++ b/runtime/host/host_stubs.c
+@@ -117,6 +117,10 @@ void ps3_ww_report_inline(unsigned int addr, unsigned long long val, int width)
+  * a caller it cannot name. */
+ unsigned int ppu_active_lr(void) { return 0; }
+ 
++/* ppu_loader.cpp - host return address -> guest function, for the profiler
++ * breadcrumbs. No lifted functions here. */
++unsigned int ppu_prof_resolve_host(void* ra) { (void)ra; return 0; }
++
+ PPU_THREAD_LOCAL ppu_context* g_active_ctx = 0;
+ uint32_t g_spu_image_src_ea = 0;
+ uint32_t g_spu_image_ls_start = 0;
+diff --git a/runtime/ppu/ppu_hle.cpp b/runtime/ppu/ppu_hle.cpp
+index 15d4ef60..9a28d67a 100644
+--- a/runtime/ppu/ppu_hle.cpp
++++ b/runtime/ppu/ppu_hle.cpp
+@@ -251,6 +251,7 @@ static void hle_top_note(uint32_t nid, const char* name, const ppu_context* ctx,
+     }
+     for (int j = 0; j < ht_used; j++) ht_n[j] = 0;
+ }
++extern "C" void ppu_prof_stamp_host(void* ctx, void* ra);
+ extern "C" uint32_t ppu_prof_resolve_host(void* ra);
+ extern "C" void ps3_hle_call(uint32_t nid, ppu_context* ctx)
+ {
+@@ -321,7 +322,7 @@ extern "C" void ps3_hle_call(uint32_t nid, ppu_context* ctx)
+         return;
+     }
+     /* Guest-PC breadcrumb for the sampling profiler (see lv2_syscall). */
+-    ppu_prof_stamp(ctx, ppu_prof_resolve_host(__builtin_return_address(0)));
++    ppu_prof_stamp_host(ctx, __builtin_return_address(0));
+     g_last_hle_nid = nid;
+     /* Stamp the NAME here too, not only where a handler is found below.
+      *
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index 36752b1f..e616a9d9 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -2084,6 +2084,21 @@ extern "C" void ppu_ww_note_atomic(uint32_t ea, uint32_t val, int width, void* r
+ {
+     barrier_watch_hit(ea, val, width, ra);
+ }
++/* The store to a line an SPU has reserved: under the lock-line lock, with
++ * the lost-reservation event. Out of line, so the plain store above it needs
++ * no stack frame. */
++static __attribute__((noinline, cold)) void vm_store_coh(uint32_t ea, uint64_t raw, uint32_t n)
++{
++    spu_lockline_lock();
++    memcpy(vm_base + ea, &raw, n);   /* the low n bytes: x86 is little-endian */
++    spu_coh_notify_write(ea);
++    spu_lockline_unlock();
++}
++#define VM_STORE_FAST(ea, raw, n)                                             \
++    do {                                                                      \
++        if (__builtin_expect(spu_coh_is_reserved_fast(ea), 0)) vm_store_coh((ea), (uint64_t)(raw), (n)); \
++        else memcpy(vm_base + (ea), &(raw), (n));                             \
++    } while (0)
+ /* The common guest store: no write watch, no null sweep, an ordinary
+  * address. One test, then the store; the diagnostics live in the _slow
+  * halves, so this half needs no stack frame. */
+@@ -2107,7 +2122,7 @@ void vm_write8 (uint64_t a, uint8_t  v) {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_st_plain(ea, 1) && !spu_raw_is_reg(ea), 1)) {
+         const uint8_t raw = v;
+-        VM_WRITE_COH(ea, &raw, 1);
++        VM_STORE_FAST(ea, raw, 1);
+         return;
+     }
+     vm_write8_slow(a, v, __builtin_return_address(0));
+@@ -2118,7 +2133,7 @@ void vm_write16(uint64_t a, uint16_t v) {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_st_plain(ea, 2) && !spu_raw_is_reg(ea), 1)) {
+         const uint16_t raw = __builtin_bswap16(v);
+-        VM_WRITE_COH(ea, &raw, 2);
++        VM_STORE_FAST(ea, raw, 2);
+         return;
+     }
+     vm_write16_slow(a, v, __builtin_return_address(0));
+@@ -2139,7 +2154,7 @@ void vm_write32(uint64_t a, uint32_t v) {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_st_plain(ea, 4) && !spu_raw_is_reg(ea), 1)) {
+         const uint32_t raw = __builtin_bswap32(v);
+-        VM_WRITE_COH(ea, &raw, 4);
++        VM_STORE_FAST(ea, raw, 4);
+         return;
+     }
+     vm_write32_slow(a, v, __builtin_return_address(0));
+@@ -2158,7 +2173,7 @@ void vm_write64(uint64_t a, uint64_t v) {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_st_plain(ea, 8), 1)) {
+         const uint64_t raw = __builtin_bswap64(v);
+-        VM_WRITE_COH(ea, &raw, 8);
++        VM_STORE_FAST(ea, raw, 8);
+         return;
+     }
+     vm_write64_slow(a, v, __builtin_return_address(0));
+@@ -2679,8 +2694,41 @@ extern "C" void ps3_indirect_call(ppu_context* ctx)
+     }
+ }
+ 
++/* Any of the indirect-call diagnostics armed (read once). Without them a call
++ * is the lookup and the call; the full path below keeps every probe. */
++static int icall_diag_on(void)
++{
++    static const char* const vars[] = { "BCTRL_RING", "PS3_BREADCRUMB", "PPU_TOCWATCH", "PS3_CALLTRACE",
++        "PS3_CALLTRACE_LR", "PS3_CALLTRACE_TO", "PS3_CALLTRACE_FROM", "PS3_CALLTRACE_R5", "FLOW_FORCE_RTCFG",
++        "SPURS_TRACE", "PS3_PRX_CALLTRACE", "PPU_TOCFIX", "PPU_RETWATCH" };
++    for (const char* v : vars) if (getenv(v)) return 1;
++    return 0;
++}
++static int s_icall_diag = -1;
++
+ static void ps3_indirect_call_impl(ppu_context* ctx)
+ {
++    if (__builtin_expect(s_icall_diag == 0, 1)) {
++        const uint32_t addr = g_icall_target_set ? g_icall_target : (uint32_t)ctx->ctr;
++        const ppu_fn fn = addr ? ppu_lookup(addr) : nullptr;
++        if (__builtin_expect(fn != nullptr && g_dispatch_depth <= 4000, 1)) {
++            g_icall_target_set = 0;
++            g_active_ctx = ctx;
++            g_dispatch_depth++;
++            if (g_vcall_sp < 128) g_vcall_stk[g_vcall_sp] = addr;
++            g_vcall_sp++;
++            fn(ctx);
++            while (g_trampoline_fn) {
++                void (*tf)(void*) = g_trampoline_fn;
++                g_trampoline_fn = 0;
++                tf(ctx);
++            }
++            if (g_vcall_sp > 0) g_vcall_sp--;
++            g_dispatch_depth--;
++            return;
++        }
++    }
++    if (s_icall_diag < 0) s_icall_diag = icall_diag_on();
+     g_active_ctx = ctx;
+     /* BCTRL_RING=1: keep the last N indirect-call targets per thread, and let
+      * anything that can name a moment dump them. A render path built out of
+@@ -3276,6 +3324,7 @@ extern "C" void ppu_gcm_pump_absent(void) {}
+ extern "C" __attribute__((weak)) void ppu_gcm_pump(void);
+ #define PPU_GCM_PUMP_LINKED (ppu_gcm_pump != nullptr)
+ #endif
++extern "C" void ppu_prof_stamp_host(void* ctx, void* ra);
+ /* In-flight lv2 syscall per guest thread; 0 = not in a syscall. See the guard
+  * in lv2_syscall() below. */
+ #define PS3_SC_INFLIGHT_MAX 64
+@@ -3328,7 +3377,7 @@ extern "C" void lv2_syscall(ppu_context* ctx)
+     /* Guest-PC breadcrumb for the sampling profiler: record the syscall
+      * callsite (lr) in the runtime-side thread info. cia itself is the thread
+      * entry OPD (load-bearing for the entry trampoline) -- do not touch it. */
+-    ppu_prof_stamp(ctx, ppu_prof_resolve_host(__builtin_return_address(0)));
++    ppu_prof_stamp_host(ctx, __builtin_return_address(0));
+     /* PS3_SCTRACE_TID: trace every lv2 syscall made by the loader/worker thread
+      * (tid=1) so we can see what it does AFTER receiving its q=1 event and why
+      * it never registers handlers / loads assets. */
+diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
+index 41d5721c..65b17314 100644
+--- a/runtime/syscalls/sys_ppu_thread.c
++++ b/runtime/syscalls/sys_ppu_thread.c
+@@ -372,19 +372,21 @@ unsigned long long ppu_thread_cpu_us(unsigned tid)
+     (void)tid; return 0;
+ #endif
+ }
++unsigned int ppu_prof_resolve_host(void* ra);   /* ppu_loader.cpp: host return address -> guest function */
+ /* Last syscall/HLE callsite of guest thread `tid` (see prof_pc). */
+ unsigned ppu_thread_prof_pc(unsigned tid)
+ {
+     if (tid < 2 || tid > PPU_THREAD_MAX) return 0;
+     ppu_thread_info* t = &g_ppu_threads[tid - 1];
+     if (t->state == PPU_THREAD_STATE_FREE) return 0;
+-    return t->prof_pc;
++    return t->prof_ra ? ppu_prof_resolve_host(t->prof_ra) : t->prof_pc;
+ }
+ 
+ /* Profiler accessor: snapshot slot idx (0-based). Returns 1 if the slot holds
+  * a live thread, filling tid/cia/name. Lets a host-side sampling profiler
+  * iterate guest threads without depending on ppu_thread_info's layout. */
+ static unsigned s_prof_main_pc = 0;   /* main guest thread: ctx lives outside the table */
++static void* s_prof_main_ra = 0;
+ 
+ int ppu_prof_snapshot(int idx, unsigned* tid, unsigned* cia, const char** name)
+ {
+@@ -393,16 +395,28 @@ int ppu_prof_snapshot(int idx, unsigned* tid, unsigned* cia, const char** name)
+     if (idx == 0 && t->state == PPU_THREAD_STATE_FREE) {
+         /* slot 0 stays FREE (the main thread never registers) -- serve its
+          * dispatcher breadcrumb here so the profiler sees tid 1. */
+-        *tid = 1; *cia = s_prof_main_pc; *name = "main";
+-        return s_prof_main_pc != 0;
++        *tid = 1; *cia = s_prof_main_ra ? ppu_prof_resolve_host(s_prof_main_ra) : s_prof_main_pc; *name = "main";
++        return *cia != 0;
+     }
+     if (t->state == PPU_THREAD_STATE_FREE) return 0;
+     *tid  = (unsigned)(idx + 1);
+-    *cia  = t->prof_pc ? t->prof_pc : (unsigned)t->ctx.cia;
++    { const unsigned pc = t->prof_ra ? ppu_prof_resolve_host(t->prof_ra) : t->prof_pc;
++      *cia = pc ? pc : (unsigned)t->ctx.cia; }
+     *name = t->name;
+     return 1;
+ }
+ 
++/* Called from the lv2/HLE dispatchers on every call: the host return address
++ * only, resolved to a guest function when something reads it (resolving here
++ * was a binary search over every lifted function per syscall and HLE call). */
++void ppu_prof_stamp_host(void* vctx, void* ra)
++{
++    char* p = (char*)vctx - offsetof(ppu_thread_info, ctx);
++    ppu_thread_info* t = (ppu_thread_info*)p;
++    if (t >= g_ppu_threads && t < g_ppu_threads + PPU_THREAD_MAX) t->prof_ra = ra;
++    else s_prof_main_ra = ra;
++}
++
+ /* Called from the lv2/HLE dispatchers with the guest ctx (== &info->ctx). */
+ void ppu_prof_stamp(void* vctx, unsigned lr)
+ {
+diff --git a/runtime/syscalls/sys_ppu_thread.h b/runtime/syscalls/sys_ppu_thread.h
+index 633446e0..df52b60f 100644
+--- a/runtime/syscalls/sys_ppu_thread.h
++++ b/runtime/syscalls/sys_ppu_thread.h
+@@ -53,6 +53,7 @@ typedef struct ppu_thread_info {
+     uint64_t     tls_addr;
+     uint32_t     prof_pc;      /* last syscall/HLE callsite (sampling profiler) */
+     int          blocked;      /* reached a blocking call (ppu_thread_note_block); atomic access only */
++    void*        prof_ra;      /* the same, as the host return address: resolved when read */
+ 
+ #ifdef _WIN32
+     HANDLE       host_thread;
+-- 
+2.56.0
+

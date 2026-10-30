@@ -1,0 +1,109 @@
+From ced5fe90a48d55643e1ddf1c9c4655b321f63a07 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 10:35:28 -0300
+Subject: [PATCH] PPU: guest stores take a short path when no watch is
+ armed
+
+vm_write8/16/32/64 test the watches, the null sweep and the range once and
+store; the diagnostics moved to out-of-line _slow halves. ~1 fps in Killzone
+HD at a 144 Hz clock (vm_write32 is ~15% of its main thread).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/ppu/ppu_loader.cpp | 59 +++++++++++++++++++++++++++++++++-----
+ 1 file changed, 52 insertions(+), 7 deletions(-)
+
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index 421edf31..36752b1f 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -2084,7 +2084,16 @@ extern "C" void ppu_ww_note_atomic(uint32_t ea, uint32_t val, int width, void* r
+ {
+     barrier_watch_hit(ea, val, width, ra);
+ }
+-void vm_write8 (uint64_t a, uint8_t  v) { barrier_watch_hit((uint32_t)a, v, 1, __builtin_return_address(0)); if (vm_oob((uint32_t)a,1) || vm_null_store((uint32_t)a, v, 1, __builtin_return_address(0))) return;
++/* The common guest store: no write watch, no null sweep, an ordinary
++ * address. One test, then the store; the diagnostics live in the _slow
++ * halves, so this half needs no stack frame. */
++static const int s_st_watch_env = (getenv("PPU_WVAL") || getenv("PPU_WWATCH")) ? 1 : 0;
++static inline int vm_st_plain(uint32_t a, uint32_t n)
++{
++    return __builtin_expect((g_barrier_sync_watch | g_null_sweep_hi | (uint32_t)s_st_watch_env) == 0, 1) &&
++           a >= 0x1000u && (ppu_vm_size == 0 || (uint64_t)a + n <= ppu_vm_size);
++}
++static __attribute__((noinline)) void vm_write8_slow(uint64_t a, uint8_t  v, void* ra) { barrier_watch_hit((uint32_t)a, v, 1, ra); if (vm_oob((uint32_t)a,1) || vm_null_store((uint32_t)a, v, 1, ra)) return;
+ #ifdef _WIN32
+     /* PT detector: does this byte-write turn its word into the hunted truncated value? */
+     { if(g_pt_val==-2){const char*e=getenv("PT"); g_pt_val=e?(int64_t)strtoul(e,0,16):-1;}
+@@ -2094,9 +2103,27 @@ void vm_write8 (uint64_t a, uint8_t  v) { barrier_watch_hit((uint32_t)a, v, 1, _
+         else if(((uint32_t)a&3)==0 && v!=0) pt_restore(wa); /* MSB byte set non-zero = restored */ } }
+ #endif
+     VM_WRITE_COH(a, &v, 1); }
+-void vm_write16(uint64_t a, uint16_t v) { barrier_watch_hit((uint32_t)a, v, 2, __builtin_return_address(0)); if (vm_oob((uint32_t)a,2) || vm_null_store((uint32_t)a, v, 2, __builtin_return_address(0))) return;
++void vm_write8 (uint64_t a, uint8_t  v) {
++    const uint32_t ea = (uint32_t)a;
++    if (__builtin_expect(vm_st_plain(ea, 1) && !spu_raw_is_reg(ea), 1)) {
++        const uint8_t raw = v;
++        VM_WRITE_COH(ea, &raw, 1);
++        return;
++    }
++    vm_write8_slow(a, v, __builtin_return_address(0));
++}
++static __attribute__((noinline)) void vm_write16_slow(uint64_t a, uint16_t v, void* ra) { barrier_watch_hit((uint32_t)a, v, 2, ra); if (vm_oob((uint32_t)a,2) || vm_null_store((uint32_t)a, v, 2, ra)) return;
+     v = __builtin_bswap16(v); VM_WRITE_COH(a, &v, 2); }
+-void vm_write32(uint64_t a, uint32_t v) { barrier_watch_hit((uint32_t)a, v, 4, __builtin_return_address(0)); if (vm_oob((uint32_t)a,4) || vm_null_store((uint32_t)a, v, 4, __builtin_return_address(0))) return;
++void vm_write16(uint64_t a, uint16_t v) {
++    const uint32_t ea = (uint32_t)a;
++    if (__builtin_expect(vm_st_plain(ea, 2) && !spu_raw_is_reg(ea), 1)) {
++        const uint16_t raw = __builtin_bswap16(v);
++        VM_WRITE_COH(ea, &raw, 2);
++        return;
++    }
++    vm_write16_slow(a, v, __builtin_return_address(0));
++}
++static __attribute__((noinline)) void vm_write32_slow(uint64_t a, uint32_t v, void* ra) { barrier_watch_hit((uint32_t)a, v, 4, ra); if (vm_oob((uint32_t)a,4) || vm_null_store((uint32_t)a, v, 4, ra)) return;
+ #ifdef _WIN32
+     /* PT restore: a full-word store of a valid pointer (high byte set) to a
+      * previously-truncated slot clears the record (that truncation was transient). */
+@@ -2108,16 +2135,34 @@ void vm_write32(uint64_t a, uint32_t v) { barrier_watch_hit((uint32_t)a, v, 4, _
+        * have side effects. The plain store above still happens -- the registers
+        * are guest memory and the PPU reads most of them straight back. */
+       if (spu_raw_is_reg((uint32_t)a)) spu_raw_reg_store((uint32_t)a, _v, 4); } }
+-void vm_write64(uint64_t a, uint64_t v) {
++void vm_write32(uint64_t a, uint32_t v) {
++    const uint32_t ea = (uint32_t)a;
++    if (__builtin_expect(vm_st_plain(ea, 4) && !spu_raw_is_reg(ea), 1)) {
++        const uint32_t raw = __builtin_bswap32(v);
++        VM_WRITE_COH(ea, &raw, 4);
++        return;
++    }
++    vm_write32_slow(a, v, __builtin_return_address(0));
++}
++static __attribute__((noinline)) void vm_write64_slow(uint64_t a, uint64_t v, void* ra) {
+     /* PPU_WWATCH covers the 64-bit store too. It did not, which made the watch
+      * blind to exactly the code that matters most for it: every bignum and
+      * every 64-bit struct field is written with std, so a watch on one would
+      * report nothing and read as "nobody writes this". Two halves so an
+      * 8-byte store still shows up when only its low or high word is watched. */
+-    barrier_watch_hit((uint32_t)a,     (uint32_t)(v >> 32), 4, __builtin_return_address(0));
+-    barrier_watch_hit((uint32_t)a + 4, (uint32_t)v,         4, __builtin_return_address(0));
+-    if (vm_oob((uint32_t)a,8) || vm_null_store((uint32_t)a, (uint32_t)(v >> 32), 8, __builtin_return_address(0))) return;
++    barrier_watch_hit((uint32_t)a,     (uint32_t)(v >> 32), 4, ra);
++    barrier_watch_hit((uint32_t)a + 4, (uint32_t)v,         4, ra);
++    if (vm_oob((uint32_t)a,8) || vm_null_store((uint32_t)a, (uint32_t)(v >> 32), 8, ra)) return;
+     v = __builtin_bswap64(v); VM_WRITE_COH(a, &v, 8); }
++void vm_write64(uint64_t a, uint64_t v) {
++    const uint32_t ea = (uint32_t)a;
++    if (__builtin_expect(vm_st_plain(ea, 8), 1)) {
++        const uint64_t raw = __builtin_bswap64(v);
++        VM_WRITE_COH(ea, &raw, 8);
++        return;
++    }
++    vm_write64_slow(a, v, __builtin_return_address(0));
++}
+ }
+ 
+ /* ---- malloc allocation tracker (PS3_ALLOCTAG) -------------------------------
+-- 
+2.56.0
+

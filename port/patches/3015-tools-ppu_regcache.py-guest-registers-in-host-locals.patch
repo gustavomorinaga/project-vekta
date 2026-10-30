@@ -1,0 +1,227 @@
+From ca83cfdb03d31c0a28cac69f49add9a38d45e1a5 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 14:48:33 -0300
+Subject: [PATCH] tools: ppu_regcache.py, guest registers in host locals
+ for lifted PPU functions
+
+A pass over ppu_lifter.py's output: inside each function the GPRs, CR and
+XER it uses live in locals, stored back before any line that passes ctx on
+(only those that may differ, r14..r31 kept across calls to functions that
+follow the ABI) and reloaded after it. The compiler can then keep registers
+in host registers and drop condition-register arithmetic nobody reads.
+Functions with setjmp state or a register's address are left alone.
+
+Killzone HD, 144 Hz clock, Level 1 in play: ~91 -> ~97-99 fps (with PGO).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ tools/ppu_regcache.py | 197 ++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 197 insertions(+)
+ create mode 100644 tools/ppu_regcache.py
+
+diff --git a/tools/ppu_regcache.py b/tools/ppu_regcache.py
+new file mode 100644
+index 00000000..4cbe1b27
+--- /dev/null
++++ b/tools/ppu_regcache.py
+@@ -0,0 +1,197 @@
++#!/usr/bin/env python3
++"""Keep a lifted function's guest registers in host locals.
++
++ppu_lifter.py writes every GPR, CR and XER access as ctx->gpr[N], ctx->cr and
++ctx->xer. The context escapes into every call, so the compiler has to keep
++each of those in memory: a load and a store per guest instruction, and the
++condition-register arithmetic of every compare is computed in full even when
++only one bit is ever tested.
++
++This pass rewrites each `void func_X(ppu_context* ctx) { ... }` body so those
++registers live in locals (_gN, _cr, _xer):
++  - loaded from ctx at entry (the ones the body uses);
++  - stored back before any line that hands ctx to something (a call, an
++    indirect call, a syscall, an HLE import, a trampoline), before every
++    `return`, and at the end of the body -- only the ones that may differ
++    from ctx at that point;
++  - reloaded after such a line: r0, r2..r13, CR, XER and the registers the
++    line names. r1 and r14..r31 are kept across a call to a function that
++    follows the ABI, and are not even stored before it (the callee only
++    saves and restores them); a direct call to one that does not (an
++    out-of-line register save/restore routine) stores and reloads all.
++The escaping line itself still reads and writes ctx directly.
++
++Which registers may differ from ctx is tracked line by line; a label (or a
++`case`) can be reached from anywhere, so there every register the body ever
++writes counts as possibly different.
++
++Functions that take setjmp/longjmp state or the address of a register are left
++as they are.
++
++Usage: ppu_regcache.py <in.cpp> <out.cpp>   (or a directory: every
++ppu_recomp_*.cpp in it, in place)
++"""
++import os, re, sys
++
++FUNC_RE = re.compile(r'^void (\w+)\(ppu_context\* ctx\) \{\s*$')
++GPR_RE = re.compile(r'ctx->gpr\[(\d+)\]')
++ESCAPE_RE = re.compile(r'\bctx\b(?!->)')          # ctx passed on, not dereferenced
++WRITE_RE = re.compile(r'(_g\d+|_cr|_xer)\s*(?:[-+*/|&^]|<<|>>)?=(?!=)')
++LABEL_RE = re.compile(r'^\s*(?:loc_\w+|case\b[^:]*|default)\s*:')
++SKIP_RE = re.compile(r'setjmp|ppu_sj_|&ctx->gpr|&ctx->cr|&ctx->xer')
++# A callee that follows the ABI keeps r1 and r14..r31 (the lifted functions
++# restore them on return). Those that do not -- the compilers' out-of-line
++# save/restore routines (_savegpr*, _restgpr*), and other code that writes a
++# non-volatile register without restoring it -- are found by `clobbers` below;
++# a direct call to one stores and reloads everything.
++VOLATILE = {0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
++NONVOL = set(range(14, 32))
++CALL_RE = re.compile(r'\b(func_\w+)\(ctx\)')
++GPR_W_RE = re.compile(r'ctx->gpr\[(\d+)\]\s*(?:[-+*/|&^]|<<|>>)?=(?!=)')
++
++
++def clobbers(body_text):
++    """Non-volatile registers the body writes without saving them first (_cs_N)."""
++    saved = {int(n) for n in re.findall(r'_cs_(\d+) =', body_text)}
++    return {int(n) for n in GPR_W_RE.findall(body_text)} & NONVOL - saved
++
++
++def names_in(text):
++    regs = {int(n) for n in GPR_RE.findall(text)}
++    return regs, 'ctx->cr' in text, 'ctx->xer' in text
++
++
++def to_locals(line):
++    line = GPR_RE.sub(lambda m: '_g' + m.group(1), line)
++    return line.replace('ctx->cr', '_cr').replace('ctx->xer', '_xer')
++
++
++def written(line):
++    out = set()
++    for w in WRITE_RE.findall(line):
++        out.add(w)
++    return out
++
++
++def store(key):
++    return f'ctx->gpr[{key[2:]}] = {key};' if key.startswith('_g') else f'ctx->{key[1:]} = {key};'
++
++
++def load(key):
++    return f'{key} = ctx->gpr[{key[2:]}];' if key.startswith('_g') else f'{key} = ctx->{key[1:]};'
++
++
++SUSPECT = set()   # functions that write r14..r31 and do not restore them
++
++
++def rewrite_body(lines):
++    text = ''.join(lines)
++    if SKIP_RE.search(text):
++        return lines, False
++    regs, has_cr, has_xer = names_in(text)
++    if not regs and not has_cr and not has_xer:
++        return lines, False
++    used = ['_g%d' % r for r in sorted(regs)] + (['_cr'] if has_cr else []) + (['_xer'] if has_xer else [])
++    # every key the body may write, in its local form (escape lines write ctx, not locals)
++    ever = set()
++    for ln in lines:
++        if not ESCAPE_RE.search(ln):
++            ever |= written(to_locals(ln))
++    ever &= set(used)
++
++    out = []
++    decl = []
++    for k in used:
++        typ = 'uint64_t' if k.startswith('_g') else 'uint32_t'
++        decl.append(f'{typ} {k} = ' + (f'ctx->gpr[{k[2:]}]' if k.startswith('_g') else f'ctx->{k[1:]}') + ';')
++    out.append('        ' + ' '.join(decl) + '\n')
++    dirty = set()
++    indent = '        '
++
++    def spill():
++        if dirty:
++            out.append(indent + ' '.join(store(k) for k in sorted(dirty)) + '\n')
++            dirty.clear()
++
++    for ln in lines:
++        if LABEL_RE.match(ln) and not ESCAPE_RE.search(ln):
++            out.append(ln)
++            dirty.clear(); dirty.update(ever)
++            continue
++        if ESCAPE_RE.search(ln):
++            r, c, x = names_in(ln)
++            full = any(f in SUSPECT for f in CALL_RE.findall(ln))
++            if full:
++                spill()
++            else:   # r14..r31 can wait: an ABI callee keeps them
++                keep = {k for k in dirty if k.startswith('_g') and int(k[2:]) in NONVOL and int(k[2:]) not in r}
++                dirty.difference_update(keep)
++                spill()
++                dirty.update(keep)
++            out.append(ln)                       # reads and writes ctx itself
++            back = {'_g%d' % i for i in ((set(range(32)) if full else VOLATILE) | r)} | {'_cr', '_xer'}
++            back &= set(used)
++            if back:
++                out.append(indent + ' '.join(load(k) for k in sorted(back)) + '\n')
++            continue
++        new = to_locals(ln)
++        if re.search(r'\breturn\b', new):
++            spill()
++            out.append(new)
++            dirty.update(written(new))   # a conditional return falls through
++            continue
++        out.append(new)
++        dirty.update(written(new))
++    spill()
++    return out, True
++
++
++def scan(paths):
++    """Fills SUSPECT from the original bodies."""
++    for path in paths:
++        cur, body = None, []
++        for ln in open(path):
++            m = FUNC_RE.match(ln)
++            if m:
++                cur, body = m.group(1), []
++            elif cur and ln.rstrip('\n') == '}':
++                if clobbers(''.join(body)):
++                    SUSPECT.add(cur)
++                cur = None
++            elif cur:
++                body.append(ln)
++
++
++def process(src_path, dst_path):
++    with open(src_path) as f:
++        lines = f.readlines()
++    out, i, n, done = [], 0, len(lines), 0
++    while i < n:
++        m = FUNC_RE.match(lines[i])
++        if not m:
++            out.append(lines[i]); i += 1; continue
++        j = i + 1
++        while j < n and lines[j].rstrip('\n') != '}':
++            j += 1
++        body, changed = rewrite_body(lines[i + 1:j])
++        out.append(lines[i]); out.extend(body)
++        if j < n: out.append(lines[j])
++        done += changed
++        i = j + 1
++    with open(dst_path, 'w') as f:
++        f.writelines(out)
++    return done
++
++
++if __name__ == '__main__':
++    a = sys.argv[1]
++    if os.path.isdir(a):
++        total = 0
++        files = [os.path.join(a, n) for n in sorted(os.listdir(a)) if re.match(r'.*recomp_\d+\.cpp$', n)]
++        scan(files)
++        for p in files:
++            total += process(p, p)
++        print(f'ppu_regcache: {total} function(s) rewritten in {a} ({len(SUSPECT)} write r14..r31 without restoring them)')
++    else:
++        scan([a])
++        print(f'ppu_regcache: {process(a, sys.argv[2])} function(s) rewritten')
+-- 
+2.56.0
+

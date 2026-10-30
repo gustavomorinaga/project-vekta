@@ -1,0 +1,298 @@
+From 90e33bacf813c689f9980ce59efb978f85cf1cc9 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 29 Oct 2026 12:33:27 -0300
+Subject: [PATCH] Draw engine: main-memory colour targets coherent with
+ guest memory (PS3RECOMP_ENG_MAIN_COHERENCE); sampling diagnostics
+
+PS3RECOMP_ENG_MAIN_COHERENCE=1: at each label release (NV406E release,
+NV4097 back-end release) the main-memory colour targets drawn since are
+stored to guest memory, so the CPU and SPUs that read them after syncing
+on the label see what the RSX drew; a target sampled after its guest bytes
+changed (an SPU wrote them) is uploaded first. Off by default.
+RSX_ENGINE_SAMPLE_LOG=<n>: the first n binds of a colour target as a
+texture. RSX_ENGINE_MAIN_TEX_LOG=1: each main-memory texture bound, once.
+Killzone HD, Level 7: the RSX samples only its two 640x360 main-memory
+targets (IO 0x10000, 0xF1000), ~150 times a second each; the SPU post
+chain reads them and writes elsewhere (IO 0x1D2000, 0x556000...), which
+nothing samples.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/cellGcmSys.c                       |  4 ++
+ libs/video/rsx_draw_engine.c                  | 65 +++++++++++++++++++
+ libs/video/rsx_draw_engine.h                  |  3 +
+ libs/video/tests/test_gcm_fifo_user_command.c |  1 +
+ libs/video/tests/test_gcm_flip_stream.c       |  1 +
+ libs/video/tests/test_gcm_flip_wrap.c         |  1 +
+ libs/video/tests/test_gcm_get_on_jump.c       |  1 +
+ libs/video/tests/test_gcm_get_on_release.c    |  1 +
+ .../tests/test_gcm_legacy_state_filter.c      |  1 +
+ libs/video/tests/test_gcm_nop_runs.c          |  1 +
+ libs/video/tests/test_gcm_park_reuse.c        |  1 +
+ libs/video/tests/test_gcm_resync_labels.c     |  1 +
+ libs/video/tests/test_gcm_walker_prof.c       |  1 +
+ libs/video/tests/test_nv3089_engine_read.c    |  1 +
+ 14 files changed, 83 insertions(+)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 19bd2b50..f1647738 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -2063,6 +2063,9 @@ static void gcm_3d_method(rsx_state* st, u32 m, u32 v, int legacy_state_live)
+      * The gate lives here rather than at the call sites because #554 funnelled
+      * every 3D method through this function -- there are two callers, and a
+      * gate at one of them only would be a silent half-measure. */
++    /* A back-end label release: main-memory colour targets to guest memory first
++     * (PS3RECOMP_ENG_MAIN_COHERENCE; rsx_draw_engine.c) */
++    if (m == 0x1D70u || m == 0x1D74u) rsx_draw_engine_label_released();
+     if (legacy_state_live || gcm_legacy_method_has_effect(m))
+         rsx_process_method(st, m, v);
+     /* NV406E_SET_REFERENCE: queue the fence value for PACED
+@@ -2554,6 +2557,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
+                          * its own `put` equals it, which a snapshot from
+                          * before the RELEASE never does. GCM_GET_EQ_PUT keeps
+                          * publishing put at the end of the pass instead. */
++                        rsx_draw_engine_label_released();   /* main-memory targets first */
+                         if (!gcm_get_eq_put())
+                             vm_write32(GCM_CONTROL_GUEST_ADDR + 4, s_fifo_getoff + 4 + count * 4);
+                         atomic_thread_fence(memory_order_release);
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 576c41f4..7895d9be 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -119,6 +119,8 @@ typedef struct {
+     u64 color_serial;       /* g.write_serial of the last colour write, or 0 */
+     int guest_dirty;        /* rendered since guest memory last got a copy   */
+     u32 last_use;           /* g.frames when last bound, sampled or presented */
++    u64 guest_hash;         /* main-memory target: the bytes last stored to or taken from guest memory */
++    u64 hash_frame;         /* g.frames + 1 when guest_hash was last compared */
+ } eng_surface;
+ 
+ typedef struct {
+@@ -977,6 +979,57 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
+     g.be->color_target_write(g.be->user, s->handle, x, y, w, h, rows, w * 4u);
+ }
+ 
++/* PS3RECOMP_ENG_MAIN_COHERENCE=1: a colour target in main memory is the
++ * CPU's and the SPUs' too, as on the console. At each label release (the
++ * point a title syncs on before its PPU or SPUs read what the RSX drew) the
++ * targets drawn since are stored to guest memory; when a target is sampled
++ * and its guest bytes changed since (an SPU wrote them, Killzone HD's post
++ * chain), they are uploaded first. Off by default: a read-back per release. */
++static int eng_main_coherence(void)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("PS3RECOMP_ENG_MAIN_COHERENCE"); on = e ? atoi(e) : 0; }
++    return on;
++}
++
++static u64 eng_guest_hash(const eng_surface* s)
++{
++    const u8* p = eng_guest_ptr(NULL, s->location, s->offset, s->pitch * s->h);
++    if (!p) return 0;
++    u64 h = 1469598103934665603ull;
++    const size_t n = (size_t)s->pitch * s->h;
++    for (size_t i = 0; i + 8 <= n; i += 8) { u64 v; memcpy(&v, p + i, 8); h = (h ^ v) * 1099511628211ull; }
++    return h;
++}
++
++static int eng_surface_to_guest(u32 slot);
++
++void rsx_draw_engine_label_released(void)
++{
++    if (!g.ready || !eng_main_coherence()) return;
++    for (u32 i = 0; i < g.n_surfaces; i++) {
++        eng_surface* s = &g.surfaces[i];
++        if (!s->handle || s->location != RSX_LOCATION_MAIN || !s->guest_dirty) continue;
++        if (eng_surface_to_guest(i)) s->guest_hash = eng_guest_hash(s);
++    }
++}
++
++/* Before a main-memory target is sampled: its guest bytes, when something
++ * other than the RSX changed them since (once per frame per target). */
++static void eng_main_target_from_guest(u32 slot)
++{
++    eng_surface* s = &g.surfaces[slot];
++    if (!eng_main_coherence() || s->location != RSX_LOCATION_MAIN || s->guest_dirty ||
++        s->hash_frame == (u64)g.frames + 1u) return;
++    s->hash_frame = (u64)g.frames + 1u;
++    const u64 h = eng_guest_hash(s);
++    if (!h || h == s->guest_hash) return;
++    rsx_draw_engine_guest_wrote(s->location, s->offset, s->pitch, s->w, s->h);
++    s->guest_hash = h;
++    { static int n; if (n++ < 8) fprintf(stderr, "[rsx engine] main target %u:0x%08X %ux%u taken from guest memory\n",
++                                        s->location, s->offset, s->w, s->h); }
++}
++
+ static u32 eng_current_surface(void)
+ {
+     u32 slots[RSX_BE_MAX_COLOR_TARGETS];
+@@ -2680,7 +2733,19 @@ static u32 sink_bind_textures(const u32* target_slots, u32 n_targets,
+                                        (t.dimension == 3 && !t.cubemap) ? t.depth : 1u);
+             continue;
+         }
++        { static int on = -1; static u32 seen[64]; static u32 ns;   /* RSX_ENGINE_MAIN_TEX_LOG=1: main-memory textures, once each */
++          if (on < 0) on = getenv("RSX_ENGINE_MAIN_TEX_LOG") != NULL;
++          if (on && t.location == RSX_LOCATION_MAIN) { u32 k = 0; while (k < ns && seen[k] != t.offset) k++;
++            if (k == ns && ns < 64) { seen[ns++] = t.offset;
++              fprintf(stderr, "[rsx engine] main texture 0x%08X %ux%u fmt 0x%02X unit %u%s (frame %llu)\n", t.offset, t.width, t.height,
++                      t.format, u, sampled >= 0 ? " (a target)" : "", (unsigned long long)g.frames); } } }
+         if (sampled >= 0) {
++            eng_main_target_from_guest((u32)sampled);
++            /* RSX_ENGINE_SAMPLE_LOG=<n>: the first n binds of a colour target as a texture */
++            { static int left = -1; if (left < 0) { const char* e = getenv("RSX_ENGINE_SAMPLE_LOG"); left = e ? atoi(e) : 0; }
++              if (left > 0) { left--; fprintf(stderr, "[rsx engine] unit %u samples surface %u:0x%08X %ux%u (frame %llu)\n",
++                  u, g.surfaces[sampled].location, g.surfaces[sampled].offset, g.surfaces[sampled].w, g.surfaces[sampled].h,
++                  (unsigned long long)g.frames); } }
+             const u32 view = g.be->surface_view
+                 ? g.be->surface_view(g.be->user, g.surfaces[sampled].handle,
+                                      t.remap & 0xFFFFu, t.format)
+diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
+index bf52b59d..73271cf9 100644
+--- a/libs/video/rsx_draw_engine.h
++++ b/libs/video/rsx_draw_engine.h
+@@ -362,6 +362,9 @@ void rsx_draw_engine_note_flip(u32 buffer_id);
+  * out with the same pitch take part; anything else is left alone. */
+ void rsx_draw_engine_guest_read(u32 location, u32 offset, u32 pitch, u32 w, u32 h);
+ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32 h);
++/* A label release in the command stream: with PS3RECOMP_ENG_MAIN_COHERENCE,
++ * the main-memory colour targets drawn since go to guest memory. */
++void rsx_draw_engine_label_released(void);
+ 
+ /* --- test hooks ---------------------------------------------------------- */
+ 
+diff --git a/libs/video/tests/test_gcm_fifo_user_command.c b/libs/video/tests/test_gcm_fifo_user_command.c
+index c1ef1854..427b1031 100644
+--- a/libs/video/tests/test_gcm_fifo_user_command.c
++++ b/libs/video/tests/test_gcm_fifo_user_command.c
+@@ -43,6 +43,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
+index 0db6ccff..eeb427fa 100644
+--- a/libs/video/tests/test_gcm_flip_stream.c
++++ b/libs/video/tests/test_gcm_flip_stream.c
+@@ -72,6 +72,7 @@ int  rsx_process_vp_run(rsx_state* state, u32 method, const u8* src, u32 count)
+ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_flip_wrap.c b/libs/video/tests/test_gcm_flip_wrap.c
+index b4667524..f028669e 100644
+--- a/libs/video/tests/test_gcm_flip_wrap.c
++++ b/libs/video/tests/test_gcm_flip_wrap.c
+@@ -46,6 +46,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
+index 24c40f99..47b8ee10 100644
+--- a/libs/video/tests/test_gcm_get_on_jump.c
++++ b/libs/video/tests/test_gcm_get_on_jump.c
+@@ -55,6 +55,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
+index 67094140..df647c8f 100644
+--- a/libs/video/tests/test_gcm_get_on_release.c
++++ b/libs/video/tests/test_gcm_get_on_release.c
+@@ -53,6 +53,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_legacy_state_filter.c b/libs/video/tests/test_gcm_legacy_state_filter.c
+index 02126946..2992d1fc 100644
+--- a/libs/video/tests/test_gcm_legacy_state_filter.c
++++ b/libs/video/tests/test_gcm_legacy_state_filter.c
+@@ -46,6 +46,7 @@ int  rsx_process_vp_run(rsx_state* state, u32 method, const u8* src, u32 count)
+ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_nop_runs.c b/libs/video/tests/test_gcm_nop_runs.c
+index 31ed59ef..0bde8aab 100644
+--- a/libs/video/tests/test_gcm_nop_runs.c
++++ b/libs/video/tests/test_gcm_nop_runs.c
+@@ -50,6 +50,7 @@ int  rsx_draw_engine_enabled(void) { return 0; }
+ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_park_reuse.c b/libs/video/tests/test_gcm_park_reuse.c
+index 30cfb62f..289cb825 100644
+--- a/libs/video/tests/test_gcm_park_reuse.c
++++ b/libs/video/tests/test_gcm_park_reuse.c
+@@ -59,6 +59,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_resync_labels.c b/libs/video/tests/test_gcm_resync_labels.c
+index cc591fd4..23f95fe8 100644
+--- a/libs/video/tests/test_gcm_resync_labels.c
++++ b/libs/video/tests/test_gcm_resync_labels.c
+@@ -58,6 +58,7 @@ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_set_display_buffer(u32 id, u32 location, u32 offset, u32 pitch, u32 width, u32 height)
+ { (void)id; (void)location; (void)offset; (void)pitch; (void)width; (void)height; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_walker_prof.c b/libs/video/tests/test_gcm_walker_prof.c
+index 065fb54d..6e267344 100644
+--- a/libs/video/tests/test_gcm_walker_prof.c
++++ b/libs/video/tests/test_gcm_walker_prof.c
+@@ -44,6 +44,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_nv3089_engine_read.c b/libs/video/tests/test_nv3089_engine_read.c
+index 733d77d1..667fe26a 100644
+--- a/libs/video/tests/test_nv3089_engine_read.c
++++ b/libs/video/tests/test_nv3089_engine_read.c
+@@ -68,6 +68,7 @@ static u32 src_pixel(u32 col, u32 row) { return 0xFF000000u | (row << 12) | col;
+ static int s_reads;
+ 
+ /* What the engine does for a transfer: the pixels of the surface in this rectangle, as 32-bit guest words. */
++void rsx_draw_engine_label_released(void) {}
+ void rsx_draw_engine_guest_read(u32 loc, u32 off, u32 pitch, u32 w, u32 h)
+ {
+     s_reads++;
+-- 
+2.56.0
+

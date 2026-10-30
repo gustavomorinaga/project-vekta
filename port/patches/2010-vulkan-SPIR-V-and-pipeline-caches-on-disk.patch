@@ -1,0 +1,215 @@
+From 01730bced541966d3ce2ec63dd15e38244eacfae Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 15 Oct 2026 16:59:04 -0300
+Subject: [PATCH] vulkan: SPIR-V and pipeline caches on disk
+
+A program first met mid-level cost an HLSL -> SPIR-V translation and a
+driver compile, 70-250 ms hitches in Killzone's Level 1. SPIR-V is kept
+per program source and compiled pipelines in a VkPipelineCache blob under
+$PS3RECOMP_VK_CACHE (default ~/.cache/ps3recomp-vk, "0" for off).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_vulkan_backend.c | 144 ++++++++++++++++++++++++++++++--
+ 1 file changed, 139 insertions(+), 5 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 43814d5e..96679ca5 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -66,6 +66,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <sys/stat.h>
+ 
+ /* ---------------------------------------------------------------------------
+  * Run-time loaded entry points (Vulkan 1.0 core only)
+@@ -94,6 +95,7 @@
+     X(vkAllocateDescriptorSets) X(vkUpdateDescriptorSets) X(vkResetDescriptorPool) \
+     X(vkCreatePipelineLayout) X(vkDestroyPipelineLayout) \
+     X(vkCreateGraphicsPipelines) X(vkDestroyPipeline) \
++    X(vkCreatePipelineCache) X(vkGetPipelineCacheData) \
+     X(vkCreateSampler) X(vkDestroySampler) \
+     X(vkCmdPipelineBarrier) X(vkCmdClearColorImage) X(vkCmdClearDepthStencilImage) \
+     X(vkCmdCopyImageToBuffer) X(vkCmdCopyBufferToImage) X(vkCmdCopyImage) \
+@@ -2428,6 +2430,7 @@ static void vk_eng_clear_depth_stencil(void* user, u32 depth, u32 flags,
+ 
+ /* The named surface becomes the frame: blit it onto the display image, then
+  * the existing present does the readback, the PPM dump and the window. */
++static void vk_pipeline_cache_save(void);
+ static void vk_eng_present(void* user, u32 surface)
+ {
+     (void)user;
+@@ -2456,6 +2459,7 @@ static void vk_eng_present(void* user, u32 surface)
+     pthread_mutex_unlock(&s_vk.present_mu);
+     s_g.last_draws = s_g.draws;
+     s_g.draws = 0;
++    vk_pipeline_cache_save();
+ }
+ 
+ /* Pixels a 2D transfer put into guest memory, pushed into the colour target
+@@ -2965,13 +2969,139 @@ static VkStencilOpState vk_gcm_stencil_face(u32 func, u32 fail, u32 zfail, u32 z
+     return s;
+ }
+ 
++/* ---- shader and pipeline caches on disk ---------------------------------
++ * A program met for the first time mid-level costs an HLSL -> SPIR-V
++ * translation and a driver pipeline compile: 70-250 ms hitches in Killzone's
++ * Level 1. SPIR-V is kept per program source, and the driver's compiled
++ * pipelines in one VkPipelineCache blob, under $PS3RECOMP_VK_CACHE (default
++ * ~/.cache/ps3recomp-vk; "0" turns both off). Bump VK_CACHE_VERSION when the
++ * translator's output changes for the same source. */
++#define VK_CACHE_VERSION 1u
++static void vk_mkdir(const char* d)
++{
++#ifdef _WIN32
++    _mkdir(d);
++#else
++    mkdir(d, 0755);
++#endif
++}
++
++static const char* vk_cache_dir(void)
++{
++    static char dir[512];
++    static int init;
++    if (!init) {
++        init = 1;
++        const char* e = getenv("PS3RECOMP_VK_CACHE");
++        const char* home = getenv("HOME");
++        if (e && strcmp(e, "0") == 0) return NULL;
++        if (e && *e) snprintf(dir, sizeof dir, "%s", e);
++        else if (home) {
++            snprintf(dir, sizeof dir, "%s/.cache", home);
++            vk_mkdir(dir);
++            snprintf(dir, sizeof dir, "%s/.cache/ps3recomp-vk", home);
++        }
++        if (dir[0]) vk_mkdir(dir);
++    }
++    return dir[0] ? dir : NULL;
++}
++
++/* Written through a temporary name, so a run killed mid-write leaves the old
++ * file, never a torn one. */
++static void vk_cache_write(const char* path, const void* data, size_t size)
++{
++    char tmp[620];
++    snprintf(tmp, sizeof tmp, "%s.tmp", path);
++    FILE* f = fopen(tmp, "wb");
++    if (!f) return;
++    const int ok = fwrite(data, 1, size, f) == size;
++    fclose(f);
++    if (ok) rename(tmp, path); else remove(tmp);
++}
++
++static VkPipelineCache s_vk_pcache;
++static int s_vk_pcache_dirty;
++
++static VkPipelineCache vk_pipeline_cache(void)
++{
++    static int tried;
++    if (tried) return s_vk_pcache;
++    tried = 1;
++    const char* dir = vk_cache_dir();
++    if (!dir) return VK_NULL_HANDLE;
++    char path[600];
++    snprintf(path, sizeof path, "%s/pipelines.bin", dir);
++    void* data = NULL;
++    size_t size = 0;
++    FILE* f = fopen(path, "rb");
++    if (f) {
++        fseek(f, 0, SEEK_END);
++        const long n = ftell(f);
++        fseek(f, 0, SEEK_SET);
++        if (n > 0 && (data = malloc((size_t)n)) && fread(data, 1, (size_t)n, f) == (size_t)n) size = (size_t)n;
++        fclose(f);
++    }
++    VkPipelineCacheCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
++                                     .initialDataSize = size, .pInitialData = size ? data : NULL };
++    /* A blob from another driver or device fails the driver's header check:
++     * start empty then. */
++    if (pvkCreatePipelineCache(s_vk.device, &ci, NULL, &s_vk_pcache) != VK_SUCCESS) {
++        ci.initialDataSize = 0; ci.pInitialData = NULL;
++        if (pvkCreatePipelineCache(s_vk.device, &ci, NULL, &s_vk_pcache) != VK_SUCCESS)
++            s_vk_pcache = VK_NULL_HANDLE;
++    }
++    free(data);
++    return s_vk_pcache;
++}
++
++/* Saved from the present path at most every 2 s after new pipelines were
++ * compiled: a title is usually killed, not shut down. */
++static void vk_pipeline_cache_save(void)
++{
++    static unsigned long long last;
++    if (!s_vk_pcache || !s_vk_pcache_dirty) return;
++    struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
++    const unsigned long long now = t.tv_sec * 1000ull + t.tv_nsec / 1000000;
++    if (now - last < 2000) return;
++    last = now;
++    s_vk_pcache_dirty = 0;
++    size_t size = 0;
++    if (pvkGetPipelineCacheData(s_vk.device, s_vk_pcache, &size, NULL) != VK_SUCCESS || !size) return;
++    void* data = malloc(size);
++    if (data && pvkGetPipelineCacheData(s_vk.device, s_vk_pcache, &size, data) == VK_SUCCESS) {
++        char path[600];
++        snprintf(path, sizeof path, "%s/pipelines.bin", vk_cache_dir());
++        vk_cache_write(path, data, size);
++    }
++    free(data);
++}
++
+ static int vk_eng_translate(const char* hlsl, int stage, VkShaderModule* out)
+ {
+     u32 words = 0;
+-    if (rsx_hlsl_to_spirv(hlsl, stage, s_g.spv, VK_SPV_WORDS, &words, s_g.log, sizeof s_g.log) || !words) {
+-        VK_LOG("engine: %s translation failed: %s\n",
+-               stage == RSX_SHADER_STAGE_VERTEX ? "vertex" : "fragment", s_g.log);
+-        return -1;
++    const char* dir = vk_cache_dir();
++    char path[600] = "";
++    if (dir) {
++        u64 h = (1469598103934665603ull ^ VK_CACHE_VERSION) + (u64)stage;
++        for (const unsigned char* c = (const unsigned char*)hlsl; *c; c++) { h ^= *c; h *= 1099511628211ull; }
++        snprintf(path, sizeof path, "%s/%016llx.spv", dir, (unsigned long long)h);
++        FILE* f = fopen(path, "rb");
++        if (f) {
++            const size_t n = fread(s_g.spv, 4, VK_SPV_WORDS, f);
++            fclose(f);
++            if (n >= 5 && n < VK_SPV_WORDS && s_g.spv[0] == 0x07230203u) words = (u32)n;   /* SPIR-V magic */
++        }
++    }
++    if (!words) {
++        PS3_TRACE_BEGIN(_tr);
++        const int bad = rsx_hlsl_to_spirv(hlsl, stage, s_g.spv, VK_SPV_WORDS, &words, s_g.log, sizeof s_g.log) || !words;
++        PS3_TRACE_END(_tr, "spirv", stage);
++        if (bad) {
++            VK_LOG("engine: %s translation failed: %s\n",
++                   stage == RSX_SHADER_STAGE_VERTEX ? "vertex" : "fragment", s_g.log);
++            return -1;
++        }
++        if (path[0]) vk_cache_write(path, s_g.spv, (size_t)words * 4u);
+     }
+     VkShaderModuleCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                                     .codeSize = (size_t)words * 4u, .pCode = s_g.spv };
+@@ -3213,11 +3343,15 @@ static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
+         .pViewportState = &vps, .pRasterizationState = &ras, .pMultisampleState = &ms,
+         .pDepthStencilState = &ds, .pColorBlendState = &cb, .pDynamicState = &dy,
+         .layout = layout, .renderPass = rp, .subpass = 0 };
+-    if (pvkCreateGraphicsPipelines(s_vk.device, VK_NULL_HANDLE, 1, &gci, NULL,
++    PS3_TRACE_BEGIN(_tr);
++    if (pvkCreateGraphicsPipelines(s_vk.device, vk_pipeline_cache(), 1, &gci, NULL,
+                                    &P->variant[topo_idx]) != VK_SUCCESS) {
+         VK_LOG("engine: vkCreateGraphicsPipelines failed\n");
+         P->variant[topo_idx] = VK_NULL_HANDLE;
++    } else {
++        s_vk_pcache_dirty = 1;
+     }
++    PS3_TRACE_END(_tr, "pipeline", 0);
+     return P->variant[topo_idx];
+ }
+ 
+-- 
+2.56.0
+

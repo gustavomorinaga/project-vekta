@@ -1,0 +1,158 @@
+From a304987b4a712d0b1ca3ed97d0f045c00c9a451f Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 28 Oct 2026 15:56:23 -0300
+Subject: [PATCH] Vulkan backend on Windows: vulkan-1.dll through
+ LoadLibrary, SDL2 window and pad backend, glslang from its CMake package
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ CMakeLists.txt                  | 22 ++++++++++++++++++++--
+ libs/input/cellPad.c            |  6 +++---
+ libs/video/rsx_vulkan_backend.c | 23 ++++++++++++++++++-----
+ 3 files changed, 41 insertions(+), 10 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 250d8d2c..ac810bc5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -50,8 +50,8 @@ list(FILTER HLE_SOURCES EXCLUDE REGEX "/tests/")
+ option(PS3RECOMP_RSX_VULKAN "Build the Vulkan RSX backend (Linux)" OFF)
+ list(FILTER HLE_SOURCES EXCLUDE REGEX "rsx_vulkan_backend\\.c$")
+ if(PS3RECOMP_RSX_VULKAN)
+-    if(WIN32 OR APPLE)
+-        message(FATAL_ERROR "PS3RECOMP_RSX_VULKAN is Linux-only for now")
++    if(APPLE)
++        message(FATAL_ERROR "PS3RECOMP_RSX_VULKAN is Linux and Windows only")
+     endif()
+     find_path(PS3RECOMP_VULKAN_INCLUDE_DIR vulkan/vulkan.h)
+     if(NOT PS3RECOMP_VULKAN_INCLUDE_DIR)
+@@ -179,6 +179,21 @@ if(PS3RECOMP_RSX_VULKAN)
+     target_include_directories(ps3recomp_runtime PRIVATE "${PS3RECOMP_VULKAN_INCLUDE_DIR}")
+     # PUBLIC: ps3recomp_host selects its backend on this definition.
+     target_compile_definitions(ps3recomp_runtime PUBLIC PS3RECOMP_RSX_VULKAN)
++    if(WIN32)
++        # The backend's window and its input are SDL2's on Windows as well:
++        # cellPad takes its SDL2 backend (pads, keyboard, mouse), and winpthreads
++        # serves the backend's pthreads
++        find_package(SDL2 REQUIRED)
++        target_compile_definitions(ps3recomp_runtime PRIVATE PS3RECOMP_PAD_USE_SDL2)
++        find_package(Threads REQUIRED)
++        target_link_libraries(ps3recomp_runtime PUBLIC Threads::Threads d3d12 dxgi d3dcompiler_47)
++        if(TARGET SDL2::SDL2)
++            target_link_libraries(ps3recomp_runtime PUBLIC SDL2::SDL2)
++        else()
++            target_include_directories(ps3recomp_runtime PRIVATE ${SDL2_INCLUDE_DIRS})
++            target_link_libraries(ps3recomp_runtime PUBLIC ${SDL2_LIBRARIES})
++        endif()
++    endif()
+     target_link_libraries(ps3recomp_runtime PUBLIC ${CMAKE_DL_LIBS})
+     message(STATUS "  Vulkan:       RSX backend enabled (rsx_vulkan_backend.c, headers in ${PS3RECOMP_VULKAN_INCLUDE_DIR})")
+ endif()
+@@ -290,6 +305,9 @@ endif()
+ # libs/video/rsx_shader_spirv.cpp is a stub and the Vulkan backend stays on
+ # its fixed-function path.
+ if(PS3RECOMP_RSX_VULKAN)
++    if(NOT glslang_FOUND)
++        find_package(glslang CONFIG QUIET)
++    endif()
+     if(glslang_FOUND AND TARGET glslang::glslang AND TARGET glslang::SPIRV)
+         set_source_files_properties(
+             "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_shader_spirv.cpp"
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index b6225d74..6e758d34 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -272,7 +272,7 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
+  * Arrows = d-pad, Z/X/A/S = cross/circle/square/triangle, Q/W = L1/R1,
+  * 1/2 = L2/R2, Enter = START, Tab = SELECT. The left stick mirrors the d-pad
+  * so a title that reads the stick instead is playable too. */
+-#ifdef _WIN32
++#if defined(_WIN32) && !PAD_BACKEND_SDL2
+ static int pad_host_window_focused(void)
+ {
+     HWND fg = GetForegroundWindow();
+@@ -840,7 +840,7 @@ static unsigned long long pad_now_ms(void)
+ #endif
+ }
+ 
+-#if !defined(_WIN32) && PAD_BACKEND_SDL2
++#if PAD_BACKEND_SDL2
+ /* Key map for the keyboard and mouse fallback. PAD_KEYMAP=<file> reads lines
+  * "TARGET = input, input", '#' starts a comment and other lines are skipped
+  * (the file may hold other settings). Targets: CROSS CIRCLE SQUARE TRIANGLE
+@@ -1150,7 +1150,7 @@ static void pad_poll_backend(void)
+ #elif defined(_WIN32)
+     if (!s_host_state[0].connected) pad_poll_keyboard();
+ #endif
+-#if !defined(_WIN32) && PAD_BACKEND_SDL2
++#if PAD_BACKEND_SDL2
+     if (s_nbinds < 0) pad_keymap_load();
+     /* With a controller too: the mouse adds to whatever drives port 0. */
+     if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus()) pad_poll_mouse(&s_host_state[0]);
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 358b8969..38cd9a5e 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -38,8 +38,6 @@
+  * with spaces.
+  */
+ 
+-#ifndef _WIN32
+-
+ #define VK_NO_PROTOTYPES
+ #include <vulkan/vulkan.h>
+ #include <time.h>
+@@ -61,15 +59,28 @@
+ #include <SDL2/SDL.h>
+ #include <SDL2/SDL_vulkan.h>
+ 
++#ifdef _WIN32
++/* the loader as dlopen/dlsym would give it (vulkan-1.dll ships with the driver) */
++#define WIN32_LEAN_AND_MEAN
++#include <windows.h>
++#include <direct.h>
++#define RTLD_NOW 0
++#define RTLD_LOCAL 0
++static void* dlopen(const char* name, int flags) { (void)flags; return (void*)LoadLibraryA(name); }
++static void* dlsym(void* lib, const char* name) { return (void*)GetProcAddress((HMODULE)lib, name); }
++static const char* dlerror(void) { return "LoadLibrary failed"; }
++static int dlclose(void* lib) { return FreeLibrary((HMODULE)lib) ? 0 : -1; }
++#else
+ #include <dlfcn.h>
++#endif
+ #include <stddef.h>
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/stat.h>
++#include <pthread.h>   /* winpthreads on MinGW */
+ #ifndef _WIN32
+-#include <pthread.h>
+ #include <unistd.h>
+ #endif
+ 
+@@ -244,7 +255,11 @@ static vk_state s_vk;
+  * -------------------------------------------------------------------------*/
+ static int vk_load_library(void)
+ {
++#ifdef _WIN32
++    static const char* names[] = { "vulkan-1.dll" };
++#else
+     static const char* names[] = { "libvulkan.so.1", "libvulkan.so" };
++#endif
+     for (size_t i = 0; i < sizeof names / sizeof names[0] && !s_vk.lib; i++)
+         s_vk.lib = dlopen(names[i], RTLD_NOW | RTLD_LOCAL);
+     if (!s_vk.lib) {
+@@ -4671,8 +4686,6 @@ u32 rsx_vulkan_backend_guest_draws(void)
+     return s_vk.eng_active ? rsx_draw_engine_guest_draws() : s_g.last_draws;
+ }
+ 
+-#endif /* !_WIN32 */
+-
+ /* The host harness's split present (ps3recomp_host): this backend presents in
+  * one piece, so begin does all of it and finish has nothing left to do. */
+ void rsx_vulkan_backend_present_begin(void) { rsx_vulkan_backend_present(); }
+-- 
+2.56.0
+

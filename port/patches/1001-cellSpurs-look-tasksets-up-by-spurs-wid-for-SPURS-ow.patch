@@ -1,0 +1,54 @@
+From 6dc40c42ad1c45aff6074edcf755ce256926d43f Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 13 Oct 2026 21:47:21 -0300
+Subject: [PATCH] cellSpurs: look tasksets up by (spurs, wid) for
+ SPURS-owned LFQueue signals
+
+---
+ libs/spurs/cellSpurs.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index 82ea66c6..0431a37c 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -874,6 +874,24 @@ static int spurs_guest_range_valid(u32 ea, u32 bytes)
+  * Taskset
+  * =====================================================================*/
+ 
++/* Tasksets by (spurs, wid), for callers that name a taskset the way the SDK's
++ * internal signal path does: a SPURS-owned LFQueue signals (spurs | 1,
++ * wid << 8 | task), and the real libsre resolves the wid through workload data
++ * this HLE does not keep. Every HLE taskset reports wid 0 (spurs_taskset_init
++ * below), so the pair is unique as long as a SPURS instance holds one taskset;
++ * the first match wins otherwise. */
++#define SPURS_TASKSET_MAX 32
++static struct { uint32_t spurs, wid, taskset; } s_tasksets[SPURS_TASKSET_MAX];
++static uint32_t s_taskset_count;
++
++uint32_t cellSpursHleTasksetByWid(uint32_t spurs_ea, uint32_t wid)
++{
++    for (uint32_t i = 0; i < s_taskset_count; i++)
++        if (s_tasksets[i].spurs == spurs_ea && s_tasksets[i].wid == wid)
++            return s_tasksets[i].taskset;
++    return 0;
++}
++
+ static s32 spurs_create_taskset(CellSpurs* spurs, CellSpursTaskset* taskset,
+                                 u64 args, const u8* priority, u32 maxContention,
+                                 u32 taskset_size)
+@@ -910,6 +928,11 @@ static s32 spurs_create_taskset(CellSpurs* spurs, CellSpursTaskset* taskset,
+     spurs_taskset_init(taskset_ea, spurs_ea, args, /*wid*/0,
+                        taskset_size, /*evf1*/0, /*evf2*/0);
+     g_ydkj_real_taskset_ea = taskset_ea;
++    if (s_taskset_count < SPURS_TASKSET_MAX) {
++        s_tasksets[s_taskset_count].spurs = spurs_ea;
++        s_tasksets[s_taskset_count].wid = 0;
++        s_tasksets[s_taskset_count++].taskset = taskset_ea;
++    }
+ 
+     g_ydkj_real_spurs_ea = spurs_ea;   /* capture for the taskset-policy handoff (LS[0x1C0]) */
+     printf("[cellSpurs] CreateTaskset() ea=0x%08X spurs=0x%08X (real BE layout)\n", taskset_ea, spurs_ea);
+-- 
+2.56.0
+

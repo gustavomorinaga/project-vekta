@@ -1,0 +1,51 @@
+From c0653dac8c26fa3d7d03380f72ffd8d00a2d2a64 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 22:59:06 -0300
+Subject: [PATCH] spu: one-load SSSE3 local-store access
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/spu/spu_context.h | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
+index 10103727..e6a62bc1 100644
+--- a/runtime/spu/spu_context.h
++++ b/runtime/spu/spu_context.h
+@@ -530,6 +530,9 @@ static inline void spu_ls_write32(spu_context* ctx, uint32_t lsa, uint32_t val)
+ #define SPU_BSWAP32(x) __builtin_bswap32(x)
+ #define SPU_LS_FAST 1
+ #endif
++#if defined(__SSSE3__)
++#include <tmmintrin.h>
++#endif
+ #if defined(__ARM_NEON)
+ #include <arm_neon.h>     /* the quadword swap is one rev32 */
+ #endif
+@@ -628,6 +631,11 @@ static inline u128 spu_ls_read128(const spu_context* ctx, uint32_t lsa)
+     const uint8_t* p = &ctx->ls[lsa];
+ #if defined(__ARM_NEON)
+     vst1q_u8(v._u8, vrev32q_u8(vld1q_u8(p)));     /* ldr q; rev32 */
++#elif SPU_LS_FAST && defined(__SSSE3__)
++    /* one load and a per-word byte swap (the LS is big-endian words) */
++    __m128i x = _mm_loadu_si128((const __m128i*)p);
++    x = _mm_shuffle_epi8(x, _mm_setr_epi8(3,2,1,0, 7,6,5,4, 11,10,9,8, 15,14,13,12));
++    memcpy(&v, &x, 16);
+ #elif SPU_LS_FAST
+     uint32_t w0, w1, w2, w3;
+     memcpy(&w0, p,      4); memcpy(&w1, p + 4,  4);
+@@ -725,6 +733,11 @@ static inline void spu_ls_write128(spu_context* ctx, uint32_t lsa, u128 val)
+     uint8_t* p = &ctx->ls[lsa];
+ #if defined(__ARM_NEON)
+     vst1q_u8(p, vrev32q_u8(vld1q_u8(val._u8)));   /* rev32; str q */
++#elif SPU_LS_FAST && defined(__SSSE3__)
++    __m128i x;
++    memcpy(&x, &val, 16);
++    x = _mm_shuffle_epi8(x, _mm_setr_epi8(3,2,1,0, 7,6,5,4, 11,10,9,8, 15,14,13,12));
++    _mm_storeu_si128((__m128i*)p, x);
+ #elif SPU_LS_FAST
+     uint32_t w0 = SPU_BSWAP32(val._u32[0]), w1 = SPU_BSWAP32(val._u32[1]);
+     uint32_t w2 = SPU_BSWAP32(val._u32[2]), w3 = SPU_BSWAP32(val._u32[3]);
+-- 
+2.56.0
+

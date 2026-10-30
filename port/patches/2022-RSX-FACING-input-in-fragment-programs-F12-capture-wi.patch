@@ -1,0 +1,95 @@
+From 9607e897e6bf206008718293f718d4fd35ec63f4 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 22 Oct 2026 14:22:56 -0300
+Subject: [PATCH] RSX: FACING input in fragment programs; F12 capture
+ with programs and per-draw images
+
+- A fragment program's FACING input (SSA, 0xE) reads +1 on a front face and
+  -1 on a back one (SV_IsFrontFace), as RPCS3 has it; it read zero.
+  RSX_FP_LOG_FACING=1 logs the first program that reads it. Reading TC8/TC9,
+  still not plumbed, is logged once.
+- An F12 capture also writes the programs of each pipeline its draws use
+  (pipe<N>.vs.hlsl / .ps.hlsl) and, for its first 200 draws, the target as
+  it was before each draw (pass<P>_before<D>.ppm), so the draw that comes
+  out wrong can be found and read.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_draw_engine.c | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 62e704de..0cecafce 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -26,6 +26,10 @@
+ #include "ps3emu/log_first.h"
+ #include <sys/stat.h>
+ 
++/* Each pipeline's two programs, kept for an F12 capture to write the ones
++ * its draws use (RSX_ENGINE_SHADER_DUMP writes them as they are made). */
++static char* s_pipe_src[1024][2];
++
+ /* Guest memory and the RSX offset resolvers, declared the way every backend
+  * that reads guest data declares them (rsx_vertex_fetch.h). */
+ extern u8* vm_base;
+@@ -2158,6 +2162,10 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+         handle = g.be->pipeline_create(g.be->user, s_vs_hlsl, s_ps_hlsl, rs,
+                                        layout, layout->stride, rt_fmt, rt_count);
+     const u64 fp_hash = fixed ? 0 : eng_fp_debug_hash(fp_uc, fp_size);
++    if (handle && handle < 1024) {
++        free(s_pipe_src[handle][0]); free(s_pipe_src[handle][1]);
++        s_pipe_src[handle][0] = strdup(s_vs_hlsl); s_pipe_src[handle][1] = strdup(s_ps_hlsl);
++    }
+     /* RSX_ENGINE_SHADER_DUMP=<existing dir>: each new pipeline's two programs
+      * as <dir>/pipe<handle>.vs.hlsl and .ps.hlsl, the handle being the one
+      * RSX_ENGINE_PASS_DUMP's index names, and a guest fragment program's own
+@@ -2736,6 +2744,8 @@ static struct {
+     u32 draws, clears;
+     char first[2048];
+     int requested;          /* this capture was asked for (F12) */
++    u32 draw_images;        /* an F12 capture's per-draw images written */
++    u8 pipe_written[1024 / 8];   /* an F12 capture's pipelines whose programs are written */
+ } s_pd;
+ 
+ /* g_rsx_capture_request (F12 in the window): capture the next frames' passes,
+@@ -2770,6 +2780,7 @@ static int pd_capturing(void)
+         s_pd.dir = dir; s_pd.requested = 1;
+         { const char* x = getenv("RSX_ENGINE_PASS_DUMP_MAX"); s_pd.max_passes = x ? (u32)strtoul(x, NULL, 0) : 16u; }
+         s_pd.pass = 0; s_pd.draws = 0; s_pd.clears = 0; s_pd.first[0] = 0;
++        s_pd.draw_images = 0; memset(s_pd.pipe_written, 0, sizeof s_pd.pipe_written);
+         if (pd_open_index()) {
+             fprintf(s_pd.index, "asked for (F12) at frame %u\n", g.frames);
+             fprintf(stderr, "[rsx engine] capture: %s\n", dir);
+@@ -2969,6 +2980,28 @@ static void pd_note(const u32* targets, u32 n_targets, u32 zslot,
+                  s_pd.draws, h & 0xFFFFu, v & 0xFFFFu, h >> 16, v >> 16);
+         return;
+     }
++    if (s_pd.draws_log && s_pd.requested) {
++        /* an F12 capture also has each draw's programs, and the target as it
++         * was before each draw (the first 200 draws), so the draw that comes
++         * out wrong can be found by comparing two images */
++        if (pipeline < 1024 && !(s_pd.pipe_written[pipeline >> 3] & (1u << (pipeline & 7)))) {
++            s_pd.pipe_written[pipeline >> 3] |= (u8)(1u << (pipeline & 7));
++            static const char* const ext[2] = { "vs", "ps" };
++            for (int k = 0; k < 2; k++) {
++                if (!s_pipe_src[pipeline][k]) continue;
++                char path[1024];
++                snprintf(path, sizeof path, "%s/pipe%u.%s.hlsl", s_pd.dir, pipeline, ext[k]);
++                FILE* f = fopen(path, "w");
++                if (f) { fputs(s_pipe_src[pipeline][k], f); fclose(f); }
++            }
++        }
++        if (s_pd.draw_images < 200 && s_pd.n_targets) {
++            char path[1024];
++            snprintf(path, sizeof path, "%s/pass%03u_before%03u.ppm", s_pd.dir, s_pd.pass, s_pd.draws);
++            pd_write_surface(s_pd.targets[0], path);
++            s_pd.draw_images++;
++        }
++    }
+     if (s_pd.draws_log) {
+         fprintf(s_pd.draws_log, "pass %03u draw %u: pipe %u cmask %08X blend %u %X/%X"
+                 " dt %u dw %u df %X at %u st %u f %X ref %u m %X ops %X/%X/%X |", s_pd.pass, s_pd.draws, pipeline, rs->color_mask,
+-- 
+2.56.0
+

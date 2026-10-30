@@ -1,0 +1,155 @@
+From 6a93bd4f9d9aad520c403ce30f643b2072533706 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 02:13:00 -0300
+Subject: [PATCH] PPU: between PPU threads a reservation covers the
+ 128-byte line
+
+lwarx/ldarx record a per-line version (ppu_resv_snap, emitted by the lifter);
+a successful stwcx./stdcx. bumps it, and a store-conditional fails when another
+thread's commit hit the line since its lwarx. A value compare on the one word
+let two producers of a lock-free queue commit over each other's reads:
+Killzone's Edge zlib queue got a corrupt request and the main thread waited
+forever. SPU commits stay on the value compare (a PPU waiting for an idle job
+manager line never gets one). PPU_RESV_WORD=1 keeps the word-only check.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/ppu/ppu_loader.cpp | 51 +++++++++++++++++++++++++++++++++++---
+ tools/ppu_lifter.py        |  6 +++--
+ 2 files changed, 51 insertions(+), 6 deletions(-)
+
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index 9309f2d3..421edf31 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -991,6 +991,9 @@ extern "C" void ppu_resv_break_line(uint32_t ea)
+     }
+ }
+ static inline volatile LONG* resv_slot(uint64_t ea) { return &g_resv_locks[((uint32_t)ea >> 4) & (PPU_RESV_LOCKS - 1)]; }
++/* Store-conditionals to one 128-byte line serialize on one lock, so a line
++ * version checked and bumped under it cannot race (see ppu_resv_snap). */
++static inline volatile LONG* resv_line_slot(uint64_t ea) { return &g_resv_locks[((uint32_t)ea >> 7) & (PPU_RESV_LOCKS - 1)]; }
+ static inline void resv_lock(volatile LONG* L)   { while (_InterlockedExchange(L, 1)) { while (*L) YieldProcessor(); } }
+ static inline void resv_unlock(volatile LONG* L) { _InterlockedExchange(L, 0); }
+ static inline void ppu_resv_break(uint64_t addr)   /* MUST hold g_resv_lock */
+@@ -1033,6 +1036,42 @@ static inline int resv_off() { static int v = -1; if (v < 0) v = getenv("PPU_RES
+ extern "C" void ppu_ww_note_atomic(uint32_t ea, uint32_t val, int width, void* ra);
+ extern "C" uint32_t g_ww_lo, g_ww_hi;
+ 
++/* Between PPU threads a reservation covers the 128-byte line, as on the
++ * Cell: another thread's store-conditional to any word of the line makes this
++ * one fail. Lock-free queues keep several fields in one line and update one
++ * after reading the others (libsre's LFQueue: two producers, the MultiStream
++ * loader and the level streamer, both pushing to the Edge zlib queue); a
++ * compare on the one word let both commit over each other's reads, and the
++ * inflate task got a corrupt request (edgezlib_inflate_queue.cpp:425) and the
++ * main thread waited on it forever -- within minutes once the music plays.
++ *
++ * Successful stwcx./stdcx. bump a version per line (hashed); lwarx/ldarx record
++ * it (ppu_resv_snap, emitted by the lifter) and the store-conditional fails if
++ * it moved. Only store-conditionals count: plain stores by this thread do not
++ * break its reservation (they do not on the Cell), and SPU commits are left to
++ * the value compare -- the job manager's lines change all the time, and a PPU
++ * that has to wait for an idle line there never gets one. A table collision
++ * costs a retry. PPU_RESV_WORD=1 keeps the word-only check. */
++#define PPU_LINE_VER_N 4096
++static volatile uint32_t g_line_ver[PPU_LINE_VER_N];
++static inline uint32_t line_slot(uint32_t ea) { return (((ea >> 7) * 2654435761u) >> 20) & (PPU_LINE_VER_N - 1); }
++static PPU_THREAD_LOCAL uint32_t t_resv_line = 1;   /* 1 = none (lines are 128-aligned) */
++static PPU_THREAD_LOCAL uint32_t t_resv_ver;
++extern "C" void ppu_resv_snap(uint64_t ea)
++{
++    t_resv_line = (uint32_t)ea & ~127u;
++    t_resv_ver = __atomic_load_n(&g_line_ver[line_slot(t_resv_line)], __ATOMIC_ACQUIRE);
++}
++static inline int resv_word_only() { static int v = -1; if (v < 0) v = getenv("PPU_RESV_WORD") ? 1 : 0; return v; }
++/* Under the slot lock: did another thread's store-conditional hit ea's line since the lwarx? */
++static inline int resv_line_lost(uint32_t ea)
++{
++    const uint32_t line = ea & ~127u;
++    return !resv_word_only() && t_resv_line == line &&
++           __atomic_load_n(&g_line_ver[line_slot(line)], __ATOMIC_ACQUIRE) != t_resv_ver;
++}
++static inline void resv_line_commit(uint32_t ea) { __atomic_add_fetch(&g_line_ver[line_slot(ea & ~127u)], 1, __ATOMIC_RELEASE); }
++
+ extern "C" int ppu_stwcx32(uint64_t ea, uint32_t expected, uint32_t val)
+ {
+     uint32_t exp_raw = __builtin_bswap32(expected);
+@@ -1042,9 +1081,10 @@ extern "C" int ppu_stwcx32(uint64_t ea, uint32_t expected, uint32_t val)
+                                            0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ? 1 : 0;
+     ppu_context* self = g_active_ctx;
+     if (resv_diag() && self) resv_check_reg(self);
+-    volatile LONG* L = resv_slot(ea);
++    volatile LONG* L = resv_line_slot(ea);
+     resv_lock(L);
+     if (self && self->reserve_addr != (uint32_t)ea) { resv_unlock(L); return 0; }   /* reservation lost */
++    if (resv_line_lost((uint32_t)ea)) { t_resv_line = 1; resv_unlock(L); return 0; }
+     /* On a line an SPU has reserved, take the lock-line lock around the CAS and
+      * notify: the same serialization the coherent stores use, so a PPU commit
+      * cannot land inside an SPU PUTLLC's compare/commit window (nor the
+@@ -1073,7 +1113,8 @@ extern "C" int ppu_stwcx32(uint64_t ea, uint32_t expected, uint32_t val)
+         if (ok) spu_coh_notify_write((uint32_t)ea);
+         spu_lockline_unlock();
+     }
+-    if (ok) ppu_resv_break(ea);
++    if (ok) { ppu_resv_break(ea); resv_line_commit((uint32_t)ea); }
++    t_resv_line = 1;
+     resv_unlock(L);
+     /* PPU_CASWATCH=<hex ea>: log successful stwcx. on that 128-byte line.
+      * PPU_WWATCH hooks plain stores only; an atomic counter (a semaphore an SPU
+@@ -1133,9 +1174,10 @@ extern "C" int ppu_stdcx64(uint64_t ea, uint64_t expected, uint64_t val)
+                                            0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ? 1 : 0;
+     ppu_context* self = g_active_ctx;
+     if (resv_diag() && self) resv_check_reg(self);
+-    volatile LONG* L = resv_slot(ea);   /* ea and ea+4 share a 16-byte-block slot */
++    volatile LONG* L = resv_line_slot(ea);
+     resv_lock(L);
+     if (self && self->reserve_addr != (uint32_t)ea) { resv_unlock(L); return 0; }
++    if (resv_line_lost((uint32_t)ea)) { t_resv_line = 1; resv_unlock(L); return 0; }
+     int coh = spu_coh_is_reserved((uint32_t)ea);
+     if (coh) spu_lockline_lock();
+     if (coh && self && self->reserve_addr != (uint32_t)ea) {   /* as in ppu_stwcx32 */
+@@ -1146,7 +1188,8 @@ extern "C" int ppu_stdcx64(uint64_t ea, uint64_t expected, uint64_t val)
+         if (ok) spu_coh_notify_write((uint32_t)ea);
+         spu_lockline_unlock();
+     }
+-    if (ok) { ppu_resv_break(ea); ppu_resv_break(ea + 4); }  /* 8-byte store spans two words */
++    if (ok) { ppu_resv_break(ea); ppu_resv_break(ea + 4); resv_line_commit((uint32_t)ea); }  /* 8-byte store spans two words */
++    t_resv_line = 1;
+     resv_unlock(L);
+     if (ok && g_ww_lo && (uint32_t)ea + 4u >= g_ww_lo && (uint32_t)ea < g_ww_hi) {
+         /* Report as two words: the watch window is word-granular, and a
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index 4f7e66f9..ff2f53fc 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -128,6 +128,8 @@ void     vm_write64(uint64_t addr, uint64_t val);
+  * threads -- a plain conditional write races and corrupts under real concurrency. */
+ int      ppu_stwcx32(uint64_t addr, uint32_t expected, uint32_t val);
+ int      ppu_stdcx64(uint64_t addr, uint64_t expected, uint64_t val);
++/* lwarx/ldarx: the reservation covers the 128-byte line (see ppu_loader.cpp). */
++void     ppu_resv_snap(uint64_t addr);
+ #ifdef __cplusplus
+ }
+ #endif
+@@ -2765,7 +2767,7 @@ class PPULifter:
+             rd, ra, rb = _reg_idx(ops[0]), _reg_idx(ops[1]), _reg_idx(ops[2])
+             ea = f"ctx->gpr[{ra}] + ctx->gpr[{rb}]" if ra != "0" else f"ctx->gpr[{rb}]"
+             return (f"{{ uint64_t ea = {ea}; "
+-                    f"ctx->gpr[{rd}] = vm_read32(ea); "
++                    f"ppu_resv_snap(ea); ctx->gpr[{rd}] = vm_read32(ea); "
+                     f"ctx->reserve_addr = (uint32_t)ea; ctx->reserve_value = ctx->gpr[{rd}]; }}")
+ 
+         if mn == "stwcx" or mn == "stwcx.":
+@@ -2785,7 +2787,7 @@ class PPULifter:
+             rd, ra, rb = _reg_idx(ops[0]), _reg_idx(ops[1]), _reg_idx(ops[2])
+             ea = f"ctx->gpr[{ra}] + ctx->gpr[{rb}]" if ra != "0" else f"ctx->gpr[{rb}]"
+             return (f"{{ uint64_t ea = {ea}; "
+-                    f"ctx->gpr[{rd}] = vm_read64(ea); "
++                    f"ppu_resv_snap(ea); ctx->gpr[{rd}] = vm_read64(ea); "
+                     f"ctx->reserve_addr = (uint32_t)ea; ctx->reserve_value = ctx->gpr[{rd}]; }}")
+ 
+         if mn == "stdcx" or mn == "stdcx.":
+-- 
+2.56.0
+

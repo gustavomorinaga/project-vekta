@@ -1,0 +1,57 @@
+From 28088c0145d65a004d579de5c2936fc7c7fda78d Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 04:20:08 -0300
+Subject: [PATCH] cellGcm: optional dedicated ISR thread for the
+ vblank/flip/user handlers
+
+---
+ libs/video/cellGcmSys.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 626a03e9..6cd59df7 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -837,8 +837,39 @@ void* ppu_gcm_wait_pump(void (**pump)(void))
+     return (void*)s_gcm_pump_ev;
+ }
+ #endif
++/* ISR thread (cellGcmHleSetIsrThread): deliver the vblank/flip/user handlers on
++ * one dedicated host thread, as the PS3 does on its graphics interrupt thread,
++ * instead of on whichever guest thread next makes an HLE call. Pumping inside a
++ * guest call deadlocks a title whose handler waits for something the
++ * interrupted code holds: Killzone HD's handler (func_00111078) sleeps in the
++ * same wait (func_00110D50) its own main thread was already sleeping in. */
++static volatile int s_isr_thread_on;
++static PPU_THREAD_LOCAL int t_is_isr_thread;
++static void gcm_pump_body(void);
++
++static DWORD WINAPI gcm_isr_thread(LPVOID p)
++{
++    (void)p;
++    t_is_isr_thread = 1;
++    for (;;) { gcm_pump_body(); Sleep(1); }
++    return 0;
++}
++
++void cellGcmHleSetIsrThread(int on)
++{
++    if (on && !s_isr_thread_on) {
++        s_isr_thread_on = 1;
++        CreateThread(NULL, 1u << 20, gcm_isr_thread, NULL, 0, NULL);
++    }
++}
+ 
+ void ppu_gcm_pump(void)
++{
++    if (s_isr_thread_on && !t_is_isr_thread) return;
++    gcm_pump_body();
++}
++
++static void gcm_pump_body(void)
+ {
+     if (!GCM_PUMP_TRY_ENTER()) return;
+     long p = (long)GCM_PENDING_TAKE();
+-- 
+2.56.0
+

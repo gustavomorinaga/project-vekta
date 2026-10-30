@@ -1,0 +1,95 @@
+From 576d402d06580e36c8f8b267d0098f67073fe124 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 21:39:55 -0300
+Subject: [PATCH] spurs: ready-count stores take only the lock-line lock
+
+The coordinator holds the instance lock through a whole pass; ReadyCountStore/Swap/CompareAndSwap waited it out each time. They change the instance byte under the lock-line lock, as the coordinator reads it, and kick it. KZ1 HD Level 7, alternated: 131.3/131.4 fps against the v0.14.0 base's 131.3/134.6.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/spurs/cellSpurs.c | 37 ++++++++++++++++++++++++++-----------
+ 1 file changed, 26 insertions(+), 11 deletions(-)
+
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index 6f1591c1..3ca804ae 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -2005,21 +2005,39 @@ static void spurs_scheduler_retire(u32 ea)
+     ReleaseSRWLockExclusive(&s_workload_registry_lock);
+ }
+ 
++/* The ready count is an instance byte the coordinator reads and consumes
++ * under the lock-line lock, so a title changing it needs only that lock: not
++ * the instance lock, which the coordinator holds through a whole pass. KZ1
++ * HD's main thread stores ready counts many times a frame and used to wait
++ * out the pass each time. The coordinator is kicked as by a commit. */
++static s32 spurs_ready_begin(u32 ea, CellSpursWorkloadId wid, struct SpursInst** out)
++{
++    struct SpursInst* si = spurs_inst_find(ea);
++    if (!si || !__atomic_load_n(&si->kernel_live, __ATOMIC_ACQUIRE)) return CELL_SPURS_CORE_ERROR_STAT;
++    if (!s_workloads[wid].in_use || s_workloads[wid].spurs_ea != ea) return CELL_SPURS_CORE_ERROR_SRCH;
++    *out = si;
++    return CELL_OK;
++}
++static void spurs_ready_end(struct SpursInst* si)
++{
++    __atomic_store_n(&si->kick, 1, __ATOMIC_RELEASE);
++    WakeAllConditionVariable(&si->kwake);
++}
++
+ s32 cellSpursReadyCountStore(CellSpurs* spurs, CellSpursWorkloadId wid,
+                              u32 value)
+ {
+     if (!spurs) return CELL_SPURS_CORE_ERROR_NULL_POINTER;
+     if (wid >= CELL_SPURS_MAX_WORKLOAD) return CELL_SPURS_CORE_ERROR_INVAL;
+     struct SpursInst* si;
+-    s32 rc = spurs_api_lock((u32)(uintptr_t)spurs, &si);
++    s32 rc = spurs_ready_begin((u32)(uintptr_t)spurs, wid, &si);
+     if (rc) return rc;
+-    if (!s_workloads[wid].in_use || s_workloads[wid].spurs_ea != si->ea) {
+-        spurs_api_unlock(si); return CELL_SPURS_CORE_ERROR_SRCH;
+-    }
+ 
+     s_workloads[wid].readyCount = value;
+     /* The real store: the instance byte the kernel (poll thread) watches. */
+-    vm_write8(si->ea + SPURS_WKL_READY1 + wid, (u8)value);
++    spu_lockline_lock();
++    vm_base[si->ea + SPURS_WKL_READY1 + wid] = (u8)value;
++    ef_line_end(si->ea);
+     {   static int _n = 0;
+         if (_n < 32)
+             printf("[cellSpurs] ReadyCountStore(wid=%u, value=%u)\n", wid, value);
+@@ -2027,7 +2045,7 @@ s32 cellSpursReadyCountStore(CellSpurs* spurs, CellSpursWorkloadId wid,
+             printf("[cellSpurs] ReadyCountStore further logs suppressed\n");
+         _n++;
+     }
+-    spurs_api_unlock(si);
++    spurs_ready_end(si);
+     return CELL_OK;
+ }
+ 
+@@ -2037,11 +2055,8 @@ static s32 spurs_ready_exchange(CellSpurs* spurs, CellSpursWorkloadId wid,
+     if (!spurs || !old) return CELL_SPURS_CORE_ERROR_NULL_POINTER;
+     if (wid >= CELL_SPURS_MAX_WORKLOAD) return CELL_SPURS_CORE_ERROR_INVAL;
+     struct SpursInst* si;
+-    s32 rc = spurs_api_lock((u32)(uintptr_t)spurs, &si);
++    s32 rc = spurs_ready_begin((u32)(uintptr_t)spurs, wid, &si);
+     if (rc) return rc;
+-    if (!s_workloads[wid].in_use || s_workloads[wid].spurs_ea != si->ea) {
+-        spurs_api_unlock(si); return CELL_SPURS_CORE_ERROR_SRCH;
+-    }
+     spu_lockline_lock();
+     u8 previous = vm_read8(si->ea + SPURS_WKL_READY1 + wid);
+     if (!conditional || previous == compare) {
+@@ -2050,7 +2065,7 @@ static s32 spurs_ready_exchange(CellSpurs* spurs, CellSpursWorkloadId wid,
+         ef_line_end(si->ea);
+     } else spu_lockline_unlock();
+     vm_write32((u32)(uintptr_t)old, previous);
+-    spurs_api_unlock(si);
++    spurs_ready_end(si);
+     return CELL_OK;
+ }
+ 
+-- 
+2.56.0
+

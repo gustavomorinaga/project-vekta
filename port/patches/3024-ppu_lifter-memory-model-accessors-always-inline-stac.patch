@@ -1,0 +1,165 @@
+From cabb553bf12681b7899bd5c6b0fddcbc14e8d1b0 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 17:58:29 -0300
+Subject: [PATCH] ppu_lifter: memory-model accessors always inline; stack
+ stores skip the reservation bitmap
+
+The ppu_mm accessors were outlined in the large lifted functions (vm_read32_mm alone was 6% of KZ1 HD's main thread). Stores through r1 become vm_writeN_stk: the span compare and the store, no bitmap (no SPU reserves a PPU stack line); PPU_LIFT_NO_STK=1 lifts them as plain stores. Level 7 at the 144 Hz clock with PGO: 82 -> 95 -> 116 fps.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ tools/ppu_lifter.py | 51 ++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 39 insertions(+), 12 deletions(-)
+
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index a5540e35..2de0da82 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -194,7 +194,7 @@ extern const unsigned char* g_spu_coh_bits;   /* SPU-reserved lines, NULL until
+  * they also turned away, the gcm ref-poll word, is only special to vm_read32,
+  * so only the 32-bit load still tests it. */
+ typedef struct ppu_mm { uint8_t* vb; int64_t ld_span, st_span; uint32_t poll; } ppu_mm;
+-static inline ppu_mm ppu_mm_take(void)
++static inline __attribute__((always_inline)) ppu_mm ppu_mm_take(void)
+ {
+     const uint32_t hi = (ppu_vm_size != 0 && ppu_vm_size < 0xE0000000u) ? ppu_vm_size : 0xE0000000u;
+     const int64_t span = hi > 0x10000u ? (int64_t)(hi - 0x10000u) : 0;
+@@ -208,15 +208,15 @@ static inline ppu_mm ppu_mm_take(void)
+ /* [ea, ea + n) inside [0x10000, 0x10000 + span). Below 0x10000 the 32-bit
+  * subtraction wraps past any span. Signed, so span - n is computed once per
+  * function and a span of 0 still turns everything away. */
+-static inline int vm_mm_in(int64_t span, uint32_t ea, uint32_t n)
++static inline __attribute__((always_inline)) int vm_mm_in(int64_t span, uint32_t ea, uint32_t n)
+ {
+     return (int64_t)(uint32_t)(ea - 0x10000u) <= span - (int64_t)n;
+ }
+-static inline int vm_mm_ok(const ppu_mm* m, uint32_t ea, uint32_t n)
++static inline __attribute__((always_inline)) int vm_mm_ok(const ppu_mm* m, uint32_t ea, uint32_t n)
+ {
+     return vm_mm_in(m->ld_span, ea, n);
+ }
+-static inline int vm_mm_st_ok(const ppu_mm* m, uint32_t ea, uint32_t n)
++static inline __attribute__((always_inline)) int vm_mm_st_ok(const ppu_mm* m, uint32_t ea, uint32_t n)
+ {
+     if (!__builtin_expect(vm_mm_in(m->st_span, ea, n), 1) ||
+         __builtin_expect((g_barrier_sync_watch | g_null_sweep_hi) != 0, 0))
+@@ -225,13 +225,13 @@ static inline int vm_mm_st_ok(const ppu_mm* m, uint32_t ea, uint32_t n)
+     if (bits) { const uint32_t line = ea >> 7; if ((bits[line >> 3] >> (line & 7)) & 1u) return 0; }
+     return 1;
+ }
+-static inline uint8_t vm_read8_mm(const ppu_mm* m, uint64_t a)
++static inline __attribute__((always_inline)) uint8_t vm_read8_mm(const ppu_mm* m, uint64_t a)
+ {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_ok(m, ea, 1), 1)) return __atomic_load_n(m->vb + ea, __ATOMIC_RELAXED);
+     return vm_read8(a);
+ }
+-static inline uint16_t vm_read16_mm(const ppu_mm* m, uint64_t a)
++static inline __attribute__((always_inline)) uint16_t vm_read16_mm(const ppu_mm* m, uint64_t a)
+ {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_ok(m, ea, 2), 1)) {   /* aligned: single-copy atomic, as on Cell */
+@@ -241,7 +241,7 @@ static inline uint16_t vm_read16_mm(const ppu_mm* m, uint64_t a)
+         return __builtin_bswap16(v); }
+     return vm_read16(a);
+ }
+-static inline uint32_t vm_read32_mm(const ppu_mm* m, uint64_t a)
++static inline __attribute__((always_inline)) uint32_t vm_read32_mm(const ppu_mm* m, uint64_t a)
+ {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_ok(m, ea, 4), 1) && __builtin_expect(ea != m->poll, 1)) {   /* aligned: single-copy atomic, as on Cell */
+@@ -251,7 +251,7 @@ static inline uint32_t vm_read32_mm(const ppu_mm* m, uint64_t a)
+         return __builtin_bswap32(v); }
+     return vm_read32(a);
+ }
+-static inline uint64_t vm_read64_mm(const ppu_mm* m, uint64_t a)
++static inline __attribute__((always_inline)) uint64_t vm_read64_mm(const ppu_mm* m, uint64_t a)
+ {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_ok(m, ea, 8), 1)) {   /* aligned: single-copy atomic, as on Cell */
+@@ -261,13 +261,13 @@ static inline uint64_t vm_read64_mm(const ppu_mm* m, uint64_t a)
+         return __builtin_bswap64(v); }
+     return vm_read64(a);
+ }
+-static inline void vm_write8_mm(const ppu_mm* m, uint64_t a, uint8_t v)
++static inline __attribute__((always_inline)) void vm_write8_mm(const ppu_mm* m, uint64_t a, uint8_t v)
+ {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_st_ok(m, ea, 1), 1)) { __atomic_store_n(m->vb + ea, v, __ATOMIC_RELAXED); return; }
+     vm_write8(a, v);
+ }
+-static inline void vm_write16_mm(const ppu_mm* m, uint64_t a, uint16_t v)
++static inline __attribute__((always_inline)) void vm_write16_mm(const ppu_mm* m, uint64_t a, uint16_t v)
+ {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_st_ok(m, ea, 2), 1)) {   /* aligned: single-copy atomic, as on Cell */
+@@ -277,7 +277,7 @@ static inline void vm_write16_mm(const ppu_mm* m, uint64_t a, uint16_t v)
+         return; }
+     vm_write16(a, v);
+ }
+-static inline void vm_write32_mm(const ppu_mm* m, uint64_t a, uint32_t v)
++static inline __attribute__((always_inline)) void vm_write32_mm(const ppu_mm* m, uint64_t a, uint32_t v)
+ {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_st_ok(m, ea, 4), 1)) {
+@@ -287,7 +287,7 @@ static inline void vm_write32_mm(const ppu_mm* m, uint64_t a, uint32_t v)
+         return; }
+     vm_write32(a, v);
+ }
+-static inline void vm_write64_mm(const ppu_mm* m, uint64_t a, uint64_t v)
++static inline __attribute__((always_inline)) void vm_write64_mm(const ppu_mm* m, uint64_t a, uint64_t v)
+ {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_mm_st_ok(m, ea, 8), 1)) {
+@@ -654,6 +654,28 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+ #define vm_write16(a, v) vm_write16_mm(&_mm, a, v)
+ #define vm_write32(a, v) vm_write32_mm(&_mm, a, v)
+ #define vm_write64(a, v) vm_write64_mm(&_mm, a, v)
++/* Stores through r1 (stack frames: register saves, spills, locals): no SPU
++ * reserves a PPU stack line and nothing maps a register there, so they skip
++ * the reservation bitmap -- one compare, then the store. In Killzone HD they
++ * are most of the stores. PPU_LIFT_NO_STK=1 lifts them as plain stores. */
++#define vm_write8_stk(a, v)  vm_write_stk_mm(&_mm, a, (uint8_t)(v), 1, vm_write8)
++#define vm_write16_stk(a, v) vm_write_stk_mm(&_mm, a, (uint16_t)(v), 2, vm_write16)
++#define vm_write32_stk(a, v) vm_write_stk_mm(&_mm, a, (uint32_t)(v), 4, vm_write32)
++#define vm_write64_stk(a, v) vm_write_stk_mm(&_mm, a, (uint64_t)(v), 8, vm_write64)
++#define vm_write_stk_mm(m, a, v, n, slow) do {                                        \
++        const uint32_t ea_ = (uint32_t)(a);                                          \
++        if (__builtin_expect(vm_mm_in((m)->st_span, ea_, n) && !g_barrier_sync_watch, 1)) { \
++            if (n == 1) { (m)->vb[ea_] = (uint8_t)(v); }                             \
++            else if (n == 2) { const uint16_t be_ = __builtin_bswap16((uint16_t)(v)); memcpy((m)->vb + ea_, &be_, 2); } \
++            else if (n == 4) { const uint32_t be_ = __builtin_bswap32((uint32_t)(v)); memcpy((m)->vb + ea_, &be_, 4); } \
++            else { const uint64_t be_ = __builtin_bswap64((uint64_t)(v)); memcpy((m)->vb + ea_, &be_, 8); } \
++        } else slow(a, v);                                                            \
++    } while (0)
++#else
++#define vm_write8_stk(a, v)  vm_write8(a, v)
++#define vm_write16_stk(a, v) vm_write16(a, v)
++#define vm_write32_stk(a, v) vm_write32(a, v)
++#define vm_write64_stk(a, v) vm_write64(a, v)
+ #endif
+ 
+ """
+@@ -662,6 +684,8 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+ # Instruction -> C translation
+ # ---------------------------------------------------------------------------
+ 
++_STK_STORE_RE = re.compile(r"vm_write(8|16|32|64)\(ctx->gpr\[1\] \+")
++
+ def _parse_operands(operands: str) -> list[str]:
+     """Split operands string by commas, stripping whitespace."""
+     return [o.strip() for o in operands.split(",") if o.strip()]
+@@ -4227,7 +4251,10 @@ class PPULifter:
+         suffix = "_lifted" if func.name in _native_overrides() else ""
+         lines.append(f"void {weak}{func.name}{suffix}(ppu_context* ctx) {{")
+         lines.append("    PPU_MM_SNAP")
++        stk = os.environ.get("PPU_LIFT_NO_STK", "") != "1"
+         for bline in _fuse_cr(func.body_lines):
++            if stk and "vm_write" in bline:
++                bline = _STK_STORE_RE.sub(r"vm_write\1_stk(ctx->gpr[1] +", bline)
+             lines.append(f"    {bline}" if not bline.endswith(":") else bline)
+ 
+         # If a function doesn't end with blr/b/bctr (a return or unconditional
+-- 
+2.56.0
+

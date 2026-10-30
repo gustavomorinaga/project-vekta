@@ -1,0 +1,56 @@
+From 3d7953296752b1cd5e2e8e3f7a21c98fa2d5a603 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 23:53:23 -0300
+Subject: [PATCH] spu_lifter: SPU_LIFT_NATIVE emits named functions as
+ <name>_lifted for a port's native versions
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ tools/spu_lifter.py | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/tools/spu_lifter.py b/tools/spu_lifter.py
+index 5d130203..091029f9 100644
+--- a/tools/spu_lifter.py
++++ b/tools/spu_lifter.py
+@@ -1062,8 +1062,11 @@ class SPULifter:
+     # ------------------------------------------------------------------ #
+     def emit_header(self) -> str:
+         lines = [HEADER_PREAMBLE, ""]
++        native = _native_overrides()
+         for f in self.functions:
+             lines.append(f"void {f.name}(spu_context* ctx);")
++            if f.name in native:
++                lines.append(f"void {f.name}_lifted(spu_context* ctx); /* {f.name} is native */")
+         defined = {f.start_addr for f in self.functions}
+         for t in sorted(self.call_targets | self.branch_targets):
+             if t not in defined:
+@@ -1080,8 +1083,13 @@ class SPULifter:
+     def emit_source(self,header_name: str) -> str:
+         lines = [SOURCE_PREAMBLE.format(header_name=header_name), ""]
+         weak = "__attribute__((weak)) " if getattr(self, "weak_emit", False) else ""
++        native = _native_overrides()
+         for f in self.functions:
+-            lines.append(f"void {weak}{f.name}(spu_context* ctx) {{")
++            # A function the port reimplements natively (SPU_LIFT_NATIVE) is
++            # emitted as <name>_lifted; the port defines <name>, and may call
++            # the lifted one (to replay or to verify).
++            suffix = "_lifted" if f.name in native else ""
++            lines.append(f"void {weak}{f.name}{suffix}(spu_context* ctx) {{")
+             body = promote_leaf(f.body_lines)
+             if body is not None:
+                 self.promoted = getattr(self, "promoted", 0) + 1
+@@ -1124,6 +1132,10 @@ class SPULifter:
+         lines.append("")
+         return "\n".join(lines)
+ 
++def _native_overrides():
++    """SPU_LIFT_NATIVE: comma-separated function names the port implements natively."""
++    return {n.strip() for n in os.environ.get("SPU_LIFT_NATIVE", "").split(",") if n.strip()}
++
+ # ---------------------------------------------------------------------------
+ # Register promotion for leaf functions
+ # ---------------------------------------------------------------------------
+-- 
+2.56.0
+

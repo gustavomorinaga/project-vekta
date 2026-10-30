@@ -1,0 +1,56 @@
+From e577706192640ae615c76be11d9663a8b8b49089 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 22 Oct 2026 18:20:40 -0300
+Subject: [PATCH] cellGcmSys: GCM_RING_RECYCLE=0, and recycle a title's
+ ring only once it is past its end
+
+The drain recycles a title's own command ring when its buffer-full callback
+will not, keyed on having seen the title overrun `end`. It counted
+`current == end` as an overrun; a title whose callback steps its context
+through segments of a larger ring (Killzone HD, 64 KB at a time) sits there
+for the moment before its callback runs, and the recycle then rewound put
+and get under it. The next segment's commands were lost, the drain walked
+stale words ("FIFO CALL to unmapped IO 0x0FEFEFFC") and the title froze
+loading a level. Only `current > end` counts now, and GCM_RING_RECYCLE=0
+turns the recycle off for a title that never needs it.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/cellGcmSys.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 1814fb98..19bd2b50 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -2886,7 +2886,15 @@ static void gcm_rsx_process_fifo_unlocked(void)
+      *
+      * ponytail: append the JUMP at `current` the way the SDK's own callback
+      * does, rather than tracking a second copy of the ring's geometry. */
+-    if (s_gcm_ctx_out_ea) {
++    /* GCM_RING_RECYCLE=0: never. A title whose callback steps its context
++     * through segments of a larger ring (Killzone HD: 64 KB at a time) can be
++     * seen at `current == end` for the moment before its callback runs, and a
++     * recycle from this thread then rewinds put and get under it: the next
++     * segment's commands are lost and the drain walks stale words (Killzone
++     * HD froze loading a level after "FIFO CALL to unmapped IO 0x0FEFEFFC"). */
++    static int s_ring_recycle = -1;
++    if (s_ring_recycle < 0) { const char* e = getenv("GCM_RING_RECYCLE"); s_ring_recycle = !(e && *e == '0'); }
++    if (s_gcm_ctx_out_ea && s_ring_recycle) {
+         u32 ctx = vm_read32(s_gcm_ctx_out_ea);
+         u32 begin = ctx ? vm_read32(ctx + 0x0) : 0;
+         u32 end   = ctx ? vm_read32(ctx + 0x4) : 0;
+@@ -2934,7 +2942,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
+          * and near-end recycling is enabled from then on. */
+         static int s_title_overran = 0;
+         if (s_fifo_recycle_waiting) head_consumed = 0;   /* its callback is recycling */
+-        else if (begin && end > begin && cur >= end) { head_consumed = 1; s_title_overran = 1; }
++        /* past `end`, not at it: at `end` the title's own callback may be
++         * about to run */
++        else if (begin && end > begin && cur > end) { head_consumed = 1; s_title_overran = 1; }
+         if (begin && end > begin && cur >= begin && cur + GCM_RECYCLE_SLACK >= end
+                 && head_consumed && s_title_overran) {
+             u32 io_begin = gcm_ea2io(begin);
+-- 
+2.56.0
+

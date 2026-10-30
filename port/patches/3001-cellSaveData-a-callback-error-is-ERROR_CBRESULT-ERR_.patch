@@ -1,0 +1,52 @@
+From 16869bb7ed89ff8a406442434920eb4a429e7122 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 18:20:00 -0300
+Subject: [PATCH] cellSaveData: a callback error is ERROR_CBRESULT,
+ ERR_NODATA included
+
+The stat callback answering CBRESULT_ERR_NODATA (no save yet) made the
+call return CELL_SAVEDATA_ERROR_NODATA. Killzone HD's profile loader only
+treats CBRESULT as "no profile": with NODATA it went on with a zeroed
+profile, whose in-game button map is all zeros, so nothing but the menus
+answered the pad. RPCS3 also reports the callback's failure as CBRESULT.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/system/cellSaveData.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/libs/system/cellSaveData.c b/libs/system/cellSaveData.c
+index 1fb1b120..c417f7df 100644
+--- a/libs/system/cellSaveData.c
++++ b/libs/system/cellSaveData.c
+@@ -957,8 +957,11 @@ static s32 savedata_execute_run(const char* dirName, int is_save,
+     if (cbResult.result < 0) {
+         printf("[cellSaveData] stat callback returned error %d\n", cbResult.result);
+         free(fileList);
+-        if (cbResult.result == CELL_SAVEDATA_CBRESULT_ERR_NODATA)
+-            return CELL_SAVEDATA_ERROR_NODATA;
++        /* Any callback error is CELL_SAVEDATA_ERROR_CBRESULT, ERR_NODATA included
++         * (the system shows its "no data" message and reports the callback's
++         * failure; RPCS3 does the same). Killzone HD's profile loader treats
++         * CBRESULT as "no profile yet" and fills in the default settings; an
++         * ERROR_NODATA left the profile, and its button map, all zero. */
+         return CELL_SAVEDATA_ERROR_CBRESULT;
+     }
+ 
+@@ -993,8 +996,11 @@ static s32 savedata_execute_run(const char* dirName, int is_save,
+     free(fileList);
+ 
+     if (cbResult.result < 0) {
+-        if (cbResult.result == CELL_SAVEDATA_CBRESULT_ERR_NODATA)
+-            return CELL_SAVEDATA_ERROR_NODATA;
++        /* Any callback error is CELL_SAVEDATA_ERROR_CBRESULT, ERR_NODATA included
++         * (the system shows its "no data" message and reports the callback's
++         * failure; RPCS3 does the same). Killzone HD's profile loader treats
++         * CBRESULT as "no profile yet" and fills in the default settings; an
++         * ERROR_NODATA left the profile, and its button map, all zero. */
+         return CELL_SAVEDATA_ERROR_CBRESULT;
+     }
+ 
+-- 
+2.56.0
+

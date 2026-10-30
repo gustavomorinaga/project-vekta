@@ -1,0 +1,366 @@
+From e424fef79a21b62eff9e7b4c8bab06e37c03ae39 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 16:40:44 -0300
+Subject: [PATCH] Killzone port on v0.18.0: coherence marks dropped,
+ depth_as_color, pooled engine copies, SPURS overrides
+
+- spu_coherency: a line's mark is dropped once a write has ended every reservation on it (not for pins, watches or the writer's own); a lock-free GETLLAR that races the drop takes the locked path. The notifier's walk was ~half of KZ1 HD's main PPU thread. SPU_COH_KEEP_MARKS=1 keeps every mark.
+- Vulkan: depth_as_color with the depth pack compute pass (also under the internal scale); color_snapshot and depth_as_color hand the engine pooled objects, released back to the pool, so their views live while frames in flight sample them.
+- cellSpurs: PS3_SPURS_INSTANCE_SPUS=<prefix>:<n>; a workload kept off the workers still has its kicks taken.
+- rsx_draw_engine: RSX_DAC_LOG logs depth_as_color requests.
+
+Level 7 at the 144 Hz clock, no PGO: ~15 -> ~93 fps.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/spurs/cellSpurs.c          |  24 +++++-
+ libs/video/rsx_draw_engine.c    |   4 +
+ libs/video/rsx_vulkan_backend.c | 140 ++++++++++++++++++++++++++------
+ runtime/spu/spu_coherency.c     |  46 ++++++++++-
+ 4 files changed, 188 insertions(+), 26 deletions(-)
+
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index 8eb57cec..d8c19d15 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -555,6 +555,19 @@ static s32 spurs_initialize_common(u32 spurs_ea, u32 nspus, const char* prefix)
+     si->nspus = (nspus > 0 && nspus <= CELL_SPURS_MAX_SPU) ? nspus : 1;
+     memset(si->prefix, 0, sizeof(si->prefix));
+     if (prefix) memcpy(si->prefix, prefix, 15);
++    /* PS3_SPURS_INSTANCE_SPUS=<prefix>:<n>[,...]: the instance gets n SPUs
++     * instead of what the title asked, for a port tuned to another count
++     * (Killzone HD's native job manager, which takes the rows after its
++     * instance's SPUs). */
++    for (const char* e = getenv("PS3_SPURS_INSTANCE_SPUS"); e && *e; ) {
++        const char* c = strchr(e, ':');
++        if (!c) break;
++        const size_t pl = strlen(si->prefix);
++        const long n = strtol(c + 1, NULL, 0);
++        if ((size_t)(c - e) == pl && !memcmp(e, si->prefix, pl) && n >= 1 && n <= 6) si->nspus = (u32)n;
++        e = strchr(c, ',');
++        if (e) e++;
++    }
+ 
+     /* Real BE instance: zero it, then the few live fields. (The global
+      * workload table is NOT wiped here — the title may init several SPURS
+@@ -1873,7 +1886,16 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+                     continue;
+                 if (!vm_read8(ea + SPURS_WKL_INFO1 + wid * SPURS_WKL_INFO_SZ + 0x18 + sn))
+                     continue; /* priority zero makes this physical lane ineligible */
+-                if (spurs_wid_off(wid)) continue;
++                if (spurs_wid_off(wid)) {
++                    /* Kicks are still taken, as a dispatch would: a title that
++                     * waits for its ready count to drain must see it drain. */
++                    spu_lockline_lock();
++                    if (vm_read8(ea + SPURS_WKL_READY1 + wid)) vm_base[ea + SPURS_WKL_READY1 + wid] = 0;
++                    const u32 sig = vm_read16(ea + SPURS_WKL_SIGNAL1);
++                    if (sig & (0x8000u >> wid)) ef_w16(ea + SPURS_WKL_SIGNAL1, (u16)(sig & ~(0x8000u >> wid)));
++                    ef_line_end(ea);
++                    continue;
++                }
+                 u32 maxcont = vm_read8(ea + SPURS_WKL_MAXCONT + wid);
+                 if (!maxcont || si->active[wid] >= maxcont) continue;
+                 WklPm* pm = spurs_resolve_pm(wid);
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 5ae936d3..6d066797 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -1123,6 +1123,10 @@ static u32 eng_zdepth_as_color(u32 slot, const rsx_dsp_texture* t)
+     const int z16 = z->zfmt == 1u;      /* SURFACE_FORMAT Z16 */
+     const int bytes = base_fmt == RSX_TEX_FMT_A8R8G8B8 && !z16 && !rsx_texture_argb_is_rgba();
+     const int d16 = base_fmt == RSX_TEX_FMT_DEPTH16 && z16;
++    { static int n; if (getenv("RSX_DAC_LOG") && n++ < 8)
++        fprintf(stderr, "[dac] fmt %02X zfmt %u linear %u %ux%u (used %ux%u) pitch %u/%u mips %u argb_rgba %d\n",
++                base_fmt, z->zfmt, !!(t->format & RSX_TEX_FMT_LINEAR), t->width, t->height, z->used_w, z->used_h,
++                t->pitch, z->pitch, t->mipmaps, rsx_texture_argb_is_rgba()); }
+     if (s_depth_via_guest || !g.be->depth_as_color || !g.be->surface_view ||
+         !z->handle || !(bytes || d16) || !(t->format & RSX_TEX_FMT_LINEAR) ||
+         t->cubemap || t->dimension == 3 || t->mipmaps > 1)
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 432d1b01..d558851a 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2334,6 +2334,8 @@ typedef struct vk_eng_obj {
+     u32      surface, remap, rsx_fmt;/* VIEW: what it is a view of          */
+     u8       cube;                   /* TEXTURE: six layers, a CUBE view    */
+     u32      snap;                   /* COLOR: its snapshot (color_snapshot) */
++    u8       recyc;                  /* COLOR handed to the engine to own: 1 snapshot, 2 depth as colour */
++    u8       pooled;                 /* recyc: released by the engine, free for the next one */
+ } vk_eng_obj;
+ 
+ static vk_eng_obj s_eobj[VK_ENG_MAX_OBJ];
+@@ -2554,10 +2556,16 @@ static int vk_eng_init(void* user, u32 width, u32 height)
+     return s_vk.device ? 0 : -1;
+ }
+ 
++static int s_eng_closing;   /* vk_eng_shutdown: releases destroy, recycled or not */
+ static void vk_eng_release(void* user, u32 handle)
+ {
+     (void)user;
+     if (!handle || handle >= VK_ENG_MAX_OBJ || s_eobj[handle].kind == VK_ENG_FREE) return;
++    /* A copy the engine owns (color_snapshot, depth_as_color) goes back to
++     * the pool with its image and views: the next copy of the same shape
++     * takes it, instead of an image and its views made and destroyed for
++     * every one while frames that sample it may still be in flight. */
++    if (s_eobj[handle].recyc && !s_eng_closing) { s_eobj[handle].pooled = 1; return; }
+     if (s_eobj[handle].kind == VK_ENG_COLOR)
+         for (u32 i = 1; i < VK_ENG_MAX_OBJ; i++)
+             if (s_eobj[i].kind == VK_ENG_VIEW && s_eobj[i].surface == handle) {
+@@ -2582,6 +2590,7 @@ static void vk_eng_release(void* user, u32 handle)
+ 
+ static void vk_eng_shutdown(void* user)
+ {
++    s_eng_closing = 1;
+     vk_eng2_shutdown(user);
+     for (u32 i = 1; i < VK_ENG_MAX_OBJ; i++) vk_eng_release(user, i);
+ }
+@@ -2906,32 +2915,49 @@ static u32 vk_eng_surface_view(void* user, u32 surface, u32 remap, u32 rsx_forma
+  * reads the frame and writes it back in place. The copy is recorded into the
+  * open batch; the engine used to store the target to guest memory and decode
+  * it back as a texture, a GPU round trip every frame. */
++/* A colour object the engine will own, from the pool when one of the shape
++ * is free (vk_eng_release), else made. Its layout is GENERAL on return. */
++static u32 vk_eng_recycled(u8 tag, VkFormat fmt, u32 bpp, u32 w, u32 h, u32 lw, u32 lh,
++                           VkImageUsageFlags usage)
++{
++    for (u32 i = 1; i < VK_ENG_MAX_OBJ; i++) {
++        vk_eng_obj* t = &s_eobj[i];
++        if (t->kind == VK_ENG_COLOR && t->recyc == tag && t->pooled &&
++            t->fmt == fmt && t->w == w && t->h == h && t->lw == lw && t->lh == lh) {
++            t->pooled = 0;
++            return i;
++        }
++    }
++    const u32 hd = vk_eng_alloc();
++    if (!hd) return 0;
++    vk_eng_obj* t = &s_eobj[hd];
++    if (vk_create_image(&t->im, fmt, w, h, usage, VK_IMAGE_ASPECT_COLOR_BIT)) {
++        vk_destroy_image(&t->im); memset(t, 0, sizeof *t); return 0;
++    }
++    t->kind = VK_ENG_COLOR; t->fmt = fmt; t->bpp = bpp; t->w = w; t->h = h; t->lw = lw; t->lh = lh;
++    t->recyc = tag;
++    if (vk_batch_reserve(0)) { t->pooled = 1; return 0; }
++    vk_barrier_image(t->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED);
++    return hd;
++}
++
++/* A colour target copied on the GPU into a fresh colour object the engine
++ * owns, for a draw that samples the target it is writing: Killzone's colour
++ * correction reads the frame and writes it back in place. The copy is
++ * recorded into the open batch; the engine used to store the target to guest
++ * memory and decode it back as a texture, a GPU round trip every frame. */
+ static u32 vk_eng_color_snapshot(void* user, u32 surface)
+ {
++    (void)user;
+     vk_eng_obj* o = vk_eng_get(surface, VK_ENG_COLOR);
+     if (!o) return 0;
+-    u32 snap = o->snap;
+-    vk_eng_obj* t = snap ? vk_eng_get(snap, VK_ENG_COLOR) : NULL;
+-    if (!t || t->w != o->w || t->h != o->h || t->fmt != o->fmt) {
+-        if (t) vk_eng_release(user, snap);
+-        o = vk_eng_get(surface, VK_ENG_COLOR);
+-        o->snap = 0;
+-        snap = vk_eng_alloc();
+-        if (!snap) return 0;
+-        o = vk_eng_get(surface, VK_ENG_COLOR);
+-        t = &s_eobj[snap];
+-        if (vk_create_image(&t->im, o->fmt, o->w, o->h,
+-                            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+-                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+-                            VK_IMAGE_ASPECT_COLOR_BIT)) {
+-            vk_destroy_image(&t->im); memset(t, 0, sizeof *t); return 0;
+-        }
+-        t->kind = VK_ENG_COLOR; t->fmt = o->fmt; t->bpp = o->bpp; t->w = o->w; t->h = o->h; t->lw = o->lw; t->lh = o->lh;
+-        o->snap = snap;
+-        if (vk_batch_reserve(0)) return 0;
+-        vk_barrier_image(t->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED);
+-    }
+-    if (vk_batch_reserve(0)) return 0;
++    const u32 snap = vk_eng_recycled(1, o->fmt, o->bpp, o->w, o->h, o->lw, o->lh,
++                                     VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
++                                     VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
++    if (!snap) return 0;
++    o = vk_eng_get(surface, VK_ENG_COLOR);
++    vk_eng_obj* t = &s_eobj[snap];
++    if (vk_batch_reserve(0)) { t->pooled = 1; return 0; }
+     vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     vk_barrier_image(t->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     VkImageCopy c = { .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+@@ -3020,7 +3046,7 @@ static u32 vk_eng_depth_snapshot(void* user, u32 depth, u32 w, u32 h)
+  * engine used to read the target back, store its words into guest memory and
+  * upload them as a texture again, twice a frame in Killzone HD. One packed
+  * image per depth target and crossbar, refilled on every call. */
+-#define VK_PACK_MAX 8
++#define VK_PACK_MAX 32
+ static struct {
+     VkDescriptorSetLayout dsl;
+     VkPipelineLayout      layout;
+@@ -3170,6 +3196,73 @@ static u32 vk_eng_depth_packed(void* user, u32 depth, u32 remap, u32 rsx_fmt)
+     return s_pack.e[i].tex;
+ }
+ 
++/* The engine's depth_as_color: a Z24S8 target's top-left w x h read as an
++ * A8R8G8B8 texture, packed on the GPU by the same compute pass into a colour
++ * object the engine owns (rsx_vk_depth_pack.comp writes exactly the texels
++ * the store through guest memory and the decode would give). Each object
++ * keeps its own staging buffer and descriptor set while it is pooled. */
++static struct { vk_buffer buf; VkDescriptorSet set; } s_dac[VK_ENG_MAX_OBJ];
++static u32 vk_eng_depth_as_color(void* user, u32 depth, u32 w, u32 h, u32 rsx_fmt)
++{
++    (void)user;
++    vk_eng_obj* z = vk_eng_get(depth, VK_ENG_DEPTH);
++    if (!z || rsx_fmt != 0x85u || !z->lw || !z->lh || w > z->lw || h > z->lh ||
++        (s_vk.depth_format != VK_FORMAT_D32_SFLOAT &&
++         s_vk.depth_format != VK_FORMAT_D32_SFLOAT_S8_UINT) || vk_pack_init())
++        return 0;
++    /* Under the internal scale the target is bigger than the guest's: the
++     * texture keeps the target's density, and samplers read it normalized. */
++    const u32 iw = (u32)(((u64)w * z->w + z->lw - 1) / z->lw), ih = (u32)(((u64)h * z->h + z->lh - 1) / z->lh);
++    const u32 hd = vk_eng_recycled(2, VK_FORMAT_R8G8B8A8_UNORM, 4, iw, ih, w, h,
++                                   VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
++                                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
++    if (!hd) return 0;
++    z = vk_eng_get(depth, VK_ENG_DEPTH);
++    vk_eng_obj* t = &s_eobj[hd];
++    const VkDeviceSize need = (VkDeviceSize)z->w * z->h * 4u;
++    if (!s_dac[hd].set || s_dac[hd].buf.size < need) {
++        if (s_dac[hd].set) { t->pooled = 1; return 0; }   /* a bigger target than this object's buffer */
++        VkDescriptorSetAllocateInfo ai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
++                                           .descriptorPool = s_pack.pool, .descriptorSetCount = 1,
++                                           .pSetLayouts = &s_pack.dsl };
++        if (vk_create_device_buffer(&s_dac[hd].buf, need,
++                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT) ||
++            pvkAllocateDescriptorSets(s_vk.device, &ai, &s_dac[hd].set) != VK_SUCCESS) {
++            s_dac[hd].set = VK_NULL_HANDLE; t->pooled = 1; return 0;
++        }
++        VkDescriptorBufferInfo dbi = { s_dac[hd].buf.buf, 0, VK_WHOLE_SIZE };
++        VkDescriptorImageInfo dii = { VK_NULL_HANDLE, t->im.view, VK_IMAGE_LAYOUT_GENERAL };
++        VkWriteDescriptorSet wr[2] = {
++            { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = s_dac[hd].set, .dstBinding = 0,
++              .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pBufferInfo = &dbi },
++            { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = s_dac[hd].set, .dstBinding = 1,
++              .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &dii },
++        };
++        pvkUpdateDescriptorSets(s_vk.device, 2, wr, 0, NULL);
++    }
++    if (vk_batch_reserve(0)) { t->pooled = 1; return 0; }
++    vk_barrier_image(z->im.img, s_vk.depth_aspect, VK_IMAGE_LAYOUT_GENERAL);
++    VkBufferImageCopy region = { .imageSubresource = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1 },
++                                 .imageExtent = { z->w, z->h, 1 } };
++    pvkCmdCopyImageToBuffer(s_vk.cmd, z->im.img, VK_IMAGE_LAYOUT_GENERAL, s_dac[hd].buf.buf, 1, &region);
++    VkBufferMemoryBarrier bb = {
++        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
++        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
++        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
++        .buffer = s_dac[hd].buf.buf, .offset = 0, .size = VK_WHOLE_SIZE };
++    pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
++                          0, 0, NULL, 1, &bb, 0, NULL);
++    vk_barrier_image(t->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
++    pvkCmdBindPipeline(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_pack.pipe);
++    pvkCmdBindDescriptorSets(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_pack.layout, 0, 1,
++                             &s_dac[hd].set, 0, NULL);
++    const u32 pc[2] = { z->w, z->h };   /* the buffer's row length; texels past w x h fall outside the image */
++    pvkCmdPushConstants(s_vk.cmd, s_pack.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, pc);
++    pvkCmdDispatch(s_vk.cmd, (iw + 15u) / 16u, (ih + 15u) / 16u, 1);
++    vk_barrier_image(t->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
++    return hd;
++}
++
+ static int vk_eng_depth_readback(void* user, u32 depth, u32 x, u32 y, u32 w, u32 h,
+                                  float* out, u32 out_pitch)
+ {
+@@ -4242,6 +4335,7 @@ static const rsx_draw_backend s_vk_engine_backend = {
+     .present              = vk_eng_present,
+     .readback             = vk_eng_readback,
+     .depth_readback       = vk_eng_depth_readback,
++    .depth_as_color       = vk_eng_depth_as_color,
+     .color_target_write   = vk_eng_color_target_write,
+     /* Uploads are recorded into the open batch behind a barrier, after the
+      * draws that sampled the old bytes. */
+diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
+index 1d96244f..cbcaedf9 100644
+--- a/runtime/spu/spu_coherency.c
++++ b/runtime/spu/spu_coherency.c
+@@ -344,9 +344,46 @@ int spu_coh_reserve_fast(spu_context* ctx, uint32_t ea)
+     __atomic_store_n(&ctx->resv_ea, ea, __ATOMIC_RELAXED);
+     __atomic_store_n(&ctx->resv_valid, 1, __ATOMIC_RELAXED);
+     __atomic_thread_fence(__ATOMIC_SEQ_CST);
++    /* The mark was dropped meanwhile (spu_coh_unmark): take the locked path,
++     * which marks the line again. */
++    if (!spu_coh_is_reserved(ea)) return 0;
+     return 1;
+ }
+ 
++/* Lines a host agent pinned (spu_coh_pin): their bit is never dropped. */
++static uint32_t s_coh_pins[64];
++static unsigned s_coh_npins;
++
++/* Drop a line's mark once a write has ended every reservation on it (lock
++ * held, after the notifier's walk). Marks used to be permanent, so a line an
++ * SPU reserved once sent every later PPU store to it through the lock and
++ * this walk: in Killzone HD's busy scenes that walk was ~half of the main PPU
++ * thread. A line keeps its mark while `self` (the writer, which may hold it),
++ * a coherent-write watch or a pin wants it. A lock-free GETLLAR racing with
++ * the drop (spu_coh_reserve_fast) is the same store-buffering shape as above:
++ * the drop clears the bit, fences and re-reads the reservations, the reader
++ * publishes its reservation, fences and re-reads the bit, so at least one of
++ * them sees the other and the mark is set again (here) or the reader takes
++ * the locked path (there). SPU_COH_KEEP_MARKS=1 keeps every mark. */
++static void spu_coh_unmark(uint32_t line, const void* self)
++{
++    static int keep = -1;
++    if (keep < 0) keep = getenv("SPU_COH_KEEP_MARKS") ? 1 : 0;
++    if (keep) return;
++    if (self && spu_coh_holds((const spu_context*)self, line)) return;
++    for (spu_coh_watch* w = s_coh_watches; w; w = w->next) if (w->line == line) return;
++    for (unsigned i = 0; i < s_coh_npins; i++) if (s_coh_pins[i] == line) return;
++    const uint32_t l = line >> SPU_COH_LINE_SHIFT;
++    const unsigned char bit = (unsigned char)(1u << (l & 7));
++    __atomic_fetch_and(&s_coh_bitmap[l >> 3], (unsigned char)~bit, __ATOMIC_RELAXED);
++    __atomic_thread_fence(__ATOMIC_SEQ_CST);
++    for (spu_coh_entry* entry = s_coh_ctxs; entry; entry = entry->next)
++        if (entry->ctx && spu_coh_holds(entry->ctx, line)) {
++            __atomic_fetch_or(&s_coh_bitmap[l >> 3], bit, __ATOMIC_RELAXED);
++            return;
++        }
++}
++
+ void spu_coh_notify_write_except(uint32_t ea, const void* self)
+ {
+     uint32_t line = ea & ~127u;
+@@ -363,6 +400,7 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self)
+             spu_ch_wake(c);
+         }
+     }
++    spu_coh_unmark(line, self);
+ }
+ 
+ void spu_coh_notify_write(uint32_t ea)
+@@ -393,6 +431,7 @@ void spu_coh_notify_write(uint32_t ea)
+             spu_ch_wake(c);
+         }
+     }
++    spu_coh_unmark(line, NULL);
+ }
+ 
+ #ifdef __cplusplus
+@@ -400,11 +439,14 @@ void spu_coh_notify_write(uint32_t ea)
+ #endif
+ 
+ /* A line a host agent updates under the lock-line lock with plain stores
+- * (spu_coherency.h). Reserved bits are never cleared, so arming it once keeps
+- * every PPU store and store-conditional to it on the locked path. */
++ * (spu_coherency.h): its mark is never dropped (spu_coh_unmark), so every PPU
++ * store and store-conditional to it stays on the locked path. */
+ void spu_coh_pin(uint32_t ea)
+ {
+     spu_lockline_lock();
+     spu_coh_reserve(NULL, ea);
++    unsigned i = 0;
++    while (i < s_coh_npins && s_coh_pins[i] != (ea & ~127u)) i++;
++    if (i == s_coh_npins && s_coh_npins < 64) s_coh_pins[s_coh_npins++] = ea & ~127u;
+     spu_lockline_unlock();
+ }
+-- 
+2.56.0
+

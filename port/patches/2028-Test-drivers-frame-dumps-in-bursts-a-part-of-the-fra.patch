@@ -1,0 +1,136 @@
+From a789758eb8a856d2ea8f6a99c3a6e7a565d75b51 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 22:59:14 -0300
+Subject: [PATCH] Test drivers: frame dumps in bursts, a part of the
+ frame, on a trigger file; sticks from a file
+
+PS3RECOMP_VK_DUMP_BURST, PS3RECOMP_VK_DUMP_RECT, PS3RECOMP_VK_DUMP_TRIGGER and
+PAD_STICK_FILE, for looking at an animation frame by frame without slowing
+the game. The PPM is written a row at a time. (The SPIR-V cache key change
+for the invariant position is here too.)
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/input/cellPad.c            | 15 +++++++++
+ libs/video/rsx_vulkan_backend.c | 54 ++++++++++++++++++++++++++++-----
+ 2 files changed, 62 insertions(+), 7 deletions(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 0119ddb8..b6225d74 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -1462,6 +1462,21 @@ skip_inject: ;
+       if (s_st && pad_clock(s_t0) >= s_from && pad_clock(s_t0) < s_until) { hs->analog_lx = s_v[0]; hs->analog_ly = s_v[1];
+                   hs->analog_rx = s_v[2]; hs->analog_ry = s_v[3];
+                   hs->connected = 1; }
++      /* PAD_STICK_FILE=<path>: the sticks as the file says each poll
++       * ("lx ly rx ry", 0-255), so a driver outside the process can steer
++       * the player while it watches the frame dumps. */
++      { static int s_sf = -1; static char sf_path[512];
++        if (s_sf < 0) { const char* e = getenv("PAD_STICK_FILE");
++                        s_sf = (e && *e) ? 1 : 0;
++                        if (s_sf) { strncpy(sf_path, e, sizeof sf_path - 1); sf_path[sizeof sf_path - 1] = 0; } }
++        if (s_sf && port_no == 0) {
++            FILE* f = fopen(sf_path, "rb"); int v[4];
++            if (f) {
++                if (fscanf(f, "%d %d %d %d", &v[0], &v[1], &v[2], &v[3]) == 4) {
++                    hs->analog_lx = (unsigned char)v[0]; hs->analog_ly = (unsigned char)v[1];
++                    hs->analog_rx = (unsigned char)v[2]; hs->analog_ry = (unsigned char)v[3];
++                    hs->connected = 1; }
++                fclose(f); } } }
+       /* PAD_SWEEP=<seconds per step>: walk the sticks through a fixed set of
+        * deflections instead of holding one. Guessing a single stick position and
+        * re-running costs ~5 minutes a try; a sweep answers "can input move the
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index d558851a..9b714704 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2228,15 +2228,33 @@ static void vk_dump_ppm(const unsigned char* rgba)
+     snprintf(path, sizeof path, s_vk.dump_path, (unsigned)s_dump_tag);
+     FILE* f = fopen(path, "wb");
+     if (!f) { VK_LOG("cannot open %s for the frame dump\n", path); return; }
+-    fprintf(f, "P6\n%u %u\n255\n", s_vk.width, s_vk.height);
+     /* as shown: the sides a crop hides are black */
+     const float crop = s_stretch == 1 ? s_crop : 1.0f;
+     const u32 cx0 = (u32)((float)s_vk.width * (1.0f - crop) * 0.5f), cx1 = s_vk.width - cx0;
+-    static const unsigned char black[3];
+-    for (size_t i = 0; i < (size_t)s_vk.width * s_vk.height; i++) {
+-        const u32 x = (u32)(i % s_vk.width);
+-        fwrite(x >= cx0 && x < cx1 ? rgba + i * 4 : black, 1, 3, f);
++    /* PS3RECOMP_VK_DUMP_RECT=<x>,<y>,<w>,<h>: only that part of the frame
++     * (small files: a burst of dumps slows the game less) */
++    static int rect[4] = { -1 };
++    if (rect[0] == -1) { const char* e = getenv("PS3RECOMP_VK_DUMP_RECT");
++                         if (!e || sscanf(e, "%d,%d,%d,%d", &rect[0], &rect[1], &rect[2], &rect[3]) != 4)
++                             rect[0] = -2; }
++    u32 x0 = 0, y0 = 0, w = s_vk.width, h = s_vk.height;
++    if (rect[0] >= 0) {
++        x0 = (u32)rect[0] < w ? (u32)rect[0] : 0; y0 = (u32)rect[1] < h ? (u32)rect[1] : 0;
++        w = rect[2] > 0 && x0 + (u32)rect[2] <= w ? (u32)rect[2] : w - x0;
++        h = rect[3] > 0 && y0 + (u32)rect[3] <= h ? (u32)rect[3] : h - y0;
+     }
++    fprintf(f, "P6\n%u %u\n255\n", w, h);
++    unsigned char* row = (unsigned char*)malloc((size_t)w * 3);
++    for (u32 y = y0; y < y0 + h && row; y++) {
++        for (u32 x = x0; x < x0 + w; x++) {
++            const unsigned char* p = rgba + ((size_t)y * s_vk.width + x) * 4;
++            unsigned char* o = row + (size_t)(x - x0) * 3;
++            if (x >= cx0 && x < cx1) { o[0] = p[0]; o[1] = p[1]; o[2] = p[2]; }
++            else o[0] = o[1] = o[2] = 0;
++        }
++        fwrite(row, 1, (size_t)w * 3, f);
++    }
++    free(row);
+     fclose(f);
+ }
+ 
+@@ -2247,6 +2265,25 @@ static void vk_dump_ppm(const unsigned char* rgba)
+ static int vk_dump_decide(void)
+ {
+     if (!s_vk.dump_path) return 0;
++    /* PS3RECOMP_VK_DUMP_BURST=<from ms>,<for ms>: every frame in that window
++     * of wall time after the first present, named by the present count (an
++     * animation that changes from one frame to the next). */
++    { static long long from = -2, len; static unsigned long long b0;
++      if (from == -2) { const char* e = getenv("PS3RECOMP_VK_DUMP_BURST");
++                        from = e ? atoll(e) : -1; len = e && strchr(e, ',') ? atoll(strchr(e, ',') + 1) : 2000; }
++      if (from >= 0) {
++          struct timespec a; clock_gettime(CLOCK_MONOTONIC, &a);
++          const unsigned long long now = a.tv_sec * 1000ull + a.tv_nsec / 1000000ull;
++          if (!b0) b0 = now;
++          s_dump_tag = s_vk.presented + 1;
++          return now - b0 >= (unsigned long long)from && now - b0 < (unsigned long long)(from + len);
++      } }
++    /* PS3RECOMP_VK_DUMP_TRIGGER=<file>: while that file exists, every frame
++     * (a driver outside the process starts a burst when the scene is right) */
++    { static int on = -1; static char path[512];
++      if (on < 0) { const char* e = getenv("PS3RECOMP_VK_DUMP_TRIGGER"); on = e && *e;
++                    if (on) snprintf(path, sizeof path, "%s", e); }
++      if (on && access(path, F_OK) == 0) { s_dump_tag = s_vk.presented + 1; return 1; } }
+     if (!s_dump_ms) { s_dump_tag = s_vk.presented + 1; return ((s_vk.presented + 1) % s_vk.dump_every) == 0; }
+     static unsigned long long t0, next;
+     struct timespec a; clock_gettime(CLOCK_MONOTONIC, &a);
+@@ -3488,7 +3525,7 @@ static VkStencilOpState vk_gcm_stencil_face(u32 func, u32 fail, u32 zfail, u32 z
+  * pipelines in one VkPipelineCache blob, under $PS3RECOMP_VK_CACHE (default
+  * ~/.cache/ps3recomp-vk; "0" turns both off). Bump VK_CACHE_VERSION when the
+  * translator's output changes for the same source. */
+-#define VK_CACHE_VERSION 1u
++#define VK_CACHE_VERSION 2u   /* 2: invariant position (rsx_shader_spirv.cpp) */
+ static void vk_mkdir(const char* d)
+ {
+ #ifdef _WIN32
+@@ -3616,7 +3653,10 @@ static int vk_eng_translate(const char* hlsl, int stage, VkShaderModule* out)
+     const char* dir = vk_cache_dir();
+     char path[600] = "";
+     if (dir) {
+-        u64 h = (1469598103934665603ull ^ VK_CACHE_VERSION) + (u64)stage;
++        /* PS3RECOMP_SPIRV_INVARIANT=0 translates differently: its own files */
++        static int inv = -1;
++        if (inv < 0) { const char* e = getenv("PS3RECOMP_SPIRV_INVARIANT"); inv = !(e && *e && atoi(e) == 0); }
++        u64 h = (1469598103934665603ull ^ (VK_CACHE_VERSION + (inv ? 0u : 0x100u))) + (u64)stage;
+         for (const unsigned char* c = (const unsigned char*)hlsl; *c; c++) { h ^= *c; h *= 1099511628211ull; }
+         snprintf(path, sizeof path, "%s/%016llx.spv", dir, (unsigned long long)h);
+         FILE* f = fopen(path, "rb");
+-- 
+2.56.0
+

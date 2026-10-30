@@ -1,0 +1,10 @@
+# No global end-of-line normalisation: a few ps3recomp sources are CRLF and the patches carry that context byte for
+# byte (the same choice as Project Helghast and Project Pyrrhus).
+*.png binary
+*.jpg binary
+*.ico binary
+*.ttf binary
+*.woff2 binary
+*.patch -text linguist-generated=true
+re/*.txt linguist-generated=true
+site/index.html linguist-generated=true

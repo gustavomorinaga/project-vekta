@@ -1,0 +1,383 @@
+cmake_minimum_required(VERSION 3.20)
+project(KZ1HD
+    VERSION 0.1.0
+    LANGUAGES C CXX
+    DESCRIPTION "Killzone 1 HD (NPUA80856), recompiled with ps3recomp"
+)
+
+# ---------------------------------------------------------------------------
+# Standards
+# ---------------------------------------------------------------------------
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Prefer Ninja if available
+if(NOT CMAKE_GENERATOR MATCHES "Ninja" AND NOT DEFINED ENV{CMAKE_GENERATOR})
+    message(STATUS "Tip: use -G Ninja for faster builds")
+endif()
+
+# ---------------------------------------------------------------------------
+# The two directories this project is built from
+# ---------------------------------------------------------------------------
+# PS3RECOMP_DIR is the toolkit checkout: include/, runtime/, libs/, tools/.
+# RECOMP_DIR is where the lifter's output for THIS game lives. They are
+# separate on purpose -- a port keeps its generated code in its own tree and
+# points at whatever toolkit checkout it is building against:
+#
+#   cmake -B build -G Ninja \
+#         -DPS3RECOMP_DIR=/path/to/ps3recomp \
+#         -DRECOMP_DIR=/path/to/my_game/recompiled
+#
+if(NOT DEFINED PS3RECOMP_DIR)
+    # Default: this project is still sitting inside ps3recomp/templates/project/
+    get_filename_component(PS3RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../" ABSOLUTE)
+endif()
+get_filename_component(PS3RECOMP_DIR "${PS3RECOMP_DIR}" ABSOLUTE)
+
+set(RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/recompiled" CACHE PATH
+    "Directory holding the lifter's output: ppu_recomp.h and the lifted sources")
+get_filename_component(RECOMP_DIR "${RECOMP_DIR}" ABSOLUTE)
+
+message(STATUS "ps3recomp SDK:   ${PS3RECOMP_DIR}")
+message(STATUS "Lifted output:   ${RECOMP_DIR}")
+
+if(NOT EXISTS "${RECOMP_DIR}/ppu_recomp.h")
+    message(FATAL_ERROR
+        "No ppu_recomp.h in ${RECOMP_DIR}.\n"
+        "That header and the lifted sources beside it are what "
+        "tools/ppu_lifter.py writes. Run the lifter, drop its output there, "
+        "or point -DRECOMP_DIR= at wherever it already is.")
+endif()
+
+# The lifted translation units. A game's lift is hundreds of generated files,
+# so they are globbed rather than listed; re-run CMake after a fresh lift.
+file(GLOB RECOMP_SOURCES CONFIGURE_DEPENDS
+    "${RECOMP_DIR}/*.c"
+    "${RECOMP_DIR}/*.cpp"
+)
+if(NOT RECOMP_SOURCES)
+    message(FATAL_ERROR
+        "${RECOMP_DIR} has a ppu_recomp.h but no .c or .cpp beside it. The "
+        "lifted functions and the function table live in those; without them "
+        "there is nothing to run.")
+endif()
+list(LENGTH RECOMP_SOURCES RECOMP_SOURCE_COUNT)
+message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
+
+# ---------------------------------------------------------------------------
+# ps3recomp runtime library
+# ---------------------------------------------------------------------------
+# Built from source as a subdirectory rather than imported as a prebuilt
+# archive. A static library carries none of its own link requirements, so an
+# imported one arrives without SDL2, pthreads, the Metal frameworks or the
+# Winsock/XInput imports -- the link then fails on every platform for a
+# different reason. add_subdirectory hands all of that over with the target.
+# Host ISA for everything, runtime included: the SPU helpers have SSE4.1 paths
+# (shufb is a byte loop without them) and the float ops want hardware FMA.
+# x86-64-v3 = Haswell (2013) and later. KZ_MARCH="" builds for baseline x86-64.
+set(KZ_MARCH "x86-64-v3" CACHE STRING "-march for the host build (empty = compiler default)")
+if(KZ_MARCH AND NOT MSVC)
+    add_compile_options(-march=${KZ_MARCH})
+endif()
+
+add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
+                 EXCLUDE_FROM_ALL)
+# Line tables for the runtime too (KZ_PROF reports and gdb), and -O2: the
+# target-wide -O1 below is for the huge lifted PPU TUs, and it also left the
+# runtime (SPU dispatch and DMA, the RSX draw engine, Vulkan) at -O1.
+target_compile_options(ps3recomp_runtime PRIVATE -O2 -g)
+
+# ---------------------------------------------------------------------------
+# The HLE NID table
+# ---------------------------------------------------------------------------
+# Maps each firmware import NID onto the handler in the runtime that answers
+# it. A port may keep a hand-curated one beside its lift; otherwise generate
+# the canonical every-module table, which is what the toolkit's own boot
+# harness uses.
+if(EXISTS "${RECOMP_DIR}/ppu_hle_nids.cpp")
+    set(HLE_NID_TABLE "${RECOMP_DIR}/ppu_hle_nids.cpp")
+    message(STATUS "HLE NID table:   ${HLE_NID_TABLE}")
+else()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(HLE_NID_TABLE "${CMAKE_CURRENT_BINARY_DIR}/ppu_hle_nids.cpp")
+    add_custom_command(
+        OUTPUT "${HLE_NID_TABLE}"
+        COMMAND "${Python3_EXECUTABLE}"
+                "${PS3RECOMP_DIR}/tools/gen_hle_nids.py"
+                --out "${HLE_NID_TABLE}" --all
+        DEPENDS "${PS3RECOMP_DIR}/tools/gen_hle_nids.py"
+                "${PS3RECOMP_DIR}/tools/nid_database.py"
+        COMMENT "Generating the HLE NID -> handler table")
+    message(STATUS "HLE NID table:   generated (every module)")
+endif()
+
+# ---------------------------------------------------------------------------
+# The game executable
+# ---------------------------------------------------------------------------
+# The PPU boot scaffold is compiled here rather than taken from the runtime
+# library: every one of these files #includes the lifter's per-game
+# ppu_recomp.h, so they can only be built against a particular lift.
+set(PS3RECOMP_SCAFFOLD
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_loader.cpp"
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_hle.cpp"
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp"
+    "${PS3RECOMP_DIR}/runtime/ppu/ppu_sysprx.cpp"
+)
+
+# ---------------------------------------------------------------------------
+# Lifted SPU images (optional)
+# ---------------------------------------------------------------------------
+# A title that runs SPU work gets its images lifted into <SPU_DIR>/<image>/ by
+# tools/spu_lifter.py, with a registration TU generated by
+# tools/build_spu_workloads.py. cellSpurs dispatches them by content
+# fingerprint, so the generated table is keyed to the images THIS build ships:
+# a table generated from another release registers signatures that can never
+# match, which is worse than shipping none. Both the table and the job-module
+# registry self-register from constructors and are therefore optional -- a tree
+# that has not lifted its SPU images yet configures and links without them.
+set(SPU_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spu" CACHE PATH
+    "Directory holding the lifted SPU images (<SPU_DIR>/<image>/spu_recomp.c)")
+option(PORT_ENABLE_SPU "Compile and register the title's lifted SPU images" ON)
+
+set(SPU_SOURCES "")
+if(PORT_ENABLE_SPU)
+    file(GLOB SPU_LIFTED CONFIGURE_DEPENDS "${SPU_DIR}/*/spu_recomp.c")
+    if(SPU_LIFTED)
+        list(LENGTH SPU_LIFTED SPU_IMAGE_COUNT)
+        message(STATUS "Lifted SPU:      ${SPU_IMAGE_COUNT} image(s)")
+        # The musttail indirect-branch fast path. Excluded from the runtime
+        # library on purpose (see the SDK root CMakeLists): it must be built
+        # here, by clang, or the tail call degrades to a plain call and a guest
+        # loop that branches indirectly walks the thread stack off its guard
+        # page a few thousand iterations in.
+        list(APPEND SPU_SOURCES ${SPU_LIFTED}
+             "${PS3RECOMP_DIR}/runtime/spu/spu_dispatch_mt.c")
+        # Generated beside the lift; each is present only once its generator
+        # has been run, so each is included only if it is actually here.
+        # Native replacements of hot lifted functions (native/native.h); lift.sh
+        # tells the lifter which names they take over.
+        file(GLOB KZ_NATIVE CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/native/*.c")
+        list(APPEND SPU_SOURCES ${KZ_NATIVE})
+        foreach(gen IN ITEMS spu_workloads.c jobmods_register.c taskset_policy_bytes.c)
+            if(EXISTS "${SPU_DIR}/${gen}")
+                list(APPEND SPU_SOURCES "${SPU_DIR}/${gen}")
+            else()
+                message(STATUS "  (no ${gen} -- not registered)")
+            endif()
+        endforeach()
+    else()
+        message(STATUS "Lifted SPU:      none found in ${SPU_DIR}")
+    endif()
+endif()
+
+# Lifted firmware libsre (optional, user-supplied): only _cellSpursLFQueuePushBody
+# is routed to it (stubs.cpp). Its own header name keeps it apart from the game's.
+set(LIBSRE_DIR "" CACHE PATH "Directory with the lifted libsre (libsre_recomp.h + .cpp)")
+set(LIBSRE_SOURCES "")
+if(LIBSRE_DIR)
+    file(GLOB LIBSRE_SOURCES CONFIGURE_DEPENDS "${LIBSRE_DIR}/*.cpp")
+    message(STATUS "Lifted libsre:   ${LIBSRE_DIR}")
+endif()
+
+# Native replacements of hot lifted PPU functions (native_ppu/native_ppu.h);
+# lift.sh tells the lifter which names they take over. Small and hot: they get
+# full optimization instead of the target-wide -O1 the lifted TUs need.
+file(GLOB KZ_NATIVE_PPU CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/native_ppu/*.cpp")
+set_source_files_properties(${KZ_NATIVE_PPU} PROPERTIES COMPILE_OPTIONS "-O2")
+
+add_executable(${PROJECT_NAME}
+    main.cpp
+    stubs.cpp
+    pcoptions.cpp
+    glyphs.cpp
+    sail.cpp
+    prof.cpp
+    ${PS3RECOMP_SCAFFOLD}
+    ${HLE_NID_TABLE}
+    ${RECOMP_SOURCES}
+    ${KZ_NATIVE_PPU}
+    ${SPU_SOURCES}
+    ${LIBSRE_SOURCES}
+)
+
+# The lifted SPU sources use bare #include "spu_context.h". Scope that include
+# directory (and their flags) to those TUs alone: adding it to the whole target
+# changes the compile command of every lifted PPU TU, and those are large enough
+# that the needless rebuild is measured in tens of minutes.
+#   SPU_USE_DISPATCH_MT -- route SPU_IB_DISPATCH through the musttail path.
+#   -O2                 -- the target-wide -O1 exists for the huge PPU TUs; the
+#                          SPU sources are small and decode-hot, so they get
+#                          full optimization. The last -O on the line wins.
+#   SPU_DEBUG_PROBES    -- the LS watch/probe gates in every lifted load and store
+#                          (KZ_SPU_PROBES=ON to debug with SPU_LS_WATCH and co.).
+option(KZ_SPU_PROBES "SPU LS debug probes in the lifted SPU code" OFF)
+#   SPU_FAST_FLOAT      -- SPU single-precision fa/fm/fma... as host IEEE ops under
+#                          round-toward-zero + flush-to-zero (stubs.cpp sets the
+#                          mode): ~2x faster jobs; KZ_SPU_EXACT_FLOAT=ON keeps the
+#                          bit-exact emulation of the SPU's float unit.
+option(KZ_SPU_EXACT_FLOAT "bit-exact SPU float emulation in the lifted SPU code" OFF)
+
+if(SPU_SOURCES)
+    set_source_files_properties(${SPU_SOURCES} PROPERTIES
+        INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu;${SPU_DIR}"
+        COMPILE_DEFINITIONS "SPU_USE_DISPATCH_MT;SPU_DEBUG_PROBES=$<BOOL:${KZ_SPU_PROBES}>;$<$<NOT:$<BOOL:${KZ_SPU_EXACT_FLOAT}>>:SPU_FAST_FLOAT>")
+    if(NOT MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2;-g")
+    endif()
+endif()
+
+# app.rc carries the icon, the version block and the manifest, and needs a
+# resource compiler. Listing it as a source on a host that has none is not a
+# link error, it is a "no rule to make" for a file nothing can consume.
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
+endif()
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    "${RECOMP_DIR}"                            # the generated ppu_recomp.h
+    "${PS3RECOMP_DIR}/include"
+    "${PS3RECOMP_DIR}/runtime/ppu"
+    "${PS3RECOMP_DIR}/runtime/spu"
+    "${PS3RECOMP_DIR}/runtime/memory"
+    "${PS3RECOMP_DIR}/runtime/syscalls"
+    "${PS3RECOMP_DIR}/runtime/platform"        # win32_compat.h and friends
+    "${PS3RECOMP_DIR}/libs/video"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    ps3recomp_runtime
+)
+
+# Movies (sail.cpp): FFmpeg decodes the game's AVIs. It is loaded at run time
+# (ffmpeg_dyn.h), so building needs only its headers, found through
+# pkg-config or KZ_FFMPEG_INCLUDE_DIR (a cross build takes the host's: the
+# headers are the same on every platform).
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND AND NOT CMAKE_CROSSCOMPILING)
+    pkg_check_modules(FFMPEG QUIET libavformat libavcodec libswscale libswresample libavutil)
+endif()
+if(NOT KZ_FFMPEG_INCLUDE_DIR)
+    set(KZ_FFMPEG_INCLUDE_DIR "${FFMPEG_INCLUDE_DIRS}")
+    list(REMOVE_ITEM KZ_FFMPEG_INCLUDE_DIR /usr/include /usr/local/include)   # already on the path
+endif()
+if(KZ_FFMPEG_INCLUDE_DIR)
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/sail.cpp" PROPERTIES
+        INCLUDE_DIRECTORIES "${KZ_FFMPEG_INCLUDE_DIR}")
+elseif(NOT FFMPEG_FOUND)
+    message(FATAL_ERROR "FFmpeg headers not found: pass -DKZ_FFMPEG_INCLUDE_DIR=<dir holding libavcodec/avcodec.h>")
+endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_DL_LIBS})
+# zlib: the native FIOS inflate (native_ppu/fios_inflate.cpp).
+find_package(ZLIB REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE ZLIB::ZLIB)
+
+# The runtime is C++, and on Apple also Objective-C. Letting CMake infer the
+# link language from the generated C would leave the C++ standard library out.
+set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+
+# Windows system import libraries. dbghelp symbolizes crash-handler addresses
+# against the PDB, user32 and gdi32 are what the backend's window and its GDI
+# present are made of, and winmm is timeBeginPeriod. None of the four names
+# anything a POSIX linker can find; the D3D12 backend's own imports come in
+# through the #pragma comment(lib) in libs/video/rsx_d3d12_backend.c.
+if(WIN32)
+    # POSIX names (setenv) in the port's own sources: win_compat.h
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        "$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/win_compat.h>")
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        psapi
+        dbghelp
+        user32
+        gdi32
+        winmm
+    )
+    # GUI subsystem: no console window beside the game (KZ_CONSOLE=1 opens
+    # one; the log otherwise goes to kz1hd.log, main.cpp). The entry stays main().
+    target_link_options(${PROJECT_NAME} PRIVATE -mwindows)
+endif()
+
+# ---------------------------------------------------------------------------
+# Compiler-specific flags
+# ---------------------------------------------------------------------------
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        -Wall -Wextra -Wno-unused-parameter
+        -fno-strict-aliasing
+    )
+elseif(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        /W3 /wd4100 /wd4244 /wd4267
+        /Zc:__cplusplus         # report correct __cplusplus value
+        # ppu_recomp.h defines PPU_FENCE, the lowering of the guest's
+        # sync/lwsync/eieio/isync, and in C that is <stdatomic.h>. The lifter
+        # writes C++ by default, but --single-file writes ppu_recomp.c, and a
+        # port that took it would not compile without this. The runtime's own
+        # build already carries the same flag for the same reason.
+        /experimental:c11atomics
+    )
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        _CRT_SECURE_NO_WARNINGS
+    )
+endif()
+
+# KZ_PPU_OPT: optimization flags for the lifted PPU code only. -O2 builds in
+# under two minutes on 16 threads and took the uncapped benchmark from ~34 to
+# ~36 fps over the target-wide -O1.
+set(KZ_PPU_OPT "-O2" CACHE STRING "Extra compile options for the lifted PPU sources")
+# Profile-guided optimization (clang) of the lifted PPU code: KZ_PGO_GEN=ON
+# instruments it (run with KZ_PGO_DUMP=<seconds>, see main.cpp; instrumenting
+# everything made the SPU lanes fight over the counters, ~6 fps), KZ_PGO_USE=<file>
+# builds with the merged profile (llvm-profdata merge -o <file> *.profraw).
+option(KZ_PGO_GEN "Instrumented lifted PPU code for profile-guided optimization" OFF)
+set(KZ_PGO_USE "" CACHE FILEPATH "Merged .profdata to optimize the lifted PPU code with")
+# The runtime's RSX/video code runs on the one FIFO thread, so it is profiled too.
+# PPU_STORE_SNAP: the lifted stores take the store diagnostics and the SPU
+# reservation bitmap once per function (ppu_recomp.h) instead of after every
+# store.
+set(KZ_PPU_FLAGS "${KZ_PPU_OPT}" -DPPU_STORE_SNAP)
+set(KZ_PGO_FLAGS "")
+if(KZ_PGO_GEN)
+    set(KZ_PGO_FLAGS -fprofile-instr-generate -mllvm -disable-vp=true)
+    target_link_options(${PROJECT_NAME} PRIVATE -fprofile-instr-generate)
+elseif(KZ_PGO_USE)
+    set(KZ_PGO_FLAGS -fprofile-instr-use=${KZ_PGO_USE})
+endif()
+if(KZ_PGO_FLAGS)
+    list(APPEND KZ_PPU_FLAGS ${KZ_PGO_FLAGS})
+    get_target_property(_kz_video ps3recomp_runtime SOURCES)
+    list(FILTER _kz_video INCLUDE REGEX "/libs/video/[^/]+\\.(c|cpp)$")
+    set_property(SOURCE ${_kz_video} TARGET_DIRECTORY ps3recomp_runtime APPEND PROPERTY COMPILE_OPTIONS ${KZ_PGO_FLAGS})
+endif()
+
+# The lifted translation units are machine-generated and can run to hundreds of
+# thousands of lines each, so they get their own flags:
+#
+#   - warnings off. They are about generated code and nobody will act on them,
+#     and at this volume they bury the diagnostics that matter.
+#   - no floating-point contraction. arm64 fuses a multiply and an add by
+#     default; a PPC fmadd is spelt as one where the lifter means one.
+#   - /bigobj on MSVC. A single lifted file routinely passes the 65,536-section
+#     limit of the default object format.
+if(MSVC)
+    set_source_files_properties(${RECOMP_SOURCES} ${LIBSRE_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "/w;/bigobj")
+else()
+    set_source_files_properties(${RECOMP_SOURCES} ${LIBSRE_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-w;-ffp-contract=off;${KZ_PPU_FLAGS}")
+endif()
+if(LIBSRE_SOURCES)
+    set_property(SOURCE ${LIBSRE_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${LIBSRE_DIR}")
+    set_source_files_properties(stubs.cpp PROPERTIES COMPILE_DEFINITIONS KZ_LIBSRE)
+endif()
+
+# ---------------------------------------------------------------------------
+# Install
+# ---------------------------------------------------------------------------
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+
+if(KZ_SPU_EXACT_FLOAT)
+    set_property(SOURCE stubs.cpp APPEND PROPERTY COMPILE_DEFINITIONS KZ_SPU_EXACT_FLOAT)
+endif()

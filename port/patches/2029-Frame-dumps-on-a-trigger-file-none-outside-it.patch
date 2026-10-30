@@ -1,0 +1,33 @@
+From a2c6f7cb2b4a640ba8456d058f010b1d32da672a Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 27 Oct 2026 23:00:07 -0300
+Subject: [PATCH] Frame dumps on a trigger file: none outside it
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_vulkan_backend.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 9b714704..540ac17f 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2278,12 +2278,13 @@ static int vk_dump_decide(void)
+           s_dump_tag = s_vk.presented + 1;
+           return now - b0 >= (unsigned long long)from && now - b0 < (unsigned long long)(from + len);
+       } }
+-    /* PS3RECOMP_VK_DUMP_TRIGGER=<file>: while that file exists, every frame
++    /* PS3RECOMP_VK_DUMP_TRIGGER=<file>: every frame while that file exists, and
++     * only then
+      * (a driver outside the process starts a burst when the scene is right) */
+     { static int on = -1; static char path[512];
+       if (on < 0) { const char* e = getenv("PS3RECOMP_VK_DUMP_TRIGGER"); on = e && *e;
+                     if (on) snprintf(path, sizeof path, "%s", e); }
+-      if (on && access(path, F_OK) == 0) { s_dump_tag = s_vk.presented + 1; return 1; } }
++      if (on) { s_dump_tag = s_vk.presented + 1; return access(path, F_OK) == 0; } }
+     if (!s_dump_ms) { s_dump_tag = s_vk.presented + 1; return ((s_vk.presented + 1) % s_vk.dump_every) == 0; }
+     static unsigned long long t0, next;
+     struct timespec a; clock_gettime(CLOCK_MONOTONIC, &a);
+-- 
+2.56.0
+

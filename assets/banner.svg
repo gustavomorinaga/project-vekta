@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320">
+  <!-- Project Vekta banner: our own art, no game logos or images. Palette shared with site/style.css (bg #0a0d0b, panel #121915, line #2a3a30, steel #7fa3b8 and #c4dbe8, red #d63a2a and #ff6a4d, olive #8a9a5b, text #e3e8e2). Text in Fira Sans Condensed (OFL), rendered by tools/site-art.sh. -->
+  <defs>
+    <radialGradient id="glow" cx="78%" cy="40%" r="55%">
+      <stop offset="0" stop-color="#3a1410" stop-opacity="0.9"/>
+      <stop offset="0.55" stop-color="#121915" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#0a0d0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fade" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#16201a"/>
+      <stop offset="1" stop-color="#0a0d0b"/>
+    </linearGradient>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="1" fill="#ffffff" opacity="0.025"/>
+    </pattern>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#2a3a30" stroke-width="1" opacity="0.45"/>
+    </pattern>
+    <filter id="soft" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+  <rect width="1280" height="320" fill="url(#fade)"/>
+  <rect width="1280" height="320" fill="url(#grid)"/>
+  <rect width="1280" height="320" fill="url(#glow)"/>
+  <!-- treeline silhouette: a jungle ridge -->
+  <path d="M0 270 L40 262 L62 240 L70 258 L110 250 L128 222 L140 252 L190 246 L214 208 L226 244 L280 238 L300 214
+           L318 242 L372 236 L392 196 L404 238 L460 232 L486 220 L520 236 L560 228 L590 206 L606 232 L660 226 L700 236
+           L742 218 L760 190 L774 226 L830 222 L860 236 L900 224 L928 200 L942 230 L1000 226 L1030 238 L1072 222
+           L1096 196 L1110 230 L1160 228 L1196 240 L1236 226 L1280 232 L1280 320 L0 320Z" fill="#060807"/>
+  <!-- two red eyes in the haze -->
+  <g transform="translate(1012 132)">
+    <circle cx="0" cy="0" r="14" fill="#d63a2a" filter="url(#soft)" opacity="0.8"/>
+    <circle cx="46" cy="0" r="14" fill="#d63a2a" filter="url(#soft)" opacity="0.8"/>
+    <circle cx="0" cy="0" r="5" fill="#ff6a4d"/>
+    <circle cx="46" cy="0" r="5" fill="#ff6a4d"/>
+  </g>
+  <!-- HUD frame -->
+  <g fill="none" stroke="#7fa3b8" stroke-width="2">
+    <path d="M24 70V24H70"/>
+    <path d="M1256 250V296H1210"/>
+  </g>
+  <g fill="#7fa3b8" opacity="0.8">
+    <rect x="64" y="236" width="220" height="3"/>
+    <rect x="64" y="246" width="150" height="3" opacity="0.5"/>
+  </g>
+  <text x="64" y="104" font-family="Fira Sans Condensed" font-weight="600" font-size="22" letter-spacing="7"
+        fill="#8a9a5b">// UNOFFICIAL PC PORT · STATIC RECOMPILATION</text>
+  <text x="58" y="196" font-family="Fira Sans Condensed" font-weight="800" font-size="104" letter-spacing="6"
+        fill="#e3e8e2">PROJECT VEKTA</text>
+  <text x="64" y="226" font-family="Fira Sans Condensed" font-weight="500" font-size="22" letter-spacing="4"
+        fill="#c4dbe8">KILLZONE HD (PS3) · LINUX AND WINDOWS · VULKAN · BUILT FROM YOUR OWN GAME</text>
+  <rect width="1280" height="320" fill="url(#scan)"/>
+  <rect x="0.5" y="0.5" width="1279" height="319" fill="none" stroke="#2a3a30"/>
+</svg>

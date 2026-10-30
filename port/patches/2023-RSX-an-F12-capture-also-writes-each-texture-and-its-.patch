@@ -1,0 +1,51 @@
+From 3b988d42890b36fae77c3f7f40415179d9b3b576 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 22 Oct 2026 14:45:02 -0300
+Subject: [PATCH] RSX: an F12 capture also writes each texture and its
+ sampling state
+
+Each texture unit a draw uses gets its sampling words in draws.txt (mips,
+wrap, filter, control0, remap, pitch), and each texture its guest bytes,
+whole mip chain, once per capture as tex_<loc>_<offset>_f<fmt>_<w>x<h>_<levels>.bin,
+so a texture that samples wrong can be decoded and checked offline.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_draw_engine.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 0cecafce..07a33a36 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -3026,6 +3026,27 @@ static void pd_note(const u32* targets, u32 n_targets, u32 zslot,
+             { const u8* b = eng_guest_ptr(NULL, t.location, t.offset, 16);
+               if (b) fprintf(s_pd.draws_log, " [%02X%02X%02X%02X%02X%02X%02X%02X]",
+                              b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]); }
++            if (s_pd.requested) {
++                /* the sampling state, and the texture's guest bytes (its whole
++                 * mip chain) once per capture as tex_<loc>_<offset>_f<fmt>_<w>x<h>_<levels>.bin */
++                fprintf(s_pd.draws_log, " {mips %u wrap %08X filter %08X ctl0 %08X remap %08X pitch %u}",
++                        t.mipmaps, t.wrap, t.filter, t.control0, t.remap, t.pitch);
++                static u32 s_tex_seen[256]; static u32 s_tex_n, s_tex_for;
++                if (s_tex_for != (u32)(uintptr_t)s_pd.dir) { s_tex_for = (u32)(uintptr_t)s_pd.dir; s_tex_n = 0; }
++                const u32 key = t.offset ^ (t.location << 31);
++                u32 k = 0;
++                while (k < s_tex_n && s_tex_seen[k] != key) k++;
++                if (k == s_tex_n && s_tex_n < 256) {
++                    s_tex_seen[s_tex_n++] = key;
++                    const u32 span = eng_texture_span(t.format & ~0x60u, t.width, t.height, t.mipmaps, t.pitch, t.cubemap);
++                    const u8* all = span ? eng_guest_ptr(NULL, t.location, t.offset, span) : NULL;
++                    char path[1024];
++                    snprintf(path, sizeof path, "%s/tex_%u_%08X_f%02X_%ux%u_%u.bin", s_pd.dir, t.location, t.offset,
++                             t.format & 0xFFu, t.width, t.height, t.mipmaps);
++                    FILE* f = all ? fopen(path, "wb") : NULL;
++                    if (f) { fwrite(all, 1, span, f); fclose(f); }
++                }
++            }
+         }
+         /* RSX_ENGINE_PASS_DUMP_CONSTS=<lo>,<hi>: the draw's vertex constants in
+          * that range and its fragment program's inline constants. */
+-- 
+2.56.0
+

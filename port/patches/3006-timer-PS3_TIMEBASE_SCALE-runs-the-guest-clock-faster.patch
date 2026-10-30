@@ -1,0 +1,37 @@
+From 1ed26488bece1b813fb17d574666c4724276d3f3 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 15 Oct 2026 21:25:59 -0300
+Subject: [PATCH] timer: PS3_TIMEBASE_SCALE runs the guest clock faster,
+ for benchmarks
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/syscalls/sys_timer.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/runtime/syscalls/sys_timer.c b/runtime/syscalls/sys_timer.c
+index a72d6c4d..c604c1c1 100644
+--- a/runtime/syscalls/sys_timer.c
++++ b/runtime/syscalls/sys_timer.c
+@@ -65,7 +65,18 @@ int lv2_deadline_passed(int64_t deadline)
+  * polled. Overflow-safe split multiply (rem < qpf, so
+  * rem * 79.8e6 < ~8e14 << 2^63).
+  * -----------------------------------------------------------------------*/
++static uint64_t ppu_timebase_raw(void);
++/* PS3_TIMEBASE_SCALE=<k> (benchmarking only): the guest clock runs k times
++ * real time. A title that paces itself on it (Killzone HD caps at 30 fps
++ * that way) then runs as fast as the host allows, which measures throughput;
++ * its logic runs k times too fast, so it is not for playing. */
+ uint64_t ppu_timebase_now(void)
++{
++    static double k = -1;
++    if (k < 0) { const char* e = getenv("PS3_TIMEBASE_SCALE"); k = e ? atof(e) : 0; }
++    return k > 0 ? (uint64_t)(ppu_timebase_raw() * k) : ppu_timebase_raw();
++}
++static uint64_t ppu_timebase_raw(void)
+ {
+ #ifdef _WIN32
+     static LONGLONG t0 = 0;
+-- 
+2.56.0
+

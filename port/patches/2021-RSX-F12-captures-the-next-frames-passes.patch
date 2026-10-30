@@ -1,0 +1,93 @@
+From 36e9a8cf7c6f43238f5a3b7fffbf19fa9b6480b5 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 22 Oct 2026 12:20:35 -0300
+Subject: [PATCH] RSX: F12 captures the next frames' passes
+
+F12 in the window (not Shift+F12, MangoHUD's) asks the draw engine for a
+pass dump, as RSX_ENGINE_PASS_DUMP does, into capture_<date>_<time> in the
+working directory, with draws.txt and 16 passes (RSX_ENGINE_PASS_DUMP_MAX
+changes it): a player can capture the frame where something draws wrong
+without knowing the variables. g_rsx_capture_request asks for one from code.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_draw_engine.c    | 24 +++++++++++++++++++++++-
+ libs/video/rsx_vulkan_backend.c |  5 +++++
+ 2 files changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index f334a15d..62e704de 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -24,6 +24,7 @@
+ #include <string.h>
+ #include <time.h>
+ #include "ps3emu/log_first.h"
++#include <sys/stat.h>
+ 
+ /* Guest memory and the RSX offset resolvers, declared the way every backend
+  * that reads guest data declares them (rsx_vertex_fetch.h). */
+@@ -2734,15 +2735,22 @@ static struct {
+     u32 n_targets, targets[RSX_BE_MAX_COLOR_TARGETS], zslot;
+     u32 draws, clears;
+     char first[2048];
++    int requested;          /* this capture was asked for (F12) */
+ } s_pd;
+ 
++/* g_rsx_capture_request (F12 in the window): capture the next frames' passes,
++ * as RSX_ENGINE_PASS_DUMP does, into capture_<date>_<time> in the working
++ * directory, with draws.txt -- what a player can send from where something
++ * draws wrong, without knowing the variables. */
++volatile int g_rsx_capture_request;
++
+ static int pd_open_index(void)
+ {
+     char path[1024];
+     snprintf(path, sizeof path, "%s/passes.txt", s_pd.dir);
+     s_pd.index = fopen(path, "w");
+     if (!s_pd.index) { s_pd.state = 3; return 0; }
+-    if (getenv("RSX_ENGINE_PASS_DUMP_DRAWS")) {
++    if (getenv("RSX_ENGINE_PASS_DUMP_DRAWS") || s_pd.requested) {
+         snprintf(path, sizeof path, "%s/draws.txt", s_pd.dir);
+         s_pd.draws_log = fopen(path, "w");
+     }
+@@ -2753,6 +2761,20 @@ static int pd_open_index(void)
+ 
+ static int pd_capturing(void)
+ {
++    if (g_rsx_capture_request && s_pd.state != 2) {
++        g_rsx_capture_request = 0;
++        static char dir[64];
++        const time_t now = time(NULL);
++        strftime(dir, sizeof dir, "capture_%Y%m%d_%H%M%S", localtime(&now));
++        mkdir(dir, 0755);
++        s_pd.dir = dir; s_pd.requested = 1;
++        { const char* x = getenv("RSX_ENGINE_PASS_DUMP_MAX"); s_pd.max_passes = x ? (u32)strtoul(x, NULL, 0) : 16u; }
++        s_pd.pass = 0; s_pd.draws = 0; s_pd.clears = 0; s_pd.first[0] = 0;
++        if (pd_open_index()) {
++            fprintf(s_pd.index, "asked for (F12) at frame %u\n", g.frames);
++            fprintf(stderr, "[rsx engine] capture: %s\n", dir);
++        }
++    }
+     if (s_pd.state == 0) {
+         s_pd.dir = getenv("RSX_ENGINE_PASS_DUMP");
+         const char* m = getenv("RSX_ENGINE_PASS_DUMP_MINDRAWS");
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 593ad1d2..90eadfe0 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -4233,6 +4233,11 @@ int rsx_vulkan_backend_pump_messages(void)
+     SDL_Event e;
+     while (SDL_PollEvent(&e)) {
+         if (e.type == SDL_QUIT) quit = 1;
++        else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F12 && !e.key.repeat &&
++                 !(e.key.keysym.mod & KMOD_SHIFT)) {   /* Shift+F12 is MangoHUD's */
++            extern volatile int g_rsx_capture_request;   /* rsx_draw_engine.c */
++            g_rsx_capture_request = 1;
++        }
+         else if (e.type == SDL_MOUSEWHEEL) {   /* cellPad: menus scroll with it */
+             extern volatile int g_pad_mouse_wheel;
+             __atomic_add_fetch(&g_pad_mouse_wheel, e.wheel.y, __ATOMIC_ACQ_REL);
+-- 
+2.56.0
+

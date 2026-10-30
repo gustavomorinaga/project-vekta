@@ -1,0 +1,37 @@
+From 2bc8a5d10a599dcc8657bcee7618a5f1819644cb Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 22 Oct 2026 15:08:40 -0300
+Subject: [PATCH] RSX: an F12 capture also writes each draw's fetched
+ vertices
+
+pass<P>_draw<D>_verts<N>_attrs<K>.f32: N vertices of K attributes, four
+floats each, in the order draws.txt lists them.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_draw_engine.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 07a33a36..89744444 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -3357,6 +3357,15 @@ static void sink_end(void* user, const rsx_dispatch* r)
+                     rsx_dsp_reg(&g.rsx, 0x1740u + a * 4u), f[0], f[1], f[2], f[3]);
+         }
+         fprintf(s_pd.draws_log, "\n");
++        /* an F12 capture: every fetched vertex, as floats (attribute k of
++         * vertex i at (i * count + k) * 4), with the attribute list in draws.txt */
++        if (s_pd.requested && dc.n_verts <= 200000u) {
++            char path[1024];
++            snprintf(path, sizeof path, "%s/pass%03u_draw%03u_verts%u_attrs%u.f32", s_pd.dir, s_pd.pass,
++                     s_pd.draws ? s_pd.draws - 1u : 0u, dc.n_verts, layout.count);
++            FILE* f = fopen(path, "wb");
++            if (f) { fwrite(dc.verts, 16u * layout.count, dc.n_verts, f); fclose(f); }
++        }
+     }
+ 
+     /* The depth attachment is cleared the first time it is bound, so a title
+-- 
+2.56.0
+

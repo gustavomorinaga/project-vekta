@@ -1,0 +1,30 @@
+From 4c5c91ba2c0b0a75a76c1398dd647dcc844f393a Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 15 Oct 2026 16:59:04 -0300
+Subject: [PATCH] trace: PS3_TRACE_MIN_US drops short spans so long
+ recordings fit
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/ps3_trace.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/runtime/ps3_trace.c b/runtime/ps3_trace.c
+index e3e0f831..3a68951a 100644
+--- a/runtime/ps3_trace.c
++++ b/runtime/ps3_trace.c
+@@ -87,6 +87,11 @@ __attribute__((constructor)) static void ps3_trace_init(void)
+ 
+ void ps3_trace_span(const char* name, uint64_t t0, uint64_t t1, uint32_t arg)
+ {
++    /* PS3_TRACE_MIN_US=<us>: drop shorter spans (flips are always kept), so
++     * a long recording fits: most spans are idle polls. */
++    static long min_ns = -1;
++    if (min_ns < 0) { const char* e = getenv("PS3_TRACE_MIN_US"); min_ns = e ? atol(e) * 1000 : 0; }
++    if (t1 - t0 < (uint64_t)min_ns && strcmp(name, "flip") != 0) return;
+     const unsigned i = __sync_fetch_and_add(&s_n, 1);
+     if (i >= MAX_SPANS) return;
+     static __thread int tid;
+-- 
+2.56.0
+

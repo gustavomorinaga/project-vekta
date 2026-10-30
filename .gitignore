@@ -1,0 +1,52 @@
+# Only the port is committed: our code, patches, tools, docs and recovered numbers (re/).
+# Nothing from the game ever enters git: no disc or package files, no decrypted binaries, no extracted assets,
+# no code lifted from the game, no keys, no saves. Your own files go in Game/; everything made from them in work/.
+/Game/
+/work/
+
+# Sony packages, executables, archives, licences and save data (anywhere in the tree)
+*.pkg
+*.PKG
+*.rap
+*.RAP
+*.edat
+*.EDAT
+*.sdat
+*.SDAT
+*.self
+*.SELF
+*.sprx
+*.prx
+*.pic
+*.elf
+EBOOT.BIN
+*.PUP
+*.psarc
+PARAM.PFD
+PARAM.SFO
+TROPHY.TRP
+*.core
+*.CoreStream
+*.snz
+*.at3
+*.AT3
+
+# Media taken from the game (screenshots of the port live in docs/screenshots/ and are allowed)
+*.avi
+*.wav
+*.mp3
+*.dds
+*.glb
+*.gltf
+*.webm
+*.mp4
+*.mkv
+
+# Build output and caches
+/port/*/build*/
+__pycache__/
+*.pyc
+*.profdata
+*.profraw
+*.bin
+!port/patches/*.patch

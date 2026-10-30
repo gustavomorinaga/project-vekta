@@ -1,0 +1,76 @@
+From 4485871e4cca74648ce1ed05869a19041f70852b Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 06:52:25 -0300
+Subject: [PATCH] cellPad: keyboard fallback off Windows through SDL's
+ keyboard state
+
+---
+ libs/input/cellPad.c | 45 +++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 44 insertions(+), 1 deletion(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index afdd93de..d3785158 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -693,6 +693,49 @@ static unsigned long long pad_now_ms(void)
+ #endif
+ }
+ 
++#if !defined(_WIN32) && PAD_BACKEND_SDL2
++/* The same keyboard fallback off Windows, read from SDL's keyboard state: keys
++ * count only while one of this process's SDL windows (the Vulkan backend's,
++ * PS3RECOMP_VK_WINDOW=1) has keyboard focus. Same map as on Windows, plus
++ * W/A/S/D on the left stick and I/J/K/L on the right one. */
++static void pad_poll_keyboard(void)
++{
++    static int off = -1;
++    if (off < 0) off = getenv("PAD_NO_KEYBOARD") ? 1 : 0;
++    if (off || SDL_WasInit(SDL_INIT_VIDEO) == 0) return;
++
++    PadHostState* hs = &s_host_state[0];
++    hs->connected = 1;
++    const Uint8* k = SDL_GetKeyboardState(NULL);
++    if (!k || !SDL_GetKeyboardFocus()) {
++        hs->buttons = 0;
++        hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
++        hs->trigger_l2 = hs->trigger_r2 = 0;
++        return;
++    }
++    static const struct { SDL_Scancode sc; u16 btn; } map[] = {
++        { SDL_SCANCODE_UP,    CELL_PAD_CTRL_UP },    { SDL_SCANCODE_DOWN,  CELL_PAD_CTRL_DOWN },
++        { SDL_SCANCODE_LEFT,  CELL_PAD_CTRL_LEFT },  { SDL_SCANCODE_RIGHT, CELL_PAD_CTRL_RIGHT },
++        { SDL_SCANCODE_Z,     CELL_PAD_CTRL_CROSS }, { SDL_SCANCODE_X,     CELL_PAD_CTRL_CIRCLE },
++        { SDL_SCANCODE_C,     CELL_PAD_CTRL_SQUARE },{ SDL_SCANCODE_V,     CELL_PAD_CTRL_TRIANGLE },
++        { SDL_SCANCODE_Q,     CELL_PAD_CTRL_L1 },    { SDL_SCANCODE_E,     CELL_PAD_CTRL_R1 },
++        { SDL_SCANCODE_1,     CELL_PAD_CTRL_L2 },    { SDL_SCANCODE_2,     CELL_PAD_CTRL_R2 },
++        { SDL_SCANCODE_RETURN,CELL_PAD_CTRL_START }, { SDL_SCANCODE_TAB,   CELL_PAD_CTRL_SELECT },
++        { SDL_SCANCODE_SPACE, CELL_PAD_CTRL_CROSS },
++    };
++    u16 btns = 0;
++    for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
++        if (k[map[i].sc]) btns |= map[i].btn;
++    hs->buttons = btns;
++    hs->analog_lx = (u8)(k[SDL_SCANCODE_A] ? 0 : k[SDL_SCANCODE_D] ? 255 : 128);
++    hs->analog_ly = (u8)(k[SDL_SCANCODE_W] ? 0 : k[SDL_SCANCODE_S] ? 255 : 128);
++    hs->analog_rx = (u8)(k[SDL_SCANCODE_J] ? 0 : k[SDL_SCANCODE_L] ? 255 : 128);
++    hs->analog_ry = (u8)(k[SDL_SCANCODE_I] ? 0 : k[SDL_SCANCODE_K] ? 255 : 128);
++    hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
++    hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
++}
++#endif
++
+ static void pad_poll_backend(void)
+ {
+     static unsigned long long s_last_ms = 0;
+@@ -710,7 +753,7 @@ static void pad_poll_backend(void)
+ #elif PAD_BACKEND_SDL2
+     pad_poll_sdl2();
+ #endif
+-#ifdef _WIN32
++#if defined(_WIN32) || PAD_BACKEND_SDL2
+     if (!s_host_state[0].connected) pad_poll_keyboard();
+ #endif
+     pad_track_assign();
+-- 
+2.56.0
+

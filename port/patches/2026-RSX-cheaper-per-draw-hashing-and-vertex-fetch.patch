@@ -1,0 +1,104 @@
+From 361ef61df56c51f80936fd0375b6e7137c44f1ed Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 23 Oct 2026 00:46:49 -0300
+Subject: [PATCH] RSX: cheaper per-draw hashing and vertex fetch
+
+Measured in Killzone HD's Level 7 jungle (~1000 draws a frame), 144 Hz
+mode, alternated A/B in one binary:
+
+- eng_fnv1a mixes 8 bytes a step: a vertex program's ucode is hashed for
+  every draw, byte by byte it was ~5% of the RSX thread. +2.3%.
+  RSX_HASH_BYTES=1 is the old one.
+- A cached texture is checked one stripe a frame (every 8th 512-byte
+  granule, rotating) plus its first 4 KB, instead of every byte: a change
+  anywhere shows within 8 frames, a rewrite of the whole texture at once;
+  a guest copy into it (eng_textures_touch) still forces a full check.
+  +3.4%. RSX_TEX_HASH_FULL=1 is the old one.
+- rsx_vertex_fetch_all decodes FLOAT and UNORM8 attributes from the stable
+  range in one tight loop per type (same values). +2.5%.
+  RSX_VTX_SLOW=1 is the old loop.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/video/rsx_draw_engine.c    | 14 ++++++++++++-
+ libs/video/rsx_vertex_compact.c | 36 ++++++++++++++++++++++++++++++++-
+ 2 files changed, 48 insertions(+), 2 deletions(-)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 89744444..5ae936d3 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -287,10 +287,22 @@ static const u8* eng_guest_ptr(void* user, u32 location, u32 offset,
+     return vm_base + ea;
+ }
+ 
++/* FNV-1a, eight bytes a step (a vertex program's ucode, up to 8 KB, is
++ * hashed for every draw: byte steps were ~5% of the RSX thread in a scene of
++ * 1000 draws). Not FNV's published values, only the same mixing. */
+ static u64 eng_fnv1a(const void* data, u32 n, u64 hash)
+ {
+     const u8* p = (const u8*)data;
+-    for (u32 i = 0; i < n; i++) { hash ^= p[i]; hash *= 1099511628211ull; }
++    u32 i = 0;
++    static int bytes = -1;
++    if (bytes < 0) bytes = getenv("RSX_HASH_BYTES") ? 1 : 0;
++    if (!bytes)
++        for (; i + 8 <= n; i += 8) {
++            u64 w;
++            memcpy(&w, p + i, 8);
++            hash = (hash ^ w) * 1099511628211ull;
++        }
++    for (; i < n; i++) { hash ^= p[i]; hash *= 1099511628211ull; }
+     return hash;
+ }
+ 
+diff --git a/libs/video/rsx_vertex_compact.c b/libs/video/rsx_vertex_compact.c
+index 2953c748..53d2bcb0 100644
+--- a/libs/video/rsx_vertex_compact.c
++++ b/libs/video/rsx_vertex_compact.c
+@@ -445,7 +445,41 @@ int rsx_vertex_fetch_all(
+         }
+         const u32 freq = fetch->desc.frequency, modulo = (plan->divider_mask >> attr) & 1u;
+         const u32 type = fetch->desc.type, size = fetch->desc.size;
+-        for (u32 i = 0; i < count; i++) {
++        /* The common case, decided once: ordinary fetch from the stable range,
++         * FLOAT or UNORM8, in one tight loop per type. A reference outside the
++         * range falls to the general loop below from there on. */
++        u32 i = 0;
++        static int slow = -1;
++        if (slow < 0) slow = getenv("RSX_VTX_SLOW") ? 1 : 0;
++        if (!slow && freq <= 1 && fetch->stable_base && size >= 1 && size <= 4 &&
++            (type == RSX_VTX_TYPE_FLOAT || type == RSX_VTX_TYPE_UNORM8)) {
++            const u8* const base = fetch->stable_base;
++            const u32 first = fetch->stable_first, last = fetch->stable_last, stride = fetch->stride;
++            if (type == RSX_VTX_TYPE_FLOAT) {
++                for (; i < count; i++) {
++                    const u32 element = (refs[i].vertex_id + refs[i].base_index) & 0x000FFFFFu;
++                    if (element < first || element > last) break;
++                    const u8* src = base + (u64)(element - first) * stride;
++                    float* v = (float*)(dst + (size_t)i * out_stride);
++                    v[0] = rsx_compact_be_f32(src);
++                    v[1] = size > 1 ? rsx_compact_be_f32(src + 4) : 0.0f;
++                    v[2] = size > 2 ? rsx_compact_be_f32(src + 8) : 0.0f;
++                    v[3] = size > 3 ? rsx_compact_be_f32(src + 12) : 1.0f;
++                }
++            } else {
++                for (; i < count; i++) {
++                    const u32 element = (refs[i].vertex_id + refs[i].base_index) & 0x000FFFFFu;
++                    if (element < first || element > last) break;
++                    const u8* src = base + (u64)(element - first) * stride;
++                    float* v = (float*)(dst + (size_t)i * out_stride);
++                    v[0] = src[0] / 255.0f;
++                    v[1] = size > 1 ? src[1] / 255.0f : 0.0f;
++                    v[2] = size > 2 ? src[2] / 255.0f : 0.0f;
++                    v[3] = size > 3 ? src[3] / 255.0f : 1.0f;
++                }
++            }
++        }
++        for (; i < count; i++) {
+             float* value = (float*)(dst + (size_t)i * out_stride);
+             const u32 element = rsx_vertex_element_index(refs[i].vertex_id, refs[i].base_index, freq, modulo);
+             const u8* source = NULL;
+-- 
+2.56.0
+

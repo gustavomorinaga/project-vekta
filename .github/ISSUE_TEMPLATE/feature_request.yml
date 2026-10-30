@@ -1,0 +1,18 @@
+name: Feature request or feedback
+description: An option, an improvement, or how the port feels to play
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fidelity to the PS3 game comes first; features that change gameplay stay optional. Check [docs/ROADMAP.md](https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md) to see whether it is planned.
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else (how other ports or the PS3 version do it)

@@ -1,0 +1,73 @@
+From 88727c0e5283b10f4a88a008ef4f49dc7f9c6829 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 28 Oct 2026 16:33:35 -0300
+Subject: [PATCH] SPURS: cellSpursRequestIdleSpu writes the idle-SPU
+ count; PS3_SPURS_WANTED (experiment) admits only kicked or idle-requesting
+ workloads
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/spurs/cellSpurs.c | 31 ++++++++++++++++++++++++++++---
+ 1 file changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index 799eca37..3ecfc154 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -531,6 +531,15 @@ static void spurs_api_unlock(struct SpursInst* si)
+     ReleaseSRWLockExclusive(&si->lock);
+ }
+ 
++/* PS3_SPURS_WANTED=1 (experiment): workloads run only when kicked or when they
++ * asked for idle SPUs (cellSpursRequestIdleSpu), not on the idle probes. */
++static int spurs_wanted_only(void)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("PS3_SPURS_WANTED"); on = e && *e == '1'; }
++    return on;
++}
++
+ static DWORD WINAPI spurs_kernel_thread(LPVOID p);
+ 
+ static s32 spurs_initialize_common(u32 spurs_ea, u32 nspus, const char* prefix)
+@@ -1912,7 +1921,13 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+                 int kicked = ready || (signal & (0x8000u >> wid));
+                 if (kicked) si->idle[wid] = 0;
+                 if (si->idle[wid] > s_idle_max) si->idle[wid] = (u8)s_idle_max;
+-                if (!kicked && (kick_pass || (si->pass_no & ((1u << si->idle[wid]) - 1))))
++                if (!kicked && spurs_wanted_only()) {
++                    /* the real kernel's rule (PR #213, as project-helghast's
++                     * patch 1074 ports it): an unkicked workload runs only on
++                     * the idle SPUs it asked for, never on a probe */
++                    const u32 idle_req = vm_read8(ea + SPURS_WKL_IDLE2 + wid);
++                    if (!(idle_req > si->active[wid])) continue;
++                } else if (!kicked && (kick_pass || (si->pass_no & ((1u << si->idle[wid]) - 1))))
+                     continue;
+                 spu_lockline_lock();
+                 ready = vm_read8(ea + SPURS_WKL_READY1 + wid);
+@@ -3254,10 +3269,20 @@ s32 cellSpursQueuePushBody(u64 queue_ea, u64 data_ea, u32 isBlocking)
+  * Misc SPURS surface the title links (logged CELL_OK stubs).
+  * =====================================================================*/
+ 
+-s32 cellSpursRequestIdleSpu(u64 spurs_ea)
++/* cellSpursRequestIdleSpu(spurs, wid, count): how many idle SPUs the workload
++ * may take beyond its ready count (wklIdleSpuCountOrReadyCount2, the byte the
++ * kernel reads). It was a stub that dropped wid and count (project-helghast's
++ * patch 1074 found the same). */
++s32 cellSpursRequestIdleSpu(u64 spurs_ea, u64 wid, u64 count)
+ {
+     static int _n = 0;
+-    if (PS3_LOG_FIRST(_n, 4)) printf("[cellSpurs] RequestIdleSpu(spurs=0x%08X)\n", (u32)spurs_ea);
++    if (PS3_LOG_FIRST(_n, 4))
++        printf("[cellSpurs] RequestIdleSpu(spurs=0x%08X, wid=%u, count=%u)\n", (u32)spurs_ea, (u32)wid, (u32)count);
++    struct SpursInst* si = spurs_inst_find((u32)spurs_ea);
++    if (!si || wid >= CELL_SPURS_MAX_WORKLOAD) return CELL_OK;
++    spu_lockline_lock();
++    vm_base[si->ea + SPURS_WKL_IDLE2 + wid] = (u8)(count > 0xFF ? 0xFF : count);
++    ef_line_end(si->ea);
+     return CELL_OK;
+ }
+ 
+-- 
+2.56.0
+

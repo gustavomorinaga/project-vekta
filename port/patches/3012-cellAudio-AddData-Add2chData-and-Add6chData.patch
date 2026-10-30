@@ -1,0 +1,126 @@
+From 106d21a0cdc73b50cc28fceffa3882e8cdd9532f Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 03:47:40 -0300
+Subject: [PATCH] cellAudio: AddData, Add2chData and Add6chData
+
+They fell to the unresolved-NID default, so a title that feeds a port with
+them (Killzone HD's video player, for its cutscenes) played silence. Each call
+mixes into the block after the last one it filled, from the one playing next:
+a caller paced only roughly to the device lands two calls in one period now
+and then. The float volume makes them context handlers.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ libs/audio/cellAudio.c     | 77 ++++++++++++++++++++++++++++++++++++++
+ runtime/ppu/ppu_sysprx.cpp |  3 ++
+ 2 files changed, 80 insertions(+)
+
+diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
+index 800d17d7..50a43613 100644
+--- a/libs/audio/cellAudio.c
++++ b/libs/audio/cellAudio.c
+@@ -1188,3 +1188,80 @@ s32 cellAudioUnsetPersonalDevice(s32 iPersonalStream)
+     printf("[cellAudio] UnsetPersonalDevice(stream=%d) - stub\n", iPersonalStream);
+     return CELL_OK;
+ }
++
++/* ---------------------------------------------------------------------------
++ * cellAudioAddData / Add2chData / Add6chData: mix samples into the block a
++ * port plays next, instead of the title writing its ring itself. A video
++ * player feeds its movie sound this way (Killzone HD's cutscenes); without
++ * them the calls fell to the unresolved-NID default and the movies were mute.
++ * The volume is the fourth argument, a float, so these take the context.
++ * -----------------------------------------------------------------------*/
++#include "../../runtime/ppu/ppu_context.h"
++extern void ps3_hle_register_ctx(uint32_t nid, const char* name, void (*fn)(ppu_context*));
++
++static inline void st_be_f32(float* p, float f)
++{
++    u32 v; memcpy(&v, &f, 4);
++    v = (v >> 24) | ((v >> 8) & 0xFF00u) | ((v << 8) & 0xFF0000u) | (v << 24);
++    memcpy(p, &v, 4);
++}
++
++/* Adds `frames` frames of `src_ch` interleaved channels at guest `src` to the
++ * port's next block, channel c landing on port channel map[c]. */
++static s32 audio_add(u32 port_num, u32 src, u32 frames, u32 src_ch, const u8* map, float volume)
++{
++    if (!s_audio_initialized) return CELL_AUDIO_ERROR_NOT_INIT;
++    if (port_num >= CELL_AUDIO_PORT_MAX || !src) return CELL_AUDIO_ERROR_PARAM;
++    if (frames > CELL_AUDIO_BLOCK_SAMPLES) frames = CELL_AUDIO_BLOCK_SAMPLES;
++    mutex_lock(&s_audio_mutex);
++    AudioPortSlot* port = &s_ports[port_num];
++    if (!port->in_use || !port->buffer) { mutex_unlock(&s_audio_mutex); return CELL_AUDIO_ERROR_PORT_NOT_OPEN; }
++    const u32 nch = (u32)port->param.nChannel, nblock = (u32)port->param.nBlock;
++    /* Each call fills the next block after the last one filled, from the one
++     * playing next up to the end of the ring: a caller paced only roughly to
++     * the device (a video player answering every few milliseconds) lands two
++     * calls in one period now and then, and summing them into the same block
++     * left the next one silent -- half the blocks of a movie, measured. */
++    if (port->write_index <= port->read_index || port->write_index >= port->read_index + nblock)
++        port->write_index = port->read_index;
++    float* dst = port->buffer + (u32)(port->write_index++ % nblock) * CELL_AUDIO_BLOCK_SAMPLES * nch;
++    const float* in = (const float*)(vm_base + src);
++    for (u32 s = 0; s < frames; s++)
++        for (u32 c = 0; c < src_ch; c++) {
++            if (map[c] >= nch) continue;
++            float* d = &dst[s * nch + map[c]];
++            st_be_f32(d, ld_be_f32(d) + ld_be_f32(&in[s * src_ch + c]) * volume);
++        }
++    mutex_unlock(&s_audio_mutex);
++    return CELL_OK;
++}
++
++static const u8 s_map_ident[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
++
++/* cellAudioAddData(port, src, samples, volume): src has the port's channel count. */
++static void hle_audio_add_data(ppu_context* ctx)
++{
++    const u32 port = (u32)ctx->gpr[3];
++    const u32 nch = port < CELL_AUDIO_PORT_MAX ? (u32)s_ports[port].param.nChannel : 2;
++    ctx->gpr[3] = (u64)(s64)audio_add(port, (u32)ctx->gpr[4], (u32)ctx->gpr[5], nch ? nch : 2,
++                                      s_map_ident, (float)ctx->fpr[1]);
++}
++/* cellAudioAdd2chData(port, src, samples, volume): stereo onto front left/right. */
++static void hle_audio_add_2ch(ppu_context* ctx)
++{
++    ctx->gpr[3] = (u64)(s64)audio_add((u32)ctx->gpr[3], (u32)ctx->gpr[4], (u32)ctx->gpr[5], 2,
++                                      s_map_ident, (float)ctx->fpr[1]);
++}
++/* cellAudioAdd6chData(port, src, volume): 256 frames of 5.1 onto the first six. */
++static void hle_audio_add_6ch(ppu_context* ctx)
++{
++    ctx->gpr[3] = (u64)(s64)audio_add((u32)ctx->gpr[3], (u32)ctx->gpr[4], CELL_AUDIO_BLOCK_SAMPLES, 6,
++                                      s_map_ident, (float)ctx->fpr[1]);
++}
++
++void cellAudio_register_ctx_handlers(void)
++{
++    ps3_hle_register_ctx(0xDAB029AAu, "cellAudioAddData",    hle_audio_add_data);
++    ps3_hle_register_ctx(0x9E4B1DB8u, "cellAudioAdd2chData", hle_audio_add_2ch);
++    ps3_hle_register_ctx(0x832DF17Eu, "cellAudioAdd6chData", hle_audio_add_6ch);
++}
+diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
+index 89cf1631..64f4a122 100644
+--- a/runtime/ppu/ppu_sysprx.cpp
++++ b/runtime/ppu/ppu_sysprx.cpp
+@@ -621,6 +621,7 @@ extern "C" void ps3_net_host_register(unsigned int (*guest_alloc)(unsigned int,
+ extern "C" void np_score_register_ctx(void);   /* libs/network/sceNpScore.c */
+ extern "C" void cellSaveData_register_ctx_handlers(void); /* libs/system/cellSaveData.c */
+ extern "C" void avconf_register_ctx(void);     /* libs/misc/cellAvconfExt.c */
++extern "C" void cellAudio_register_ctx_handlers(void);    /* libs/audio/cellAudio.c */
+ static uint32_t g_net_errno_ea = 0;
+ static void hle_net_errno_loc(ppu_context* ctx)
+ {
+@@ -957,6 +958,8 @@ extern "C" void ppu_sysprx_register(void)
+     cellSaveData_register_ctx_handlers();
+     /* cellVideoOutSetGamma's float argument is in f1. */
+     avconf_register_ctx();
++    /* cellAudioAddData/Add2chData/Add6chData take a float volume. */
++    cellAudio_register_ctx_handlers();
+     /* sys_net offline model (NIDs from PSL1GHT libnet exports). Covers every
+      * sys_net NID LBP imports so none fall to the unresolved-NID default. */
+     ps3_hle_register_ctx(0x6005CDE1u, "_sys_net_errno_loc",     hle_net_errno_loc);
+-- 
+2.56.0
+

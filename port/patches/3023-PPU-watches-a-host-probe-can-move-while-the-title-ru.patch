@@ -1,0 +1,73 @@
+From ad8c11b76d5e667d009614b3a40ecf45d4f57936 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 21 Oct 2026 20:32:22 -0300
+Subject: [PATCH] PPU: watches a host probe can move while the title runs
+
+g_rwatch_dyn_lo/len, g_wwatch_dyn_lo/len and g_wval_dyn/_n are read and
+write watches like PPU_RWATCH, PPU_WWATCH and PPU_WVAL, but a port sets them
+at run time, once the address is known: a heap object that moves from run to
+run (a camera) can be watched as soon as it is found. Each hit prints the
+guest function and, for the first few, the guest stack. The port must also
+route loads and stores out of line while it watches (vm_inline_ok and
+g_ld_span for loads; g_barrier_sync_watch and g_st_span for stores).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/ppu/ppu_loader.cpp | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index c9da2303..294a62a2 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -1626,6 +1626,7 @@ extern "C" int* ps3_ppu_vcall_sp_slot(void) { return &g_vcall_sp; }
+     } while (0)
+ 
+ extern "C" {
++uint32_t g_rwatch_dyn_lo = 0, g_rwatch_dyn_len = 0, g_wwatch_dyn_lo = 0, g_wwatch_dyn_len = 0, g_wval_dyn = 0, g_wval_dyn_n = 0;
+ /* PPU_RWATCH=<hex>[,len] -- see the note in vm_read8. */
+ /* -2 until PPU_RWATCH is read, -1 when unset. File scope so the gate below is
+  * one load inlined into every vm_read*, not a call. */
+@@ -1646,6 +1647,16 @@ static __attribute__((noinline)) void ppu_rwatch_hit_slow(uint32_t a, int width,
+                  if (c) s_len = (uint32_t)strtoul(c + 1, 0, 0); }
+         if (!s_len) s_len = 0x10;
+     }
++    /* g_rwatch_dyn_lo/len: a watch a host probe moves at run time (KZ_POKE "rw"). */
++    if (g_rwatch_dyn_len && a >= g_rwatch_dyn_lo && a < g_rwatch_dyn_lo + g_rwatch_dyn_len) {
++        static unsigned long dn; static uint32_t s_last_lo;
++        if (s_last_lo != g_rwatch_dyn_lo) { s_last_lo = g_rwatch_dyn_lo; dn = 0; }
++        if (++dn <= 40) {
++            fprintf(stderr, "[rwatch-dyn] read%d 0x%08X (+0x%X) guest-fn=0x%08X lr=0x%08X\n", width, a,
++                    a - g_rwatch_dyn_lo, ppu_prof_resolve_host(ra), g_active_ctx ? (uint32_t)g_active_ctx->lr : 0);
++            if (dn <= 6 && g_active_ctx) ppu_dump_guest_stack(g_active_ctx, "rwd");
++        }
++    }
+     if (s_lo < 0) return;
+     if (a < (uint32_t)s_lo || a >= (uint32_t)s_lo + s_len) return;
+     static unsigned long rn;
+@@ -1972,6 +1983,22 @@ static inline void barrier_watch_hit(uint32_t a, uint32_t v, int width, void* ra
+ static __attribute__((noinline)) void barrier_watch_hit_slow(uint32_t a, uint32_t v, int width, void* ra)
+ {
+     if (s_store_watch < 0) s_store_watch = getenv("PPU_WVAL") || getenv("PPU_WWATCH") ? 1 : 0;
++    { extern uint32_t g_wval_dyn, g_wval_dyn_n;
++      if (g_wval_dyn_n && v == g_wval_dyn && width == 4) {
++          g_wval_dyn_n--;
++          fprintf(stderr, "[wval-dyn] 0x%08X <- 0x%X guest-fn=0x%08X\n", a, v, ppu_prof_resolve_host(ra));
++          if (g_active_ctx) ppu_dump_guest_stack(g_active_ctx, "wvd");
++      } }
++    { extern uint32_t g_wwatch_dyn_lo, g_wwatch_dyn_len;
++      if (g_wwatch_dyn_len && a >= g_wwatch_dyn_lo && a < g_wwatch_dyn_lo + g_wwatch_dyn_len) {
++          static unsigned long dn; static uint32_t s_last_lo;
++          if (s_last_lo != g_wwatch_dyn_lo) { s_last_lo = g_wwatch_dyn_lo; dn = 0; }
++          if (++dn <= 40) {
++              fprintf(stderr, "[wwatch-dyn] w%d 0x%08X (+0x%X) <- 0x%X guest-fn=0x%08X\n", width, a,
++                      a - g_wwatch_dyn_lo, v, ppu_prof_resolve_host(ra));
++              if (dn <= 4 && g_active_ctx) ppu_dump_guest_stack(g_active_ctx, "wwd");
++          }
++      } }
+     /* PPU_WVAL=<hexvalue>: log every PPU store that WRITES this value, wherever
+      * it lands. PPU_WWATCH answers "who writes this address"; when a bad value is
+      * copied from node to node down a list, that only ever catches the copy.
+-- 
+2.56.0
+

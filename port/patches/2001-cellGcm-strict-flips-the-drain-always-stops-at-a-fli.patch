@@ -1,0 +1,42 @@
+From ad9a70a05b28571340ae62311b0409a53e57b802 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 14 Oct 2026 02:23:33 -0300
+Subject: [PATCH] cellGcm: strict flips (the drain always stops at a
+ flip) for titles paced only by the RSX
+
+---
+ libs/video/cellGcmSys.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 298ee7de..270ffd39 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -968,6 +968,13 @@ static unsigned long long gcm_park_grace_ms(void)
+     if (ms < 0) { const char* e = getenv("GCM_PARK_GRACE_MS"); ms = e ? atoll(e) : (long long)GCM_PARK_GRACE_MS; }
+     return (unsigned long long)ms;
+ }
++/* Strict flips: the drain always stops at a flip, however far behind it is, so a
++ * title whose only pacing is the RSX holding each VSYNC flip until the next
++ * refresh (Killzone HD: no SetWaitFlip, no flip-status wait, it just fills the
++ * ring) waits for ring space instead of running thousands of frames a second.
++ * Off by default: VF5 needs the catch-up (see the drain). */
++static int s_strict_flip;
++void cellGcmHleSetStrictFlip(int on) { s_strict_flip = on; }
+ /* How close `current` must get to `end` before the runtime will recycle a ring
+  * on the title's behalf. One gcmReserve is 8 bytes; a page of slack keeps a
+  * title that is merely near the end from being touched. */
+@@ -2327,8 +2334,8 @@ static void gcm_rsx_process_fifo_unlocked(void)
+              * backlogged it can be, not the least: God of War HD fills its
+              * 3 MB ring at boot, wraps, and a walker stopping at every flip
+              * then crawled ~1 KB a tick while the title wrote over the
+-             * commands ahead of it. */
+-            if (gcm_fifo_backlog(put, s_fifo_getoff) < GCM_FIFO_CATCHUP_BYTES)
++             * commands ahead of it. Strict flips stop there anyway. */
++            if (s_strict_flip || gcm_fifo_backlog(put, s_fifo_getoff) < GCM_FIFO_CATCHUP_BYTES)
+                 { why = "flip"; break; }
+             continue;
+         }
+-- 
+2.56.0
+

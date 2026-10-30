@@ -1,0 +1,48 @@
+From 0275cbc6cfd9e2a9d841d36e3ba14b120329f22a Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 20 Oct 2026 20:52:03 -0300
+Subject: [PATCH] PPU: vm_block_plain, for native code that stores a
+ block directly
+
+True when every store in [ea, ea + n) would take vm_write*'s fast path: no
+watch or sweep, an ordinary address, no raw SPU register, no line an SPU has
+reserved. A port's native replacement of a lifted function asks it before
+writing a block (a GCM command sequence, say) with plain host stores.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ runtime/ppu/ppu_loader.cpp | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index e616a9d9..5c4ed014 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -2118,6 +2118,24 @@ static __attribute__((noinline)) void vm_write8_slow(uint64_t a, uint8_t  v, voi
+         else if(((uint32_t)a&3)==0 && v!=0) pt_restore(wa); /* MSB byte set non-zero = restored */ } }
+ #endif
+     VM_WRITE_COH(a, &v, 1); }
++/* Native code (a port's hand-written replacement of a lifted function) that
++ * writes a block of guest memory with plain host stores asks this first: true
++ * when every store in [ea, ea + n) would take the fast path above -- no watch
++ * or sweep on, an ordinary address, no raw SPU register and no line an SPU has
++ * reserved. Otherwise it stores through vm_write* (or runs the lifted body). */
++extern "C" int vm_block_plain(uint32_t ea, uint32_t n)
++{
++    if (n == 0) return 1;
++    if (!vm_st_plain(ea, n) || (uint64_t)ea + n > 0x100000000ull) return 0;
++    const uint32_t last = ea + n - 1;
++    if (spu_raw_is_reg(ea) || spu_raw_is_reg(last) ||
++        (ea < SPU_RAW_BASE + SPU_RAW_SPAN && last >= SPU_RAW_BASE)) return 0;
++    for (uint32_t line = ea & ~127u; ; line += 128u) {
++        if (spu_coh_is_reserved_fast(line)) return 0;
++        if (line == (last & ~127u)) break;
++    }
++    return 1;
++}
+ void vm_write8 (uint64_t a, uint8_t  v) {
+     const uint32_t ea = (uint32_t)a;
+     if (__builtin_expect(vm_st_plain(ea, 1) && !spu_raw_is_reg(ea), 1)) {
+-- 
+2.56.0
+
