@@ -78,6 +78,7 @@ ul.ticks { list-style: none; padding: 0; margin: 0; }
 ul.ticks li { padding: 5px 0 5px 22px; position: relative; border-bottom: 1px dashed var(--line); }
 ul.ticks li::before { content: ""; position: absolute; left: 4px; top: 13px; width: 8px; height: 8px; background: var(--steel); transform: rotate(45deg); }
 ul.ticks li.todo::before { background: transparent; border: 1px solid var(--red-hi); }
+ul.ticks .pct { float: right; font: .85rem var(--mono); color: var(--dim); }
 
 footer { margin: 30px 0 0; padding: 22px 0 40px; border-top: 1px solid var(--line); color: var(--dim); font-size: .9rem; }
 footer .wrap { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }

@@ -14,6 +14,9 @@ What each release contains, newest first. Until a release that calls itself play
   tests, which now run on the patched tree in CI (`tools/tests/test_upstream_suite.sh`, patch 0004).
 - An SPU that reserves a line while another SPU's plain write to it is being copied now loses the reservation at once,
   not at the next 10 ms poll (patch 1020, `tools/tests/test_spu_put_recheck.sh`).
+- The project page is generated whole by `tools/website.py` from `docs/features.tsv`, `docs/SCREENSHOTS.md`,
+  `docs/ROADMAP.md`, this changelog and the patch series, and checked in CI; `docs/FEATURES.md` gains a section on the
+  port itself (builds, frame rate, installer).
 - `tools/mlaa_harness` and `tools/mlaa_probe`: the lifted MLAA jobs run outside the game, test patterns and checks.
 
 ## The first public tree (2026-10-30)

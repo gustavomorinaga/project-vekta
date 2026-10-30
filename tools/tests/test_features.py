@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Host test for tools/features.py: docs/FEATURES.md and the site's feature list are what docs/features.tsv gives,
-and malformed rows (a bad status, a wrong column count, a '|' in a cell, a pc row with a PS3 column) are refused."""
+"""Host test for tools/features.py: docs/FEATURES.md is what docs/features.tsv gives, and malformed rows (a bad
+status, a wrong column count, a '|' in a cell, a pc or port row with a PS3 column) are refused."""
 import importlib.util
 import os
 import subprocess
@@ -25,7 +25,9 @@ r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "features.py"), 
 check(r.returncode == 0, "the committed outputs are current: " + r.stdout.strip())
 
 HEAD = "# checked\t2026-10-30\n" + "\t".join(features.COLUMNS) + "\n"
-GOOD = "ps3\tCampaign\tLevel 1\tfirst level\tworks\t\tplayed\t\npc\t\tFOV\t\tthe game's\t\t`fov`\tField of view\n"
+GOOD = ("ps3\tCampaign\tLevel 1\tfirst level\tworks\t\tplayed\tLevel 1\n"
+        "pc\t\tFOV\t\tthe game's\t\t`fov`\tField of view\n"
+        "port\t\tInstaller\t\tnot yet\t: from source\troadmap\tInstaller\n")
 
 
 def problems(text):
@@ -39,19 +41,18 @@ def problems(text):
 
 
 checked, rows, p = problems(HEAD + GOOD)
-check(not p and len(rows) == 2 and checked == "2026-10-30", f"a good table loads: {p}")
+check(not p and len(rows) == 3 and checked == "2026-10-30", f"a good table loads: {p}")
 md = features.markdown(checked, rows)
 check("| Campaign | Level 1 | first level | **works** | played |" in md, "a ps3 row becomes a section 1 row")
 check("| FOV | the game's | `fov` |" in md, "a pc row becomes a section 2 row")
-page = f"<ul>\n  {features.BEGIN}\n  <li>old</li>\n  {features.END}\n</ul>"
-check(features.site(rows, page) == f"<ul>\n  {features.BEGIN}\n  <li>Field of view</li>\n  {features.END}\n</ul>",
-      "the site list is rewritten between the markers")
-check(features.site(rows, "<ul></ul>") is None, "a page without markers is refused")
+check("| Installer | **not yet**: from source | roadmap |" in md, "a port row becomes a section 3 row")
 for bad, what in [
     ("ps3\tCampaign\tLevel 1\tfirst level\tfine\t\tplayed\t\n", "an unknown status"),
     ("ps3\tCampaign\tLevel 1\tfirst level\tworks\n", "a short row"),
     ("ps3\tCampaign\tLevel 1 | 2\tfirst level\tworks\t\tplayed\t\n", "a '|' in a cell"),
     ("pc\tGraphics\tFOV\t\tthe game's\t\t`fov`\t\n", "a pc row with an area"),
+    ("port\t\tInstaller\t\tsoon\t\troadmap\t\n", "a port row with an unknown status"),
+    ("port\tDist\tInstaller\t\tnot yet\t\troadmap\t\n", "a port row with an area"),
     ("mod\t\tFOV\t\tx\t\ty\t\n", "an unknown kind"),
 ]:
     check(problems(HEAD + bad)[2], f"{what} is refused")
