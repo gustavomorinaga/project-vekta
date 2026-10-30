@@ -86,8 +86,12 @@ of the repository.
 ## Docs travel with code
 
 - Update the docs a change affects in the same commit: build steps in `docs/BUILDING.md`, the files the player needs
-  in `docs/GETTING-FILES.md`, known problems in `docs/KNOWN_ISSUES.md`, feature status in `docs/FEATURES.md`,
+  in `docs/GETTING-FILES.md`, known problems in `docs/KNOWN_ISSUES.md`, feature status in `docs/features.tsv`,
   credits in `NOTICE.md`, and a line in `CHANGELOG.md` for anything a player would notice.
+- `docs/FEATURES.md` and the site's feature list are generated from `docs/features.tsv` by `tools/features.py`; never
+  edit them by hand. Change the TSV with its evidence (a run, a log line, a screenshot), run
+  `python3 tools/features.py` and commit all three; the host tests run `tools/features.py --check`. A status changes
+  only with evidence.
 - Never write that something works unless you ran it, and say how. Findings are dated.
 - Environment switches are documented where they are read (`getenv`), with their default.
 

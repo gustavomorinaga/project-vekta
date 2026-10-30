@@ -2,6 +2,7 @@
 # (CI runs it on every push and pull request). .sh runs with bash, .py with python3. A runtime fix comes with a test
 # here that fails without it (AGENTS.md, "Build and test").
 tools/tests/test_patch_series.py
+tools/tests/test_features.py
 tools/tests/test_doc_refs.py
 tools/tests/test_sync_from_private.py
 tools/tests/test_check_tree.sh

@@ -8,3 +8,4 @@
 *.patch -text linguist-generated=true
 re/*.txt linguist-generated=true
 site/index.html linguist-generated=true
+docs/FEATURES.md linguist-generated=true

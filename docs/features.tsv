@@ -1,0 +1,44 @@
+# checked	2026-10-30
+kind	area	feature	ps3	status	detail	evidence	site
+ps3	Boot and menus	Logos, opening movie, front end, options, pause menu	as shipped	works		every run since 2026-10-14	
+ps3	Campaign	Level 1	first level	works		played by hand from start to end	
+ps3	Campaign	Levels 2 to 11	the rest of the campaign	partial	: all load and reach gameplay; not each played to its end	2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20	
+ps3	Campaign	Cutscene and level movies	AVI movies through `cellSail`	works	 (FFmpeg)	30 movies; runs without FFmpeg skip them	
+ps3	Campaign	Game logic timing	30 Hz	works	 at 30 and 60 Hz; 144 Hz with one known problem ([KNOWN_ISSUES.md](KNOWN_ISSUES.md))	hints, movement and rate of fire checked at 60 Hz	
+ps3	Saves	Profile, checkpoints, Continue	one profile save	works	: Continue returns to the checkpoint; a checkpoint save checked end to end is still to do	2026-10-20	
+ps3	Controls	DualShock 3 layout	pad	works	 with any SDL controller	Xbox, DualSense/DualShock, 8BitDo, generic	
+ps3	Controls	Rumble	pad vibration	works		SDL	
+ps3	Controls	Controller options (sensitivity, invert)	Pause > Controls	works		the game's own menu	
+ps3	Graphics	1280x720 picture	720p	works	, at any window size		
+ps3	Graphics	Anti-aliasing (MLAA on the SPUs)	`jm_post` job chain	works	: the game's own MLAA reimplemented as a GPU pass, equal to the SPU code except at about 0.6 % of edge pixels (`KZ_MLAA=gpu`, default; `spu` runs the original jobs, slowly; `off`)	[dev/wws-jm-post.md](dev/wws-jm-post.md)	
+ps3	Graphics	Glow and motion blur (`jm_post`)	event-driven SPU jobs	partial	: zero in normal play; only the slow `KZ_MLAA=spu` path computes them	[dev/wws-jm-post.md](dev/wws-jm-post.md)	
+ps3	Graphics	HUD, menus, fonts	as shipped	works			
+ps3	Sound	Music, effects, dialogue	MultiStream on the SPUs, MP3 streams	works		the firmware's MP3 decoder runs translated	
+ps3	Sound	Surround	the console's output setting	works	: stereo, 5.1, 7.1	per channel on Linux; 6 and 8 channels through WASAPI under Wine	
+ps3	Languages	Voice, subtitles, menus	English, French, Spanish (by console language)	works	, chosen on the PC page		
+ps3	Trophies	Trophy unlocks	PSN trophies	partial	: unlocked and logged locally with names, grades and platinum; no on-screen notice	`gamedata/trophies/NPWR03819.log`	
+ps3	Multiplayer	"One / Two Player" in the menu	local	not yet	 checked		
+ps3	Online	PSN	sign-in, trophies sync	n/a		no network is used	
+pc		Display mode: window, borderless, fullscreen; Alt+Enter		window		`display`; `KZ_FULLSCREEN=1` in `tools/play.sh`	Window, borderless or fullscreen; any resolution; internal resolution scale
+pc		Output resolution and refresh rate		1280x720, the monitor's rate		`resolution`, `refresh`; resizable window, aspect kept	
+pc		Internal resolution scale, 50 % to 200 %		100 %		`scale`; applies on the next start	
+pc		V-Sync on, off, adaptive; VRR		on		`vsync`	V-Sync, VRR and a 30, 60 or 144 fps limit (the game clock follows)
+pc		NVIDIA Reflex: off, on, on + boost (`VK_NV_low_latency2`)		off		`reflex`; "not available" without the extension; no measured fps or latency change in Level 7	
+pc		Frame-rate limit 30, 60, 144 (the game clock follows)		60		`fps_limit`; 30 is the PS3's	
+pc		AMD FSR 1 upscaling and RCAS sharpening		bilinear		`upscaler`, `sharpness`	AMD FSR 1 upscaling with RCAS sharpening; anisotropic filtering up to 16x
+pc		Anisotropic filtering: the game's own, off, 2x to 16x		the game's		`anisotropic`	
+pc		Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9		on		`widescreen`	Widescreen Hor+ for 21:9, 32:9 and wider; field of view; HUD size and position
+pc		Field of view, 40 to 90 degrees vertical (the game's is 56.25)		the game's		`fov`; zoom and the first-person weapon keep the game's framing	
+pc		HUD size and position		the game's		`hud_size`, `hud_position`	
+pc		Presets: Original (PS3), Performance, Balanced, Quality		Custom when nothing matches			Presets: Original (PS3), Performance, Balanced, Quality
+pc		Keyboard and mouse: direct mouse look with its own sensitivity and invert, mouse in menus and dialogs		on		`mouse_yaw`, `mouse_pitch`, `mouse_invert`; keys in `kz1hd_keys.ini` (written on the first run; edit to remap)	Keyboard and mouse with direct mouse look, mouse in menus, remappable keys
+pc		Controllers through SDL, with keyboard and mouse at the same time		merged		`controllers`; `PAD_MOUSE_STICK=1` puts the mouse on the right stick instead	
+pc		Button prompts and the Controls picture follow the device (keyboard and mouse, Xbox, PlayStation, Nintendo)		auto			Xbox, PlayStation, Nintendo and generic controllers, with button prompts that follow the device
+pc		Sound output: stereo, 5.1, 7.1		stereo		`speakers`	Stereo, 5.1 or 7.1 sound; game language; skip the opening movie
+pc		Language: system, English (US, UK), French, Spanish		system		`language`	
+pc		Skip the opening movie (the logos stay)		off		`intro = off`, `KZ_SKIP_INTRO=1`	
+pc		Statistics overlay (MangoHUD, Linux)		off		`overlay = mangohud`, `KZ_MANGOHUD=1`	
+pc		Quit Game in the Options sub-menu; closing the window waits for a save in progress		on			
+pc		The game's own Debug Options in the pause menu (God Mode, Next Level, ...)		off		`KZ_DEBUG_MENU=1`	
+pc		All 11 levels selectable in the campaign menu		off		`KZ_UNLOCK_LEVELS=1`	
+pc		Local trophy log from the game's own trophy set		on		needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`)	Local trophies, read from the game's own trophy set
