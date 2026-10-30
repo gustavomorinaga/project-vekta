@@ -28,7 +28,11 @@ The full list, also for AI coding agents: [AGENTS.md](../AGENTS.md).
 ```sh
 tools/ps3recomp-patched.sh   # every patch applies
 tools/check-tree.sh          # no game files, personal paths, keys or untranslated text
+tools/lint.sh                # shellcheck and ruff (pip install ruff shellcheck-py)
+tools/run-host-tests.sh      # the host tests in tools/host-tests.txt
 ```
+
+A fix to the runtime or to a patch comes with a host test in `tools/tests/` that fails without it.
 
 and, if you have the game, a run of what you changed: say which level, for how long, with what input, and what the
 log or a screenshot showed. Without the game you can still work on tools, docs, the site and patches; say in the pull

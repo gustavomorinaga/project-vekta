@@ -1,7 +1,8 @@
 # CI without the game (the layout follows Project Helghast and Project Pyrrhus, by undecuple, MIT). The program cannot
 # be built here: the translated code comes from the player's own EBOOT and is never committed. So this checks what can
 # be checked without game data: that every patch applies to the pinned ps3recomp, that the tree holds no game files,
-# personal paths, keys or untranslated text, that the scripts parse, and a secret scan of the whole history.
+# personal paths, keys or untranslated text, lint, the host tests (tools/host-tests.txt), and a secret scan of the
+# whole history.
 name: CI
 on:
   push:
@@ -31,6 +32,13 @@ jobs:
           for f in tools/*.sh; do if head -1 "$f" | grep -q bash; then bash -n "$f"; else sh -n "$f"; fi; done
           python3 -m py_compile tools/*.py
           python3 -c "import json; json.load(open('.recomp.json'))"
+      - name: Lint (shellcheck at warning level, ruff with ruff.toml)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lint"
+          "$RUNNER_TEMP/lint/bin/pip" install --quiet --disable-pip-version-check ruff==0.16.9 shellcheck-py==0.11.0.1
+          PATH="$RUNNER_TEMP/lint/bin:$PATH" RUFF_FORMAT=github bash tools/lint.sh
+      - name: Host tests (no game data; the list is tools/host-tests.txt)
+        run: bash tools/run-host-tests.sh --gh
 
   secrets:
     runs-on: ubuntu-latest

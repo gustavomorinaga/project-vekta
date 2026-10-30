@@ -1,0 +1,54 @@
+# Labels a new or edited issue: needs-triage, plus one type label when the issue follows one of the issue forms (by
+# the form's first heading) or its title starts with the type. The forms set these labels themselves; this covers
+# issues opened another way (the API, the CLI, an edited form). Security: the title and body are only read as data
+# inside the script, never in a shell line or an expression; no checkout; the token can only write issues; labels
+# come from a fixed list, only labels that already exist are added, and none is removed. (After Project Helghast's
+# issue-labels.yml, MIT.)
+name: Issue labels
+on:
+  issues:
+    types: [opened, edited]
+permissions:
+  issues: write
+concurrency:
+  group: issue-labels-${{ github.event.issue.number }}
+  cancel-in-progress: true
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const TYPES = ['bug', 'enhancement', 'feedback', 'performance'];
+            // First match wins. A heading is the first field of a form in .github/ISSUE_TEMPLATE, which GitHub
+            // renders as "### <label>" in the issue body.
+            const RULES = [
+              { label: 'bug', heading: 'What happened, and what did you expect?', prefix: /^\s*\[?bug( report)?\]?\s*[:\-]/i },
+              { label: 'performance', heading: 'System', prefix: /^\s*\[?(performance|perf)\]?\s*[:\-]/i },
+              { label: 'enhancement', heading: 'What would you like, and why?', prefix: /^\s*\[?(feature( request)?|enhancement)\]?\s*[:\-]/i },
+              { label: 'feedback', heading: 'Your feedback or question', prefix: /^\s*\[?(feedback|question)\]?\s*[:\-]/i },
+            ];
+            const issue = context.payload.issue;
+            if (!issue || issue.pull_request) return;
+            const title = typeof issue.title === 'string' ? issue.title : '';
+            const body = typeof issue.body === 'string' ? issue.body : '';
+            const headings = new Set(body.split(/\r?\n/).map((l) => l.match(/^###\s+(.+?)\s*$/)).filter(Boolean).map((m) => m[1]));
+            const have = new Set((issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name)));
+            const wanted = [];
+            if (!have.has('needs-triage')) wanted.push('needs-triage');
+            if (!TYPES.some((t) => have.has(t))) {   // a maintainer's choice is never overridden
+              const r = RULES.find((r) => headings.has(r.heading) || r.prefix.test(title));
+              if (r) wanted.push(r.label);
+            }
+            if (wanted.length === 0) return;
+            const existing = new Set((await github.paginate(github.rest.issues.listLabelsForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
+            })).map((l) => l.name));
+            const add = wanted.filter((l) => existing.has(l));   // addLabels would otherwise create them
+            if (add.length) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number, labels: add,
+              });
+            }
