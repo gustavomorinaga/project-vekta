@@ -33,6 +33,12 @@ work/venv/bin/pip install cmake ninja -r third_party/ps3recomp/requirements.txt
 ```
 
 `tools/env.sh` puts `work/venv/bin` first on the `PATH` of every script and uses its Python (`KZ_PY`).
+`tools/check-deps.sh` (`--win` for the cross build) says what is still missing.
+
+**Optional, the sandbox:** `tools/sandbox.sh [--gpu] -- COMMAND` runs a command with the system, the repository and
+your game files read-only, only `work/` and a private `/tmp` writable, and no network (bubblewrap, Linux only). For
+example `tools/sandbox.sh tools/lift.sh`, or `tools/sandbox.sh --gpu tools/play.sh` for a run with a window. Checked
+by its host test (2026-10-30); a full lift, build and run inside it is not tried yet.
 
 ## 3. Your files
 
@@ -79,7 +85,7 @@ for scripted input (see `tools/run.sh` and `docs/dev/testing.md`).
 
 What CI runs on every push and pull request needs no game files and no GPU: `tools/ps3recomp-patched.sh`,
 `tools/check-tree.sh`, `tools/lint.sh` (shellcheck and ruff) and `tools/run-host-tests.sh` (the list is
-`tools/host-tests.txt`; bash, Python 3 and a C compiler). Write a new test in `tools/tests/` and add it to the list.
+`tools/host-tests.txt`; bash, Python 3, a C compiler and bubblewrap). Write a new test in `tools/tests/` and add it to the list.
 
 ## Windows x64 (cross-built on Linux)
 

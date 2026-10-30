@@ -7,3 +7,4 @@ tools/tests/test_doc_refs.py
 tools/tests/test_sync_from_private.py
 tools/tests/test_check_tree.sh
 tools/tests/test_mlaa_ref.sh
+tools/tests/test_sandbox.sh
