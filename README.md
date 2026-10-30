@@ -16,7 +16,8 @@
 **[Status](#status)** · **[Features](docs/FEATURES.md)** · **[Screenshots](docs/SCREENSHOTS.md)** ·
 **[Requirements](docs/requirements.md)** · **[Getting your files](docs/GETTING-FILES.md)** ·
 **[Building](docs/BUILDING.md)** · **[How it works](docs/HOW-IT-WORKS.md)** · **[Known issues](docs/KNOWN_ISSUES.md)** ·
-**[Roadmap](docs/ROADMAP.md)** · **[AI use](#how-ai-was-used)** · **[Contributing](.github/CONTRIBUTING.md)**
+**[Roadmap](docs/ROADMAP.md)** · **[Glossary](docs/GLOSSARY.md)** · **[AI use](#how-ai-was-used)** ·
+**[Contributing](.github/CONTRIBUTING.md)** · **[Forking](docs/FORKING.md)**
 
 *Vekta* is the ISA colony world where the first Killzone is fought. Project Vekta is a fan project, not official and
 not affiliated with or endorsed by Sony Interactive Entertainment or Guerrilla Games.
@@ -68,6 +69,13 @@ All optional, set in a **PC** page inside the game's own Options and Pause menus
 Nothing. The port, its scripts and the build make no network connection of their own. The only downloads are the
 ones you start: cloning this repository with its ps3recomp submodule, and your system's packages.
 
+## Where your data goes
+
+Everything stays in the folder the game runs from, `work/vfs/` (made by `tools/setup-vfs.sh`): the PC settings in
+`kz1hd_pc.ini`, the key map in `kz1hd_keys.ini`, saves under `gamedata/dev_hdd0/home/00000001/savedata/`, and the
+local trophy log in `gamedata/trophies/`. The log of a run goes to `work/play.log`. Nothing is written outside the
+repository's `work/` folder, and nothing is written into your game files.
+
 ## Getting it
 
 There is no download yet: build it from source ([docs/BUILDING.md](docs/BUILDING.md)). You need:
@@ -115,6 +123,31 @@ statement here that was not verified, please open an issue.
   [Project Pyrrhus](https://github.com/undecuple/project-pyrrhus) (Killzone 2), by undecuple: the same approach for
   the rest of the trilogy, and the model for this repository's layout. Credits: [NOTICE.md](NOTICE.md).
 - [ps3recomp](https://github.com/sp00nznet/ps3recomp), the recompiler this port is built on.
+
+## Official channels
+
+Project Vekta is made by **Gustavo Morinaga**: GitHub [@gustavomorinaga](https://github.com/gustavomorinaga), and
+the project site <https://gustavomorinaga.github.io/project-vekta/>. Code and, when there are any, builds come only
+from this repository. We never ask anyone to paste a command they were sent into a terminal or PowerShell.
+Anyone else offering builds, "fixes" or donations in this project's name is not us.
+
+## Contributing
+
+Tests on other hardware, reports with logs, and fixes are welcome: [CONTRIBUTING.md](.github/CONTRIBUTING.md). The
+rules for everyone, people and AI coding agents alike, are in [AGENTS.md](AGENTS.md). Security problems and rights
+holders' reports go privately through the Security tab ([SECURITY.md](.github/SECURITY.md)).
+
+## Repository layout
+
+| Path | What it holds |
+|---|---|
+| `port/kz1hd/` | the program: boot, game clock, window, HLE overrides, the PC menu, native SPU and PPU code |
+| `port/patches/` | numbered patches to ps3recomp and `series`, the order they apply in |
+| `third_party/ps3recomp/` | the recompiler, a pinned submodule (never edited in place) |
+| `tools/` | patch, lift, build, run and check scripts; data and profiling tools |
+| `re/` | tables the tools read; numbers only |
+| `docs/` | the public documentation; `docs/dev/` holds engineering notes |
+| `site/`, `assets/` | the project page and its images |
 
 ## Licence
 

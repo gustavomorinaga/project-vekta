@@ -1,5 +1,5 @@
-name: Feature request or feedback
-description: An option, an improvement, or how the port feels to play
+name: Feature request
+description: An option or an improvement
 labels: [enhancement, needs-triage]
 body:
   - type: markdown

@@ -1,0 +1,19 @@
+name: Feedback or question
+description: A question, a comment, or how the port feels to play
+labels: [feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions, comments and impressions are welcome. For something that is broken use the bug report. Never attach game files or saves.
+  - type: textarea
+    id: what
+    attributes:
+      label: Your feedback or question
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Port commit (if it matters)
+      description: "The commit you built (git rev-parse --short HEAD), and Linux or Windows."
