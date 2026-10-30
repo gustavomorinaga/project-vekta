@@ -25,7 +25,7 @@ Overview: [README.md](README.md) and [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md
 | `port/patches/` | numbered patches to ps3recomp and `series`, the order they apply in (see "Rules for everyone") |
 | `port/cmake/` | the clang + MinGW-w64 toolchain file for the Windows cross build |
 | `third_party/ps3recomp/` | the recompiler, a pinned submodule (never edited in place) |
-| `tools/` | `env.sh` (paths), `ps3recomp-patched.sh`, `lift.sh`, `setup-vfs.sh`, `build.sh`, `build-win.sh`, `pgo.sh`, `run.sh`, `play.sh`; data and profiling tools (`psarc_ls.py`, `lua4dis.py`, `extract_spu_modules.py`, `prof_report.py`, `spu_capture.py`, ...) |
+| `tools/` | `env.sh` (paths), `ps3recomp-patched.sh`, `lift.sh`, `setup-vfs.sh`, `build.sh`, `build-win.sh`, `pgo.sh`, `run.sh`, `play.sh`; `sync-from-private.py` (the maintainer's import from the private working repositories); data and profiling tools (`psarc_ls.py`, `lua4dis.py`, `extract_spu_modules.py`, `prof_report.py`, `spu_capture.py`, ...) |
 | `re/` | tables the tools read (`function_seeds.txt`); numbers only |
 | `site/`, `assets/` | the project web page and its images |
 | `docs/` | public documentation; `docs/dev/` holds engineering notes |
