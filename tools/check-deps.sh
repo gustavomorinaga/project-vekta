@@ -38,6 +38,7 @@ if (( WIN )); then
   need "MinGW-w64 sysroot"           "mingw-w64-gcc"                          test -d /usr/x86_64-w64-mingw32/include
   need "SDL2 for MinGW"              "mingw-w64-sdl2 (AUR)"                   test -f /usr/x86_64-w64-mingw32/lib/pkgconfig/sdl2.pc
   need "zlib for MinGW"              "mingw-w64-zlib (AUR)"                   test -f /usr/x86_64-w64-mingw32/lib/pkgconfig/zlib.pc
+  want "Wine (tools/wine-test.sh)"   "wine; or --proton with a Proton folder" command -v "${KZ_WINE:-wine}"
 fi
 (( missing )) && echo "check-deps: something required is missing (docs/BUILDING.md, step 2)" || echo "check-deps: ok"
 exit "$missing"
