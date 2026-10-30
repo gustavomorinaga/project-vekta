@@ -9,6 +9,9 @@ What each release contains, newest first. Until a release that calls itself play
   `KZ_MLAA=gpu|spu|off`); the first frame no longer waits for the driver to compile it.
 - NVIDIA Reflex (Off, On, On + Boost) on the PC page, through `VK_NV_low_latency2` (patch 2038).
 - In-game key capture for remapping screens (patch 4011).
+- An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039),
+  and the SPU poison-write diagnostic works with `SPU_POISON_DMA_WATCH` (patch 1019); both found by ps3recomp's own
+  tests, which now run on the patched tree in CI (`tools/tests/test_upstream_suite.sh`, patch 0004).
 - `tools/mlaa_harness` and `tools/mlaa_probe`: the lifted MLAA jobs run outside the game, test patterns and checks.
 
 ## The first public tree (2026-10-30)

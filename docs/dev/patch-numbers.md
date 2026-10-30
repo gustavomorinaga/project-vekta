@@ -105,3 +105,9 @@ older series on v0.14.0, which do not appear here. This table maps the v0.18.0 s
 | 0096 | 2036 | Killzone HD's MLAA on the GPU (PS3RECOMP_MLAA_GPU) |
 | 0097 | 2037 | MLAA pass: no frame waits for the driver to compile it |
 | 0098 | 2038 | Vulkan: NVIDIA Reflex through VK_NV_low_latency2 |
+| (none) | 0004 | tests: upstream's host tests follow the port's patches |
+| (none) | 2039 | cellGcm: the SPU PUT reject reads its own page map, which unmaps never clear |
+| (none) | 1019 | spu: the DMA fast path leaves the POISON-DMA report to the full path |
+
+The last three were written in this tree (2026-10-30), from ps3recomp's own tests run on the patched tree
+(`tools/tests/test_upstream_suite.sh`); they have no private number until the private branch takes them.
