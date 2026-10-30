@@ -90,6 +90,8 @@ with tempfile.TemporaryDirectory() as tmp:
     (pathlib.Path(tmp) / "CHANGELOG.md").write_text(LOG)
     r = run(REL / "release_notes.py", "--tag", "v0.1.0", "--root", tmp)
     check(r.returncode == 0 and "- The port." in r.stdout, "the first release carries the first public tree")
+    check("only on the maintainer's machine" in r.stdout, "v0.1.0's notes say no other machine has built it")
+    check("only on the maintainer's machine" not in body, "later notes do not")
     check(run(REL / "release_notes.py", "--tag", "v0.3.0", "--root", tmp).returncode == 1, "a tag with no entry is refused")
     r = run(REL / "release_notes.py", "--preview", "0.3.0", "--root", tmp)
     check(r.returncode == 0 and "Something new" in r.stdout, "a preview takes [Unreleased]")

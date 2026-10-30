@@ -9,7 +9,10 @@ is measured against. The first preview will be v0.1.0.
 
 1. **CI green** on the commit that is tagged.
 2. **A build anyone can repeat:** the tagged commit builds from the player's own files with the steps in
-   [BUILDING.md](BUILDING.md), on a machine other than the maintainer's.
+   [BUILDING.md](BUILDING.md), on a machine other than the maintainer's. **Relaxed for v0.1.0 only** (the
+   maintainer's decision, 2026-10-30): the first preview may ship when the tagged release's own source archive,
+   unpacked in a fresh folder, builds and plays on the maintainer's machine; its release notes say that no other
+   machine has built it yet. From v0.1.1 on the gate applies as written.
 3. **Known issues listed** in [KNOWN_ISSUES.md](KNOWN_ISSUES.md), and a `CHANGELOG.md` section for the version.
 4. **One version string** in the tag, `CHANGELOG.md` and `CITATION.cff`.
 5. **SHA256SUMS** published beside any file the release carries.

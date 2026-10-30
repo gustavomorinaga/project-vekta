@@ -32,6 +32,10 @@ STATUS = "partly playable"   # the page's headline while Levels 2 to 11 are part
 HEADING = re.compile(r"## \[([^\]]+)\](?:[ \t]+-[ \t]+(\d{4}-\d\d-\d\d))?[ \t]*(?:\(([^)]*)\))?[ \t]*$")
 NEW_SECTIONS = ("Added", "Changed", "Removed", "Deprecated", "Security")
 RELEASED = ("pre-release", "release")
+# docs/RELEASE-CRITERIA.md, gate 2, relaxed for v0.1.0 only: its notes say so.
+FIRST_BUILD_NOTE = ("This first preview has been built only on the maintainer's machine (from this release's own "
+                    "archive, in a fresh folder); no other machine has built it yet. Reports of a build elsewhere, "
+                    "working or not, are welcome as issues.")
 
 
 def entries(text):
@@ -96,6 +100,7 @@ def notes(version, entry, first=False):
         "Trilogy disc with its decrypted EBOOT and data archive, and the decrypted libsre and dev_flash of your own PS3 "
         "firmware; none of them is included or downloaded. What each must contain: "
         f"[docs/GETTING-FILES.md]({blob}/docs/GETTING-FILES.md). SHA-256 sums: SHA256SUMS (and the .sha256 file).",
+        *([FIRST_BUILD_NOTE] if version == "0.1.0" else []),
     ]) + "\n"
 
 
