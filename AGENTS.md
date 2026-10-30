@@ -26,7 +26,7 @@ Overview: [README.md](README.md) and [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md
 | `port/cmake/` | the clang + MinGW-w64 toolchain file for the Windows cross build |
 | `third_party/ps3recomp/` | the recompiler, a pinned submodule (never edited in place) |
 | `tools/` | `env.sh` (paths), `ps3recomp-patched.sh`, `lift.sh`, `setup-vfs.sh`, `build.sh`, `build-win.sh`, `pgo.sh`, `run.sh`, `play.sh`; `sync-from-private.py` (the maintainer's import from the private working repositories); data and profiling tools (`psarc_ls.py`, `lua4dis.py`, `extract_spu_modules.py`, `prof_report.py`, `spu_capture.py`, ...) |
-| `tools/tests/`, `tools/host-tests.txt` | the host tests (no game data, no GPU) and their list; `tools/run-host-tests.sh` runs them, `tools/lint.sh` lints |
+| `tools/tests/`, `tools/host-tests.txt` | the host tests (no game data, no GPU) and their list; `tools/run-host-tests.sh` runs them, `tools/lint.sh` lints; `tools/features.py` writes `docs/FEATURES.md` from `docs/features.tsv`; `tools/sandbox.sh`, `tools/check-deps.sh` |
 | `re/` | tables the tools read (`function_seeds.txt`); numbers only |
 | `site/`, `assets/` | the project web page and its images |
 | `docs/` | public documentation; `docs/dev/` holds engineering notes |
@@ -77,6 +77,9 @@ of the repository.
   without the fix and passes with it, listed in `tools/host-tests.txt`. A test needs no game data, no GPU and no
   network, writes only to its own temporary folder, and fails loudly instead of skipping. When a change alters what
   an old test checks, update that test in the same change.
+- **Anything that reads the game** can run inside `tools/sandbox.sh [--gpu] -- CMD` (bubblewrap: system, repository
+  and game files read-only, only `work/` writable, no network). Not yet tried on a full lift, build and run.
+  `tools/check-deps.sh` lists missing build tools.
 - A change to the runtime or a patch is checked in the game before it is called working: say which level, how long,
   with what input (`PAD_SCRIPT`, by hand) and what the log or a screenshot showed. Headless runs use
   `PS3RECOMP_VK_WINDOW=0` (see `tools/run.sh`).
@@ -86,8 +89,12 @@ of the repository.
 ## Docs travel with code
 
 - Update the docs a change affects in the same commit: build steps in `docs/BUILDING.md`, the files the player needs
-  in `docs/GETTING-FILES.md`, known problems in `docs/KNOWN_ISSUES.md`, feature status in `docs/FEATURES.md`,
+  in `docs/GETTING-FILES.md`, known problems in `docs/KNOWN_ISSUES.md`, feature status in `docs/features.tsv`,
   credits in `NOTICE.md`, and a line in `CHANGELOG.md` for anything a player would notice.
+- `docs/FEATURES.md` and the site's feature list are generated from `docs/features.tsv` by `tools/features.py`; never
+  edit them by hand. Change the TSV with its evidence (a run, a log line, a screenshot), run
+  `python3 tools/features.py` and commit all three; the host tests run `tools/features.py --check`. A status changes
+  only with evidence.
 - Never write that something works unless you ran it, and say how. Findings are dated.
 - Environment switches are documented where they are read (`getenv`), with their default.
 
