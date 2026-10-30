@@ -16,7 +16,6 @@ only L and R while the state said 2; with 6 it writes C and the surround
 pair. Unset, nothing changes. AudioOutConfigure logs the request;
 AUDIO_CHSTATS=1 logs an 8-channel port's levels.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/audio/cellAudio.c    | 86 +++++++++++++++++++++++++++++++--------
  libs/misc/cellAvconfExt.c | 35 ++++++++++++++--

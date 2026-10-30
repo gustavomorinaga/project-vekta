@@ -15,7 +15,6 @@ their constants with the same headers. The colour image is now also
 SAMPLED. Killzone HD, 3440x1440 window at 50% internal scale: no measurable
 fps cost (129.6 vs 128.7 with the blit), sharper edges.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_vulkan_backend.c               |  201 +-
  libs/video/rsx_vulkan_backend.h               |    4 +

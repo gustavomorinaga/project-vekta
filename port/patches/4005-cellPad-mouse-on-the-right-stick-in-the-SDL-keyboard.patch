@@ -8,7 +8,6 @@ The window captures the pointer on a click. Mouse speed drives the right
 stick (PAD_MOUSE_GAIN, PAD_MOUSE_DECAY, PAD_MOUSE_DEADZONE); left button R1,
 right L1, middle R3. PAD_NO_MOUSE=1 turns it off.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/input/cellPad.c | 50 ++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 50 insertions(+)

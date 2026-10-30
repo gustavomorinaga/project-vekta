@@ -13,7 +13,6 @@ shape (0x184/0x188 with two 0xFEED000x handles, then 0x30C..0x328 as one run
 of 8); the source rows are read back from an engine surface first and the
 destination rows uploaded after. Off by default.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/cellGcmSys.c                       | 128 ++++++++++++++++++
  libs/video/rsx_draw_engine.c                  |  13 ++

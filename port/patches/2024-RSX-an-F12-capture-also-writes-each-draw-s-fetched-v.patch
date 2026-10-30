@@ -7,7 +7,6 @@ Subject: [PATCH] RSX: an F12 capture also writes each draw's fetched
 pass<P>_draw<D>_verts<N>_attrs<K>.f32: N vertices of K attributes, four
 floats each, in the order draws.txt lists them.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_draw_engine.c | 9 +++++++++
  1 file changed, 9 insertions(+)

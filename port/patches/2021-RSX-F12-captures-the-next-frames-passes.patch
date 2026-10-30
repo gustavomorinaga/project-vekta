@@ -9,7 +9,6 @@ working directory, with draws.txt and 16 passes (RSX_ENGINE_PASS_DUMP_MAX
 changes it): a player can capture the frame where something draws wrong
 without knowing the variables. g_rsx_capture_request asks for one from code.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_draw_engine.c    | 24 +++++++++++++++++++++++-
  libs/video/rsx_vulkan_backend.c |  5 +++++

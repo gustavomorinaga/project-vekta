@@ -9,7 +9,6 @@ PAD_STICK_FILE, for looking at an animation frame by frame without slowing
 the game. The PPM is written a row at a time. (The SPIR-V cache key change
 for the invariant position is here too.)
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/input/cellPad.c            | 15 +++++++++
  libs/video/rsx_vulkan_backend.c | 54 ++++++++++++++++++++++++++++-----

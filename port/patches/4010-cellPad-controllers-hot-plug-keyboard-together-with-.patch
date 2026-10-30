@@ -20,7 +20,6 @@ rsx_texture_seen_hook: called once when a texture first comes into use, with
 its writable guest bytes, so a title can recognise and rewrite it (cached
 textures are re-hashed every frame, so later rewrites show too).
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/input/cellPad.c         | 180 +++++++++++++++++++++++++++++++++--
  libs/video/rsx_draw_engine.c |   9 ++

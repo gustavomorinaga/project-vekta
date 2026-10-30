@@ -13,7 +13,6 @@ PS3RECOMP_VK_ANISO: 0 or unset = the title's, 1 = off, N = at least N on
 mipmapped linear units (a PC option); capped at the device's limit.
 PS3RECOMP_VK_ANISO_LOG=1 prints each sampler made.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_draw_engine.c    |  2 ++
  libs/video/rsx_draw_engine.h    |  3 +++

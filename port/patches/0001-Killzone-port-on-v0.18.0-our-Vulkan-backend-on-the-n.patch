@@ -6,7 +6,6 @@ Subject: [PATCH] Killzone port on v0.18.0: our Vulkan backend on the new
 
 rsx_vulkan_backend.c is kz-perf-ppu's (two frames in flight, display modes, internal scale, crop/stretch, dumps), with texture_upload_ordered set, depth_packed unhooked (the engine dropped it) and shims for the host's split present. The coherence bitmap is read through upstream's spu_coh_line_reserved. SPU_FAST_FLOAT runs under MXCSR round toward zero (g_spu_float_mode): upstream's SPU_FLOAT_RZ is arm64 only.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_vulkan_backend.c               | 1853 ++++++++++-------
  libs/video/vulkan/rsx_vk_depth_pack.comp      |   21 +

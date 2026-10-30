@@ -15,7 +15,6 @@ the window take the previous path unchanged.
 
 Killzone HD, Level 1 at the 144 Hz clock: 99.3 -> 101.7 fps (three runs each).
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ppu/ppu_loader.cpp | 34 +++++++++++++++++++++++++++++++++-
  1 file changed, 33 insertions(+), 1 deletion(-)

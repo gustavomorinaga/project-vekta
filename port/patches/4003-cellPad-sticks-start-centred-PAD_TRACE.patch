@@ -7,7 +7,6 @@ The host state was zeroed at init, so the always-present virtual pad on
 port 0 read both sticks pinned up-left until a device or input source
 wrote them. PAD_TRACE=1 prints the reads and the last packet every 2 s.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/input/cellPad.c | 12 ++++++++++++
  1 file changed, 12 insertions(+)

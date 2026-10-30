@@ -170,6 +170,8 @@ def area(text):
 
 def clean(text):
     text = re.sub(r"^From: .*$", PUBLIC_AUTHOR, text, count=1, flags=re.M)
+    # No co-author trailers in the public tree (AI use is described once, in the README).
+    text = re.sub(r"^Co-Authored-By: .*\n", "", text, flags=re.M)
     return re.sub(r"^Subject: \[PATCH[^\]]*\]", "Subject: [PATCH]", text, count=1, flags=re.M)
 
 

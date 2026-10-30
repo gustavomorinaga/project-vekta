@@ -8,7 +8,6 @@ vm_write8/16/32/64 test the watches, the null sweep and the range once and
 store; the diagnostics moved to out-of-line _slow halves. ~1 fps in Killzone
 HD at a 144 Hz clock (vm_write32 is ~15% of its main thread).
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ppu/ppu_loader.cpp | 59 +++++++++++++++++++++++++++++++++-----
  1 file changed, 52 insertions(+), 7 deletions(-)

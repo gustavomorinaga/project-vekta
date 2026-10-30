@@ -9,7 +9,6 @@ buttons and stick directions; without the file, the old fixed map. The mouse
 and wheel bindings count in play only. PS3RECOMP_ESC_QUITS=0 leaves Esc to
 the key map. PAD_MOUSE_POS_FILE gives tests a pointer that clicks.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/input/cellPad.c            | 162 +++++++++++++++++++++++++++-----
  libs/video/rsx_vulkan_backend.c |   8 +-

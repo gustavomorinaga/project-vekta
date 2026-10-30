@@ -11,7 +11,6 @@ and depth snapshots made, mapped and freed a host buffer each (the driver
 mmap/munmap'd per call, and destroying one flushed the batch); they now
 share one per usage, grown on demand.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_draw_engine.c | 18 +++++++++++-------
  1 file changed, 11 insertions(+), 7 deletions(-)

@@ -10,7 +10,6 @@ event pump and the swapchain is rebuilt at the next present.
 rsx_vulkan_display_sizes lists the display's modes, read when the window
 opens. pad_set_merge switches PAD_MERGE while running.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/input/cellPad.c            | 10 +++++-----
  libs/video/rsx_vulkan_backend.h |  9 +++++++++

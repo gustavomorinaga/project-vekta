@@ -1,4 +1,4 @@
-# MLAA probe (docs/dev/wws-jm-post.md, "O MLAA medido no próprio módulo")
+# MLAA probe (docs/dev/wws-jm-post.md, "The MLAA measured on the game's own module")
 
 - `OUT=dir python3 pattern.py` / `pattern2.py`: write a 1280x720 P6 test image (and a layout JSON) into `dir`.
 - `PAT=<ppm> OUT=<dump dir> S=<work dir> ./run_l7.sh`: Level 7 from the testkit save, with the SPU post chain on

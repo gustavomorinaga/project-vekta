@@ -8,7 +8,6 @@ grew about 1 s every 20 s (7.7 s after 150 s): menu sounds came late.
 Mix only when the device queue has room for a block; the queue now
 stays at one block (21.3 ms). AUDIO_QUEUE=1 logs its depth.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/audio/cellAudio.c | 30 +++++++++++++++++++++++-------
  1 file changed, 23 insertions(+), 7 deletions(-)

@@ -9,7 +9,6 @@ watch or sweep, an ordinary address, no raw SPU register, no line an SPU has
 reserved. A port's native replacement of a lifted function asks it before
 writing a block (a GCM command sequence, say) with plain host stores.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ppu/ppu_loader.cpp | 18 ++++++++++++++++++
  1 file changed, 18 insertions(+)

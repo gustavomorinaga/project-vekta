@@ -9,7 +9,6 @@ middle leaves one the title may refuse. cellSaveData_quiesce(max_ms) lets the
 operations already running finish (up to max_ms) and keeps any new one from
 starting, so a port can call it before it exits.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/system/cellSaveData.c | 121 ++++++++++++++++++++++---------------
  1 file changed, 73 insertions(+), 48 deletions(-)

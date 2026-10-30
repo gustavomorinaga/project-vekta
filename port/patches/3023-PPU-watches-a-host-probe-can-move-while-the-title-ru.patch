@@ -11,7 +11,6 @@ guest function and, for the first few, the guest stack. The port must also
 route loads and stores out of line while it watches (vm_inline_ok and
 g_ld_span for loads; g_barrier_sync_watch and g_st_span for stores).
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ppu/ppu_loader.cpp | 27 +++++++++++++++++++++++++++
  1 file changed, 27 insertions(+)

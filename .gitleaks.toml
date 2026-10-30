@@ -1,0 +1,12 @@
+# Gitleaks configuration for this repository: the default rules, plus one allowlist for the port's environment switch
+# names. Code comments, patches and docs name switches like KZ_TICK_HZ=30 or PS3RECOMP_VK_WINDOW=0, which the
+# generic-api-key rule can read as a key assignment. Only matches that are such a switch name are allowed; every other
+# finding still fails the scan. (After Project Helghast's .gitleaks.toml, MIT.) [allowlist] (singular) is the form
+# gitleaks 8.24, the CI's pinned version, reads.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Port environment switch names (KZ_*, PS3_*, PS3RECOMP_*, PAD_*, RSX_*, SPU_*, PPU_*, SPURS_*, GCM_*) in comments, patches and docs"
+regexTarget = "match"
+regexes = ['''\b(KZ|PS3|PS3RECOMP|PAD|RSX|SPU|PPU|SPURS|GCM)_[A-Z0-9_]+\s*[=:]\s*[A-Za-z0-9_.,:|-]{0,16}\b''']

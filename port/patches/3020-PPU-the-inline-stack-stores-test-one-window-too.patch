@@ -8,7 +8,6 @@ the mapping's end; [0x10000, 0x10000 + g_stk_span) holds the same, computed
 with the store window. Killzone HD at 144 Hz: 106.5 -> 107.0 fps, within the
 benchmark's noise.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ppu/ppu_loader.cpp | 7 ++++++-
  1 file changed, 6 insertions(+), 1 deletion(-)

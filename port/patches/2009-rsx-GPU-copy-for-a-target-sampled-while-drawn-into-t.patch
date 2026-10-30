@@ -10,7 +10,6 @@ texture and Vulkan paths. The engine's own-target read (colour correction)
 takes a GPU copy of the target (color_snapshot) instead of a readback and a
 re-decode; uploads stage in the batch ring instead of a buffer and a wait each.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/spurs/cellSpurs.c          |  1 +
  libs/video/cellGcmSys.c         |  3 +

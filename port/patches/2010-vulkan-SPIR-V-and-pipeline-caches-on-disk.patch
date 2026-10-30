@@ -8,7 +8,6 @@ driver compile, 70-250 ms hitches in Killzone's Level 1. SPIR-V is kept
 per program source and compiled pipelines in a VkPipelineCache blob under
 $PS3RECOMP_VK_CACHE (default ~/.cache/ps3recomp-vk, "0" for off).
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_vulkan_backend.c | 144 ++++++++++++++++++++++++++++++--
  1 file changed, 139 insertions(+), 5 deletions(-)

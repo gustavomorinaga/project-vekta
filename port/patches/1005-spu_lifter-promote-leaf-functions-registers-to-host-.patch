@@ -4,7 +4,6 @@ Date: Wed, 14 Oct 2026 22:59:06 -0300
 Subject: [PATCH] spu_lifter: promote leaf functions' registers to
  host-vector locals
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/spu/spu_helpers.h | 57 ++++++++++++++++++++++++++-------
  tools/spu_lifter.py       | 66 ++++++++++++++++++++++++++++++++++++++-

@@ -4,7 +4,6 @@ Date: Wed, 14 Oct 2026 23:53:23 -0300
 Subject: [PATCH] spu_lifter: SPU_LIFT_NATIVE emits named functions as
  <name>_lifted for a port's native versions
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  tools/spu_lifter.py | 14 +++++++++++++-
  1 file changed, 13 insertions(+), 1 deletion(-)

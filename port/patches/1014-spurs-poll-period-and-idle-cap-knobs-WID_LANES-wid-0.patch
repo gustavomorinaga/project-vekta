@@ -6,7 +6,6 @@ Subject: [PATCH] spurs: poll period and idle cap knobs,
 
 PS3_SPURS_POLL_US / PS3_SPURS_IDLE_MAX on the #291 coordinator, PS3_SPURS_WID_LANES=<wid>:0 keeps a workload off the workers, and g_spurs_workload_added_hook names each workload with its instance and argument, for a port whose native code used heap addresses that moved with v0.18.0's memory domains (#296). Killzone HD runs Level 7 on this tree, but far slower than on v0.14.0: the SPURS tuning is not finished.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/spurs/cellSpurs.c | 66 ++++++++++++++++++++++++++++++++++++++----
  1 file changed, 61 insertions(+), 5 deletions(-)

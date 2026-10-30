@@ -4,7 +4,6 @@ Date: Thu, 15 Oct 2026 21:25:59 -0300
 Subject: [PATCH] timer: PS3_TIMEBASE_SCALE runs the guest clock faster,
  for benchmarks
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/syscalls/sys_timer.c | 11 +++++++++++
  1 file changed, 11 insertions(+)

@@ -12,7 +12,6 @@ a window narrower than the frame the fitted size, and a frame that is not
 stretched is letterboxed at the guest frame's shape, even when it was
 rendered anamorphic.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_vulkan_backend.h | 1 +
  1 file changed, 1 insertion(+)

@@ -12,7 +12,6 @@ Killzone's Edge zlib queue got a corrupt request and the main thread waited
 forever. SPU commits stay on the value compare (a PPU waiting for an idle job
 manager line never gets one). PPU_RESV_WORD=1 keeps the word-only check.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ppu/ppu_loader.cpp | 51 +++++++++++++++++++++++++++++++++++---
  tools/ppu_lifter.py        |  6 +++--

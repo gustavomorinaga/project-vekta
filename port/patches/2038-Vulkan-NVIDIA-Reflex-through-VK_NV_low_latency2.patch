@@ -24,7 +24,6 @@ against 131.4 off at 144 Hz, and from simulation start to present
 a frame here, so the driver's sleep has no queue to shorten; the latency
 is the guest's vblank pacing and the RSX thread's drain.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/cellGcmSys.c         |  11 +-
  libs/video/rsx_vulkan_backend.c | 202 +++++++++++++++++++++++++++++++-

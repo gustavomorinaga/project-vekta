@@ -4,7 +4,6 @@ Date: Thu, 15 Oct 2026 23:02:19 -0300
 Subject: [PATCH] pad: PAD_KEYLOG times keys against title reads; log
  present mode
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/input/cellPad.c            | 25 +++++++++++++++++++++++++
  libs/video/rsx_vulkan_backend.c | 18 +++++++++++++++++-

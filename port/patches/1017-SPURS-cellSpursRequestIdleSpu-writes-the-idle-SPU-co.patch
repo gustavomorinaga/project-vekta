@@ -5,7 +5,9 @@ Subject: [PATCH] SPURS: cellSpursRequestIdleSpu writes the idle-SPU
  count; PS3_SPURS_WANTED (experiment) admits only kicked or idle-requesting
  workloads
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+The admission rule is the real SPURS kernel's, from upstream ps3recomp PR #213
+by NoahBPeterson, as project-helghast's patch 1074 ports it (MIT); that patch
+also found the cellSpursRequestIdleSpu stub.
 ---
  libs/spurs/cellSpurs.c | 31 ++++++++++++++++++++++++++++---
  1 file changed, 28 insertions(+), 3 deletions(-)

@@ -8,7 +8,6 @@ PS3_GCM_MAX_QUEUED_FLIPS) and lwcond (sys_lwcond_wait, with the guest call
 site), so a timeline shows what a thread blocks on without a wall-clock
 profiler, which perturbs the FIFO thread enough to invent flip waits.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/cellGcmSys.c    | 2 ++
  runtime/ppu/ppu_sysprx.cpp | 3 +++

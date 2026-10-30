@@ -6,7 +6,6 @@ Subject: [PATCH] ppu_lifter: memory-model accessors always inline; stack
 
 The ppu_mm accessors were outlined in the large lifted functions (vm_read32_mm alone was 6% of KZ1 HD's main thread). Stores through r1 become vm_writeN_stk: the span compare and the store, no bitmap (no SPU reserves a PPU stack line); PPU_LIFT_NO_STK=1 lifts them as plain stores. Level 7 at the 144 Hz clock with PGO: 82 -> 95 -> 116 fps.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  tools/ppu_lifter.py | 51 ++++++++++++++++++++++++++++++++++-----------
  1 file changed, 39 insertions(+), 12 deletions(-)

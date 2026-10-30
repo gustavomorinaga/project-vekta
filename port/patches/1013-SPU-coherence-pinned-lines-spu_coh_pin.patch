@@ -8,7 +8,6 @@ be pinned: its reserved bit never drops, so every PPU store and
 store-conditional to it takes the same lock instead of landing inside the
 host's read-modify-write.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/spu/spu_coherency.c | 10 ++++++++++
  runtime/spu/spu_coherency.h |  2 ++

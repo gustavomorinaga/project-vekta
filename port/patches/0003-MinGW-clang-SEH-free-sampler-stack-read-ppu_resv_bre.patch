@@ -7,7 +7,6 @@ Subject: [PATCH] MinGW (clang): SEH-free sampler stack read,
 The sampler's stack read and the ppu_resv_break linkage follow
 project-helghast's patch 0002 (MIT).
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/spurs/cellSpurs.c       |  4 ++++
  libs/video/rsx_draw_engine.c |  7 +++++++

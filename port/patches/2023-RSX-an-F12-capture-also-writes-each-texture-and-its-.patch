@@ -9,7 +9,6 @@ wrap, filter, control0, remap, pitch), and each texture its guest bytes,
 whole mip chain, once per capture as tex_<loc>_<offset>_f<fmt>_<w>x<h>_<levels>.bin,
 so a texture that samples wrong can be decoded and checked offline.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_draw_engine.c | 21 +++++++++++++++++++++
  1 file changed, 21 insertions(+)

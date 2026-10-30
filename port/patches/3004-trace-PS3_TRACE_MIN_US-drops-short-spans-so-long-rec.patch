@@ -4,7 +4,6 @@ Date: Thu, 15 Oct 2026 16:59:04 -0300
 Subject: [PATCH] trace: PS3_TRACE_MIN_US drops short spans so long
  recordings fit
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ps3_trace.c | 5 +++++
  1 file changed, 5 insertions(+)

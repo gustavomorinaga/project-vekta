@@ -18,7 +18,6 @@ functions as <name>_lifted, the same switch the SPU lifter has: a port can
 then define <name> natively and fall back to, or verify against, the lifted
 body.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ppu/ppu_vmx.h | 102 ++++++++++++++++++++++++++++++++++++++++++
  tools/ppu_lifter.py   |  30 +++++++------

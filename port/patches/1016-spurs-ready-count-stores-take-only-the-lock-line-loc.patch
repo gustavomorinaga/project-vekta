@@ -5,7 +5,6 @@ Subject: [PATCH] spurs: ready-count stores take only the lock-line lock
 
 The coordinator holds the instance lock through a whole pass; ReadyCountStore/Swap/CompareAndSwap waited it out each time. They change the instance byte under the lock-line lock, as the coordinator reads it, and kick it. KZ1 HD Level 7, alternated: 131.3/131.4 fps against the v0.14.0 base's 131.3/134.6.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/spurs/cellSpurs.c | 37 ++++++++++++++++++++++++++-----------
  1 file changed, 26 insertions(+), 11 deletions(-)

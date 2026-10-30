@@ -7,7 +7,6 @@ Subject: [PATCH] cellPad: raw mouse counts for a title hook
 A title that turns its camera from the mouse itself takes the counts instead
 of the right stick. PAD_MOUSE_FAKE=dx,dy adds counts to every take for tests.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/input/cellPad.c | 19 +++++++++++++++++++
  1 file changed, 19 insertions(+)

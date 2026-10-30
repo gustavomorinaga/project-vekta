@@ -16,7 +16,6 @@ targets (IO 0x10000, 0xF1000), ~150 times a second each; the SPU post
 chain reads them and writes elsewhere (IO 0x1D2000, 0x556000...), which
 nothing samples.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/cellGcmSys.c                       |  4 ++
  libs/video/rsx_draw_engine.c                  | 65 +++++++++++++++++++

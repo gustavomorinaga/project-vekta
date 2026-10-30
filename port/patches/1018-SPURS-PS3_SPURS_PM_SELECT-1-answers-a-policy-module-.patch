@@ -8,7 +8,6 @@ Subject: [PATCH] SPURS: PS3_SPURS_PM_SELECT=1 answers a policy module's
 After project-helghast's patch 1058 (MIT). Answered 0, every job manager but
 wid 0's was told to switch after each job.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/spurs/cellSpurs.c     |  7 ++++---
  runtime/spu/spu_channels.c | 10 +++++++++-

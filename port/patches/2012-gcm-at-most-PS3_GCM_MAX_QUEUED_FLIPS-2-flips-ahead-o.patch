@@ -9,7 +9,6 @@ Killzone HD queued ~600 frames (10 s) in its menus and intro movie, so
 input and the movie's frame requests lagged the screen by that much.
 cellGcm_flip_written_count() reports the queue.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/cellGcmSys.c | 24 ++++++++++++++++++++++++
  1 file changed, 24 insertions(+)

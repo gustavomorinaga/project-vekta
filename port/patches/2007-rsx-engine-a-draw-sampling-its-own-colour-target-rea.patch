@@ -13,7 +13,6 @@ depth/stencil state, texture bytes, clear masks and first vertex in the
 pass dump; RSX_ENGINE_PS_DEBUG, RSX_ENGINE_NO_BLEND/NO_STENCIL/NO_DEPTH,
 RSX_ENGINE_SKIP_PARTIAL_CLEAR; RSX_VK_DRAW_STATS.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_draw_engine.c    | 65 ++++++++++++++++++++++++++++++++-
  libs/video/rsx_vulkan_backend.c | 33 ++++++++++++-----

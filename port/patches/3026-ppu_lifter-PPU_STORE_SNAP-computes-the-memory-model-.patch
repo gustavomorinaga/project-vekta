@@ -6,7 +6,6 @@ Subject: [PATCH] ppu_lifter: PPU_STORE_SNAP computes the memory-model
 
 Each lifted function's PPU_MM_SNAP read eight globals and rebuilt the snapshot; under PPU_STORE_SNAP it is cached and recomputed only when the store watches or the bitmap pointer change. KZ1 HD Level 7 with PGO: 126.9 -> 131.4 fps (v0.14.0 base 135.9 in the same session).
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  tools/ppu_lifter.py | 22 +++++++++++++++++++++-
  1 file changed, 21 insertions(+), 1 deletion(-)

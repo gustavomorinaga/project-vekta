@@ -11,7 +11,6 @@ The SPIR-V's Position builtin is now decorated Invariant (as the Metal
 path's [[invariant]]); PS3RECOMP_SPIRV_INVARIANT=0 turns it off. The disk
 cache version goes to 2.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_shader_spirv.cpp | 40 +++++++++++++++++++++++++++++++++
  1 file changed, 40 insertions(+)

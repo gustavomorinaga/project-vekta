@@ -8,7 +8,6 @@ returning. A NaN operand always gives a NaN result, so a numeric result
 now returns after one compare and the operand checks run only when the
 result is a NaN; results are unchanged. KZ1 HD uncapped: ~44.9 -> ~45.4 fps.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  tools/ppu_lifter.py | 14 ++++++++------
  1 file changed, 8 insertions(+), 6 deletions(-)

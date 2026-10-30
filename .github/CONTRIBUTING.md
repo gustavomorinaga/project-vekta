@@ -41,5 +41,5 @@ removed. Never attach game files or saves.
 
 ## Commits
 
-One topic per commit, a short plain message that says what changed and why, in English. If an AI tool helped, say so
-in the pull request.
+One topic per commit, a short plain message that says what changed and why, in English, with credits for anything
+absorbed from elsewhere. No tool-generated footers or co-author trailers.

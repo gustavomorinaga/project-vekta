@@ -15,7 +15,6 @@ line in <storage>/<commId>.log; the JSON store keeps the name and grade too.
 Checked with a host harness on Killzone HD's set (59 trophies): the platinum
 refused, 58 unlocks, the platinum awarded with the last, a repeat refused.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/network/sceNpTrophy.c | 217 +++++++++++++++++++++++++++++++++----
  1 file changed, 195 insertions(+), 22 deletions(-)

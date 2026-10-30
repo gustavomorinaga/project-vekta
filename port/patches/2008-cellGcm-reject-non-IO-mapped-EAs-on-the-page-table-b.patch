@@ -8,7 +8,6 @@ gcm_note_spu_put asks for every SPU DMA put, and nearly all of them are not
 IO-mapped; the full scan of the 512-entry mapping table was 3% of Killzone
 HD's SPU time.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/cellGcmSys.c | 10 +++++++---
  1 file changed, 7 insertions(+), 3 deletions(-)

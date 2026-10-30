@@ -13,7 +13,6 @@ is drawn as the alpha test it stands for, at 0.5.
 Diagnostics: RSX_ENGINE_PS_DEBUG=5 shows the output's alpha as grey,
 RSX_ENGINE_STATE_LOG=<pipeline> logs a pipeline's raw state registers.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_draw_engine.c | 44 +++++++++++++++++++++++++++++++-----
  libs/video/rsx_draw_engine.h |  1 +

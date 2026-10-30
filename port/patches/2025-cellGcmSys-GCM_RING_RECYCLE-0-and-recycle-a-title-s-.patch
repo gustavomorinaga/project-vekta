@@ -14,7 +14,6 @@ stale words ("FIFO CALL to unmapped IO 0x0FEFEFFC") and the title froze
 loading a level. Only `current > end` counts now, and GCM_RING_RECYCLE=0
 turns the recycle off for a title that never needs it.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/cellGcmSys.c | 14 ++++++++++++--
  1 file changed, 12 insertions(+), 2 deletions(-)

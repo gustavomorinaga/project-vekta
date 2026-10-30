@@ -9,7 +9,6 @@ loader makes thousands of them: Level 1 loaded in ~42 s, now ~8 s. The poll
 stays as a fallback (PS3_LWCOND_POLL_MS, default 10), which also takes idle
 worker threads from 1000 wake-ups a second to 100.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/ppu/ppu_sysprx.cpp | 33 +++++++++++++++++++++++++++++----
  1 file changed, 29 insertions(+), 4 deletions(-)

@@ -8,7 +8,6 @@ g_spu_dma_hook sees every fast-path GET/PUT (context, EA, LSA, size,
 direction); g_spu_job_hook sees each entry of a resident job overlay at
 LS 0x4030. Both are NULL unless a title installs them.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  runtime/spu/spu_channels.c | 7 +++++++
  runtime/spu/spu_dma.h      | 3 +++

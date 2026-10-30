@@ -13,7 +13,6 @@ Subject: [PATCH] RSX: FACING input in fragment programs; F12 capture
   it was before each draw (pass<P>_before<D>.ppm), so the draw that comes
   out wrong can be found and read.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_draw_engine.c | 33 +++++++++++++++++++++++++++++++++
  1 file changed, 33 insertions(+)

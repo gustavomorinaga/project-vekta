@@ -3,7 +3,6 @@ From: Gustavo Morinaga <me@gustavomorinaga.dev>
 Date: Thu, 15 Oct 2026 19:48:16 -0300
 Subject: [PATCH] vulkan: pipeline cache saved on its own thread
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/video/rsx_vulkan_backend.c | 46 +++++++++++++++++++++++++--------
  1 file changed, 35 insertions(+), 11 deletions(-)

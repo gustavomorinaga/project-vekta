@@ -9,7 +9,6 @@ PUTLLC committing the same line in between was overwritten (or overwrote
 the host's bit). The update now runs under the lock-line lock and breaks
 any reservation on the line, as a PPU store does.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  libs/spurs/spurs_taskset.h | 26 ++++++++++++++++++++------
  1 file changed, 20 insertions(+), 6 deletions(-)

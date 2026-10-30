@@ -6,7 +6,6 @@ Subject: [PATCH] ppu_lifter: PPU_STORE_SNAP takes the store diagnostics
 
 With PPU_STORE_SNAP (a port's build choice) the barrier watch, the null sweep and the reservation bitmap pointer are read with the rest of the memory model at function entry, not reloaded after every store; on x86 the inline loads and stores are plain accesses (aligned ones are single-copy atomic there anyway). KZ1 HD Level 7 with PGO: 116 -> 120 -> 124 fps (v0.14.0 base: ~135).
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  tools/ppu_lifter.py | 56 +++++++++++++++++++++++++++++++++------------
  1 file changed, 42 insertions(+), 14 deletions(-)

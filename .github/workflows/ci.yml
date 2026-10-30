@@ -40,5 +40,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Gitleaks (full history)
-        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.18.4 detect --source /repo --redact --verbose --exit-code 1
+      - name: No co-author trailers in new commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # the commits this push or pull request adds; a new branch (no before) checks only its head
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then range="HEAD^!"; else range="$BASE..HEAD"; fi
+          if git log --format='%H%n%B' "$range" | grep -i '^co-authored-by:'; then
+            echo "::error::a commit carries a Co-Authored-By trailer (AGENTS.md, Commits and pull requests)"; exit 1
+          fi
+      - name: Gitleaks (full history; config in .gitleaks.toml)
+        run: |
+          curl -sSfL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.24.0/gitleaks_8.24.0_linux_x64.tar.gz
+          echo "cb49b7de5ee986510fe8666ca0273a6cc15eb82571f2f14832c9e8920751f3a4  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git --redact --verbose --exit-code 1 .
