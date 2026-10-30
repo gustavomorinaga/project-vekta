@@ -8,9 +8,9 @@ root. (The shape follows Project Helghast's FORKING.md, MIT.)
 
 | What | Where | Change it to your own |
 |---|---|---|
-| Project name "Project Vekta", tag line and repository slug | `README.md`, `site/index.html`, `site/style.css`, `docs/HOW-IT-WORKS.md`, `docs/BUILDING.md`, `.github/workflows/pages.yml` | yes |
+| Project name "Project Vekta", tag line and repository slug | `README.md`, `tools/website.py` (it writes `site/index.html`), `site/style.css`, `docs/HOW-IT-WORKS.md`, `docs/BUILDING.md`, `.github/workflows/pages.yml` | yes |
 | Banner and social preview | `assets/` (`banner.svg` and `social-preview.svg` are the sources; `tools/site-art.sh` renders the PNGs) | yes |
-| Site address in the page's metadata | `site/index.html` (`og:url`, `og:image`, `canonical`) | yes |
+| Site address in the page's metadata | `tools/website.py` (`og:url`, `og:image`, `canonical`, `REPO`) | yes |
 
 "Vekta" is the colony world of the first Killzone. Keep the disclaimer in `NOTICE.md` and on the site that your
 project is a fan project, not affiliated with or endorsed by the game's publisher or developer.

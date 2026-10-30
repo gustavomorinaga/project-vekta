@@ -1,11 +1,11 @@
 # checked	2026-10-30
 kind	area	feature	ps3	status	detail	evidence	site
-ps3	Boot and menus	Logos, opening movie, front end, options, pause menu	as shipped	works		every run since 2026-10-14	
-ps3	Campaign	Level 1	first level	works		played by hand from start to end	
-ps3	Campaign	Levels 2 to 11	the rest of the campaign	partial	: all load and reach gameplay; not each played to its end	2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20	
-ps3	Campaign	Cutscene and level movies	AVI movies through `cellSail`	works	 (FFmpeg)	30 movies; runs without FFmpeg skip them	
+ps3	Boot and menus	Logos, opening movie, front end, options, pause menu	as shipped	works		every run since 2026-10-14	Boot and menus
+ps3	Campaign	Level 1	first level	works		played by hand from start to end	Level 1
+ps3	Campaign	Levels 2 to 11	the rest of the campaign	partial	: all load and reach gameplay; not each played to its end	2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20	Levels 2 to 11
+ps3	Campaign	Cutscene and level movies	AVI movies through `cellSail`	works	 (FFmpeg)	30 movies; runs without FFmpeg skip them	Movies
 ps3	Campaign	Game logic timing	30 Hz	works	 at 30 and 60 Hz; 144 Hz with one known problem ([KNOWN_ISSUES.md](KNOWN_ISSUES.md))	hints, movement and rate of fire checked at 60 Hz	
-ps3	Saves	Profile, checkpoints, Continue	one profile save	works	: Continue returns to the checkpoint; a checkpoint save checked end to end is still to do	2026-10-20	
+ps3	Saves	Profile, checkpoints, Continue	one profile save	works	: Continue returns to the checkpoint; a checkpoint save checked end to end is still to do	2026-10-20	Saves
 ps3	Controls	DualShock 3 layout	pad	works	 with any SDL controller	Xbox, DualSense/DualShock, 8BitDo, generic	
 ps3	Controls	Rumble	pad vibration	works		SDL	
 ps3	Controls	Controller options (sensitivity, invert)	Pause > Controls	works		the game's own menu	
@@ -13,10 +13,10 @@ ps3	Graphics	1280x720 picture	720p	works	, at any window size
 ps3	Graphics	Anti-aliasing (MLAA on the SPUs)	`jm_post` job chain	works	: the game's own MLAA reimplemented as a GPU pass, equal to the SPU code except at about 0.6 % of edge pixels (`KZ_MLAA=gpu`, default; `spu` runs the original jobs, slowly; `off`)	[dev/wws-jm-post.md](dev/wws-jm-post.md)	
 ps3	Graphics	Glow and motion blur (`jm_post`)	event-driven SPU jobs	partial	: zero in normal play; only the slow `KZ_MLAA=spu` path computes them	[dev/wws-jm-post.md](dev/wws-jm-post.md)	
 ps3	Graphics	HUD, menus, fonts	as shipped	works			
-ps3	Sound	Music, effects, dialogue	MultiStream on the SPUs, MP3 streams	works		the firmware's MP3 decoder runs translated	
+ps3	Sound	Music, effects, dialogue	MultiStream on the SPUs, MP3 streams	works		the firmware's MP3 decoder runs translated	Sound
 ps3	Sound	Surround	the console's output setting	works	: stereo, 5.1, 7.1	per channel on Linux; 6 and 8 channels through WASAPI under Wine	
 ps3	Languages	Voice, subtitles, menus	English, French, Spanish (by console language)	works	, chosen on the PC page		
-ps3	Trophies	Trophy unlocks	PSN trophies	partial	: unlocked and logged locally with names, grades and platinum; no on-screen notice	`gamedata/trophies/NPWR03819.log`	
+ps3	Trophies	Trophy unlocks	PSN trophies	partial	: unlocked and logged locally with names, grades and platinum; no on-screen notice	`gamedata/trophies/NPWR03819.log`	Trophies
 ps3	Multiplayer	"One / Two Player" in the menu	local	not yet	 checked		
 ps3	Online	PSN	sign-in, trophies sync	n/a		no network is used	
 pc		Display mode: window, borderless, fullscreen; Alt+Enter		window		`display`; `KZ_FULLSCREEN=1` in `tools/play.sh`	Window, borderless or fullscreen; any resolution; internal resolution scale
@@ -42,3 +42,7 @@ pc		Quit Game in the Options sub-menu; closing the window waits for a save in pr
 pc		The game's own Debug Options in the pause menu (God Mode, Next Level, ...)		off		`KZ_DEBUG_MENU=1`	
 pc		All 11 levels selectable in the campaign menu		off		`KZ_UNLOCK_LEVELS=1`	
 pc		Local trophy log from the game's own trophy set		on		needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`)	Local trophies, read from the game's own trophy set
+port		Linux x64 build		works		built and played on the maintainer's machine; [BUILDING.md](BUILDING.md)	Linux build
+port		Windows x64 exe (cross-built on Linux)		partial	: runs under Wine, Proton and on Windows; the campaign not checked there	`tools/wine-test.sh` passes under Wine and GE-Proton 11 (2026-10-30); [KNOWN_ISSUES.md](KNOWN_ISSUES.md)	Windows
+port		Frame rate		works	: a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps	Level 1 and Level 7 on Linux, RTX 3070 Ti; [dev/performance.md](dev/performance.md)	Frame rate
+port		Installer that builds the port on the player's PC		not yet	: build from source for now	[ROADMAP.md](ROADMAP.md), phase 11	Installer

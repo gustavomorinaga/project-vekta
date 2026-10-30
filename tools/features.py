@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-"""Writes docs/FEATURES.md and the feature list of site/index.html from docs/features.tsv, the one place feature
-status is kept. Never edit those two by hand: change the TSV (with its evidence), run this, commit all three.
+"""Writes docs/FEATURES.md from docs/features.tsv, the one place feature status is kept (tools/website.py builds the
+project page from the same rows). Never edit FEATURES.md by hand: change the TSV (with its evidence), run this and
+tools/website.py, commit all three.
 
-    python3 tools/features.py           write docs/FEATURES.md and the site's list
-    python3 tools/features.py --check   exit 1 if the TSV is malformed or either output is not what it would write
+    python3 tools/features.py           write docs/FEATURES.md
+    python3 tools/features.py --check   exit 1 if the TSV is malformed or FEATURES.md is not what it would write
 
 docs/features.tsv: tab-separated, a header row, then one row per feature. A first line `# checked<TAB>YYYY-MM-DD`
 gives the date the table was last checked against the game.
-  kind      ps3 (section 1: what the PS3 game does) or pc (section 2: what the port adds)
+  kind      ps3 (section 1: what the PS3 game does), pc (section 2: what the port adds) or port (section 3: the
+            port itself: builds, speed, distribution)
   area      ps3 rows: the group (Campaign, Graphics, ...)
   feature   the feature
   ps3       ps3 rows: what the PS3 version does
-  status    ps3 rows: works, partial, not yet or n/a; pc rows: the default
-  detail    ps3 rows: text after the status (may be empty)
-  evidence  ps3 rows: the run, date or doc that backs the status; pc rows: kz1hd_pc.ini keys, switches, notes
-  site      pc rows: the line the project page shows for it (empty: not shown there)
+  status    ps3 and port rows: works, partial, not yet or n/a; pc rows: the default
+  detail    ps3 and port rows: text after the status (may be empty)
+  evidence  ps3 and port rows: the run, date or doc that backs the status; pc rows: kz1hd_pc.ini keys, switches, notes
+  site      what the project page shows (empty: not shown there). ps3 and port rows: the row's name in the page's
+            status table; pc rows: the line in its feature list
 (The data-driven page follows Project Helghast's docs/features.tsv and tools/features.py, MIT.)
 """
 import os
@@ -24,10 +27,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TSV = os.path.join(ROOT, "docs", "features.tsv")
 MD = os.path.join(ROOT, "docs", "FEATURES.md")
-SITE = os.path.join(ROOT, "site", "index.html")
 COLUMNS = ["kind", "area", "feature", "ps3", "status", "detail", "evidence", "site"]
 STATUSES = ["works", "partial", "not yet", "n/a"]
-BEGIN, END = "<!-- features:begin (tools/features.py) -->", "<!-- features:end -->"
 
 
 def load():
@@ -49,18 +50,18 @@ def load():
             problems.append(f"line {n}: {len(cells)} columns, not {len(COLUMNS)}")
             continue
         r = dict(zip(COLUMNS, cells))
-        if r["kind"] == "ps3":
+        if r["kind"] in ("ps3", "port"):
             if r["status"] not in STATUSES:
                 problems.append(f"line {n}: status '{r['status']}' is not one of {', '.join(STATUSES)}")
-            if not r["area"] or not r["ps3"]:
+            if r["kind"] == "ps3" and (not r["area"] or not r["ps3"]):
                 problems.append(f"line {n}: a ps3 row needs area and ps3")
-            if r["site"]:
-                problems.append(f"line {n}: site is for pc rows")
+            if r["kind"] == "port" and (r["area"] or r["ps3"]):
+                problems.append(f"line {n}: a port row leaves area and ps3 empty")
         elif r["kind"] == "pc":
             if r["area"] or r["ps3"] or r["detail"]:
                 problems.append(f"line {n}: a pc row leaves area, ps3 and detail empty")
         else:
-            problems.append(f"line {n}: kind '{r['kind']}' is not ps3 or pc")
+            problems.append(f"line {n}: kind '{r['kind']}' is not ps3, pc or port")
         if not r["feature"]:
             problems.append(f"line {n}: no feature")
         if "|" in line:
@@ -116,22 +117,18 @@ def markdown(checked, rows):
         "Planned items (post-processing toggles, HDR, FSR 3.1 and DLSS, an in-game key remapping page, narrower aspect",
         "ratios, a steady 144 fps): [ROADMAP.md](ROADMAP.md).",
         "",
+        "## 3. The port itself",
+        "",
+        "How it is built, how fast it runs and how it reaches players.",
+        "",
+        "| Item | State | Evidence |",
+        "|---|---|---|",
     ]
+    for r in rows:
+        if r["kind"] == "port":
+            out.append(table_row(r["feature"], f"**{r['status']}**{r['detail']}", r["evidence"]))
+    out.append("")
     return "\n".join(out)
-
-
-def html_escape(s):
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-def site(rows, page):
-    """The page with its feature list rewritten between the markers, or None when the markers are missing."""
-    i, j = page.find(BEGIN), page.find(END)
-    if i < 0 or j < i:
-        return None
-    indent = page[page.rfind("\n", 0, i) + 1:i]
-    items = "".join(f"{indent}<li>{html_escape(r['site'])}</li>\n" for r in rows if r["kind"] == "pc" and r["site"])
-    return page[:i] + BEGIN + "\n" + items + indent + page[j:]
 
 
 def main():
@@ -141,25 +138,19 @@ def main():
         return 2
     checked, rows, problems = load()
     md = markdown(checked, rows)
-    page = open(SITE, encoding="utf-8").read()
-    new_page = site(rows, page)
-    if new_page is None:
-        problems.append(f"site/index.html has no {BEGIN} ... {END} markers")
     if problems:
         for p in problems:
             print("features:", p)
         return 1
     if check:
-        stale = [p for p, want in ((MD, md), (SITE, new_page)) if open(p, encoding="utf-8").read() != want]
-        for p in stale:
-            print(f"features: {os.path.relpath(p, ROOT)} is not what docs/features.tsv gives; run python3 tools/features.py")
-        if not stale:
-            print(f"features: {len(rows)} rows, outputs current")
-        return 1 if stale else 0
-    for p, text in ((MD, md), (SITE, new_page)):
-        with open(p, "w", encoding="utf-8") as f:
-            f.write(text)
-    print(f"features: wrote docs/FEATURES.md and site/index.html from {len(rows)} rows")
+        if open(MD, encoding="utf-8").read() != md:
+            print("features: docs/FEATURES.md is not what docs/features.tsv gives; run python3 tools/features.py")
+            return 1
+        print(f"features: {len(rows)} rows, docs/FEATURES.md current")
+        return 0
+    with open(MD, "w", encoding="utf-8") as f:
+        f.write(md)
+    print(f"features: wrote docs/FEATURES.md from {len(rows)} rows")
     return 0
 
 

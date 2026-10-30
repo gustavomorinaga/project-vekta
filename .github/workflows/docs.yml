@@ -1,0 +1,29 @@
+# The generated docs: docs/FEATURES.md (tools/features.py) and the project page (tools/website.py) are what their
+# sources give. Its own workflow because CI skips pushes and pull requests that change only docs or the site, which is
+# exactly when these drift. Python only; no checkout of submodules, no token beyond reading the repository.
+name: docs
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", "site/**", "CHANGELOG.md", ".recomp.json", "port/patches/series", "tools/features.py",
+            "tools/website.py", ".github/workflows/docs.yml"]
+  pull_request:
+    paths: ["docs/**", "site/**", "CHANGELOG.md", ".recomp.json", "port/patches/series", "tools/features.py",
+            "tools/website.py", ".github/workflows/docs.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  generated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: docs/FEATURES.md and site/index.html are current
+        run: |
+          python3 tools/features.py --check
+          python3 tools/website.py --check
