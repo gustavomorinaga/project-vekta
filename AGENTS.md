@@ -77,6 +77,10 @@ of the repository.
   without the fix and passes with it, listed in `tools/host-tests.txt`. A test needs no game data, no GPU and no
   network, writes only to its own temporary folder, and fails loudly instead of skipping. When a change alters what
   an old test checks, update that test in the same change.
+- **ps3recomp's own tests run on the patched tree.** `tools/tests/test_upstream_suite.sh` (one of the host tests) runs
+  every `tools/test_*.py` of the pinned ps3recomp on a copy of `work/ps3recomp-patched`. A patch that changes on
+  purpose what one of them checks, or makes a unit it compiles call something new, updates that test in a patch of
+  its own (as `0004` does); never leave one failing or skip it.
 - **Anything that reads the game** can run inside `tools/sandbox.sh [--gpu] -- CMD` (bubblewrap: system, repository
   and game files read-only, only `work/` writable, no network). Not yet tried on a full lift, build and run.
   `tools/check-deps.sh` lists missing build tools.

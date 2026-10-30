@@ -37,9 +37,9 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/lint"
           "$RUNNER_TEMP/lint/bin/pip" install --quiet --disable-pip-version-check ruff==0.16.9 shellcheck-py==0.11.0.1
           PATH="$RUNNER_TEMP/lint/bin:$PATH" RUFF_FORMAT=github bash tools/lint.sh
-      - name: bubblewrap for the sandbox test
+      - name: bubblewrap for the sandbox test, SDL2 for ps3recomp's own tests
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap libsdl2-dev >/dev/null
           # Ubuntu's AppArmor blocks unprivileged user namespaces, which bwrap needs; this runner is thrown away after
           sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Host tests (no game data; the list is tools/host-tests.txt)
