@@ -105,6 +105,10 @@ the GPU driver, and FFmpeg is loaded at run time).
   runner). For Proton outside Steam, a one-line script works as `KZ_WINE`:
   `STEAM_COMPAT_DATA_PATH=<prefix> STEAM_COMPAT_CLIENT_INSTALL_PATH=$HOME/.steam/steam exec <proton dir>/proton run "$@"`.
   Killing that script does not stop the game: `WINEPREFIX=<prefix>/pfx <proton dir>/files/bin/wineserver -k`.
+- **Checking it runs under Wine or Proton:** `tools/wine-test.sh` (Wine, or `--proton <proton dir>`) runs the exe
+  for 60 s inside `tools/sandbox.sh`, with no window, no sound and a prefix of its own in `work/wine/`, and passes
+  when the game keeps presenting at least 20 frames a second over the last 20 s (`--seconds`, `--min-fps`,
+  `--window` to watch it). The first run makes the prefix.
 - **The log:** the exe is a GUI program. Started from a shell, it logs to stderr; without one (double click, Steam,
   Proton) it writes `kz1hd.log` beside the exe. `KZ_LOG=<file>` picks another file, `KZ_CONSOLE=1` opens a console.
 - **On a Windows PC:** copy a folder with the exe and its DLLs, `work/fw/out/libsre_image.bin`, your `dev_flash`,

@@ -26,7 +26,7 @@ Overview: [README.md](README.md) and [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md
 | `port/cmake/` | the clang + MinGW-w64 toolchain file for the Windows cross build |
 | `third_party/ps3recomp/` | the recompiler, a pinned submodule (never edited in place) |
 | `tools/` | `env.sh` (paths), `ps3recomp-patched.sh`, `lift.sh`, `setup-vfs.sh`, `build.sh`, `build-win.sh`, `pgo.sh`, `run.sh`, `play.sh`; `sync-from-private.py` (the maintainer's import from the private working repositories); data and profiling tools (`psarc_ls.py`, `lua4dis.py`, `extract_spu_modules.py`, `prof_report.py`, `spu_capture.py`, ...) |
-| `tools/tests/`, `tools/host-tests.txt` | the host tests (no game data, no GPU) and their list; `tools/run-host-tests.sh` runs them, `tools/lint.sh` lints; `tools/features.py` writes `docs/FEATURES.md` from `docs/features.tsv`; `tools/sandbox.sh`, `tools/check-deps.sh` |
+| `tools/tests/`, `tools/host-tests.txt` | the host tests (no game data, no GPU) and their list; `tools/run-host-tests.sh` runs them, `tools/lint.sh` lints; `tools/features.py` writes `docs/FEATURES.md` from `docs/features.tsv`; `tools/sandbox.sh`, `tools/check-deps.sh`, `tools/wine-test.sh` (the Windows build under Wine or Proton) |
 | `re/` | tables the tools read (`function_seeds.txt`); numbers only |
 | `site/`, `assets/` | the project web page and its images |
 | `docs/` | public documentation; `docs/dev/` holds engineering notes |
