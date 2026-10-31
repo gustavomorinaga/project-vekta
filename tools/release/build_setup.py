@@ -26,6 +26,12 @@ def wine(argv):
     return argv if os.name == "nt" else ["wine", *argv]
 
 
+if os.name != "nt":
+    # Inno Setup's own install must not reach the host's applications menu or desktop (winemenubuilder).
+    os.environ["WINEDLLOVERRIDES"] = ";".join(filter(None, [os.environ.get("WINEDLLOVERRIDES"),
+                                                            "winemenubuilder.exe=d"]))
+
+
 def winpath(p):
     """A host path as the Windows programs see it (winepath on Linux)."""
     if os.name == "nt":

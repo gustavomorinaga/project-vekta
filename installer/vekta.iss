@@ -97,6 +97,8 @@ Type: filesandordirs; Name: "{app}\work\win-deps-build"
 Type: filesandordirs; Name: "{app}\work\logs"
 Type: filesandordirs; Name: "{app}\work\.firstrun"
 Type: files; Name: "{app}\work\win-deps.log"
+; zlib's CMake renames its zconf.h in the source tree when build_win_deps.py builds it
+Type: files; Name: "{app}\work\toolchain-cache\zlib\zconf.h.included"
 Type: files; Name: "{app}\work\build-stamp.json"
 Type: files; Name: "{app}\work\paths.env"
 Type: files; Name: "{app}\work\play.log"
