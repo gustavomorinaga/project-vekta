@@ -6,6 +6,15 @@ are source archives: the port is always built from source. Until a release that 
 
 ## [Unreleased]
 
+### Added
+- `tools/install.sh`: one command asks where your files are, checks them, then patches, lifts and builds with one
+  progress bar, and keeps the paths in `work/paths.env` for every script (`tools/release/firstrun.py`, after Project
+  Pyrrhus's and Project Helghast's first-run builder); a stopped or failed run resumes at that step.
+- `KZ_JOBS` sets the lift's and the compile's parallel jobs (the installer picks it from free memory).
+
+### Fixed
+- `tools/play.sh` names the missing step when there is no `work/vfs` or no build yet.
+
 ## [0.1.0] - 2026-10-31 (pre-release)
 
 ### Added

@@ -10,10 +10,13 @@
 #             Game/libsre.prx        the decrypted libsre from your PS3 firmware (4.93 tested)
 #   work/   everything the scripts make from them: the patched ps3recomp, the lift, the run folder (vfs/)
 #
+# KZ_JOBS: parallel jobs for the lift and the compile (default: every core).
 # PS3_DEV_FLASH is RPCS3's dev_flash (the firmware's MP3 decoder, flashMP3.pic, comes from there).
 
 # The caller sets KZ_ROOT (the repository root) before sourcing: POSIX sh cannot find a sourced file's own path.
 : "${KZ_ROOT:?set KZ_ROOT to the repository root before sourcing tools/env.sh}"
+# Where tools/install.sh (tools/release/firstrun.py) last found your files; a variable already set wins.
+if [ -f "${KZ_WORK:-$KZ_ROOT/work}/paths.env" ]; then . "${KZ_WORK:-$KZ_ROOT/work}/paths.env"; fi
 KZ_GAME=${KZ_GAME:-$KZ_ROOT/Game/NPUA80856}
 KZ_EBOOT=${KZ_EBOOT:-$KZ_ROOT/Game/EBOOT.elf}
 KZ_PSARC=${KZ_PSARC:-$KZ_ROOT/Game/data_ps3.psarc}

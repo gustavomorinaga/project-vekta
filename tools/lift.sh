@@ -24,7 +24,7 @@ PPU_LIFT_NATIVE=$(grep -ho '^void func_[0-9A-F]*(ppu_context\* ctx)$' "$P"/nativ
 export PPU_LIFT_NATIVE
 # 0x3B5CB0/0x3B5DD4: its libc setjmp/longjmp, which Lua 4.0 raises its errors with.
 "$KZ_PY" "$T/ppu_lifter.py" "$E" --functions "$K/analysis/functions.json" --hle-stubs "$K/analysis/EBOOT.imports.json" \
-    --setjmp 0x3B5CB0 --longjmp 0x3B5DD4 --code-end 0x52f740 --chunk-lines 150000 -j "$(nproc)" --output "$K/gen/" > "$K/lift.log"
+    --setjmp 0x3B5CB0 --longjmp 0x3B5DD4 --code-end 0x52f740 --chunk-lines 150000 -j "${KZ_JOBS:-$(nproc)}" --output "$K/gen/" > "$K/lift.log"
 tail -2 "$K/lift.log"
 # Guest registers in host locals inside each function (see the tool's header): ~+7% in Level 1 at the 144 Hz clock.
 "$KZ_PY" "$T/ppu_regcache.py" "$K/gen" | tail -1
