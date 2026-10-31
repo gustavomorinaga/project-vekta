@@ -17,7 +17,8 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
                   of the repository's port/patches (a stale tree is refused).
   work/toolchain-cache/    the Windows entries of tools/release/toolchain.json (llvm-mingw, CMake, Ninja, the
                   embeddable Python, SDL2, zlib, glslang, the Vulkan headers, FFmpeg), unpacked by fetch_toolchain.py
-                  --host windows, with a fetched.json for them only (the build fetches nothing). The Python's ._pth
+                  --host windows, with a fetched.json for them only (the build fetches nothing), minus PRUNE
+                  (clang's Linux runtimes, zlib's Amiga files). The Python's ._pth
                   also names tools/, tools/release/ and ps3recomp's tools/: the embeddable Python never puts a
                   script's own folder on sys.path, and the lifters import their neighbours.
   VERSION, LICENSE, NOTICE.md, README.md, licenses/, assets/icon.svg, docs/GETTING-FILES.md, docs/BUILDING.md
@@ -91,6 +92,9 @@ TEXT_RULES = [
     ("secret", re.compile(b"sk-" b"ant-|gh" b"p_[A-Za-z0-9]{20}|github_" b"pat_|BEGIN [A-Z ]*PRIVATE" b" KEY")),
 ]
 MAX_FILE = 8 << 20
+# Toolchain files the Windows build never uses, left out (paths inside the entry's tree): clang's Linux runtimes in
+# the Windows llvm-mingw (ELF files), and zlib's Amiga makefiles (Makefile.pup reads as a game-data name).
+PRUNE = {"llvm-mingw": ["lib/clang/*/lib/linux/*"], "zlib": ["amiga/*"]}
 # The ._pth of the embeddable Python: its own zip and folder, then the folders whose scripts import their neighbours
 # (relative to the ._pth, in work/toolchain-cache/python/).
 PTH_EXTRA = ["..\\..\\..\\tools", "..\\..\\..\\tools\\release", "..\\..\\ps3recomp-patched\\tools"]
@@ -196,8 +200,10 @@ def collect_toolchain(cache, m):
                 p = os.path.join(d, f)
                 if os.path.islink(p):
                     continue
-                rel = os.path.relpath(p, cache).replace(os.sep, "/")
-                files[f"{CACHE}/{rel}"] = p
+                inner = os.path.relpath(p, tree).replace(os.sep, "/")
+                if any(fnmatch.fnmatch(inner, g) for g in PRUNE.get(name, ())):
+                    continue
+                files[f"{CACHE}/{name}/{inner}"] = p
     if problems:
         raise Refused("toolchain:\n  " + "\n  ".join(problems))
     return files, done

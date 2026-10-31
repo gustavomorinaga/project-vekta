@@ -43,6 +43,11 @@ def fake_cache(cache, m):
         (t / "bin" / f"{e['name']}.exe").write_bytes(b"MZ" + e["name"].encode())
         done[e["name"]] = e["sha256"]
     (cache / "python" / "python313._pth").write_text("python313.zip\n.\n\n# Uncomment to run site.main()\n#import site\n")
+    linux = cache / "llvm-mingw" / "lib" / "clang" / "23" / "lib" / "linux"
+    linux.mkdir(parents=True)
+    (linux / "libclang_rt.asan-x86_64.so").write_bytes(b"\x7fELF")
+    (cache / "zlib" / "amiga").mkdir()
+    (cache / "zlib" / "amiga" / "Makefile.pup").write_text("all:\n")
     (cache / "downloads").mkdir()
     (cache / "downloads" / "big.zip").write_bytes(b"x")
     (cache / "fetched.json").write_text(json.dumps(done))
@@ -68,6 +73,8 @@ with tempfile.TemporaryDirectory() as tmp:
     check(not any(p.startswith(("third_party/", "port/patches/", ".github/", "work/toolchain-cache/downloads/",
                                 "work/toolchain-cache/llvm-mingw-linux/", "work/ps3recomp-patched/docs/"))
                   for p in paths), "no submodule, patches, workflows, downloads, Linux compiler or ps3recomp docs")
+    check(not any("/lib/linux/" in p or "/amiga/" in p for p in paths), "clang's Linux runtimes and zlib's Amiga "
+          "files are left out")
     check(not any("__pycache__" in p or p.endswith(".pyc") for p in paths), "no Python caches")
     tc = {e["name"] for e in ft.entries_for(m, "windows")}
     check(json.loads(gen["work/toolchain-cache/fetched.json"]) == {n: e["sha256"] for e in m["components"]
