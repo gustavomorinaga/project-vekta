@@ -371,10 +371,11 @@ class Bar:
 
 
 class Runner:
-    def __init__(self, ctx, steps, log, out=sys.stdout, status_file=None, bar=False):
+    def __init__(self, ctx, steps, log, out=sys.stdout, status_file=None, bar=False, quiet=False):
         self.ctx, self.steps, self.log, self.out = ctx, steps, log, out
         self.status_file, self.status_head = status_file, ""
         self.bar = Bar(out) if bar else None
+        self.quiet = quiet   # the steps' own lines only: no PROGRESS / RESULT lines on the console
         self.reasons, self.fail_inputs = [], set()
         self.t0 = time.monotonic()
         tot = sum(s.weight for s in steps) or 1.0
@@ -390,7 +391,7 @@ class Runner:
         threading.Thread(target=loop, name="stop-file", daemon=True).start()
 
     def emit(self, line, to_log=True, show=True):
-        if show and not self.bar:
+        if show and not self.bar and not (self.quiet and line.startswith(("PROGRESS ", "RESULT ", "LOG "))):
             print(line, file=self.out, flush=True)
         if to_log and self.log:
             self.log.write(line)
@@ -552,6 +553,8 @@ def ask_paths(paths, only=None, ask=input, say=print):
         cur = out.get(name, "")
         mark = "" if os.path.exists(cur) else " (not there)"
         got = ask(f"{what}\n  [{cur}]{mark}: ").strip()
+        if not sys.stdin.isatty():
+            say("")   # answers from a pipe are not echoed: end the prompt's line
         if got:
             out[name] = os.path.abspath(os.path.expanduser(got.strip("'\"")))
     return out
@@ -564,7 +567,7 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
     while True:
         c.paths = ask_paths(c.paths, only, ask, say)
         log = new_log(c, redactor())
-        r = Runner(c, STEPS[:1], log, out=out, status_file=a.status_file)
+        r = Runner(c, STEPS[:1], log, out=out, status_file=a.status_file, quiet=True)
         rc = r.run()
         log.close()
         if rc == 0:

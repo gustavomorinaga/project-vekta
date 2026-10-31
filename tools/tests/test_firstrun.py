@@ -183,10 +183,13 @@ with tempfile.TemporaryDirectory() as tmp:
         return rc
     firstrun.Runner.run = run_once
     said = []
-    rc = firstrun.interactive(c, A(), ask=ask, say=said.append, out=io.StringIO())
+    console = io.StringIO()
+    rc = firstrun.interactive(c, A(), ask=ask, say=said.append, out=console)
     firstrun.Runner.run = real
     os.environ.pop("FAIL_STEP", None)
     check(rc == 0, f"--interactive builds once the check passes: {said[-2:]}")
+    check("PROGRESS " not in console.getvalue() and "RESULT " not in console.getvalue() and "100.0%" in console.getvalue(),
+          "the console shows the bar, not the protocol lines")
     check(sum("EBOOT" in q for q in asked) == 2 and len(asked) == 7,
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
 
