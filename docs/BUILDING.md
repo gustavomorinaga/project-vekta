@@ -4,6 +4,23 @@ The tested route is Linux x64: a native Linux build, and a Windows x64 exe cross
 Windows itself is not supported yet (the installer that will do it is on the [roadmap](ROADMAP.md)). As of
 2026-10-30 every step below was run on the maintainer's machine (CachyOS, clang 23, an NVIDIA RTX 3070 Ti).
 
+## The short way
+
+After getting the code (step 1) and the tools (the table in step 2; Python's packages come by themselves), one
+command does steps 2 to 4:
+
+```sh
+tools/install.sh
+```
+
+It asks where your files are (Enter keeps the path it offers), checks them as `tools/check-game-files.py` does,
+then makes the venv, patches, lifts, prepares `work/vfs` and builds, with one progress bar. The paths are kept in
+`work/paths.env`, which every script reads (a `KZ_*` variable you set still wins), so afterwards `tools/play.sh`
+needs nothing else. Run it again after an update or to point at other files: finished steps are skipped, and a
+step that was stopped or failed is where the next run starts. The log is in `work/logs/` (your home folder written
+as `~`). Without questions: `tools/release/firstrun.py --eboot PATH ...` (`--help`, `--dry-run` shows the plan).
+It is `tools/release/firstrun.py`, after Project Pyrrhus's and Project Helghast's first-run builder.
+
 ## 1. Get the code
 
 ```sh

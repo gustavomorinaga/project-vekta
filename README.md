@@ -89,6 +89,16 @@ its pinned commit, checked by SHA-256); either way the port is built on your mac
   MinGW-w64 sysroot as well;
 - a CPU with AVX2 (x86-64-v3) and a Vulkan GPU ([docs/requirements.md](docs/requirements.md)).
 
+The short way, from a release's archive or a clone: one command asks where your files are, checks them, and builds
+with one progress bar; it remembers the paths, so afterwards `tools/play.sh` is all you need.
+
+```sh
+tools/install.sh
+tools/play.sh
+```
+
+Step by step (what `tools/install.sh` runs):
+
 ```sh
 git clone --recurse-submodules https://github.com/gustavomorinaga/project-vekta
 cd project-vekta

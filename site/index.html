@@ -62,7 +62,7 @@
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Linux build</b><span class="blurb">built and played on the maintainer&#x27;s machine; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a></span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the campaign not checked there</span></div><span class="st st-part">Partial</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Frame rate</b><span class="blurb">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-no" aria-hidden="true">NO</span><div class="rt"><b>Installer</b><span class="blurb">build from source for now</span></div><span class="st st-no">Not yet</span></li>
+<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; the Windows installer is not there yet</span></div><span class="st st-part">Partial</span></li>
 </ul>
 <h3>The PS3 game, feature by feature</h3>
 <ul class="meters">
@@ -188,12 +188,21 @@
 <tr><td>Linux x64 build</td><td></td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>Windows x64 exe (cross-built on Linux)</td><td>runs under Wine, Proton and on Windows; the campaign not checked there</td><td><span class="st st-part">Partial</span></td></tr>
 <tr><td>Frame rate</td><td>a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Installer that builds the port on the player&#x27;s PC</td><td>build from source for now</td><td><span class="st st-no">Not yet</span></td></tr>
+<tr><td>Installer that builds the port on the player&#x27;s PC</td><td><code>tools/install.sh</code> on Linux; the Windows installer is not there yet</td><td><span class="st st-part">Partial</span></td></tr>
 </tbody></table></div>
 </details>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">Every feature, with evidence<span aria-hidden="true"> &gt;</span></a></p>
 </article>
 <div id="news">
+<article class="news rel">
+<h2>Unreleased</h2>
+<p class="meta">not released yet</p>
+<ul class="rlist">
+<li><span class="sec">Added</span><code>tools/install.sh</code>: one command asks where your files are, checks them, then patches, lifts and builds with one progress bar, and keeps the paths in <code>work/paths.env</code> for every script (<code>tools/release/firstrun.py</code>, after Project Pyrrhus&#x27;s and Project Helghast&#x27;s first-run builder); a stopped or failed run resumes at that step.</li>
+<li><span class="sec">Added</span><code>KZ_JOBS</code> sets the lift&#x27;s and the compile&#x27;s parallel jobs (the installer picks it from free memory).</li>
+<li><span class="sec">Fixed</span><code>tools/play.sh</code> names the missing step when there is no <code>work/vfs</code> or no build yet.</li>
+</ul>
+</article>
 <article class="news rel">
 <h2>0.1.0</h2>
 <p class="meta">31 Oct 2026 · pre-release</p>
@@ -235,14 +244,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> tools/install.sh: one command asks where your files are, checks them, then patches, lifts and builds with one progress...</span></li>
+<li><time>next</time><span><b>Unreleased</b> KZ_JOBS sets the lift&#x27;s and the compile&#x27;s parallel jobs (the installer picks it from free memory).</span></li>
+<li><time>next</time><span><b>Unreleased</b> tools/play.sh names the missing step when there is no work/vfs or no build yet.</span></li>
 <li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> The game&#x27;s own MLAA anti-aliasing, reimplemented as a GPU compute pass equal to the SPU code (patches 2035 to 2037...</span></li>
 <li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> NVIDIA Reflex (Off, On, On + Boost) on the PC page, through VK_NV_low_latency2 (patch 2038).</span></li>
 <li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> In-game key capture for remapping screens (patch 4011).</span></li>
 <li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> tools/wine-test.sh runs the Windows build under Wine or Proton for a minute and says whether it held its frame rate...</span></li>
 <li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> tools/mlaa_harness and tools/mlaa_probe: the lifted MLAA jobs run outside the game, test patterns and checks.</span></li>
-<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> Releases: VERSION holds the one version string; tools/release/bump_version.py moves it everywhere and turns this...</span></li>
-<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> The project page is generated whole from the repository (the feature table, the screenshots, this changelog, the...</span></li>
-<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> tools/release/bump_version.py leaves an empty ## [Unreleased] above the entry it releases, and an empty entry is not...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
