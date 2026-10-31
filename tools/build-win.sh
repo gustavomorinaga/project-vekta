@@ -6,6 +6,8 @@
 # and stages everything in work/win-deps; both do nothing when that is already done. The exe links its C++ runtime
 # statically; SDL2.dll and FFmpeg's DLLs are copied beside it (vulkan-1.dll comes with the GPU driver).
 #
+# The pinned route is `tools/kzbuild.py build --win` (the same code as the Windows-hosted build).
+#
 # KZ_WIN_TOOLCHAIN=system keeps the earlier route: the system clang and lld with the distribution's mingw-w64
 # sysroot and its SDL2, zlib and glslang packages (Arch: mingw-w64-gcc mingw-w64-sdl2 mingw-w64-zlib
 # mingw-w64-glslang), the host's Vulkan and FFmpeg headers, and the player's own FFmpeg DLLs.
@@ -38,27 +40,4 @@ if [ "${KZ_WIN_TOOLCHAIN:-pinned}" = system ]; then
     exit 0
 fi
 
-T="$W/toolchain-cache"; D="$W/win-deps"
-"$KZ_PY" "$KZ_ROOT/tools/release/fetch_toolchain.py" --only llvm-mingw-linux,sdl2,zlib,glslang,vulkan-headers \
-    > /dev/null
-# FFmpeg: when its download is gone (its pin names a dated build), the host's headers and no DLLs.
-"$KZ_PY" "$KZ_ROOT/tools/release/fetch_toolchain.py" --only ffmpeg > /dev/null ||
-    echo "note: FFmpeg's pinned build could not be fetched: the host's headers, no movie DLLs"
-"$KZ_PY" "$KZ_ROOT/tools/release/build_win_deps.py"
-FF="$D/include"
-if [ ! -f "$FF/libavcodec/avcodec.h" ]; then
-    FF=$W/win-headers
-    [ -d "$FF/libavcodec" ] || { mkdir -p "$FF" && cp -r /usr/include/libavcodec /usr/include/libavformat \
-        /usr/include/libavutil /usr/include/libswscale /usr/include/libswresample "$FF/"; }
-fi
-# shellcheck disable=SC2086  # LIFT is a list of -D options
-cmake -G Ninja -S "$HERE" -B "$B" -DCMAKE_TOOLCHAIN_FILE="$KZ_ROOT/port/cmake/llvm-mingw.cmake" \
-    -DLLVM_MINGW_ROOT="$T/llvm-mingw-linux" -DKZ_WIN_DEPS="$D" -DCMAKE_BUILD_TYPE=Release $LIFT \
-    -DPS3RECOMP_RSX_VULKAN=ON -DPS3RECOMP_VULKAN_INCLUDE_DIR="$D/include" -DKZ_FFMPEG_INCLUDE_DIR="$FF" > /dev/null
-ninja -C "$B" ${KZ_JOBS:+-j "$KZ_JOBS"}
-# SDL2 and the FFmpeg libraries the movie loader opens (not avdevice or avfilter).
-for d in "$D"/bin/*.dll; do
-    case "${d##*/}" in avdevice-*|avfilter-*) ;; *) cp -u "$d" "$B/" ;; esac
-done
-ls "$B"/avcodec-*.dll > /dev/null 2>&1 || echo "note: no FFmpeg DLLs in $B (the movies are skipped)"
-echo "built: $B/KZ1HD.exe"
+exec python3 "$KZ_ROOT/tools/kzbuild.py" build --win "$@"
