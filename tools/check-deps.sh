@@ -35,9 +35,16 @@ want "FFmpeg (movies)"               "ffmpeg; without it the movies are skipped"
 want "llvm-profdata (tools/pgo.sh)"  "llvm"                                   command -v llvm-profdata
 want "bwrap (tools/sandbox.sh)"      "bubblewrap"                             command -v bwrap
 if (( WIN )); then
-  need "MinGW-w64 sysroot"           "mingw-w64-gcc"                          test -d /usr/x86_64-w64-mingw32/include
-  need "SDL2 for MinGW"              "mingw-w64-sdl2 (AUR)"                   test -f /usr/x86_64-w64-mingw32/lib/pkgconfig/sdl2.pc
-  need "zlib for MinGW"              "mingw-w64-zlib (AUR)"                   test -f /usr/x86_64-w64-mingw32/lib/pkgconfig/zlib.pc
+  # The pinned toolchain and libraries come from tools/release/toolchain.json (fetched on the first build);
+  # KZ_WIN_TOOLCHAIN=system uses the distribution's mingw-w64 packages instead.
+  if [[ "${KZ_WIN_TOOLCHAIN:-pinned}" == system ]]; then
+    need "MinGW-w64 sysroot"         "mingw-w64-gcc"                          test -d /usr/x86_64-w64-mingw32/include
+    need "SDL2 for MinGW"            "mingw-w64-sdl2 (AUR)"                   test -f /usr/x86_64-w64-mingw32/lib/pkgconfig/sdl2.pc
+    need "zlib for MinGW"            "mingw-w64-zlib (AUR)"                   test -f /usr/x86_64-w64-mingw32/lib/pkgconfig/zlib.pc
+  else
+    want "pinned Windows toolchain"  "fetched by tools/build-win.sh on its first run (network)" \
+      test -d "${KZ_WORK:-work}/toolchain-cache/llvm-mingw-linux/bin"
+  fi
   want "Wine (tools/wine-test.sh)"   "wine; or --proton with a Proton folder" command -v "${KZ_WINE:-wine}"
 fi
 (( missing )) && echo "check-deps: something required is missing (docs/BUILDING.md, step 2)" || echo "check-deps: ok"

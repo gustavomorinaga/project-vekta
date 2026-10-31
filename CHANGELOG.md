@@ -7,6 +7,11 @@ are source archives: the port is always built from source. Until a release that 
 ## [Unreleased]
 
 ### Added
+- The Windows build's toolchain is pinned in the repository (`tools/release/toolchain.json`): llvm-mingw, SDL2, zlib,
+  glslang, the Vulkan headers and FFmpeg 9 (its DLLs go beside the exe for the movies), fetched and checked by SHA-256 (`tools/release/fetch_toolchain.py`), zlib and
+  glslang built with that compiler (`tools/release/build_win_deps.py`); `tools/build-win.sh` uses it, so the cross
+  build needs no MinGW packages (`KZ_WIN_TOOLCHAIN=system` keeps the old route). The same pins will go into the
+  Windows installer.
 - An applications-menu entry with the project's own icon (`assets/icon.svg`): `tools/install.sh` offers it after a
   build (`firstrun.py --desktop`, `--remove-desktop`).
 - `tools/install.sh`: one command asks where your files are, checks them, then patches, lifts and builds with one

@@ -6,6 +6,7 @@ tools/tests/test_features.py
 tools/tests/test_website.py
 tools/tests/test_release.py
 tools/tests/test_firstrun.py
+tools/tests/test_toolchain.py
 tools/tests/test_version_agree.py
 tools/tests/test_doc_refs.py
 tools/tests/test_sync_from_private.py
