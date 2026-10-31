@@ -5,6 +5,7 @@ with one progress bar, and remember where the files are.
     tools/release/firstrun.py [--game DIR] [--eboot FILE] [--psarc FILE] [--libsre FILE] [--dev-flash DIR]
                               [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE] [--bar] [--dry-run]
     tools/release/firstrun.py --interactive [same options: they become the answers it offers]
+    tools/release/firstrun.py --remove-desktop
     tools/install.sh                        (the same as --interactive --bar)
 
 After Project Pyrrhus's and Project Helghast's tools/release/firstrun.py (undecuple, MIT): the table of steps with
@@ -26,6 +27,10 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
   vfs       work/vfs: the folder the game runs from (tools/setup-vfs.sh; saves and settings there are kept)
   compile   work/build/KZ1HD (tools/build.sh; every run: Ninja itself skips what is up to date)
   stamp     work/build-stamp.json: the version, the patch set and the inputs this build was made from
+
+After a build, --desktop (or a yes to --interactive's question) writes the applications-menu entry
+($XDG_DATA_HOME/applications/project-vekta.desktop, icon assets/icon.svg) that starts tools/play.sh from this tree;
+--remove-desktop takes it out again.
 
 Output: the steps' own lines, and PROGRESS step=i/n name=.. done=.. total=.. elapsed=s pct=..; at the end
 RESULT ok=1|0 step=<the step that stopped it, or -> elapsed=s, with REASON <text> lines before a RESULT ok=0. --bar
@@ -537,6 +542,52 @@ def dry_run(c, steps, out=sys.stdout):
 
 
 # ------------------------------------------------------------------------------------------------- interactive
+# ------------------------------------------------------------------------------------------- the menu entry
+DESKTOP_NAME = "project-vekta.desktop"
+
+
+def desktop_path():
+    """The applications-menu entry: $XDG_DATA_HOME/applications (default ~/.local/share/applications)."""
+    data = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    return os.path.join(data, "applications", DESKTOP_NAME)
+
+
+def desktop_entry(root):
+    """A freedesktop.org entry that starts tools/play.sh from this tree, with assets/icon.svg as its icon."""
+    q = lambda p: '"' + re.sub(r'([\\"`$])', r"\\\\\1", p) + '"'  # noqa: E731 (Exec quoting, then the escape layer)
+    return "\n".join([
+        "[Desktop Entry]",
+        "Type=Application",
+        "Version=1.5",
+        "Name=Project Vekta",
+        "GenericName=Killzone HD (PC port)",
+        "Comment=Plays the PC port of Killzone HD built from your own game",
+        f"Exec={q(os.path.join(root, 'tools', 'play.sh'))}",
+        f"Path={root}",
+        f"Icon={os.path.join(root, 'assets', 'icon.svg')}",
+        "Terminal=false",
+        "Categories=Game;ActionGame;",
+        "StartupNotify=true",
+        "",
+    ])
+
+
+def install_desktop(root):
+    p = desktop_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w", encoding="utf-8", newline="\n") as f:
+        f.write(desktop_entry(root))
+    return p
+
+
+def remove_desktop():
+    p = desktop_path()
+    if os.path.exists(p):
+        os.remove(p)
+        return p
+    return None
+
+
 NOTICE = """Project Vekta {version}: first run
 It checks your own files, then translates and builds the game's code on this machine (a few minutes; the Python
 packages of the build tools are the only download). Nothing of the game is downloaded, and your files are only read.
@@ -585,6 +636,9 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
     log.close()
     if rc == 0:
         say(f"Built. Play with: {os.path.join(c.root, 'tools', 'play.sh')}")
+        if a.desktop or (a.desktop is None and ask("Add Project Vekta to the applications menu? [Y/n] ").strip()
+                                                  .lower() not in ("n", "no")):
+            say(f"Menu entry: {install_desktop(c.root)}")
     elif rc == 1:
         say("The build stopped:\n" + "\n".join("  " + x for x in r.reasons) + f"\nThe whole log: {log.path}")
     return rc
@@ -601,6 +655,11 @@ def main(argv=None):
     ap.add_argument("--bar", action="store_true", help="one console progress bar instead of the steps' lines")
     ap.add_argument("--interactive", action="store_true", help="ask for the files, check them, then build")
     ap.add_argument("--dry-run", action="store_true", help="print the plan; run and write nothing")
+    ap.add_argument("--desktop", action=argparse.BooleanOptionalAction if hasattr(argparse, "BooleanOptionalAction")
+                    else "store_true", default=None,
+                    help="add (--no-desktop: do not add) the applications-menu entry after a build; "
+                         "--interactive asks when neither is given")
+    ap.add_argument("--remove-desktop", action="store_true", help="remove the applications-menu entry and stop")
     a = ap.parse_args(argv)
     if a.jobs is not None and a.jobs < 1:
         print("firstrun: --jobs must be 1 or more", file=sys.stderr)
@@ -609,6 +668,10 @@ def main(argv=None):
     work = os.environ.get("KZ_WORK") or os.path.join(root, "work")
     c = Ctx(root=root, paths=resolve_paths(root, work, {n: getattr(a, n) for n, *_ in INPUTS}),
             jobs=a.jobs or jobs_for(available_ram()), work=work)
+    if a.remove_desktop:
+        p = remove_desktop()
+        print(f"removed {p}" if p else f"no menu entry at {desktop_path()}")
+        return 0
     if a.dry_run:
         return dry_run(c, STEPS)
     if a.interactive:
@@ -624,6 +687,8 @@ def main(argv=None):
         r.watch_stop(a.stop_file)
     rc = r.run()
     log.close()
+    if rc == 0 and a.desktop:
+        print(f"Menu entry: {install_desktop(c.root)}")
     return rc
 
 

@@ -7,6 +7,8 @@ are source archives: the port is always built from source. Until a release that 
 ## [Unreleased]
 
 ### Added
+- An applications-menu entry with the project's own icon (`assets/icon.svg`): `tools/install.sh` offers it after a
+  build (`firstrun.py --desktop`, `--remove-desktop`).
 - `tools/install.sh`: one command asks where your files are, checks them, then patches, lifts and builds with one
   progress bar, and keeps the paths in `work/paths.env` for every script (`tools/release/firstrun.py`, after Project
   Pyrrhus's and Project Helghast's first-run builder); a stopped or failed run resumes at that step.

@@ -16,7 +16,8 @@ tools/install.sh
 It asks where your files are (Enter keeps the path it offers), checks them as `tools/check-game-files.py` does,
 then makes the venv, patches, lifts, prepares `work/vfs` and builds, with one progress bar. The paths are kept in
 `work/paths.env`, which every script reads (a `KZ_*` variable you set still wins), so afterwards `tools/play.sh`
-needs nothing else. Run it again after an update or to point at other files: finished steps are skipped, and a
+needs nothing else; it also offers an applications-menu entry with the project's icon (`tools/release/firstrun.py
+--remove-desktop` takes it out). Run it again after an update or to point at other files: finished steps are skipped, and a
 step that was stopped or failed is where the next run starts. The log is in `work/logs/` (your home folder written
 as `~`). Without questions: `tools/release/firstrun.py --eboot PATH ...` (`--help`, `--dry-run` shows the plan).
 It is `tools/release/firstrun.py`, after Project Pyrrhus's and Project Helghast's first-run builder.
