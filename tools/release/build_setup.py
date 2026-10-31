@@ -79,6 +79,10 @@ def main(argv=None):
         with open(os.path.join(a.payload, "VERSION"), encoding="utf-8") as f:
             if f.read().strip() != version:
                 raise ValueError(f"the payload's VERSION is not {version}: assemble it again")
+        if os.name != "nt":
+            # Wine shows a name that starts with a dot as hidden, and ISCC's wildcards skip hidden files.
+            subprocess.run(["wine", "reg", "add", "HKCU\\Software\\Wine", "/v", "ShowDotFiles", "/d", "Y", "/f"],
+                           check=True, stdout=subprocess.DEVNULL)
         iscc = a.iscc or os.environ.get("ISCC") or pinned_iscc(work, a.cache)
         os.makedirs(a.out, exist_ok=True)
         subprocess.run(wine([iscc, "/Q", f"/DPayload={winpath(a.payload)}", f"/O{winpath(a.out)}",

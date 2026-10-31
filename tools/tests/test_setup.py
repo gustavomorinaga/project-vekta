@@ -33,8 +33,10 @@ iss = (ROOT / "installer" / "vekta.iss").read_bytes()
 check(b"\r\n" in iss and b"\n" not in iss.replace(b"\r\n", b""), "vekta.iss has CRLF line endings")
 text = iss.decode()
 for ref in re.findall(r'\{#Payload\}\\\\?([^"\s;]+)', text):
-    check(ref == "*" or ref == "VERSION" or ref == "LICENSE" or (ROOT / ref).exists(),
+    check(ref == "*" or ref == "VERSION" or ref == "LICENSE" or (ROOT / ref.replace("\\", "/")).exists(),
           f"vekta.iss names a payload file the payload has: {ref}")
+check('Source: "{#Payload}\\work\\ps3recomp-patched\\.patchset"' in text,
+      "vekta.iss names .patchset itself (a wildcard skips hidden files)")
 check('#define LauncherExe "Project Vekta.exe"' in text, "vekta.iss starts the launcher assemble_payload ships")
 check((ROOT / "installer" / "art" / "vekta.ico").is_file() and "SetupIconFile=art\\vekta.ico" in text,
       "the setup icon is there")

@@ -73,6 +73,9 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"
 
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Named again: a wildcard skips hidden files, and Wine shows a name that starts with a dot as hidden (firstrun.py
+; finds the shipped patched tree by this file). tools/release/build_setup.py also turns Wine's ShowDotFiles on.
+Source: "{#Payload}\work\ps3recomp-patched\.patchset"; DestDir: "{app}\work\ps3recomp-patched"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"

@@ -100,8 +100,12 @@ PRUNE = {"llvm-mingw": ["aarch64-w64-mingw32/*", "armv7-w64-mingw32/*", "i686-w6
                         "bin/aarch64-w64-mingw32-*", "bin/armv7-w64-mingw32-*", "bin/i686-w64-mingw32-*",
                         "bin/arm64ec-w64-mingw32-*", "bin/*widl*", "busybox/*", "python/*", "bin/lldb*",
                         "bin/liblldb.dll", "bin/libpython3*.dll", "bin/mingw32-make.exe", "bin/gendef.exe",
-                        "share/gendef/*", "share/make/*", "share/widl/*", "lib/clang/*/lib/linux/*"],
-         "zlib": ["amiga/*"]}
+                        "share/gendef/*", "share/make/*", "share/widl/*", "lib/clang/*/lib/linux/*",
+                        "bin/clangd.exe", "bin/clang-tidy.exe"],
+         "zlib": ["amiga/*"],
+         # the build takes FFmpeg's headers and DLLs only (build_win_deps.py), SDL2's x86_64 tree only
+         "ffmpeg": ["bin/*.exe", "doc/*", "lib/*"], "sdl2": ["i686-w64-mingw32/*", "docs/*", "test/*"],
+         "cmake": ["doc/*", "man/*"]}
 # The ._pth of the embeddable Python: its own zip and folder, then the folders whose scripts import their neighbours
 # (relative to the ._pth, in work/toolchain-cache/python/).
 PTH_EXTRA = ["..\\..\\..\\tools", "..\\..\\..\\tools\\release", "..\\..\\ps3recomp-patched\\tools"]
