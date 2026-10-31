@@ -24,7 +24,7 @@ exports (a variable set in the environment still wins).
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
   check     tools/check-game-files.py (every run; a missing or different required file stops here)
   venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads; Linux)
-  patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches
+  patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches (a release folder ships it)
   lift      work/lift and work/fw: the game's and the firmware's code as C++ (kzbuild.py lift)
   vfs       work/vfs: the folder the game runs from (kzbuild.py vfs; saves and settings there are kept)
   compile   work/build/KZ1HD, on Windows work/build-win/KZ1HD.exe (kzbuild.py build; every run: Ninja itself
@@ -33,7 +33,7 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
 
 After a build, --desktop (or a yes to --interactive's question) writes the applications-menu entry
 ($XDG_DATA_HOME/applications/project-vekta.desktop, icon assets/icon.svg) that starts tools/play.sh from this tree;
---remove-desktop takes it out again.
+--remove-desktop takes it out again (Linux; on Windows the installer makes the shortcuts).
 
 Output: the steps' own lines, and PROGRESS step=i/n name=.. done=.. total=.. elapsed=s pct=..; at the end
 RESULT ok=1|0 step=<the step that stopped it, or -> elapsed=s, with REASON <text> lines before a RESULT ok=0. --bar
@@ -195,6 +195,24 @@ def kzbuild(*args):
     return lambda c: [[c.python, c.t("kzbuild.py"), *args]]
 
 
+def prepatched(c):
+    """A release folder: no ps3recomp submodule, the patched tree shipped (tools/release/assemble_payload.py)."""
+    return not os.path.isfile(os.path.join(c.root, "third_party", "ps3recomp", "CMakeLists.txt")) and \
+        os.path.isfile(c.w("ps3recomp-patched", ".patchset"))
+
+
+def cmd_patch(c):
+    return [] if prepatched(c) else kzbuild("patch")(c)
+
+
+def play_command(root):
+    """What starts the game from this tree: play.cmd in a Windows release folder, else tools/play.sh."""
+    if os.name == "nt":
+        cmd = os.path.join(root, "play.cmd")
+        return cmd if os.path.isfile(cmd) else f"python {os.path.join(root, 'tools', 'release', 'launch.py')}"
+    return os.path.join(root, "tools", "play.sh")
+
+
 def cmd_venv(c):
     if os.name == "nt":
         return []
@@ -222,7 +240,7 @@ def after_stamp(c):
 STEPS = [
     Step("check", "Checking your game files", 2, lambda c: [[c.python, c.t("check-game-files.py")]], always=True),
     Step("venv", "Installing the build tools", 6, cmd_venv, keys=("venv",)),
-    Step("patch", "Patching ps3recomp", 5, kzbuild("patch"), keys=("patch",)),
+    Step("patch", "Patching ps3recomp", 5, cmd_patch, keys=("patch",)),
     Step("lift", "Translating the game's code", 20, kzbuild("lift"), keys=("files", "patch", "lift")),
     Step("vfs", "Preparing the game folder", 15, kzbuild("vfs"), keys=("files", "vfs")),
     Step("compile", "Compiling", 51, kzbuild("build"), always=True, ninja=True),
@@ -240,7 +258,22 @@ def read_version(root):
 
 # ----------------------------------------------------------------------------------------------------- helpers
 def available_ram():
-    """Available memory in bytes from /proc/meminfo, or None."""
+    """Available memory in bytes (/proc/meminfo; GlobalMemoryStatusEx on Windows), or None."""
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            class MemStatus(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong)] + \
+                           [(n, ctypes.c_ulonglong) for n in ("total", "avail", "tpage", "apage", "tvirt", "avirt",
+                                                              "aext")]
+            st = MemStatus()
+            st.dwLength = ctypes.sizeof(MemStatus)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+                return int(st.avail)
+        except (OSError, AttributeError, ValueError):
+            pass
+        return None
     try:
         with open("/proc/meminfo") as f:
             for line in f:
@@ -266,7 +299,7 @@ def redactor(home=None):
     home = (home or os.path.expanduser("~")).rstrip("/")
     if len(home) <= 1:
         return lambda s: s
-    rx = re.compile(re.escape(home) + r"(?=/|\b|$)")
+    rx = re.compile(re.escape(home) + r"(?=[/\\]|\b|$)", re.I if os.name == "nt" else 0)
     return lambda s: rx.sub("~", s)
 
 
@@ -640,9 +673,9 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
     rc = r.run()
     log.close()
     if rc == 0:
-        say(f"Built. Play with: {os.path.join(c.root, 'tools', 'play.sh')}")
-        if a.desktop or (a.desktop is None and ask("Add Project Vekta to the applications menu? [Y/n] ").strip()
-                                                  .lower() not in ("n", "no")):
+        say(f"Built. Play with: {play_command(c.root)}")
+        if os.name != "nt" and (a.desktop or (a.desktop is None and ask("Add Project Vekta to the applications menu? [Y/n] ").strip()
+                                                  .lower() not in ("n", "no"))):
             say(f"Menu entry: {install_desktop(c.root)}")
     elif rc == 1:
         say("The build stopped:\n" + "\n".join("  " + x for x in r.reasons) + f"\nThe whole log: {log.path}")
@@ -692,7 +725,7 @@ def main(argv=None):
         r.watch_stop(a.stop_file)
     rc = r.run()
     log.close()
-    if rc == 0 and a.desktop:
+    if rc == 0 and a.desktop and os.name != "nt":
         print(f"Menu entry: {install_desktop(c.root)}")
     return rc
 

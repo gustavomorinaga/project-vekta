@@ -80,4 +80,4 @@ How it is built, how fast it runs and how it reaches players.
 | Linux x64 build | **works** | built and played on the maintainer's machine; [BUILDING.md](BUILDING.md) |
 | Windows x64 exe (cross-built on Linux) | **partial**: runs under Wine, Proton and on Windows; the campaign not checked there | `tools/wine-test.sh` passes under Wine and GE-Proton 11 (2026-10-30); [KNOWN_ISSUES.md](KNOWN_ISSUES.md) |
 | Frame rate | **works**: a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps | Level 1 and Level 7 on Linux, RTX 3070 Ti; [dev/performance.md](dev/performance.md) |
-| Installer that builds the port on the player's PC | **partial**: `tools/install.sh` on Linux; the Windows installer is not there yet | [ROADMAP.md](ROADMAP.md), phase 11 |
+| Installer that builds the port on the player's PC | **partial**: `tools/install.sh` on Linux; on Windows a release folder (`tools/release/assemble_payload.py`, `run.cmd`) builds with the bundled toolchain, the setup program is not there yet | [ROADMAP.md](ROADMAP.md), phase 11 |
