@@ -699,6 +699,9 @@ def main(argv=None):
                          "--interactive asks when neither is given")
     ap.add_argument("--remove-desktop", action="store_true", help="remove the applications-menu entry and stop")
     a = ap.parse_args(argv)
+    for s in (sys.stdout, sys.stderr):   # a tool's message in another code page must not stop the run
+        if hasattr(s, "reconfigure"):
+            s.reconfigure(errors="replace")
     if a.jobs is not None and a.jobs < 1:
         print("firstrun: --jobs must be 1 or more", file=sys.stderr)
         return 2
