@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Project Vekta icon: our own art, no game logos or images; the banner's motifs (the red eyes in the haze over a
+       jungle ridge, the HUD corners) in its palette (assets/banner.svg). No text, so it needs no font. The
+       applications-menu entry tools/install.sh writes uses it as it is. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="44%" r="60%">
+      <stop offset="0" stop-color="#3a1410"/>
+      <stop offset="0.6" stop-color="#121915"/>
+      <stop offset="1" stop-color="#0a0d0b"/>
+    </radialGradient>
+    <filter id="soft" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="7"/></filter>
+    <clipPath id="tile"><rect width="256" height="256" rx="36"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="256" height="256" fill="url(#glow)"/>
+    <path d="M0 196 L22 190 L36 168 L46 186 L74 180 L90 150 L102 182 L132 176 L148 140 L160 178 L190 172 L206 152
+             L218 176 L256 170 L256 256 L0 256Z" fill="#060807"/>
+    <g transform="translate(94 112)">
+      <circle cx="0" cy="0" r="18" fill="#d63a2a" filter="url(#soft)" opacity="0.85"/>
+      <circle cx="68" cy="0" r="18" fill="#d63a2a" filter="url(#soft)" opacity="0.85"/>
+      <circle cx="0" cy="0" r="8" fill="#ff6a4d"/>
+      <circle cx="68" cy="0" r="8" fill="#ff6a4d"/>
+    </g>
+    <g fill="none" stroke="#7fa3b8" stroke-width="8" stroke-linecap="square">
+      <path d="M28 76V28H76"/>
+      <path d="M228 180V228H180"/>
+    </g>
+  </g>
+  <rect x="2" y="2" width="252" height="252" rx="34" fill="none" stroke="#2a3a30" stroke-width="4"/>
+</svg>

@@ -170,6 +170,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     class A:
         status_file = stop_file = None
+        desktop = False
     c = ctx(root, game)
     os.environ["FAIL_STEP"] = ""
     real = firstrun.Runner.run
@@ -192,6 +193,23 @@ with tempfile.TemporaryDirectory() as tmp:
           "the console shows the bar, not the protocol lines")
     check(sum("EBOOT" in q for q in asked) == 2 and len(asked) == 7,
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
+
+# the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again
+with tempfile.TemporaryDirectory() as tmp:
+    os.environ["XDG_DATA_HOME"] = tmp
+    odd = '/opt/my "odd" $dir'
+    p = firstrun.install_desktop(odd)
+    text = pathlib.Path(p).read_text()
+    check(p == os.path.join(tmp, "applications", "project-vekta.desktop"), f"the entry goes to the menu folder: {p}")
+    check('Exec="/opt/my \\\\"odd\\\\" \\\\$dir/tools/play.sh"' in text, f"Exec is quoted and escaped: {text}")
+    check(f"Icon={odd}/assets/icon.svg" in text and "Categories=Game;" in text, "the entry has the icon and category")
+    if shutil.which("desktop-file-validate"):
+        r = subprocess.run(["desktop-file-validate", p], capture_output=True, text=True)
+        check(r.returncode == 0, "desktop-file-validate accepts it: " + r.stdout + r.stderr)
+    check(firstrun.remove_desktop() == p and not os.path.exists(p) and firstrun.remove_desktop() is None,
+          "--remove-desktop removes it, once")
+    del os.environ["XDG_DATA_HOME"]
+check((ROOT / "assets/icon.svg").is_file(), "the icon the entry names is in the tree")
 
 check(firstrun.jobs_for(None, cores=16) == 4, "unknown memory: four jobs")
 check(firstrun.jobs_for(32 * firstrun.GIB, cores=16) == 16, "32 GiB free and 16 cores: 16 jobs")
