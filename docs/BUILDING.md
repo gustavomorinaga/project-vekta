@@ -53,7 +53,7 @@ An existing clone without the submodule: `git submodule update --init`. On Windo
 | Vulkan | `vulkan-headers vulkan-icd-loader glslang spirv-tools` | a Vulkan driver for your GPU |
 | Libraries | `sdl2-compat zlib` | SDL2 (or sdl2-compat over SDL3) |
 | Movies | `ffmpeg` | loaded at run time; without it the game runs and skips the movies |
-| Windows cross build | `mingw-w64-gcc` and, from the AUR, `mingw-w64-sdl2 mingw-w64-zlib mingw-w64-glslang` | only for `tools/build-win.sh` |
+| Windows cross build | nothing more: `tools/build-win.sh` fetches its pinned toolchain on the first run | (`KZ_WIN_TOOLCHAIN=system`: `mingw-w64-gcc` and, from the AUR, `mingw-w64-sdl2 mingw-w64-zlib mingw-w64-glslang`) |
 
 Other distributions have the same packages under their own names. CMake and Ninja come from the venv:
 
@@ -123,10 +123,15 @@ What CI runs on every push and pull request needs no game files and no GPU: `too
 tools/build-win.sh           # work/build-win/KZ1HD.exe, with the DLLs it needs beside it
 ```
 
-It uses the same lift as the Linux build. clang and lld build against the MinGW-w64 sysroot
-(`port/cmake/clang-mingw.cmake`); clang's native TLS avoids the cost of the thread-locals MinGW's GCC emulates. The
-Vulkan and FFmpeg headers are copied from your system into `work/win-headers` (headers only: `vulkan-1.dll` comes with
-the GPU driver, and FFmpeg is loaded at run time).
+It uses the same lift as the Linux build and the pinned toolchain of `tools/release/toolchain.json`, the one the
+Windows installer will bundle: llvm-mingw (clang, lld, libc++; `port/cmake/llvm-mingw.cmake`), SDL2, zlib, glslang
+and the Vulkan headers. On the first run `tools/release/fetch_toolchain.py` downloads them into
+`work/toolchain-cache` and checks each against its SHA-256, and `tools/release/build_win_deps.py` builds zlib and
+glslang with that compiler into `work/win-deps` (about half a minute); later runs reuse both. The exe links its C++
+runtime statically, so only `SDL2.dll` (and FFmpeg's DLLs) go beside it; `vulkan-1.dll` comes with the GPU driver.
+FFmpeg's headers come from your system until its pin is confirmed. `KZ_WIN_TOOLCHAIN=system` builds the earlier way,
+with the system clang and the distribution's MinGW-w64 packages (`port/cmake/clang-mingw.cmake`). clang's native TLS
+avoids the cost of the thread-locals MinGW's GCC emulates.
 
 - **Movies on Windows:** put the FFmpeg 9.x DLLs (`avcodec-63`, `avformat-63`, `avutil-61`, `swresample-7`,
   `swscale-10`, for example from an "lgpl-shared" build) beside the exe. Without them, or with `KZ_NO_MOVIES=1`, the
