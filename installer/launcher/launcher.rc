@@ -1,0 +1,33 @@
+// Resources of the release launcher "Project Vekta.exe" (after Project Pyrrhus's installer/launcher/launcher.rc,
+// undecuple, MIT): the icon (installer/art/vekta.ico, from assets/icon.svg) and the version strings.
+// launcher_version.h is written by tools/release/build_launcher.py from VERSION.
+#include <winver.h>
+#include "launcher_version.h"
+
+1 ICON "vekta.ico"
+
+1 VERSIONINFO
+FILEVERSION VEKTA_VER_COMMA
+PRODUCTVERSION VEKTA_VER_COMMA
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Project Vekta contributors"
+      VALUE "FileDescription", "Project Vekta launcher"
+      VALUE "FileVersion", VEKTA_VER_STR
+      VALUE "InternalName", "launcher"
+      VALUE "OriginalFilename", "Project Vekta.exe"
+      VALUE "ProductName", "Project Vekta"
+      VALUE "ProductVersion", VEKTA_VER_STR
+      VALUE "Comments", "https://github.com/gustavomorinaga/project-vekta"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

@@ -1,6 +1,16 @@
 {
  "format": 1,
  "about": "The pinned Windows toolchain and libraries, fetched by tools/release/fetch_toolchain.py into work/toolchain-cache/<name>/ (download, SHA-256 check, unpack). 'host' says where an entry is used: linux = the cross build on Linux (tools/build-win.sh), windows = the Windows-hosted build the installer will bundle, any = both. '{version}' in a url is the entry's own version. sha256 TO-FILL = never fetched: fetch_toolchain.py refuses it unless --fill, which records the hash of the first download (check it against the release page's published hash where there is one). pin TO-CONFIRM = the version was chosen without looking at the release page: confirm it there, then --fill. After Project Pyrrhus's and Project Helghast's tools/release/toolchain.json (undecuple, MIT): the same llvm-mingw, CMake, Ninja and Python pins.",
+ "build_tools": [
+  {
+   "name": "innosetup",
+   "version": "6.7.3",
+   "url": "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-{version}.exe",
+   "sha256": "9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732",
+   "license": "Inno Setup License",
+   "about": "Build-time only, never shipped: the official Inno Setup installer that tools/release/build_setup.py installs (hash-checked) to compile installer/vekta.iss. Hash: Project Pyrrhus's and Project Helghast's pin."
+  }
+ ],
  "components": [
   {
    "name": "llvm-mingw-linux",

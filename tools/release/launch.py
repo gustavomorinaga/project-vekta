@@ -9,7 +9,9 @@ work/build/KZ1HD elsewhere), the run folder (KZ_VFS, default work/vfs) and the f
 (work/fw/out/libsre_image.bin). The game runs from the run folder with tools/play.sh's settings (each one a default:
 the environment wins) and its log goes to work/play.log. When the window closes the game is stopped, as play.sh
 does. Without a build or a run folder it says which step is missing (run.cmd, or tools/install.sh).
---dry-run prints the command, the folder and the settings and starts nothing.
+--dry-run prints the command, the folder and the settings and starts nothing. --build-if-needed (the launcher, Project
+Vekta.exe, passes it): before the first build, run.cmd opens in a console of its own, then the game starts if it
+built.
 
 After Project Pyrrhus's and Project Helghast's tools/release/launch.py (undecuple, MIT), which decide the same
 things for their launchers. Exit: the game's own code, 1 = not built yet, 2 = usage. Standard library only.
@@ -81,17 +83,43 @@ def run(argv, cwd, env, log, poll=1.0):
         return p.wait()
 
 
+def notify(text):
+    """A message the player sees: stderr, or a message box under pythonw (the launcher's Python has no console)."""
+    if sys.stderr is not None:
+        print(f"launch: {text}", file=sys.stderr)
+    elif kzbuild.WINDOWS:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, text, "Project Vekta", 0x10)
+
+
+def first_run(root):
+    """run.cmd (the questions and the build) in a console of its own; its exit code, or None without it."""
+    cmd = os.path.join(root, "run.cmd")
+    if not os.path.isfile(cmd):
+        return None
+    return subprocess.run(["cmd.exe", "/c", cmd], cwd=root,
+                          creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0)).returncode
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--root", default=os.path.dirname(os.path.dirname(HERE)))
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--fullscreen", action="store_true")
+    ap.add_argument("--build-if-needed", action="store_true",
+                    help="before the first build, open run.cmd (Windows release folder; the launcher passes it)")
     a = ap.parse_args(argv)
+    root = os.path.abspath(a.root)
     try:
-        argv_, cwd, env, log = plan(os.path.abspath(a.root), fullscreen=a.fullscreen)
+        argv_, cwd, env, log = plan(root, fullscreen=a.fullscreen)
     except ValueError as err:
-        print(f"launch: {err}", file=sys.stderr)
-        return 1
+        if not (a.build_if_needed and not a.dry_run and first_run(root) is not None):
+            notify(str(err))
+            return 1
+        try:   # the first run is done (or stopped): play if it built
+            argv_, cwd, env, log = plan(root, fullscreen=a.fullscreen)
+        except ValueError:
+            return 1
     if a.dry_run:
         print("run:", " ".join(f'"{x}"' if " " in x else x for x in argv_))
         print("in:", cwd)
@@ -101,7 +129,8 @@ def main(argv=None):
                 print(f"{k}={env[k]}")
         return 0
     rc = run(argv_, cwd, env, log)
-    print(f"log: {log}")
+    if sys.stdout is not None:
+        print(f"log: {log}")
     return rc
 
 
