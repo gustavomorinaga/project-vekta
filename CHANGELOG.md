@@ -1,10 +1,12 @@
 # Changelog
 
-What each release contains, newest first, in the style of [Keep a Changelog](https://keepachangelog.com/). There is
-no release yet: the port is built from source. Until a release that calls itself playable
+What each release contains, newest first, in the style of [Keep a Changelog](https://keepachangelog.com/). Releases
+are source archives: the port is always built from source. Until a release that calls itself playable
 ([docs/RELEASE-CRITERIA.md](docs/RELEASE-CRITERIA.md)), every version is a pre-release.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-10-31 (pre-release)
 
 ### Added
 - The game's own MLAA anti-aliasing, reimplemented as a GPU compute pass equal to the SPU code (patches 2035 to 2037,
@@ -25,6 +27,8 @@ no release yet: the port is built from source. Until a release that calls itself
   `docs/FEATURES.md` gains a section on the port itself (builds, frame rate, installer).
 
 ### Fixed
+- `tools/release/bump_version.py` leaves an empty `## [Unreleased]` above the entry it releases, and an empty entry is
+  not news on the project page.
 - `tools/ps3recomp-patched.sh` also works in an unpacked source archive, where there is no git checkout.
 - An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039),
   and the SPU poison-write diagnostic works with `SPU_POISON_DMA_WATCH` (patch 1019); both found by ps3recomp's own

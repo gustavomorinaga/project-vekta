@@ -108,12 +108,15 @@ with tempfile.TemporaryDirectory() as tmp:
         if rel and not rel.startswith("third_party/") and (ROOT / rel).is_file():
             (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / rel, tmp / rel)
+    log = tmp / "CHANGELOG.md"
+    log.write_text(log.read_text().replace("## [Unreleased]\n", "## [Unreleased]\n\n### Fixed\n- A test item.\n", 1))
     cur = release_version.read(str(tmp))
     new = ".".join(map(str, release_version.key(cur)[:2])) + f".{release_version.key(cur)[2] + 1}"
     r = run(tmp / "tools/release/bump_version.py", new, "--date", "2026-12-24", "--root", tmp)
     check(r.returncode == 0, "bump_version runs: " + r.stdout[-300:] + r.stderr[-600:])
     check((tmp / "VERSION").read_text() == new + "\n", "VERSION moves")
-    check(f"## [{new}] - 2026-12-24 (pre-release)" in (tmp / "CHANGELOG.md").read_text(), "[Unreleased] becomes the entry")
+    check(f"## [Unreleased]\n\n## [{new}] - 2026-12-24 (pre-release)\n\n### Fixed\n- A test item." in log.read_text(),
+          "[Unreleased] becomes the entry, under a new empty [Unreleased]")
     check(f'version: "{new}"' in (tmp / "CITATION.cff").read_text(), "CITATION.cff takes the version")
     check(f"releases/tag/v{new}" in (tmp / "README.md").read_text(), "the README links the release")
     check(f"releases/tag/v{new}" in (tmp / "site/index.html").read_text(), "the page offers the release")

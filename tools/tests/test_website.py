@@ -64,9 +64,11 @@ with tempfile.TemporaryDirectory() as tmp:
 
     edit(tmp / "docs/SCREENSHOTS.md", "Main menu, with its background movie", "Main menu & <movie>")
     check("Main menu &amp; &lt;movie&gt;</span>" in website.render(tmp, []), "a screen's title follows SCREENSHOTS.md")
-    edit(tmp / "CHANGELOG.md", "## [Unreleased]", "## [0.1.0] - 2026-11-02 (pre-release)")
+    edit(tmp / "CHANGELOG.md", "## [Unreleased]", "## [Unreleased]\n\n## [9.9.9] - 2026-11-02 (pre-release)\n\n"
+         "### Added\n- A new thing.")
     out = website.render(tmp, [])
-    check("<h2>0.1.0</h2>" in out and "2 Nov 2026 · pre-release" in out, "a dated changelog entry becomes news")
+    check("<h2>9.9.9</h2>" in out and "2 Nov 2026 · pre-release" in out, "a dated changelog entry becomes news")
+    check("<h2>Unreleased</h2>" not in out, "an empty entry is not news")
 
     first = sorted((tmp / "docs/screenshots").iterdir())[0]
     first.unlink()

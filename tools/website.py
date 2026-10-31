@@ -331,7 +331,7 @@ def render(root, problems):
                 else "Not playable yet")
     shots = shots_found(root, problems)
     log = entries(root, problems)
-    news = log[:NEWS_N]
+    news = [e for e in log if e["items"]][:NEWS_N]   # an empty [Unreleased] is not news
     version, patches = recomp(root, problems)
     release = current_release(root, log, problems)
     if release:

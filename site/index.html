@@ -24,7 +24,7 @@
 <header id="top" class="box">
 <div class="logo"><img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320" alt="Project Vekta: Killzone HD PC"><span class="sticker">Work in progress</span></div>
 <ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li></ul>
-<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>Build it</b>no release yet</a></nav>
+<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.1.0</b>source pre-release</a></nav>
 <div class="intro">
 <h1>Project Vekta<span>Killzone HD: Unofficial PC Port (static recompilation)</span></h1>
 <p class="lead">A native Linux and Windows x64 port of the 2011 PS3 remaster of the first Killzone, made by static recompilation: the game's PowerPC and SPU code is translated to C++ ahead of time and compiled into a PC program on your machine; graphics go through Vulkan. No emulator runs at play time.</p>
@@ -195,8 +195,8 @@
 </article>
 <div id="news">
 <article class="news rel">
-<h2>Unreleased</h2>
-<p class="meta">not released yet</p>
+<h2>0.1.0</h2>
+<p class="meta">31 Oct 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="sec">Added</span>The game&#x27;s own MLAA anti-aliasing, reimplemented as a GPU compute pass equal to the SPU code (patches 2035 to 2037, <code>KZ_MLAA=gpu|spu|off</code>); the first frame no longer waits for the driver to compile it.</li>
 <li><span class="sec">Added</span>NVIDIA Reflex (Off, On, On + Boost) on the PC page, through <code>VK_NV_low_latency2</code> (patch 2038).</li>
@@ -205,6 +205,7 @@
 <li><span class="sec">Added</span><code>tools/mlaa_harness</code> and <code>tools/mlaa_probe</code>: the lifted MLAA jobs run outside the game, test patterns and checks.</li>
 <li><span class="sec">Added</span>Releases: <code>VERSION</code> holds the one version string; <code>tools/release/bump_version.py</code> moves it everywhere and turns this section into the release&#x27;s entry; a pushed tag builds a reproducible source archive (the tree with ps3recomp at its pinned commit) and opens a draft pre-release with notes from this file and SHA-256 sums (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/RELEASE-CRITERIA.md">docs/RELEASE-CRITERIA.md</a>).</li>
 <li><span class="sec">Changed</span>The project page is generated whole from the repository (the feature table, the screenshots, this changelog, the requirements and the patch series) and laid out like the Killzone 2 and Killzone 3 ports&#x27; pages; <code>docs/FEATURES.md</code> gains a section on the port itself (builds, frame rate, installer).</li>
+<li><span class="sec">Fixed</span><code>tools/release/bump_version.py</code> leaves an empty <code>## [Unreleased]</code> above the entry it releases, and an empty entry is not news on the project page.</li>
 <li><span class="sec">Fixed</span><code>tools/ps3recomp-patched.sh</code> also works in an unpacked source archive, where there is no git checkout.</li>
 <li><span class="sec">Fixed</span>An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039), and the SPU poison-write diagnostic works with <code>SPU_POISON_DMA_WATCH</code> (patch 1019); both found by ps3recomp&#x27;s own tests, which now run on the patched tree in CI (patch 0004).</li>
 <li><span class="sec">Fixed</span>An SPU that reserves a line while another SPU&#x27;s plain write to it is being copied now loses the reservation at once, not at the next 10 ms poll (patch 1020).</li>
@@ -234,14 +235,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> The game&#x27;s own MLAA anti-aliasing, reimplemented as a GPU compute pass equal to the SPU code (patches 2035 to 2037...</span></li>
-<li><time>next</time><span><b>Unreleased</b> NVIDIA Reflex (Off, On, On + Boost) on the PC page, through VK_NV_low_latency2 (patch 2038).</span></li>
-<li><time>next</time><span><b>Unreleased</b> In-game key capture for remapping screens (patch 4011).</span></li>
-<li><time>next</time><span><b>Unreleased</b> tools/wine-test.sh runs the Windows build under Wine or Proton for a minute and says whether it held its frame rate...</span></li>
-<li><time>next</time><span><b>Unreleased</b> tools/mlaa_harness and tools/mlaa_probe: the lifted MLAA jobs run outside the game, test patterns and checks.</span></li>
-<li><time>next</time><span><b>Unreleased</b> Releases: VERSION holds the one version string; tools/release/bump_version.py moves it everywhere and turns this...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The project page is generated whole from the repository (the feature table, the screenshots, this changelog, the...</span></li>
-<li><time>next</time><span><b>Unreleased</b> tools/ps3recomp-patched.sh also works in an unpacked source archive, where there is no git checkout.</span></li>
+<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> The game&#x27;s own MLAA anti-aliasing, reimplemented as a GPU compute pass equal to the SPU code (patches 2035 to 2037...</span></li>
+<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> NVIDIA Reflex (Off, On, On + Boost) on the PC page, through VK_NV_low_latency2 (patch 2038).</span></li>
+<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> In-game key capture for remapping screens (patch 4011).</span></li>
+<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> tools/wine-test.sh runs the Windows build under Wine or Proton for a minute and says whether it held its frame rate...</span></li>
+<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> tools/mlaa_harness and tools/mlaa_probe: the lifted MLAA jobs run outside the game, test patterns and checks.</span></li>
+<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> Releases: VERSION holds the one version string; tools/release/bump_version.py moves it everywhere and turns this...</span></li>
+<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> The project page is generated whole from the repository (the feature table, the screenshots, this changelog, the...</span></li>
+<li><time datetime="2026-10-31">10-31</time><span><b>0.1.0</b> tools/release/bump_version.py leaves an empty ## [Unreleased] above the entry it releases, and an empty entry is not...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -274,8 +275,10 @@
 <section id="install" class="promo">
 <h2>Install</h2>
 <div class="dl">
-<p class="ver">No release yet</p>
-<p>Nothing has been published yet. When a release is, it appears on the <a href="https://github.com/gustavomorinaga/project-vekta/releases">releases page</a>; until then the port is built from source.</p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.1.0">v0.1.0</a> <span>pre-release</span></p>
+<p class="small">31 Oct 2026 · partly playable · source for Linux x64</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.1.0">Download v0.1.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has project-vekta-0.1.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
 </div>
 <p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <pre>git clone --recurse-submodules \
