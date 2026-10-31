@@ -102,7 +102,7 @@
    "pin": "confirmed",
    "release_page": "https://github.com/KhronosGroup/glslang/releases",
    "url": "https://github.com/KhronosGroup/glslang/archive/refs/tags/{version}.tar.gz",
-   "sha256": "TO-FILL",
+   "sha256": "9c09b901149c729df745057dafa815278aaa101b84d2b6e14f16a42de52f97f2",
    "archive": "tar.gz",
    "strip_top": true,
    "license": "BSD-3-Clause, BSD-2-Clause, MIT, Apache-2.0 (LICENSE.txt lists each file's terms)",
@@ -115,7 +115,7 @@
    "pin": "confirmed",
    "release_page": "https://github.com/KhronosGroup/Vulkan-Headers/tags",
    "url": "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v{version}.tar.gz",
-   "sha256": "TO-FILL",
+   "sha256": "cbaf687d3c59b9666fe080e7f8396b6b4f4d344a768ee6b337c59852f4526b68",
    "archive": "tar.gz",
    "strip_top": true,
    "license": "Apache-2.0 OR MIT",
@@ -124,15 +124,15 @@
   {
    "name": "ffmpeg",
    "host": "any",
-   "version": "TO-CONFIRM",
-   "pin": "TO-CONFIRM",
+   "version": "n9.0.2-36-g6882969ce9",
+   "pin": "confirmed",
    "release_page": "https://github.com/BtbN/FFmpeg-Builds/releases",
-   "url": "TO-CONFIRM",
-   "sha256": "TO-FILL",
+   "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-27-18-38/ffmpeg-{version}-win64-lgpl-shared-9.0.zip",
+   "sha256": "f70e43c4f5670fbbf2dc4eb667b0d6b3743d68386f766c08bb2e0ec3edece398",
    "archive": "zip",
    "strip_top": true,
    "license": "LGPL-2.1-or-later (the lgpl-shared build: headers and DLLs; its source is named in the build's own files)",
-   "about": "FFmpeg 9 for Windows, a BtbN lgpl-shared build: the headers the movie player's run-time loader compiles against, and the DLLs it loads (avcodec-63 and the rest, beside the exe; without them the movies are skipped). The maintainer's tested build is the one in this pin."
+   "about": "FFmpeg 9 for Windows, BtbN's lgpl-shared build of autobuild-2026-10-27-18-38: the headers the movie player's run-time loader compiles against, and the DLLs it loads beside the exe (avcodec-63, avformat-63, avutil-61, swresample-7, swscale-10; without them the movies are skipped). The maintainer's tested build, byte for byte. BtbN removes most dated builds after a while (keeping the month's last): when this url stops working, move the pin to a kept build and fill its hash again."
   }
  ]
 }

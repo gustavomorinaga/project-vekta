@@ -39,10 +39,11 @@ if [ "${KZ_WIN_TOOLCHAIN:-pinned}" = system ]; then
 fi
 
 T="$W/toolchain-cache"; D="$W/win-deps"
-PARTS=llvm-mingw-linux,sdl2,zlib,glslang,vulkan-headers
-# FFmpeg once its pin is confirmed in toolchain.json (until then, the host's headers and no DLLs).
-if grep -q '"url": "https://github.com/BtbN' "$KZ_ROOT/tools/release/toolchain.json"; then PARTS=$PARTS,ffmpeg; fi
-"$KZ_PY" "$KZ_ROOT/tools/release/fetch_toolchain.py" --only "$PARTS" > /dev/null
+"$KZ_PY" "$KZ_ROOT/tools/release/fetch_toolchain.py" --only llvm-mingw-linux,sdl2,zlib,glslang,vulkan-headers \
+    > /dev/null
+# FFmpeg: when its download is gone (its pin names a dated build), the host's headers and no DLLs.
+"$KZ_PY" "$KZ_ROOT/tools/release/fetch_toolchain.py" --only ffmpeg > /dev/null ||
+    echo "note: FFmpeg's pinned build could not be fetched: the host's headers, no movie DLLs"
 "$KZ_PY" "$KZ_ROOT/tools/release/build_win_deps.py"
 FF="$D/include"
 if [ ! -f "$FF/libavcodec/avcodec.h" ]; then
@@ -55,6 +56,9 @@ cmake -G Ninja -S "$HERE" -B "$B" -DCMAKE_TOOLCHAIN_FILE="$KZ_ROOT/port/cmake/ll
     -DLLVM_MINGW_ROOT="$T/llvm-mingw-linux" -DKZ_WIN_DEPS="$D" -DCMAKE_BUILD_TYPE=Release $LIFT \
     -DPS3RECOMP_RSX_VULKAN=ON -DPS3RECOMP_VULKAN_INCLUDE_DIR="$D/include" -DKZ_FFMPEG_INCLUDE_DIR="$FF" > /dev/null
 ninja -C "$B" ${KZ_JOBS:+-j "$KZ_JOBS"}
-cp -u "$D"/bin/*.dll "$B/"
+# SDL2 and the FFmpeg libraries the movie loader opens (not avdevice or avfilter).
+for d in "$D"/bin/*.dll; do
+    case "${d##*/}" in avdevice-*|avfilter-*) ;; *) cp -u "$d" "$B/" ;; esac
+done
 ls "$B"/avcodec-*.dll > /dev/null 2>&1 || echo "note: no FFmpeg DLLs in $B (the movies are skipped)"
 echo "built: $B/KZ1HD.exe"

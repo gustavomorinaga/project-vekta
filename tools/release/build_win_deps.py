@@ -125,7 +125,7 @@ def main(argv=None):
                         shutil.copy2(c("ffmpeg", "bin", f), os.path.join(a.prefix, "bin", f))
                 print("ffmpeg: staged", flush=True)
             else:
-                print("ffmpeg: not fetched (its pin is not confirmed yet): the movies are skipped", flush=True)
+                print("ffmpeg: not fetched: the exe builds with the host's headers and plays no movies", flush=True)
     except (OSError, RuntimeError) as e:
         print(f"build_win_deps: {e}\n(the whole log: {log_path})", file=sys.stderr)
         return 1
