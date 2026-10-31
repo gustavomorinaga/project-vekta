@@ -10,8 +10,8 @@ source (release_version.py); this edits it and every place that writes the versi
   - README.md: the `<!-- release -->...<!-- /release -->` span becomes the link to the release's page;
   - every one-line `<!-- version -->...<!-- /version -->` span in README.md and docs/ (each X.Y.Z inside becomes the
     new version, so a span may hold a whole release link);
-  - CHANGELOG.md: "## [Unreleased]" becomes "## [X.Y.Z] - DATE (pre-release)" ("(release)" from 1.0.0); left alone
-    when X.Y.Z already has an entry.
+  - CHANGELOG.md: "## [Unreleased]" becomes "## [X.Y.Z] - DATE (pre-release)" ("(release)" from 1.0.0), under a new
+    empty "## [Unreleased]" for the next one; left alone when X.Y.Z already has an entry.
 Then it writes the project page again (tools/website.py: the download block follows the new entry) and runs the
 checks in order: tools/tests/test_version_agree.py, then the release notes for vX.Y.Z (release_notes.py; --notes FILE
 keeps them). Exit 1 when one fails (the files are written; fix and run again: a second run with the same version
@@ -56,7 +56,7 @@ def changelog(text, version, date):
         return text
     if not UNRELEASED.search(text):
         raise SystemExit("bump_version: CHANGELOG.md has no '## [Unreleased]' entry to release")
-    return UNRELEASED.sub(f"## [{version}] - {date} ({kind(version)})", text, count=1)
+    return UNRELEASED.sub(f"## [Unreleased]\n\n## [{version}] - {date} ({kind(version)})", text, count=1)
 
 
 def citation(text, version, date):

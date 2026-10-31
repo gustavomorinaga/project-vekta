@@ -1,6 +1,6 @@
 # Security policy
 
-This project is a work-in-progress PC port with no release yet. Security fixes go to the latest `main`.
+This project is a work-in-progress PC port; its releases are pre-releases. Security fixes go to the latest `main` and the next release.
 
 ## Reporting a vulnerability
 

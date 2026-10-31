@@ -78,7 +78,7 @@ repository's `work/` folder, and nothing is written into your game files.
 
 ## Getting it
 
-Latest release: <!-- release -->none yet<!-- /release -->. Releases are source archives (this tree with ps3recomp at
+Latest release: <!-- release -->[v0.1.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.1.0), a source pre-release<!-- /release -->. Releases are source archives (this tree with ps3recomp at
 its pinned commit, checked by SHA-256); either way the port is built on your machine from your own game
 ([docs/BUILDING.md](docs/BUILDING.md)). You need:
 
