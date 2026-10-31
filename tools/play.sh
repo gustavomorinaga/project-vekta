@@ -12,6 +12,8 @@
 KZ_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 . "$KZ_ROOT/tools/env.sh"
 bin="${KZ_BIN:-$KZ_WORK/build/KZ1HD}"   # KZ_BIN: another build (work/build-win/KZ1HD.exe)
+[ -d "$KZ_VFS" ] || { echo "play.sh: no $KZ_VFS yet: run tools/setup-vfs.sh first (docs/BUILDING.md)" >&2; exit 1; }
+[ -f "$bin" ] || { echo "play.sh: no $bin yet: run tools/ps3recomp-patched.sh, tools/lift.sh and tools/build.sh first (docs/BUILDING.md)" >&2; exit 1; }
 cd "$KZ_VFS" || exit 1
 export GCM_PARK_SKIP=${GCM_PARK_SKIP:-1} PS3RECOMP_VK_GUEST_PROGRAMS=${PS3RECOMP_VK_GUEST_PROGRAMS:-1}
 # The per-wait diagnostics only cost time and disk in play (~100 MB per session).

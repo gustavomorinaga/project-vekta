@@ -29,6 +29,7 @@ are source archives: the port is always built from source. Until a release that 
 ### Fixed
 - `tools/release/bump_version.py` leaves an empty `## [Unreleased]` above the entry it releases, and an empty entry is
   not news on the project page.
+- `tools/play.sh` names the missing step when there is no `work/vfs` or no build yet.
 - `tools/ps3recomp-patched.sh` also works in an unpacked source archive, where there is no git checkout.
 - An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039),
   and the SPU poison-write diagnostic works with `SPU_POISON_DMA_WATCH` (patch 1019); both found by ps3recomp's own
