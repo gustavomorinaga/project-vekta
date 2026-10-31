@@ -91,6 +91,8 @@ tools/build.sh               # work/build/KZ1HD
 - `tools/lift.sh` translates with all your cores; the build has about 220 steps, and the lifted PPU code takes
   most of the time and memory. On a machine with little memory, build with fewer jobs: `ninja -C work/build -j N`
   after `tools/build.sh` has configured it.
+- These scripts run `tools/kzbuild.py patch`, `lift`, `vfs` and `build`: the steps are Python, so the same code will
+  build on Windows (`tools/kzbuild.py env` prints the paths they use).
 - `KZ_MARCH` sets the CPU target (default `x86-64-v3`, AVX2; `x86-64-v4` for AVX-512 machines).
 - After changing `port/patches/`, run `tools/ps3recomp-patched.sh` and `tools/lift.sh` again (the lifters are
   patched too), then `tools/build.sh`.
@@ -159,5 +161,7 @@ Notes from the Windows bring-up (what changed, speed under Wine and on Windows):
 
 ## Building on Windows or macOS
 
-Not supported yet. The scripts are POSIX shell and expect the Linux toolchain above. On Windows, WSL2 with the Linux
-steps produces the Windows exe through `tools/build-win.sh` (not tried by the maintainer).
+Not supported yet. The build steps themselves are Python (`tools/kzbuild.py`) and, on Windows, build `KZ1HD.exe`
+with the pinned toolchain (`tools/release/toolchain.json`: llvm-mingw, CMake, Ninja, Python); the installer that
+brings them together, with Git for the patch step, is the next step and not tried yet. Until then, WSL2 with the
+Linux steps produces the Windows exe through `tools/build-win.sh` (not tried by the maintainer).

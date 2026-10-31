@@ -7,6 +7,10 @@ are source archives: the port is always built from source. Until a release that 
 ## [Unreleased]
 
 ### Added
+- The build steps are one Python tool, `tools/kzbuild.py` (`patch`, `lift`, `vfs`, `build`), so the same code builds
+  on Windows with the pinned toolchain; `tools/ps3recomp-patched.sh`, `tools/lift.sh`, `tools/setup-vfs.sh`,
+  `tools/build.sh` and `tools/build-win.sh` run it and their output is unchanged. Where links cannot be made the game
+  folder gets copies of the EBOOT and the archive.
 - The Windows build's toolchain is pinned in the repository (`tools/release/toolchain.json`): llvm-mingw, SDL2, zlib,
   glslang, the Vulkan headers and FFmpeg 9 (its DLLs go beside the exe for the movies), fetched and checked by SHA-256 (`tools/release/fetch_toolchain.py`), zlib and
   glslang built with that compiler (`tools/release/build_win_deps.py`); `tools/build-win.sh` uses it, so the cross

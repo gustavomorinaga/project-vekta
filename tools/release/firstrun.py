@@ -11,8 +11,10 @@ with one progress bar, and remember where the files are.
 After Project Pyrrhus's and Project Helghast's tools/release/firstrun.py (undecuple, MIT): the table of steps with
 weights and done-markers, the PROGRESS / RESULT / REASON lines, the status and stop files, the job count from free
 memory and the log with the home folder taken out are theirs. The steps are ours: they run this repository's own
-scripts (tools/check-game-files.py, tools/ps3recomp-patched.sh, tools/lift.sh, tools/setup-vfs.sh, tools/build.sh),
-so a build made here is the one docs/BUILDING.md describes. Linux for now; Windows comes with the toolchain.
+tools (tools/check-game-files.py and tools/kzbuild.py's patch, lift, vfs and build, which tools/ps3recomp-patched.sh,
+tools/lift.sh, tools/setup-vfs.sh and tools/build.sh run too), so a build made here is the one docs/BUILDING.md
+describes. On Windows the same steps build KZ1HD.exe with the pinned toolchain (tools/release/toolchain.json); there
+is no venv there (ps3recomp's lifters need only the standard library, CMake and Ninja come with the toolchain).
 
 The paths: each one from its option, else the environment (the KZ_* variables of tools/env.sh), else the last run's
 work/paths.env, else the defaults under Game/ (PS3_DEV_FLASH: RPCS3's dev_flash). Once the check passes they are
@@ -21,11 +23,12 @@ exports (a variable set in the environment still wins).
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
   check     tools/check-game-files.py (every run; a missing or different required file stops here)
-  venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads)
+  venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads; Linux)
   patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches
-  lift      work/lift and work/fw: the game's and the firmware's code as C++ (tools/lift.sh)
-  vfs       work/vfs: the folder the game runs from (tools/setup-vfs.sh; saves and settings there are kept)
-  compile   work/build/KZ1HD (tools/build.sh; every run: Ninja itself skips what is up to date)
+  lift      work/lift and work/fw: the game's and the firmware's code as C++ (kzbuild.py lift)
+  vfs       work/vfs: the folder the game runs from (kzbuild.py vfs; saves and settings there are kept)
+  compile   work/build/KZ1HD, on Windows work/build-win/KZ1HD.exe (kzbuild.py build; every run: Ninja itself
+            skips what is up to date)
   stamp     work/build-stamp.json: the version, the patch set and the inputs this build was made from
 
 After a build, --desktop (or a yes to --interactive's question) writes the applications-menu entry
@@ -147,13 +150,13 @@ class Ctx:
             elif key == "venv":
                 v = tree_hash(r, ["third_party/ps3recomp/requirements.txt"]) + sys.version.split()[0]
             elif key == "patch":
-                v = tree_hash(r, ["port/patches", "third_party/ps3recomp.pin", "tools/ps3recomp-patched.sh"]) + \
+                v = tree_hash(r, ["port/patches", "third_party/ps3recomp.pin", "tools/kzbuild.py"]) + \
                     self.pin()
             elif key == "lift":
-                v = tree_hash(r, ["tools/lift.sh", "tools/extract_spu_modules.py", "re/function_seeds.txt",
+                v = tree_hash(r, ["tools/kzbuild.py", "tools/extract_spu_modules.py", "re/function_seeds.txt",
                                   "port/kz1hd/native", "port/kz1hd/native_ppu"])
             elif key == "vfs":
-                v = tree_hash(r, ["tools/setup-vfs.sh", "tools/psarc_ls.py"])
+                v = tree_hash(r, ["tools/kzbuild.py", "tools/psarc_ls.py"])
             else:
                 raise KeyError(key)
             self.cache[key] = v
@@ -188,11 +191,13 @@ class Step:
     after: object = None                        # Ctx -> None, in-process work after the commands
 
 
-def sh(c, script):
-    return ["sh", c.t(script)]
+def kzbuild(*args):
+    return lambda c: [[c.python, c.t("kzbuild.py"), *args]]
 
 
 def cmd_venv(c):
+    if os.name == "nt":
+        return []
     venv = c.w("venv")
     cmds = [] if os.path.isfile(os.path.join(venv, "bin", "python")) else [[c.python, "-m", "venv", venv]]
     return cmds + [[os.path.join(venv, "bin", "pip"), "install", "--disable-pip-version-check", "-q", "cmake",
@@ -217,10 +222,10 @@ def after_stamp(c):
 STEPS = [
     Step("check", "Checking your game files", 2, lambda c: [[c.python, c.t("check-game-files.py")]], always=True),
     Step("venv", "Installing the build tools", 6, cmd_venv, keys=("venv",)),
-    Step("patch", "Patching ps3recomp", 5, lambda c: [["bash", c.t("ps3recomp-patched.sh")]], keys=("patch",)),
-    Step("lift", "Translating the game's code", 20, lambda c: [sh(c, "lift.sh")], keys=("files", "patch", "lift")),
-    Step("vfs", "Preparing the game folder", 15, lambda c: [sh(c, "setup-vfs.sh")], keys=("files", "vfs")),
-    Step("compile", "Compiling", 51, lambda c: [sh(c, "build.sh")], always=True, ninja=True),
+    Step("patch", "Patching ps3recomp", 5, kzbuild("patch"), keys=("patch",)),
+    Step("lift", "Translating the game's code", 20, kzbuild("lift"), keys=("files", "patch", "lift")),
+    Step("vfs", "Preparing the game folder", 15, kzbuild("vfs"), keys=("files", "vfs")),
+    Step("compile", "Compiling", 51, kzbuild("build"), always=True, ninja=True),
     Step("stamp", "Finishing", 1, lambda c: [], always=True, after=after_stamp),
 ]
 

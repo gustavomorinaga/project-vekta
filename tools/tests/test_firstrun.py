@@ -45,10 +45,18 @@ def fake_tree(tmp):
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(rel + "\n")
     (root / "third_party/ps3recomp.pin").write_text("4e8f3ca\n")
-    stubs = {"ps3recomp-patched.sh": "", "lift.sh": 'echo "jobs=$KZ_JOBS eboot=$KZ_EBOOT" >> "$KZ_WORK/calls"',
-             "setup-vfs.sh": "", "build.sh": 'echo "[1/2] cc a"; echo "[2/2] link KZ1HD"'}
-    for name, extra in stubs.items():
-        (root / "tools" / name).write_text(STUB.format(name=name.split(".")[0], extra=extra))
+    (root / "tools/kzbuild.py").write_text(
+        "import os, sys\n"
+        "cmd, w = sys.argv[1], os.environ['KZ_WORK']\n"
+        "open(os.path.join(w, 'calls'), 'a').write(cmd + '\\n')\n"
+        "if os.environ.get('FAIL_STEP') == cmd:\n"
+        "    print('error: ' + cmd + ' broke')\n"
+        "    sys.exit(3)\n"
+        "if cmd == 'lift':\n"
+        "    open(os.path.join(w, 'calls'), 'a').write(f\"jobs={os.environ['KZ_JOBS']} eboot={os.environ['KZ_EBOOT']}\\n\")\n"
+        "if cmd == 'build':\n"
+        "    print('[1/2] cc a')\n"
+        "    print('[2/2] link KZ1HD')\n")
     (root / "tools/check-game-files.py").write_text(
         "import os, sys\n"
         "open(os.path.join(os.environ['KZ_WORK'], 'calls'), 'a').write('check\\n')\n"
@@ -106,7 +114,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     rc, out, calls, r, raw = run(root, game, status=status)
     check(rc == 0 and "RESULT ok=1 step=-" in out, "the first run builds: " + out[-300:])
-    check(calls == ["check", "pip", "ps3recomp-patched", "lift", "setup-vfs", "build"], f"every step runs: {calls}")
+    check(calls == ["check", "pip", "patch", "lift", "vfs", "build"], f"every step runs: {calls}")
     check(f"jobs=3 eboot={game}/EBOOT.elf" in raw, f"the steps get the paths and the job count: {raw}")
     pcts = [float(ln.rsplit("pct=", 1)[1]) for ln in out.splitlines() if ln.startswith("PROGRESS ")]
     check(pcts == sorted(pcts) and pcts[-1] == 100.0, f"the progress only grows, to 100: {pcts[-5:]}")
@@ -133,7 +141,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (game / "EBOOT.elf").write_text("another EBOOT")
     os.utime(game / "EBOOT.elf", (1, 1))
     rc, out, calls, _, _ = run(root, game)
-    check(calls == ["check", "lift", "setup-vfs", "build"], f"another EBOOT re-runs the lift and the vfs: {calls}")
+    check(calls == ["check", "lift", "vfs", "build"], f"another EBOOT re-runs the lift and the vfs: {calls}")
 
     rc, out, calls, r, _ = run(root, game, fail="check", status=status)
     check(rc == 1 and calls == ["check"] and "REASON MISSING EBOOT.elf" in out, "a failed check stops the run")
@@ -157,7 +165,7 @@ with tempfile.TemporaryDirectory() as tmp:
     before = sorted(p.name for p in (root / "work").iterdir())
     out = io.StringIO()
     firstrun.dry_run(ctx(root, game), firstrun.STEPS, out=out)
-    check(sorted(p.name for p in (root / "work").iterdir()) == before and "lift.sh" in out.getvalue(),
+    check(sorted(p.name for p in (root / "work").iterdir()) == before and "kzbuild.py" in out.getvalue(),
           "--dry-run prints the plan and writes nothing")
 
     # --interactive: a failed check asks for the failing file only, then builds
