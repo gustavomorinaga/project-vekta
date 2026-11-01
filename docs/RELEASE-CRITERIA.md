@@ -12,7 +12,9 @@ is measured against. The first preview will be v0.1.0.
    [BUILDING.md](BUILDING.md), on a machine other than the maintainer's. **Relaxed for v0.1.0 only** (the
    maintainer's decision, 2026-10-30): the first preview may ship when the tagged release's own source archive,
    unpacked in a fresh folder, builds and plays on the maintainer's machine; its release notes say that no other
-   machine has built it yet. From v0.1.1 on the gate applies as written.
+   machine has built it yet. **Relaxed again for v0.2.0**, the first release with the Windows setup program (the
+   maintainer's decision, 2026-11-01): it was installed, built and played on the maintainer's machine, on Linux and on
+   Windows; its notes say so and ask for reports. From v0.2.1 on the gate applies as written.
 3. **Known issues listed** in [KNOWN_ISSUES.md](KNOWN_ISSUES.md), and a `CHANGELOG.md` section for the version.
 4. **One version string** in the tag, `CHANGELOG.md` and `CITATION.cff`.
 5. **SHA256SUMS** published beside any file the release carries.

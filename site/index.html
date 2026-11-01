@@ -24,7 +24,7 @@
 <header id="top" class="box">
 <div class="logo"><img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320" alt="Project Vekta: Killzone HD PC"><span class="sticker">Work in progress</span></div>
 <ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li></ul>
-<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.1.0</b>source pre-release</a></nav>
+<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.2.0</b>source pre-release</a></nav>
 <div class="intro">
 <h1>Project Vekta<span>Killzone HD: Unofficial PC Port (static recompilation)</span></h1>
 <p class="lead">A native Linux and Windows x64 port of the 2011 PS3 remaster of the first Killzone, made by static recompilation: the game's PowerPC and SPU code is translated to C++ ahead of time and compiled into a PC program on your machine; graphics go through Vulkan. No emulator runs at play time.</p>
@@ -195,14 +195,14 @@
 </article>
 <div id="news">
 <article class="news rel">
-<h2>Unreleased</h2>
-<p class="meta">not released yet</p>
+<h2>0.2.0</h2>
+<p class="meta">1 Nov 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="sec">Added</span>The Windows release folder (<code>tools/release/assemble_payload.py</code>): the port&#x27;s sources, the patched ps3recomp and the pinned Windows toolchain, with no Git or MSYS needed. <code>run.cmd</code> asks for your files and builds <code>KZ1HD.exe</code> there, and <code>play.cmd</code> starts it (<code>tools/release/launch.py</code>).</li>
 <li><span class="sec">Added</span>The Windows setup program (<code>installer/vekta.iss</code>, Inno Setup, per-user install) and the launcher <code>Project Vekta.exe</code> with the project&#x27;s icon, which builds on its first start and then plays (<code>tools/release/build_launcher.py</code>, <code>build_setup.py</code>).</li>
 <li><span class="sec">Added</span>Releases carry the Windows setup program and the Windows folder as a zip beside the source archive, each with a <code>.sha256</code>. <code>.github/workflows/release.yml</code> builds both from the tag: the folder on Linux, the setup program on Windows, where it is also installed, checked against the folder&#x27;s <code>manifest.json</code> and uninstalled (<code>tools/release/check_install.py</code>); <code>tools/release/release_check.py</code> checks the five files.</li>
 <li><span class="sec">Added</span>The build steps are one Python tool, <code>tools/kzbuild.py</code> (<code>patch</code>, <code>lift</code>, <code>vfs</code>, <code>build</code>), so the same code builds on Windows with the pinned toolchain; <code>tools/ps3recomp-patched.sh</code>, <code>tools/lift.sh</code>, <code>tools/setup-vfs.sh</code>, <code>tools/build.sh</code> and <code>tools/build-win.sh</code> run it and their output is unchanged. Where links cannot be made the game folder gets copies of the EBOOT and the archive.</li>
-<li><span class="sec">Added</span>The Windows build&#x27;s toolchain is pinned in the repository (<code>tools/release/toolchain.json</code>): llvm-mingw, SDL2, zlib, glslang, the Vulkan headers and FFmpeg 9 (its DLLs go beside the exe for the movies), fetched and checked by SHA-256 (<code>tools/release/fetch_toolchain.py</code>), zlib and glslang built with that compiler (<code>tools/release/build_win_deps.py</code>); <code>tools/build-win.sh</code> uses it, so the cross build needs no MinGW packages (<code>KZ_WIN_TOOLCHAIN=system</code> keeps the old route). The same pins will go into the Windows installer.</li>
+<li><span class="sec">Added</span>The Windows build&#x27;s toolchain is pinned in the repository (<code>tools/release/toolchain.json</code>): llvm-mingw, SDL2, zlib, glslang, the Vulkan headers and FFmpeg 9 (its DLLs go beside the exe for the movies), fetched and checked by SHA-256 (<code>tools/release/fetch_toolchain.py</code>), zlib and glslang built with that compiler (<code>tools/release/build_win_deps.py</code>); <code>tools/build-win.sh</code> uses it, so the cross build needs no MinGW packages (<code>KZ_WIN_TOOLCHAIN=system</code> keeps the old route). The Windows setup program carries the same pins.</li>
 <li><span class="sec">Added</span>An applications-menu entry with the project&#x27;s own icon (<code>assets/icon.svg</code>): <code>tools/install.sh</code> offers it after a build (<code>firstrun.py --desktop</code>, <code>--remove-desktop</code>).</li>
 <li><span class="sec">Added</span><code>tools/install.sh</code>: one command asks where your files are, checks them, then patches, lifts and builds with one progress bar, and keeps the paths in <code>work/paths.env</code> for every script (<code>tools/release/firstrun.py</code>, after Project Pyrrhus&#x27;s and Project Helghast&#x27;s first-run builder); a stopped or failed run resumes at that step.</li>
 <li><span class="sec">Added</span><code>KZ_JOBS</code> sets the lift&#x27;s and the compile&#x27;s parallel jobs (the installer picks it from free memory).</li>
@@ -250,14 +250,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> The Windows release folder (tools/release/assemble_payload.py): the port&#x27;s sources, the patched ps3recomp and the...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The Windows setup program (installer/vekta.iss, Inno Setup, per-user install) and the launcher Project Vekta.exe with...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Releases carry the Windows setup program and the Windows folder as a zip beside the source archive, each with a...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The build steps are one Python tool, tools/kzbuild.py (patch, lift, vfs, build), so the same code builds on Windows...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The Windows build&#x27;s toolchain is pinned in the repository (tools/release/toolchain.json): llvm-mingw, SDL2, zlib...</span></li>
-<li><time>next</time><span><b>Unreleased</b> An applications-menu entry with the project&#x27;s own icon (assets/icon.svg): tools/install.sh offers it after a build...</span></li>
-<li><time>next</time><span><b>Unreleased</b> tools/install.sh: one command asks where your files are, checks them, then patches, lifts and builds with one progress...</span></li>
-<li><time>next</time><span><b>Unreleased</b> KZ_JOBS sets the lift&#x27;s and the compile&#x27;s parallel jobs (the installer picks it from free memory).</span></li>
+<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows release folder (tools/release/assemble_payload.py): the port&#x27;s sources, the patched ps3recomp and the...</span></li>
+<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows setup program (installer/vekta.iss, Inno Setup, per-user install) and the launcher Project Vekta.exe with...</span></li>
+<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> Releases carry the Windows setup program and the Windows folder as a zip beside the source archive, each with a...</span></li>
+<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The build steps are one Python tool, tools/kzbuild.py (patch, lift, vfs, build), so the same code builds on Windows...</span></li>
+<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows build&#x27;s toolchain is pinned in the repository (tools/release/toolchain.json): llvm-mingw, SDL2, zlib...</span></li>
+<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> An applications-menu entry with the project&#x27;s own icon (assets/icon.svg): tools/install.sh offers it after a build...</span></li>
+<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> tools/install.sh: one command asks where your files are, checks them, then patches, lifts and builds with one progress...</span></li>
+<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> KZ_JOBS sets the lift&#x27;s and the compile&#x27;s parallel jobs (the installer picks it from free memory).</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -290,10 +290,10 @@
 <section id="install" class="promo">
 <h2>Install</h2>
 <div class="dl">
-<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.1.0">v0.1.0</a> <span>pre-release</span></p>
-<p class="small">31 Oct 2026 · partly playable · source for Linux x64</p>
-<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.1.0">Download v0.1.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
-<p>The release page has project-vekta-0.1.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.2.0">v0.2.0</a> <span>pre-release</span></p>
+<p class="small">1 Nov 2026 · partly playable · source for Linux x64</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.2.0">Download v0.2.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has project-vekta-0.2.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
 </div>
 <p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <pre>git clone --recurse-submodules \
