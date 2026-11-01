@@ -1,6 +1,6 @@
 # Known issues
 
-Last checked 2026-10-30. Each item says what happens, where, and what to do about it today. Details for developers
+Last checked 2026-11-01. Each item says what happens, where, and what to do about it today. Details for developers
 are linked.
 
 ## Game
@@ -31,10 +31,14 @@ are linked.
   2026-10-28). On a real Windows, a 7-minute session held 140 to 144 fps most of the time with drops to 100 to 120.
 - **No MangoHUD row** on the PC page of the Windows exe (MangoHUD is a Linux Vulkan layer; under Proton use it from
   the Linux side).
-- **Not tried on a clean Windows machine**, and the full campaign was not played on Windows.
-- **No installer yet:** the Windows exe is cross-built on Linux ([BUILDING.md](BUILDING.md)).
+- **The setup program was tried on one real Windows** (the maintainer's, 2026-10-31: the first build took about four
+  minutes, then the game held 60 fps), not yet on a clean Windows machine, and the full campaign was not played on
+  Windows.
+- **The first start builds the port** on the player's PC (about four to five minutes, and about 1.6 GB more on disk):
+  the game is not shipped, so it cannot be prebuilt.
 
 ## Building
 
 - Only the tested EBOOT works: the lift has its addresses built in ([GETTING-FILES.md](GETTING-FILES.md)).
-- The scripts are POSIX shell for Linux; building on Windows or macOS is not supported yet.
+- On Windows the build runs only from the release folder or the setup program (`run.cmd`), not from a Git clone;
+  macOS is not supported.

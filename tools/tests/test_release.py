@@ -84,6 +84,9 @@ check("Project Vekta 0.2.0, a pre-release" in body and "New in 0.2.0:\n- A featu
       and "Fixed:\n- A crash on two lines." in body, "notes list the new items and the fixes apart")
 check("/blob/v0.2.0/docs/BUILDING.md" in body and "project-vekta-0.2.0-source.tar.gz" in body,
       "notes link the tag's files and name the archive")
+check(all(f"project-vekta-0.2.0-{f}" in body for f in ("setup.exe", "windows.zip")) and "Project Vekta.exe" in body,
+      "notes after 0.1.0 name the setup program, the Windows zip and the launcher")
+check("setup.exe" not in release_notes.notes("0.1.0", es["0.2.0"], True), "v0.1.0's notes name the source only")
 check(release_notes.first_release("0.1.0", es) and not release_notes.first_release("0.2.0", es),
       "the first release is the one with no published version before it")
 with tempfile.TemporaryDirectory() as tmp:

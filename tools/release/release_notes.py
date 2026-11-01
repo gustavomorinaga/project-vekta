@@ -37,6 +37,26 @@ FIRST_BUILD_NOTE = ("This first preview has been built only on the maintainer's 
                     "archive, in a fresh folder); no other machine has built it yet. Reports of a build elsewhere, "
                     "working or not, are welcome as issues.")
 
+# v0.1.0 carried the source archive only; later releases also carry the Windows setup program and folder (release.yml).
+SOURCE_ONLY = (
+    "A source release: project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its pinned "
+    "commit, and builds the port on your own Linux machine (and the Windows exe from there): "
+    "[docs/BUILDING.md]({blob}/docs/BUILDING.md). You need your own Killzone HD (NPUA80856) from the Killzone "
+    "Trilogy disc with its decrypted EBOOT and data archive, and the decrypted libsre and dev_flash of your own PS3 "
+    "firmware; none of them is included or downloaded. What each must contain: "
+    "[docs/GETTING-FILES.md]({blob}/docs/GETTING-FILES.md). SHA-256 sums: SHA256SUMS (and the .sha256 file).")
+FILES = (
+    "Windows: project-vekta-{version}-setup.exe installs the port's sources and the pinned toolchain for your user "
+    "(no admin rights). Its launcher, Project Vekta.exe, asks where your files are, builds the port on its first "
+    "start (about five minutes) and then plays. project-vekta-{version}-windows.zip is the same folder without the "
+    "setup program: run.cmd builds, play.cmd plays. Linux: project-vekta-{version}-source.tar.gz holds this tag's "
+    "tree with ps3recomp at its pinned commit; tools/install.sh builds it ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). "
+    "None of the files holds anything of the game: you need your own Killzone HD (NPUA80856) from the Killzone "
+    "Trilogy disc with its decrypted EBOOT and data archive, and the decrypted libsre and dev_flash of your own PS3 "
+    "firmware; none of them is included or downloaded. What each must contain: "
+    "[docs/GETTING-FILES.md]({blob}/docs/GETTING-FILES.md). SHA-256 sums: SHA256SUMS (and a .sha256 beside each "
+    "file).")
+
 
 def entries(text):
     """{name: {date, note, items: [(section, text)]}} for every '## [...]' heading of the whole file."""
@@ -94,12 +114,8 @@ def notes(version, entry, first=False):
         f"Project Vekta {version}, {kind}: {STATUS}, see [docs/RELEASE-CRITERIA.md]({blob}/docs/RELEASE-CRITERIA.md).",
         *lists,
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
-        f"A source release: project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its pinned "
-        "commit, and builds the port on your own Linux machine (and the Windows exe from there): "
-        f"[docs/BUILDING.md]({blob}/docs/BUILDING.md). You need your own Killzone HD (NPUA80856) from the Killzone "
-        "Trilogy disc with its decrypted EBOOT and data archive, and the decrypted libsre and dev_flash of your own PS3 "
-        "firmware; none of them is included or downloaded. What each must contain: "
-        f"[docs/GETTING-FILES.md]({blob}/docs/GETTING-FILES.md). SHA-256 sums: SHA256SUMS (and the .sha256 file).",
+        *([SOURCE_ONLY.format(version=version, blob=blob)] if version == "0.1.0" else
+          [FILES.format(version=version, blob=blob)]),
         *([FIRST_BUILD_NOTE] if version == "0.1.0" else []),
     ]) + "\n"
 
