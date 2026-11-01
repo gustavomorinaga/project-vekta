@@ -96,6 +96,9 @@ def run(argv, e, stdout=None, cwd=None):
     """Runs argv; stdout: None = through, "null" = dropped, "capture" = returned, or a path to write it to.
     stderr goes through. A non-zero exit raises Fail."""
     out = None
+    if not os.path.dirname(argv[0]):
+        # A bare name from env's PATH: on Windows a child is looked up on this process's PATH, not on env's.
+        argv = [shutil.which(argv[0], path=e.get("PATH")) or argv[0]] + list(argv[1:])
     try:
         if stdout == "capture":
             r = subprocess.run(argv, env=e, cwd=cwd, stdout=subprocess.PIPE, text=True, errors="replace")
@@ -295,6 +298,9 @@ def cmd_lift(e, a):
     need_file(eboot, "EBOOT (KZ_EBOOT; docs/GETTING-FILES.md)")
     os.makedirs(j(k, "analysis"), exist_ok=True)
     an = j(k, "analysis") + os.sep
+    # The lifters write text in the locale's encoding: UTF-8 everywhere (on Windows they would use the code page;
+    # their line endings stay the system's, which clang reads the same).
+    e["PYTHONUTF8"] = "1"
 
     print("== PPU", flush=True)
     # The loader's view of the EBOOT (segments, imports, the functions its tables name), then the function list
@@ -475,7 +481,10 @@ def build_windows(e):
     run(["cmake", "-G", "Ninja", "-S", j(root, "port", "kz1hd"), "-B", b,
          f"-DCMAKE_TOOLCHAIN_FILE={j(root, 'port', 'cmake', 'llvm-mingw.cmake')}", f"-DLLVM_MINGW_ROOT={j(cache, llvm)}",
          f"-DKZ_WIN_DEPS={deps}", "-DCMAKE_BUILD_TYPE=Release", *defs, "-DPS3RECOMP_RSX_VULKAN=ON",
-         f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}", f"-DKZ_FFMPEG_INCLUDE_DIR={ff}"], e, "null")
+         f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}", f"-DKZ_FFMPEG_INCLUDE_DIR={ff}",
+         # the build's generators (gen_hle_nids.py and ps3recomp's): this Python, the bundled one on Windows,
+         # which is neither registered nor on PATH
+         f"-DPython3_EXECUTABLE={sys.executable}"], e, "null")
     ninja(e, b)
     # SDL2 and the FFmpeg libraries the movie loader opens (not avdevice or avfilter).
     dll_dir = j(deps, "bin")
@@ -508,6 +517,9 @@ def main(argv=None):
     bp = sp.add_parser("build")
     bp.add_argument("--win", action="store_true", help="the Windows exe, cross-built with the pinned llvm-mingw")
     a = ap.parse_args(argv)
+    for s in (sys.stdout, sys.stderr):   # a tool's message in another code page must not stop the step
+        if hasattr(s, "reconfigure"):
+            s.reconfigure(errors="replace")
     e = resolve()
     try:
         {"patch": cmd_patch, "lift": cmd_lift, "vfs": cmd_vfs, "build": cmd_build, "env": cmd_env}[a.cmd](e, a)

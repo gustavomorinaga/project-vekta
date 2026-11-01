@@ -7,6 +7,9 @@ are source archives: the port is always built from source. Until a release that 
 ## [Unreleased]
 
 ### Added
+- The Windows release folder (`tools/release/assemble_payload.py`): the port's sources, the patched ps3recomp and the
+  pinned Windows toolchain, with no Git or MSYS needed. `run.cmd` asks for your files and builds `KZ1HD.exe` there,
+  and `play.cmd` starts it (`tools/release/launch.py`). Not a release yet: the setup program comes next.
 - The build steps are one Python tool, `tools/kzbuild.py` (`patch`, `lift`, `vfs`, `build`), so the same code builds
   on Windows with the pinned toolchain; `tools/ps3recomp-patched.sh`, `tools/lift.sh`, `tools/setup-vfs.sh`,
   `tools/build.sh` and `tools/build-win.sh` run it and their output is unchanged. Where links cannot be made the game
