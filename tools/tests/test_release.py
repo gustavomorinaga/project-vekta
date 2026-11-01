@@ -177,10 +177,15 @@ with tempfile.TemporaryDirectory() as tmp:
     assets = tmp / "assets"
     assets.mkdir()
     src = pack_source.name(v)
-    (assets / src).write_bytes(b"archive")
-    h = hashlib.sha256(b"archive").hexdigest()
-    (assets / (src + ".sha256")).write_text(f"{h}  {src}\n")
-    (assets / "SHA256SUMS").write_text(f"{h}  {src}\n")
+    sums = ""
+    for n in release_check.files(v):
+        (assets / n).write_bytes(n.encode())
+        h = hashlib.sha256(n.encode()).hexdigest()
+        (assets / (n + ".sha256")).write_text(f"{h}  {n}\n")
+        sums += f"{h}  {n}\n"
+    (assets / "SHA256SUMS").write_text(sums)
+    check(release_check.files(v) == [src, f"project-vekta-{v}-setup.exe", f"project-vekta-{v}-windows.zip"],
+          "the release carries the source archive, the setup program and the Windows zip")
     rel = {"tag_name": f"v{v}", "name": f"v{v}", "draft": False, "prerelease": True, "body": f"Project Vekta {v}",
            "assets": [{"name": n} for n in release_check.expected_assets(v)]}
     (tmp / "rel.json").write_text(json.dumps(rel))
@@ -191,6 +196,14 @@ with tempfile.TemporaryDirectory() as tmp:
                          ({"assets": [{"name": src}]}, "missing assets")]:
         check(release_check.check_release(dict(rel, **change), f"v{v}", v), f"{what} is reported")
     check(release_check.check_release(rel, "v0.4.1", v), "a tag that is not VERSION is reported")
+    setup = f"project-vekta-{v}-setup.exe"
+    (assets / setup).write_bytes(b"changed")
+    check(any(setup in e for e in release_check.check_hashes(assets, v)), "a setup program that is not its sum is "
+          "reported")
+    (assets / setup).write_bytes(setup.encode())
+    check(not release_check.check_hashes(assets, v), "the good assets pass again")
+    (assets / "SHA256SUMS").write_text(sums + f"{'0' * 64}  extra.bin\n")
+    check(release_check.check_hashes(assets, v), "a SHA256SUMS line for a file the release does not carry is reported")
     (assets / "SHA256SUMS").write_text(f"{'0' * 64}  {src}\n")
     check(release_check.check_hashes(assets, v), "a wrong SHA256SUMS is reported")
     (tmp / "README.md").write_text("no link\n")

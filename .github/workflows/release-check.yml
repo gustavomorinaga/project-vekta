@@ -4,9 +4,10 @@
 # Triggers: a published release (the maintainer publishes the draft release.yml made), and workflow_dispatch (input:
 # tag). Nothing is written: no release edit, no push, no tag, no artefact (the log is the output); the token can only
 # read. Checks (tools/release/release_check.py, host-tested by tools/tests/test_release_check.py): tag = v + VERSION at
-# the tagged commit; published, pre-release while 0.x, title = tag, body names the version; the assets are exactly
-# project-vekta-<version>-source.tar.gz, its .sha256 and SHA256SUMS; the sums match the files; README.md and
-# site/index.html link releases/tag/<tag>; the version mentions at the tag agree (test_version_agree.py).
+# the tagged commit; published, pre-release while 0.x, title = tag, body names the version; the assets are exactly the
+# ones release.yml publishes at that tag (v0.1.0: the source archive; later: also the setup program and the Windows
+# zip), a .sha256 for each and SHA256SUMS; the sums match the files; README.md and site/index.html link
+# releases/tag/<tag>; the version mentions at the tag agree (test_version_agree.py).
 # Third-party: actions/checkout (GitHub, MIT), the gh CLI (MIT, on the image).
 name: release-check
 

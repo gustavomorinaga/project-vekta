@@ -1,20 +1,32 @@
-# Release: the source archive of a tag, published as a DRAFT GitHub release for the maintainer to read and publish.
-# After Project Pyrrhus's and Project Helghast's release.yml (undecuple, MIT); their installer and portable zip are
-# not here yet: a release is the source (docs/BUILDING.md builds it on the player's machine from their own game).
+# Release: the source archive of a tag, and the Windows setup program and folder built from it, published as a DRAFT
+# GitHub release for the maintainer to read and publish. After Project Pyrrhus's and Project Helghast's release.yml
+# (undecuple, MIT). Every file carries the port's sources and the pinned toolchain, nothing of the game: the port is
+# always built on the player's machine from their own game (docs/BUILDING.md).
 #
 # Triggers: a pushed tag vMAJOR.MINOR.PATCH (builds, then creates the draft) and workflow_dispatch (a dry run: builds
-# and uploads the workflow artifact, never publishes). Nothing runs on a push to a branch or on a pull request.
+# and uploads the workflow artifacts, never publishes). Nothing runs on a push to a branch or on a pull request.
 # Release rules: the version is VERSION and the tag must say the same (tools/release/release_version.py); the release
 # is a pre-release while the major version is 0; its title is the tag; its notes are written from the tag's
 # CHANGELOG.md entry (tools/release/release_notes.py, which refuses a tag without a released entry); SHA256SUMS and a
-# .sha256 sit beside the archive; an existing release is never touched, no tag is created, moved or deleted, and no
-# asset is overwritten. Make the release commit with tools/release/bump_version.py, tag it, push the tag.
+# .sha256 per file sit beside the files; an existing release is never touched, no tag is created, moved or deleted,
+# and no asset is overwritten. Make the release commit with tools/release/bump_version.py, tag it, push the tag.
 #
-# Jobs: source (read-only token) checks and builds the archive; publish (tag pushes only) is the one job that may
-# write: it creates the draft release from the source job's artifact and runs no repository code.
-# Third-party: actions/checkout and actions/upload-artifact (GitHub, MIT), the gh CLI (MIT, on the image).
-# Published files: project-vekta-<version>-source.tar.gz, its .sha256, SHA256SUMS. Nothing of the game is used or
-# produced here.
+# Jobs, each with a read-only token except publish:
+#   source   (Linux) checks the tree and builds the source archive.
+#   payload  (Linux) builds the launcher with the pinned llvm-mingw, fetches the pinned Windows toolchain and
+#            assembles the Windows folder as a zip (tools/release/assemble_payload.py, the same bytes from the same
+#            commit), as on the maintainer's machine.
+#   setup    (Windows) unpacks that zip, compiles the setup program with the pinned Inno Setup 6.7.3
+#            (tools/release/build_setup.py; SHA-256 in toolchain.json), then installs it silently, checks the
+#            installed files against the payload's manifest.json (tools/release/check_install.py), runs the launcher's
+#            dry run and uninstalls it silently.
+#   publish  (tag pushes only) is the one job that may write: it creates the draft release from the three jobs'
+#            artifacts and runs no repository code.
+# Third-party: actions/checkout and actions/upload-artifact (GitHub, MIT), the gh CLI (MIT, on the images), the
+# toolchain.json downloads (each checked against its SHA-256).
+# Published files: project-vekta-<version>-source.tar.gz, project-vekta-<version>-setup.exe,
+# project-vekta-<version>-windows.zip, a .sha256 for each, SHA256SUMS (tools/release/release_check.py checks them
+# once the release is published).
 name: release
 
 on:
@@ -89,17 +101,136 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # Tag pushes only; a dispatch never publishes. A draft pre-release (major 0) titled with the tag. If a release for the
-  # tag already exists the job fails: nothing is edited, re-uploaded or clobbered, and no tag is touched (--verify-tag
-  # refuses to create one). No checkout: the job runs no repository code.
-  publish:
+  payload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
     needs: source
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - name: The patched ps3recomp (port/patches on its pinned commit)
+        run: bash tools/ps3recomp-patched.sh
+
+      - name: Launcher (Project Vekta.exe, built with the pinned llvm-mingw)
+        run: python3 tools/release/build_launcher.py --out out/launcher
+
+      - name: The Windows toolchain (tools/release/toolchain.json, SHA-256 checked)
+        run: python3 tools/release/fetch_toolchain.py --host windows
+
+      - name: The Windows folder and its zip (tools/release/assemble_payload.py)
+        env:
+          VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          zip="project-vekta-$VERSION-windows.zip"
+          python3 tools/release/assemble_payload.py --out build/payload --launcher "out/launcher/Project Vekta.exe" \
+            --zip "out/$zip"
+          cd out && sha256sum "$zip" > "$zip.sha256" && cat "$zip.sha256" && ls -l
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: project-vekta-${{ needs.source.outputs.version }}-windows
+          path: |
+            out/project-vekta-${{ needs.source.outputs.version }}-windows.zip
+            out/project-vekta-${{ needs.source.outputs.version }}-windows.zip.sha256
+          if-no-files-found: error
+          compression-level: 0   # already a zip
+          retention-days: 14
+
+  setup:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    needs: [source, payload]
+    permissions:
+      contents: read
+      actions: read     # gh run download: the payload job's artifact
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VERSION: ${{ needs.source.outputs.version }}
+    steps:
+      # .cmd and .iss keep CRLF through .gitattributes; everything else as committed.
+      - name: Line endings as committed
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The Windows zip (the payload job's artifact)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $zip = "project-vekta-$env:VERSION-windows.zip"
+          gh run download $env:GITHUB_RUN_ID --name "project-vekta-$env:VERSION-windows" --dir in
+          $h = (Get-FileHash "in\$zip" -Algorithm SHA256).Hash.ToLower()
+          $want = (Get-Content "in\$zip.sha256").Split(" ")[0]
+          if ($h -ne $want) { Write-Error "$zip is $h, its .sha256 says $want"; exit 1 }
+          New-Item -ItemType Directory payload | Out-Null
+          tar -xf "in\$zip" -C payload
+          if ($LASTEXITCODE) { exit 1 }
+          "PAYLOAD=$PWD\payload\project-vekta-$env:VERSION" >> $env:GITHUB_ENV
+
+      - name: The folder is the payload (manifest.json)
+        run: python tools/release/check_install.py $env:PAYLOAD
+
+      - name: Setup program (tools/release/build_setup.py, the pinned Inno Setup)
+        run: |
+          python tools/release/build_setup.py --payload $env:PAYLOAD --out out
+          if ($LASTEXITCODE) { exit 1 }
+
+      # A silent install builds nothing (run.cmd's questions need the player and their game), so the check is the
+      # files, the launcher's command line and the uninstaller.
+      - name: Install, check and uninstall (silent)
+        run: |
+          $app = "$env:RUNNER_TEMP\ProjectVekta"
+          $log = "$env:RUNNER_TEMP\setup.log"
+          $p = Start-Process "out\project-vekta-$env:VERSION-setup.exe" -Wait -PassThru -ArgumentList `
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$app", "/LOG=$log"
+          if ($p.ExitCode) { Get-Content $log -Tail 40; Write-Error "setup exit $($p.ExitCode)"; exit 1 }
+          python tools/release/check_install.py $app --manifest "$env:PAYLOAD\manifest.json"
+          if ($LASTEXITCODE) { exit 1 }
+          $p = Start-Process "$app\Project Vekta.exe" -Wait -PassThru -ArgumentList "--launcher-dry-run"
+          $cmd = Get-Content "$app\launcher-dry-run.txt" -Raw
+          Write-Host "launcher: $cmd"
+          if ($p.ExitCode -or $cmd -notmatch "pythonw\.exe.+launch\.py.+--build-if-needed") {
+            Write-Error "the launcher's dry run did not name pythonw and launch.py"; exit 1 }
+          $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList `
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          if ($p.ExitCode) { Write-Error "uninstall exit $($p.ExitCode)"; exit 1 }
+          # the uninstaller finishes from a copy of itself in TEMP; wait for the folder to go
+          for ($i = 0; $i -lt 30 -and (Test-Path "$app\unins000.exe"); $i++) { Start-Sleep 1 }
+          python tools/release/check_install.py $app --after-uninstall
+          if ($LASTEXITCODE) { exit 1 }
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: project-vekta-${{ needs.source.outputs.version }}-setup
+          path: |
+            out/project-vekta-${{ needs.source.outputs.version }}-setup.exe
+            out/project-vekta-${{ needs.source.outputs.version }}-setup.exe.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  # Tag pushes only; a dispatch never publishes. A draft pre-release (major 0) titled with the tag, with the source
+  # archive, the setup program and the Windows zip. If a release for the tag already exists the job fails: nothing is
+  # edited, re-uploaded or clobbered, and no tag is touched (--verify-tag refuses to create one). No checkout: the job
+  # runs no repository code.
+  publish:
+    needs: [source, payload, setup]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write   # gh release create; nothing else is written
-      actions: read     # gh run download: the source job's artifact
+      actions: read     # gh run download: the other jobs' artifacts
     steps:
       - name: Draft release with SHA256SUMS
         env:
@@ -110,15 +241,23 @@ jobs:
           set -euo pipefail
           [ "$GITHUB_REF_NAME" = "v$VERSION" ] || { echo "::error::tag $GITHUB_REF_NAME is not v$VERSION"; exit 1; }
           mkdir assets && cd assets
-          gh run download "$GITHUB_RUN_ID" --name "project-vekta-$VERSION" --dir .
-          src="project-vekta-$VERSION-source.tar.gz"
-          test -s "$src" && test -s "$src.sha256" && sha256sum -c "$src.sha256"
+          for a in "" -windows -setup; do
+            gh run download "$GITHUB_RUN_ID" --name "project-vekta-$VERSION$a" --dir .
+          done
+          files="project-vekta-$VERSION-source.tar.gz project-vekta-$VERSION-setup.exe"
+          files="$files project-vekta-$VERSION-windows.zip"
+          for f in $files; do
+            { test -s "$f" && test -s "$f.sha256" && sha256sum -c "$f.sha256"; } || {
+              echo "::error::$f or its .sha256 is missing or does not match"; exit 1; }
+          done
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "::error::a release for $GITHUB_REF_NAME already exists; refusing to touch it"; exit 1
           fi
-          sha256sum "$src" > SHA256SUMS
+          # shellcheck disable=SC2086  # $files is the three names above, without spaces
+          sha256sum $files > SHA256SUMS
           cat SHA256SUMS
           pre=""; case "$VERSION" in 0.*) pre="--prerelease" ;; esac
           test -s release-body.md   # written by the source job from the tag's CHANGELOG.md entry; not an asset
+          # shellcheck disable=SC2046
           gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag --title "$GITHUB_REF_NAME" \
-            --notes-file release-body.md "$src" "$src.sha256" SHA256SUMS
+            --notes-file release-body.md $(for f in $files; do echo "$f" "$f.sha256"; done) SHA256SUMS
