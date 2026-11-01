@@ -162,12 +162,20 @@ Notes from the Windows bring-up (what changed, speed under Wine and on Windows):
 ## Building on Windows or macOS
 
 Windows: a release folder, made on Linux, builds the port on the player's PC with nothing else installed (no Git,
-no MSYS, no Python). It is not published yet; the setup program that will carry it comes next.
+no MSYS, no Python), and a setup program carries it. Neither is published yet: releases are still source only.
 
 ```sh
 tools/release/fetch_toolchain.py --host windows    # the Windows entries of tools/release/toolchain.json
-tools/release/assemble_payload.py --out work/release/payload [--zip work/release/project-vekta-win.zip]
+tools/release/build_launcher.py                    # work/release/launcher/Project Vekta.exe
+tools/release/assemble_payload.py --out work/release/payload --launcher "work/release/launcher/Project Vekta.exe" \
+    [--zip work/release/project-vekta-win.zip]
+tools/release/build_setup.py --payload work/release/payload   # work/release/project-vekta-<version>-setup.exe
 ```
+
+`build_setup.py` compiles `installer/vekta.iss` with the pinned Inno Setup (installed on the first run, checked by
+SHA-256; under Wine on Linux). The setup program installs per user into `%LOCALAPPDATA%\Programs\ProjectVekta`, adds
+the Start-menu entries and offers to build at once; the launcher (`Project Vekta.exe`) opens the first run itself
+when nothing is built yet, then starts the game.
 
 The folder keeps this repository's layout: the port's sources, the patched ps3recomp in `work/ps3recomp-patched` (so
 the player needs no Git) and the toolchain in `work/toolchain-cache` (llvm-mingw, CMake, Ninja, the embeddable

@@ -23,6 +23,7 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
                   script's own folder on sys.path, and the lifters import their neighbours.
   VERSION, LICENSE, NOTICE.md, README.md, licenses/, assets/icon.svg, docs/GETTING-FILES.md, docs/BUILDING.md
   run.cmd, play.cmd   installer/run.cmd (the first run: questions, check, lift, build) and installer/play.cmd
+  Project Vekta.exe   with --launcher EXE: the launcher tools/release/build_launcher.py builds
 
 Nothing else is copied. The scrub refuses the whole payload (nothing is written) on: game-data names and extensions
 (EBOOT.*, PARAM.SFO, .psarc .elf .self .sprx .prx .edat .sdat .pkg .rap .pup .trp .pic), PS3 or ELF magics at a
@@ -92,9 +93,19 @@ TEXT_RULES = [
     ("secret", re.compile(b"sk-" b"ant-|gh" b"p_[A-Za-z0-9]{20}|github_" b"pat_|BEGIN [A-Z ]*PRIVATE" b" KEY")),
 ]
 MAX_FILE = 8 << 20
-# Toolchain files the Windows build never uses, left out (paths inside the entry's tree): clang's Linux runtimes in
-# the Windows llvm-mingw (ELF files), and zlib's Amiga makefiles (Makefile.pup reads as a game-data name).
-PRUNE = {"llvm-mingw": ["lib/clang/*/lib/linux/*"], "zlib": ["amiga/*"]}
+# Toolchain files the Windows build never uses, left out (paths inside the entry's tree): among them clang's Linux
+# runtimes in the Windows llvm-mingw (ELF files) and zlib's Amiga makefiles (Makefile.pup reads as a game-data name).
+# Project Pyrrhus's llvm-mingw list also drops the other targets (ARM, 32-bit), LLDB, its Python and make.
+PRUNE = {"llvm-mingw": ["aarch64-w64-mingw32/*", "armv7-w64-mingw32/*", "i686-w64-mingw32/*", "arm64ec-w64-mingw32/*",
+                        "bin/aarch64-w64-mingw32-*", "bin/armv7-w64-mingw32-*", "bin/i686-w64-mingw32-*",
+                        "bin/arm64ec-w64-mingw32-*", "bin/*widl*", "busybox/*", "python/*", "bin/lldb*",
+                        "bin/liblldb.dll", "bin/libpython3*.dll", "bin/mingw32-make.exe", "bin/gendef.exe",
+                        "share/gendef/*", "share/make/*", "share/widl/*", "lib/clang/*/lib/linux/*",
+                        "bin/clangd.exe", "bin/clang-tidy.exe"],
+         "zlib": ["amiga/*"],
+         # the build takes FFmpeg's headers and DLLs only (build_win_deps.py), SDL2's x86_64 tree only
+         "ffmpeg": ["bin/*.exe", "bin/avdevice-*.dll", "bin/avfilter-*.dll", "doc/*", "lib/*"], "sdl2": ["i686-w64-mingw32/*", "docs/*", "test/*"],
+         "cmake": ["doc/*", "man/*"]}
 # The ._pth of the embeddable Python: its own zip and folder, then the folders whose scripts import their neighbours
 # (relative to the ._pth, in work/toolchain-cache/python/).
 PTH_EXTRA = ["..\\..\\..\\tools", "..\\..\\..\\tools\\release", "..\\..\\ps3recomp-patched\\tools"]
@@ -254,10 +265,14 @@ def check_toolkit(repo):
     return have
 
 
-def plan(repo, cache):
+def plan(repo, cache, launcher=None):
     """(files {payload path: source}, generated {payload path: bytes}, manifest)."""
     patchset = check_toolkit(repo)
     files = collect(repo)
+    if launcher:
+        if not os.path.isfile(launcher):
+            raise Refused(f"no launcher at {launcher} (tools/release/build_launcher.py)")
+        files["Project Vekta.exe"] = launcher
     problems = [f"{rel}: {why}" for rel, src in sorted(files.items()) if (why := scrub(rel, src))]
     m = fetch_toolchain.load(os.path.join(repo, "tools", "release", "toolchain.json"))
     tfiles, done = collect_toolchain(cache, m)
@@ -325,6 +340,7 @@ def main(argv=None):
     ap.add_argument("--repo", default=ROOT)
     ap.add_argument("--cache", help="default: <repo>/work/toolchain-cache")
     ap.add_argument("--replace", action="store_true")
+    ap.add_argument("--launcher", help="the launcher exe to ship as Project Vekta.exe (build_launcher.py)")
     ap.add_argument("--zip", help="also write the portable zip (its top folder: project-vekta-<version>)")
     ap.add_argument("--dry-run", action="store_true", help="check and list, write nothing")
     a = ap.parse_args(argv)
@@ -332,7 +348,7 @@ def main(argv=None):
         ap.error("--out DIR (or --dry-run)")
     cache = a.cache or os.path.join(a.repo, *CACHE.split("/"))
     try:
-        files, gen, manifest = plan(a.repo, cache)
+        files, gen, manifest = plan(a.repo, cache, a.launcher)
         if a.dry_run:
             print(f"payload ok: {manifest['count']} files, {manifest['bytes'] / 1e6:.1f} MB "
                   f"(version {manifest['version']}, patch set {manifest['patchset']})")

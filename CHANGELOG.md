@@ -9,7 +9,10 @@ are source archives: the port is always built from source. Until a release that 
 ### Added
 - The Windows release folder (`tools/release/assemble_payload.py`): the port's sources, the patched ps3recomp and the
   pinned Windows toolchain, with no Git or MSYS needed. `run.cmd` asks for your files and builds `KZ1HD.exe` there,
-  and `play.cmd` starts it (`tools/release/launch.py`). Not a release yet: the setup program comes next.
+  and `play.cmd` starts it (`tools/release/launch.py`).
+- The Windows setup program (`installer/vekta.iss`, Inno Setup, per-user install) and the launcher `Project Vekta.exe`
+  with the project's icon, which builds on its first start and then plays (`tools/release/build_launcher.py`,
+  `build_setup.py`). Not published yet: releases are still source only.
 - The build steps are one Python tool, `tools/kzbuild.py` (`patch`, `lift`, `vfs`, `build`), so the same code builds
   on Windows with the pinned toolchain; `tools/ps3recomp-patched.sh`, `tools/lift.sh`, `tools/setup-vfs.sh`,
   `tools/build.sh` and `tools/build-win.sh` run it and their output is unchanged. Where links cannot be made the game
