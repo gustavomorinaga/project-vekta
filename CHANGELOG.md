@@ -1,7 +1,8 @@
 # Changelog
 
-What each release contains, newest first, in the style of [Keep a Changelog](https://keepachangelog.com/). Releases
-are source archives: the port is always built from source. Until a release that calls itself playable
+What each release contains, newest first, in the style of [Keep a Changelog](https://keepachangelog.com/). The port
+is always built from source on the player's machine: releases carry the source and, after 0.1.0, the Windows setup
+program and folder that build it. Until a release that calls itself playable
 ([docs/RELEASE-CRITERIA.md](docs/RELEASE-CRITERIA.md)), every version is a pre-release.
 
 ## [Unreleased]
@@ -12,7 +13,11 @@ are source archives: the port is always built from source. Until a release that 
   and `play.cmd` starts it (`tools/release/launch.py`).
 - The Windows setup program (`installer/vekta.iss`, Inno Setup, per-user install) and the launcher `Project Vekta.exe`
   with the project's icon, which builds on its first start and then plays (`tools/release/build_launcher.py`,
-  `build_setup.py`). Not published yet: releases are still source only.
+  `build_setup.py`).
+- Releases carry the Windows setup program and the Windows folder as a zip beside the source archive, each with a
+  `.sha256`. `.github/workflows/release.yml` builds both from the tag: the folder on Linux, the setup program on
+  Windows, where it is also installed, checked against the folder's `manifest.json` and uninstalled
+  (`tools/release/check_install.py`); `tools/release/release_check.py` checks the five files.
 - The build steps are one Python tool, `tools/kzbuild.py` (`patch`, `lift`, `vfs`, `build`), so the same code builds
   on Windows with the pinned toolchain; `tools/ps3recomp-patched.sh`, `tools/lift.sh`, `tools/setup-vfs.sh`,
   `tools/build.sh` and `tools/build-win.sh` run it and their output is unchanged. Where links cannot be made the game

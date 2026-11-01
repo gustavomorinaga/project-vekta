@@ -11,9 +11,11 @@ it never edits a release, pushes or tags.
 --release is the release JSON (GitHub REST: tag_name, name, draft, prerelease, body, assets[].name). Checks:
   1 tag = "v" + VERSION at the checked-out tag (release_version.py, the one version source)
   2 published (not a draft), pre-release exactly while the version is 0.x, title = tag, body names the version
-  3 assets are exactly the ones release.yml publishes: project-vekta-<version>-source.tar.gz (pack_source.py), its
-    .sha256, and SHA256SUMS
-  4 (with --assets) the .sha256 matches its file and agrees with SHA256SUMS, and SHA256SUMS matches the file
+  3 assets are exactly the ones release.yml publishes: project-vekta-<version>-source.tar.gz (pack_source.py), the
+    Windows setup program project-vekta-<version>-setup.exe (build_setup.py) and the Windows folder as a zip,
+    project-vekta-<version>-windows.zip (assemble_payload.py --zip), a .sha256 for each, and SHA256SUMS
+  4 (with --assets) each .sha256 matches its file and agrees with SHA256SUMS, and SHA256SUMS lists exactly those
+    files
   5 (with --root) README.md and site/index.html link releases/tag/<tag>
 Prints one line per problem; exit 0 only when there are none.
 """
@@ -32,9 +34,13 @@ import release_version  # noqa: E402
 SUMS = "SHA256SUMS"
 
 
+def files(version):
+    """The release's files, each published with a .sha256 beside it and listed in SHA256SUMS."""
+    return [pack_source.name(version), f"project-vekta-{version}-setup.exe", f"project-vekta-{version}-windows.zip"]
+
+
 def expected_assets(version):
-    src = pack_source.name(version)
-    return [src, src + ".sha256", SUMS]
+    return [n for f in files(version) for n in (f, f + ".sha256")] + [SUMS]
 
 
 def check_release(rel, tag, version):
@@ -87,19 +93,24 @@ def check_hashes(d, version):
         return [f"{SUMS} not downloaded"]
     sums = parse_sums(sums_path)
     errs = [f"{SUMS}: {k[1:]}" for k in sums if k.startswith("?")]
-    n = pack_source.name(version)
-    p = os.path.join(d, n)
-    if not os.path.exists(p):
-        return errs + [f"{n} not downloaded"]
-    actual = sha256_file(p)
-    if sums.get(n) != actual:
-        errs.append(f"{SUMS} entry for {n} is {sums.get(n)!r}, file is {actual}")
-    sp = p + ".sha256"
-    if not os.path.exists(sp):
-        return errs + [f"{n}.sha256 not downloaded"]
-    own = parse_sums(sp)
-    if own.get(n) != actual:
-        errs.append(f"{n}.sha256 says {own.get(n)!r}, file is {actual}")
+    want = files(version)
+    errs += [f"{SUMS} lists {k}, which the release does not carry" for k in sums
+             if not k.startswith("?") and k not in want]
+    for n in want:
+        p = os.path.join(d, n)
+        if not os.path.exists(p):
+            errs.append(f"{n} not downloaded")
+            continue
+        actual = sha256_file(p)
+        if sums.get(n) != actual:
+            errs.append(f"{SUMS} entry for {n} is {sums.get(n)!r}, file is {actual}")
+        sp = p + ".sha256"
+        if not os.path.exists(sp):
+            errs.append(f"{n}.sha256 not downloaded")
+            continue
+        own = parse_sums(sp)
+        if own.get(n) != actual:
+            errs.append(f"{n}.sha256 says {own.get(n)!r}, file is {actual}")
     return errs
 
 

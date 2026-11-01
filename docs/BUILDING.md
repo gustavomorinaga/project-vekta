@@ -162,13 +162,14 @@ Notes from the Windows bring-up (what changed, speed under Wine and on Windows):
 ## Building on Windows or macOS
 
 Windows: a release folder, made on Linux, builds the port on the player's PC with nothing else installed (no Git,
-no MSYS, no Python), and a setup program carries it. Neither is published yet: releases are still source only.
+no MSYS, no Python), and a setup program carries it. From the next release on, `.github/workflows/release.yml` builds
+both from the tag and publishes them beside the source archive: the setup program, and the folder as a zip.
 
 ```sh
 tools/release/fetch_toolchain.py --host windows    # the Windows entries of tools/release/toolchain.json
 tools/release/build_launcher.py                    # work/release/launcher/Project Vekta.exe
 tools/release/assemble_payload.py --out work/release/payload --launcher "work/release/launcher/Project Vekta.exe" \
-    [--zip work/release/project-vekta-win.zip]
+    [--zip work/release/project-vekta-<version>-windows.zip]
 tools/release/build_setup.py --payload work/release/payload   # work/release/project-vekta-<version>-setup.exe
 ```
 
