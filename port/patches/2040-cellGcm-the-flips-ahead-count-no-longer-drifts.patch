@@ -1,0 +1,210 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sun, 1 Nov 2026 02:53:52 +0000
+Subject: [PATCH] cellGcm: the flips-ahead count no longer drifts
+
+PS3_GCM_MAX_QUEUED_FLIPS (patch 2012) makes the guest wait while it is
+written - reached flips ahead of the drain. A flip done at once (no room for
+the FIFO marker, SetPrepareFlip, a 0xFEAD word in the FIFO) counted as reached
+but never as written, so each one lowered the count for good: Killzone HD's
+[kz-stats] queued fell from -3 to -9 within two minutes on Windows (-53 over a
+long Linux session), and the cap loosened by as much. A marker the drain never
+reaches (a resync to put, a skipped stretch) raised it for good the other way.
+Both sides now count every request, lost markers are counted apart (and
+uncounted if the drain reaches one after all), and the counters shared by the
+guest and the drain are bumped atomically. test_gcm_flip_queue runs the real
+flip paths and fails on the old count.
+---
+ libs/video/cellGcmSys.c      | 37 ++++++++++++++++--------
+ tests/test_gcm_flip_queue.c  | 54 ++++++++++++++++++++++++++++++++++++
+ tools/test_gcm_flip_queue.py | 20 +++++++++++++
+ 3 files changed, 100 insertions(+), 11 deletions(-)
+ create mode 100644 tests/test_gcm_flip_queue.c
+ create mode 100644 tools/test_gcm_flip_queue.py
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index f115125..4964715 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -100,11 +100,21 @@ static volatile int s_flip_lock;
+  * clear+few-draws frame as a visible flicker). */
+ static volatile u32 s_flip_request_count = 0;
+ 
+-/* Flips the guest has queued into the FIFO (markers written), against
+- * s_flip_request_count, the ones the drain reached: the difference is how
+- * many frames the title is ahead of the screen. */
++/* Flips the guest has requested (a marker queued into the FIFO, or a flip
++ * done at once), against s_flip_request_count, the ones the drain reached:
++ * the difference is how many frames the title is ahead of the screen. Every
++ * request is counted on both sides -- a flip done at once (no room for the
++ * marker, SetPrepareFlip, a 0xFEAD word) on both at the same moment -- and a
++ * marker the drain will never reach (a resync to put, a skipped stretch) is
++ * counted in s_flip_lost_count, so the difference cannot drift: before, each
++ * flip done at once lowered it by one for good (-3 to -9 within two minutes
++ * in Killzone HD, which loosened PS3_GCM_MAX_QUEUED_FLIPS by as much) and each
++ * lost marker raised it by one. The drain writes s_flip_lost_count; the other
++ * two are bumped atomically, as a guest thread and the drain (a 0xFEAD word)
++ * both request flips. */
+ static volatile u32 s_flip_written_count = 0;
+-u32 cellGcm_flip_written_count(void) { return s_flip_written_count; }
++static volatile u32 s_flip_lost_count = 0;
++u32 cellGcm_flip_written_count(void) { return s_flip_written_count - s_flip_lost_count; }
+ u32 cellGcm_flip_request_count(void)
+ {
+     return s_flip_request_count;
+@@ -1827,7 +1837,8 @@ static void gcm_fifo_resync_why(const char* why, u32* getoff, u32 put)
+             /* A flip marker skipped here will never be reached: count it, or
+              * every flip after it waits for the drain forever. */
+             if ((w & 0xFFFFFF00u) == GCM_FLIP_MARKER &&
+-                s_fifo_flips_reached != s_fifo_flips_queued) { s_fifo_flips_reached++; continue; }
++                s_fifo_flips_reached != s_fifo_flips_queued) {
++                s_fifo_flips_reached++; s_flip_lost_count++; continue; }
+             if ((w >> 29) != 0 || (w & 0x1FFCu) != 0x0050u) continue;
+             u32 dea = gcm_io2ea(io + 4); if (!dea) continue;
+             gcm_ref_push_at(vm_read32(dea), io);
+@@ -2432,6 +2443,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
+             /* Whatever the walker had not reached is gone, and so are the flips
+              * queued in it: none of them will ever be executed, so do not let a
+              * flip wait on them. */
++            s_flip_lost_count += s_fifo_flips_queued - s_fifo_flips_reached;
+             s_fifo_flips_reached = s_fifo_flips_queued;
+             why = "no-io-mapping";
+             break;
+@@ -2533,10 +2545,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
+                  * guest-visible half of the request. */
+                 gcm_set_current_display_buffer(w & 7u);
+                 s_flip_pending = 1;
+-                s_flip_request_count++;
++                __atomic_fetch_add(&s_flip_request_count, 1, __ATOMIC_RELAXED);
+                 /* Not past `queued`: a resync may already have written off
+-                 * this flip. */
++                 * this flip -- then it was counted lost, and is not now. */
+                 if (s_fifo_flips_reached != s_fifo_flips_queued) s_fifo_flips_reached++;
++                else if (s_flip_lost_count) s_flip_lost_count--;
+             } else {
+                 cellGcmSetFlipCommand(w & 0xFFu);
+             }
+@@ -3371,7 +3384,8 @@ static s32 gcm_flip_request(u32 bufferId, int in_fifo)
+     if (!in_fifo) {
+         gcm_set_current_display_buffer(bufferId);
+         s_flip_pending = 1;   /* ticker: present BEFORE the next drain */
+-        s_flip_request_count++;
++        __atomic_fetch_add(&s_flip_written_count, 1, __ATOMIC_RELAXED);   /* requested and reached at once */
++        __atomic_fetch_add(&s_flip_request_count, 1, __ATOMIC_RELAXED);
+         s_flip_direct_pending = 1;
+     }
+     /* Flip requested but not yet shown: a subsequent cellGcmSetWaitFlip blocks
+@@ -3420,7 +3434,7 @@ static int gcm_flip_into_fifo(u32 ctx, u32 bufferId)
+     if (cur + 8 + GCM_RECYCLE_SLACK > end || gcm_ea2io(cur) == 0xFFFFFFFFu) return 0;
+     vm_write32(cur, GCM_FLIP_MARKER | bufferId);
+     s_fifo_flips_queued++;
+-    s_flip_written_count++;
++    __atomic_fetch_add(&s_flip_written_count, 1, __ATOMIC_RELAXED);
+     /* Wrap here, on the guest thread, once the ring is nearly used -- what the
+      * SDK's buffer-full callback does. Otherwise the drain thread recycles it
+      * (see "recycled the title's own ring"), rewriting ctx->current and put
+@@ -3486,7 +3500,8 @@ s32 cellGcmSetPrepareFlip(void* ctx, u32 bufferId)
+ 
+     gcm_set_current_display_buffer(bufferId);
+     s_flip_status = CELL_GCM_FLIP_STATUS_DONE;
+-    s_flip_request_count++;
++    __atomic_fetch_add(&s_flip_written_count, 1, __ATOMIC_RELAXED);   /* requested and reached at once */
++    __atomic_fetch_add(&s_flip_request_count, 1, __ATOMIC_RELAXED);
+     s_last_flip_time = get_timestamp_ns();
+ 
+     /* Invoke the guest flip handler via OPD resolution -- s_flip_handler holds
+@@ -4263,7 +4278,7 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+       if (cap < 0) { const char* e = getenv("PS3_GCM_MAX_QUEUED_FLIPS"); cap = e ? atoi(e) : 2; }
+       if (cap > 0) {
+           PS3_TRACE_BEGIN(_tr);
+-          for (int i = 0; i < 1000 && (int)(s_flip_written_count - s_flip_request_count) >= cap; i++) {
++          for (int i = 0; i < 1000 && (int)(cellGcm_flip_written_count() - s_flip_request_count) >= cap; i++) {
+ #ifdef _WIN32
+               Sleep(0);
+ #else
+diff --git a/tests/test_gcm_flip_queue.c b/tests/test_gcm_flip_queue.c
+new file mode 100644
+index 0000000..44502cb
+--- /dev/null
++++ b/tests/test_gcm_flip_queue.c
+@@ -0,0 +1,54 @@
++/* Include the real implementation: the flips-ahead count that
++ * PS3_GCM_MAX_QUEUED_FLIPS waits on (written - lost - reached) must not drift
++ * when a flip is done at once instead of queued as a FIFO marker. */
++#include "../libs/video/cellGcmSys.c"
++#include <assert.h>
++
++uint8_t* vm_base;
++uint32_t g_ww_lo, g_ww_hi;
++void ps3_ww_report_inline(uint32_t a, uint64_t v, int w) { (void)a; (void)v; (void)w; abort(); }
++int g_resv_store_active;
++void ppu_resv_break_store(uint64_t addr) { (void)addr; abort(); }
++int spu_coh_is_reserved(uint32_t addr) { (void)addr; return 0; }
++void spu_coh_notify_write(uint32_t addr) { (void)addr; }
++void spu_lockline_lock(void) {}
++void spu_lockline_unlock(void) {}
++/* The flip paths' other neighbours: no tracing, no draw engine, no guest. */
++volatile int g_ps3_trace_on;
++uint64_t ps3_trace_now(void) { return 0; }
++void ps3_trace_span(const char* n, uint64_t a, uint64_t b, uint32_t c) { (void)n; (void)a; (void)b; (void)c; }
++PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++ps3_guest_caller_fn g_ps3_guest_caller;
++void ppu_dump_guest_stack(ppu_context* c, const char* t) { (void)c; (void)t; }
++void ppu_dump_bctrl_ring(uint32_t n, const char* t) { (void)n; (void)t; }
++int rsx_draw_engine_enabled(void) { return 0; }
++void rsx_draw_engine_note_flip(u32 id) { (void)id; }
++
++static int ahead(void) { return (int)(cellGcm_flip_written_count() - cellGcm_flip_request_count()); }
++
++int main(void) {
++    vm_base = calloc(1, 0x300000); assert(vm_base);
++    memset(s_io_address_table, 0xff, sizeof(s_io_address_table));
++    memset(s_ea_address_table, 0xff, sizeof(s_ea_address_table));
++    s_display_buffer_set[0] = s_display_buffer_set[1] = 1;
++    /* Done at once: SetFlipCommand, SetPrepareFlip, and _cellGcmSetFlipCommand
++     * with no command buffer to put the marker in. Each used to leave the count
++     * one lower for good. */
++    assert(cellGcmSetFlipCommand(0) == CELL_OK && ahead() == 0);
++    assert(cellGcmSetPrepareFlip(NULL, 1) == CELL_OK && ahead() == 0);
++    assert(_cellGcmSetFlipCommand(NULL, 0) == CELL_OK && ahead() == 0);
++    assert(cellGcm_flip_request_count() == 3);
++    /* Queued into a mapped command buffer: one ahead until the drain reaches it. */
++    assert(cellGcmMapEaIoAddress(0x100000, 0, 0x100000) == CELL_OK);
++    const u32 ctx = 0x1000;
++    vm_write32(ctx + 0, 0x100000); vm_write32(ctx + 4, 0x110000); vm_write32(ctx + 8, 0x100000);
++    assert(_cellGcmSetFlipCommand((void*)(uintptr_t)ctx, 1) == CELL_OK);
++    assert(vm_read32(0x100000) == (GCM_FLIP_MARKER | 1u) && ahead() == 1);
++    /* A marker the drain will never reach (resync to put) is counted lost... */
++    s_flip_lost_count += s_fifo_flips_queued - s_fifo_flips_reached;
++    s_fifo_flips_reached = s_fifo_flips_queued;
++    assert(ahead() == 0);
++    free(vm_base);
++    puts("PASS: flips done at once, queued and written off keep the flips-ahead count exact");
++    return 0;
++}
+diff --git a/tools/test_gcm_flip_queue.py b/tools/test_gcm_flip_queue.py
+new file mode 100644
+index 0000000..52bbaaf
+--- /dev/null
++++ b/tools/test_gcm_flip_queue.py
+@@ -0,0 +1,20 @@
++#!/usr/bin/env python3
++"""The flips-ahead count behind PS3_GCM_MAX_QUEUED_FLIPS stays exact through the real GCM flip paths."""
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++root = Path(__file__).resolve().parents[1]
++if os.name == 'nt':
++    print('SKIP: the fixture uses POSIX linking')
++    raise SystemExit(0)
++with tempfile.TemporaryDirectory(prefix='gcm-flip-queue-') as tmp:
++    binary = Path(tmp) / 'test'
++    linker = ['-Wl,-dead_strip'] if sys.platform == 'darwin' else ['-Wl,--gc-sections', '-pthread', '-lm']
++    subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu17', '-D_GNU_SOURCE', '-O1', '-UNDEBUG',
++                    '-DCELL_GCM_MAX_IO_MAPPINGS=16', '-ffunction-sections', '-fdata-sections',
++                    '-I' + str(root / 'include'), str(root / 'tests/test_gcm_flip_queue.c'), *linker,
++                    '-o', str(binary)], check=True)
++    subprocess.run([str(binary)], check=True, timeout=10,
++                   env={k: v for k, v in os.environ.items() if not k.startswith('A2O_')})
