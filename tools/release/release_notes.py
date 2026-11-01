@@ -36,6 +36,10 @@ RELEASED = ("pre-release", "release")
 FIRST_BUILD_NOTE = ("This first preview has been built only on the maintainer's machine (from this release's own "
                     "archive, in a fresh folder); no other machine has built it yet. Reports of a build elsewhere, "
                     "working or not, are welcome as issues.")
+# v0.2.0, the first release with the setup program: gate 2 relaxed again (maintainer's decision, 2026-11-01).
+SETUP_BUILD_NOTE = ("The setup program has been tried only on the maintainer's machine (Linux, and Windows on the same "
+                    "PC: installed, built and played); no other machine has built this release yet. Reports of an "
+                    "install elsewhere, working or not, are welcome as issues.")
 
 # v0.1.0 carried the source archive only; later releases also carry the Windows setup program and folder (release.yml).
 SOURCE_ONLY = (
@@ -116,7 +120,7 @@ def notes(version, entry, first=False):
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
         *([SOURCE_ONLY.format(version=version, blob=blob)] if version == "0.1.0" else
           [FILES.format(version=version, blob=blob)]),
-        *([FIRST_BUILD_NOTE] if version == "0.1.0" else []),
+        *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE]}.get(version, [])),
     ]) + "\n"
 
 
