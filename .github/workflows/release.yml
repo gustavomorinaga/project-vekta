@@ -222,7 +222,7 @@ jobs:
             "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$app", "/LOG=$log") + $switches)
           $text = Get-Content $log -Raw
           if ($p.ExitCode) { Write-Error "setup exit $($p.ExitCode)"; exit 1 }
-          Select-String -Path $log -Pattern "firstrun:|paths:|build:" | ForEach-Object { $_.Line }
+          Select-String -Path $log -Pattern "game files:|firstrun:|paths:|build:" -Context 0,4 | ForEach-Object { $_.Line; $_.Context.PostContext }
           if ($text -notmatch "paths: saved") { Write-Error "setup did not save the paths"; exit 1 }
           if ($text -notmatch "build: did not finish: ") {
             Write-Error "the build in the wizard did not run and stop at the check"; exit 1 }
