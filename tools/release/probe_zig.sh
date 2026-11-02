@@ -15,11 +15,11 @@ cmake --version | head -1
 TGT=x86_64-linux-gnu.2.31
 cat > "$T/bin/zcc" <<EOS
 #!/bin/sh
-exec "$Z" cc -target $TGT "\$@"
+exec "$Z" cc -target $TGT -Wno-error=date-time "\$@"
 EOS
 cat > "$T/bin/zc++" <<EOS
 #!/bin/sh
-exec "$Z" c++ -target $TGT "\$@"
+exec "$Z" c++ -target $TGT -Wno-error=date-time "\$@"
 EOS
 cat > "$T/bin/zar" <<EOS
 #!/bin/sh
@@ -69,6 +69,7 @@ P="$ROOT/work/ps3recomp-patched"
 cmake -G Ninja -S "$P" -B "$T/b/ps3" $TC -DCMAKE_BUILD_TYPE=Release -DPS3RECOMP_RSX_VULKAN=ON \
   -DPS3RECOMP_VULKAN_INCLUDE_DIR="$T/prefix/include" -DCMAKE_PREFIX_PATH="$T/prefix" -DCMAKE_C_FLAGS=-O1 -DCMAKE_CXX_FLAGS=-O1
 grep -E "Vulkan|SDL2|glslang" "$T/b/ps3/CMakeCache.txt" | head -20 || true
-cmake --build "$T/b/ps3" -j "$(nproc)" -- -k 0 2>&1 | tail -60
-ls -la "$T/b/ps3" | head -30
-for f in "$T/b/ps3"/ps3recomp_host "$T/b/ps3"/*.so*; do [ -f "$f" ] && { file "$f"; readelf -d "$f" | grep NEEDED; objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1; }; done
+cmake --build "$T/b/ps3" -j "$(nproc)" -- -k 0 2>&1 | grep -E "FAILED|error:|^\[1[0-9]{2}/" | tail -40
+ls -la "$T/b/ps3" | head -40
+for t in ps3recomp_boot_smoke test_shader_spirv; do [ -x "$T/b/ps3/$t" ] && { echo "== run $t"; (cd "$T/b/ps3" && timeout 120 "./$t" 2>&1 | tail -5; echo "exit ${PIPESTATUS[0]}") || true; }; done
+for f in "$T/b/ps3"/ps3recomp_host "$T/b/ps3"/ps3recomp_boot_smoke "$T/prefix"/lib/libSDL2*.so*; do [ -f "$f" ] && { file "$f"; readelf -d "$f" | grep NEEDED; objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1; }; done
