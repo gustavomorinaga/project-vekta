@@ -7,6 +7,14 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive
+  and libsre, and `dev_flash` for the music), checks their kind and size before copying anything, and builds the port
+  in the wizard with a progress bar and a Stop button; when the build stops it says why and opens the log. Silent
+  installs take the files as switches (`/GAME=` and the others). After Project Helghast's and Project Pyrrhus's
+  setup programs (MIT). `release.yml` installs it on the Windows runner with stand-ins for the files
+  (`tools/release/fake_game_files.py`) and checks that the build runs and stops at the check.
+
 ## [0.2.0] - 2026-11-01 (pre-release)
 
 ### Added

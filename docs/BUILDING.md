@@ -174,9 +174,13 @@ tools/release/build_setup.py --payload work/release/payload   # work/release/pro
 ```
 
 `build_setup.py` compiles `installer/vekta.iss` with the pinned Inno Setup (installed on the first run, checked by
-SHA-256; under Wine on Linux). The setup program installs per user into `%LOCALAPPDATA%\Programs\ProjectVekta`, adds
-the Start-menu entries and offers to build at once; the launcher (`Project Vekta.exe`) opens the first run itself
-when nothing is built yet, then starts the game.
+SHA-256; under Wine on Linux). The setup program installs per user into `%LOCALAPPDATA%\Programs\ProjectVekta`. It
+asks where your files are, on pages of its own: the installed game folder (NPUA80856), the decrypted `EBOOT.elf`,
+`data_ps3.psarc` and `libsre.prx`, and the firmware's `dev_flash`. It checks their kind and size before copying
+anything and keeps them in `work\paths.env`. Then it builds the port in the wizard, with a progress bar and a Stop
+button; the build's first step checks the files' SHA-256, and when it stops the wizard says why and opens its log. The
+launcher (`Project Vekta.exe`) builds on its first start when that did not happen, then starts the game. A silent
+install takes the files as switches: `/GAME=<dir> /EBOOT=<file> /PSARC=<file> /LIBSRE=<file> [/DEVFLASH=<dir>]`.
 
 The folder keeps this repository's layout: the port's sources, the patched ps3recomp in `work/ps3recomp-patched` (so
 the player needs no Git) and the toolchain in `work/toolchain-cache` (llvm-mingw, CMake, Ninja, the embeddable

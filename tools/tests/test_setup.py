@@ -7,6 +7,7 @@ pin is there; .cmd and .iss files keep CRLF; the pages check check-game-files.py
 wizard passes firstrun.py's own options and labels its steps. No compiler and no Wine: tools/release/build_launcher.py and
 build_setup.py run on the maintainer's machine (docs/BUILDING.md)."""
 import io
+import os
 import json
 import pathlib
 import re
@@ -101,6 +102,21 @@ with tempfile.TemporaryDirectory() as tmp:
         check(False, "a missing launcher refuses the payload")
     except ap.Refused as e:
         check("no launcher" in str(e), str(e))
+
+# The stand-ins release.yml installs with: the right kinds and sizes, refused only by their SHA-256
+import subprocess  # noqa: E402
+with tempfile.TemporaryDirectory() as tmp:
+    r = subprocess.run([sys.executable, str(ROOT / "tools/release/fake_game_files.py"), tmp], capture_output=True,
+                       text=True)
+    sw = dict(line[1:].split("=", 1) for line in r.stdout.split())
+    check(r.returncode == 0 and set(sw) == {"GAME", "EBOOT", "PSARC", "LIBSRE", "DEVFLASH"}, f"five switches: {sw}")
+    env = dict(os.environ, KZ_GAME=sw["GAME"], KZ_EBOOT=sw["EBOOT"], KZ_PSARC=sw["PSARC"], KZ_LIBSRE=sw["LIBSRE"],
+               PS3_DEV_FLASH=sw["DEVFLASH"])
+    q = subprocess.run([sys.executable, str(ROOT / "tools/check-game-files.py"), "--quick"], capture_output=True,
+                       text=True, env=env)
+    for label in ("PARAM.SFO", "EBOOT.elf", "libsre.prx"):
+        check(f"DIFFERENT {label}" in q.stdout, f"{label}: the right kind and size, another hash: {q.stdout}")
+    check("ok       data_ps3.psarc" in q.stdout and q.returncode == 1, "the archive passes --quick; the check fails")
 
 print("test_setup:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)
