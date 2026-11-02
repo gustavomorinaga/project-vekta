@@ -13,7 +13,15 @@ Where the saves and settings go (kz1hd_pc.ini, kz1hd_keys.ini, gamedata/): the g
 copy the setup program installed (vekta-install.ini next to run.cmd) it is %APPDATA%/Project Vekta, unless the install
 is portable ([install] portable=1): then it is the run folder, as in a Git clone or the Windows zip. Saves an earlier
 version left in the run folder are moved there once (migrate), never over a file already there.
---dry-run prints the command, the folders and the settings and starts nothing. --build-if-needed (the launcher, Project
+--dry-run prints the command, the folders and the settings and starts nothing.
+
+The Start menu's other entries (installer/vekta.iss [Icons]) run the launcher with one of these and start no game:
+--repair ("Verify and rebuild"): the install's own files against manifest.json first (a missing or changed one means
+"run the setup again over this folder"; nothing is rebuilt from a damaged install; a file CMake renamed to
+<name>.included in the source tree counts as there), then, after a yes, firstrun.py --bar in a console of its own: the
+check of your game files runs again, and every later step whose inputs changed (ninja rebuilds what changed). It ends
+with a message that says how it went. --open-data ("Open saves folder"): the folder of the saves and settings in
+Explorer. --support-package [--out DIR] ("Make a support package"): tools/release/support.py's zip, on the Desktop. --build-if-needed (the launcher, Project
 Vekta.exe, passes it): before the first build, run.cmd opens in a console of its own, then the game starts if it
 built.
 
@@ -22,6 +30,8 @@ things for their launchers. Exit: the game's own code, 1 = not built yet, 2 = us
 """
 import argparse
 import configparser
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -31,6 +41,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import kzbuild  # noqa: E402
+import support  # noqa: E402
 
 # tools/play.sh's settings (docs there): the environment wins over each.
 SETTINGS = [
@@ -130,13 +141,151 @@ def run(argv, cwd, env, log, poll=1.0):
         return p.wait()
 
 
-def notify(text):
+def notify(text, error=True):
     """A message the player sees: stderr, or a message box under pythonw (the launcher's Python has no console)."""
     if sys.stderr is not None:
         print(f"launch: {text}", file=sys.stderr)
     elif kzbuild.WINDOWS:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(None, text, "Project Vekta", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, text, "Project Vekta", 0x10 if error else 0x40)
+
+
+def ask(text):
+    """Yes or no: a message box under pythonw, else a question on the console (no console: no)."""
+    if sys.stdin is None or sys.stdout is None:
+        if not kzbuild.WINDOWS:
+            return False
+        import ctypes
+        return ctypes.windll.user32.MessageBoxW(None, text, "Project Vekta", 0x24) == 6   # MB_YESNO|MB_ICONQUESTION
+    try:
+        return input(f"{text} [y/N] ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def verify_install(root):
+    """(files checked, [problems]): the install's own files against manifest.json's sizes and SHA-256."""
+    try:
+        with open(os.path.join(root, "manifest.json"), encoding="utf-8") as f:
+            files = json.load(f)["files"]
+    except (OSError, ValueError, KeyError):
+        return 0, ["manifest.json (missing or unreadable)"]
+    bad = []
+    for e in files:
+        p = os.path.join(root, *e["path"].split("/"))
+        if not os.path.isfile(p):
+            if not os.path.isfile(p + ".included"):   # zlib's CMake renames its zconf.h in the source tree
+                bad.append(f"{e['path']} (missing)")
+            continue
+        h = hashlib.sha256()
+        try:
+            with open(p, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+        except OSError:
+            bad.append(f"{e['path']} (unreadable)")
+            continue
+        if os.path.getsize(p) != e["size"] or h.hexdigest() != e["sha256"]:
+            bad.append(f"{e['path']} (changed)")
+    return len(files), bad
+
+
+def console_python(root):
+    """The Python with a console: the bundled python.exe in a release folder, else this one."""
+    p = os.path.join(root, "work", "toolchain-cache", "python", "python.exe")
+    return p if kzbuild.WINDOWS and os.path.isfile(p) else sys.executable
+
+
+def status_reasons(path):
+    """(the RESULT line, [REASON texts]) from firstrun.py's --status-file."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return "", []
+    result = next((ln for ln in lines if ln.startswith("RESULT ")), "")
+    return result, [ln[7:] for ln in lines if ln.startswith("REASON ")]
+
+
+def repair(root, run=subprocess.run):
+    """--repair: verify the install, then check the game files again and rebuild what changed (docstring)."""
+    checked, bad = verify_install(root)
+    if bad:
+        more = f"\n... and {len(bad) - 5} more" if len(bad) > 5 else ""
+        notify(f"{len(bad)} of the {checked} files of this install are missing or changed:\n" + "\n".join(bad[:5]) +
+               more + "\n\nRun the setup program again over this folder; your saves and settings stay.")
+        return 1
+    if not ask(f"The {checked} files of this install are intact.\n\nCheck your game files again and rebuild what "
+               "changed? Steps whose inputs did not change are kept, so this takes from a minute to a full build; a "
+               "console window shows the progress."):
+        return 0
+    status = os.path.join(root, "work", "logs", "repair-status.txt")
+    os.makedirs(os.path.dirname(status), exist_ok=True)
+    if os.path.exists(status):
+        os.remove(status)
+    rc = run([console_python(root), os.path.join(HERE, "firstrun.py"), "--root", root, "--bar", "--status-file",
+              status], cwd=root, creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0)).returncode
+    result, reasons = status_reasons(status)
+    if rc == 0 and "ok=1" in result:
+        notify("Verified: the install's files are intact, your game files pass the check and the port is up to "
+               "date.", error=False)
+        return 0
+    why = "\n".join(reasons) or (result or f"exit {rc}")
+    notify(f"The check or the build did not finish:\n\n{why}\n\nThe log is in {os.path.join(root, 'work', 'logs')}.")
+    return rc or 1
+
+
+def saves_folder(root, environ=None):
+    e = kzbuild.resolve(environ, root=root)
+    return data_dir(root, e["KZ_VFS"], e)
+
+
+def open_folder(path, select=False):
+    if kzbuild.WINDOWS:
+        subprocess.Popen(["explorer.exe", f"/select,{path}"] if select else ["explorer.exe", path])
+    elif sys.stdout is not None:
+        print(path)
+
+
+def open_data(root):
+    """--open-data: the saves and settings folder in Explorer (made if it is not there yet)."""
+    d = saves_folder(root)
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError as err:
+        notify(f"cannot open {d}: {err}")
+        return 1
+    open_folder(d)
+    return 0
+
+
+def desktop(environ=None):
+    environ = os.environ if environ is None else environ
+    home = environ.get("USERPROFILE") or os.path.expanduser("~")
+    d = os.path.join(home, "Desktop")
+    return d if os.path.isdir(d) else home
+
+
+def support_package(root, out="", environ=None):
+    """--support-package: support.py's zip; says where it is."""
+    import datetime
+    import firstrun
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    try:
+        dest, skipped = support.build(root, saves_folder(root, environ), out or desktop(environ), firstrun.redactor(),
+                                      stamp)
+    except OSError as err:
+        notify(f"the support package could not be written: {err}")
+        return 1
+    if not dest:
+        notify("Nothing to put in a support package yet: no logs and no settings. Start the game once, then try again.",
+               error=False)
+        return 1
+    note = f"\n\nLeft out: {', '.join(skipped)}" if skipped else ""
+    notify(f"The support package is ready:\n{dest}\n\nIt holds the logs and settings (your user folder is written as "
+           f"~), not your saves or game files. Attach it to your bug report.{note}", error=False)
+    open_folder(dest, select=True)
+    return 0
 
 
 def first_run(root):
@@ -155,8 +304,18 @@ def main(argv=None):
     ap.add_argument("--fullscreen", action="store_true")
     ap.add_argument("--build-if-needed", action="store_true",
                     help="before the first build, open run.cmd (Windows release folder; the launcher passes it)")
+    ap.add_argument("--repair", action="store_true", help='"Verify and rebuild": check the install, then rebuild')
+    ap.add_argument("--open-data", action="store_true", help='"Open saves folder"')
+    ap.add_argument("--support-package", action="store_true", help='"Make a support package": a zip of the logs')
+    ap.add_argument("--out", default="", help="with --support-package: the folder for the zip (default: the Desktop)")
     a = ap.parse_args(argv)
     root = os.path.abspath(a.root)
+    if a.repair:
+        return repair(root)
+    if a.open_data:
+        return open_data(root)
+    if a.support_package:
+        return support_package(root, a.out)
     try:
         argv_, cwd, env, log = plan(root, fullscreen=a.fullscreen)
     except ValueError as err:

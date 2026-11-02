@@ -187,6 +187,11 @@ the game from there. With the setup's "Portable" task (`/MERGETASKS=portable`) t
 `work\vfs`, as in the zip or a Git clone. `vekta-install.ini` in the install folder records the choice. Saves an
 earlier version left in `work\vfs` are moved to `%APPDATA%` on the next start, never over a file already there.
 
+The Start menu has, beside the game: "Verify and rebuild" (`launch.py --repair`: the install's files against
+`manifest.json`, then the check of your game files and a rebuild of what changed), "Open saves folder"
+(`--open-data`) and "Make a support package" (`--support-package`: one zip on the Desktop with the logs and settings,
+your user folder written as `~`, no saves and no game files; `tools/release/support.py`).
+
 The folder keeps this repository's layout: the port's sources, the patched ps3recomp in `work/ps3recomp-patched` (so
 the player needs no Git) and the toolchain in `work/toolchain-cache` (llvm-mingw, CMake, Ninja, the embeddable
 Python, SDL2, zlib, glslang, the Vulkan headers and FFmpeg). On Windows, `run.cmd` asks where your files are, checks

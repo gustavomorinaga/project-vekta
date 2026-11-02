@@ -14,6 +14,9 @@ program and folder that build it. Until a release that calls itself playable
   installs take the files as switches (`/GAME=` and the others). After Project Helghast's and Project Pyrrhus's
   setup programs (MIT). `release.yml` installs it on the Windows runner with stand-ins for the files
   (`tools/release/fake_game_files.py`) and checks that the build runs and stops at the check.
+- Start menu entries "Verify and rebuild" (checks the installed files, then your game files, and rebuilds what
+  changed), "Open saves folder" and "Make a support package" (a zip of the logs and settings for a bug report, without
+  your user name, saves or game files). After Project Helghast's (MIT).
 
 ### Changed
 - A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or

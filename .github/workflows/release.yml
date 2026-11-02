@@ -204,6 +204,20 @@ jobs:
           Write-Host "launcher: $cmd"
           if ($p.ExitCode -or $cmd -notmatch "pythonw\.exe.+launch\.py.+--build-if-needed") {
             Write-Error "the launcher's dry run did not name pythonw and launch.py"; exit 1 }
+          # The Start menu's entries, through the console Python so their messages come out here (no message box)
+          $py = "$app\work\toolchain-cache\python\python.exe"
+          $out = "n" | & $py "$app\tools\release\launch.py" --root $app --repair 2>&1 | Out-String
+          Write-Host "repair: $out"
+          if ($LASTEXITCODE -or $out -notmatch "files of this install are intact") {
+            Write-Error "Verify and rebuild did not find the install intact"; exit 1 }
+          $out = & $py "$app\tools\release\launch.py" --root $app --support-package --out "$env:RUNNER_TEMP\sp" 2>&1 | Out-String
+          Write-Host "support: $out"
+          $zip = Get-ChildItem "$env:RUNNER_TEMP\sp\project-vekta-support-*.zip"
+          if ($LASTEXITCODE -or -not $zip) { Write-Error "no support package"; exit 1 }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $names = [IO.Compression.ZipFile]::OpenRead($zip.FullName).Entries.FullName -join " "
+          if ($names -notmatch "facts.txt" -or $names -notmatch "vekta-install.ini") {
+            Write-Error "the support package holds: $names"; exit 1 }
           $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList `
             "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
           if ($p.ExitCode) { Write-Error "uninstall exit $($p.ExitCode)"; exit 1 }

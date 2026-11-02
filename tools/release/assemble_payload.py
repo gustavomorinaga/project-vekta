@@ -9,7 +9,7 @@ The payload keeps the repository's own layout, so tools/kzbuild.py and tools/rel
 run in a clone (the player's files, the lift and the build go to its work/ like in a clone):
 
   tools/          kzbuild.py, check-game-files.py, psarc_ls.py, extract_spu_modules.py and, in tools/release/,
-                  firstrun.py, launch.py, fetch_toolchain.py, build_win_deps.py, toolchain.json
+                  firstrun.py, launch.py, support.py, fetch_toolchain.py, build_win_deps.py, toolchain.json
   re/             function_seeds.txt (the lift's seeds)
   port/           port/kz1hd (its sources, no tests) and port/cmake/*.cmake
   work/ps3recomp-patched/  the patched ps3recomp (tools/ps3recomp-patched.sh), without .github, docs, packaging and
@@ -64,6 +64,7 @@ RULES = [
     ("tools/extract_spu_modules.py", "tools/extract_spu_modules.py", "file", {}),
     ("tools/release/firstrun.py", "tools/release/firstrun.py", "file", {}),
     ("tools/release/launch.py", "tools/release/launch.py", "file", {}),
+    ("tools/release/support.py", "tools/release/support.py", "file", {}),
     ("tools/release/fetch_toolchain.py", "tools/release/fetch_toolchain.py", "file", {}),
     ("tools/release/build_win_deps.py", "tools/release/build_win_deps.py", "file", {}),
     ("tools/release/toolchain.json", "tools/release/toolchain.json", "file", {}),

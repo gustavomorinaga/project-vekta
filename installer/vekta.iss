@@ -12,9 +12,10 @@
 ; the installed game folder (NPUA80856), the decrypted EBOOT.elf, data_ps3.psarc and libsre.prx, and optionally the
 ; firmware's dev_flash; it checks their kind and size before copying anything, keeps the answers in work\paths.env
 ; (firstrun.py --save-paths) and, with "Build now" (the default), builds the port in the wizard (about five minutes;
-; the full SHA-256 check is the build's first step). Start-menu entries (the game, "Build again", the project page,
-; the uninstaller) and an optional desktop shortcut, all on the launcher "Project Vekta.exe", which builds on its first
-; start when the build did not run here. It downloads nothing.
+; the full SHA-256 check is the build's first step). Start-menu entries (the game, "Verify and rebuild", "Open saves
+; folder", "Make a support package", the project page, the uninstaller) and an optional desktop shortcut, all on
+; the launcher "Project Vekta.exe", which builds on its first start when the build did not run here. It downloads
+; nothing.
 ; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>
 ; /LIBSRE=<file> [/DEVFLASH=<dir>]] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with all four
 ; files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
@@ -100,7 +101,12 @@ Source: "{#Payload}\work\ps3recomp-patched\.patchset"; DestDir: "{app}\work\ps3r
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"
-Name: "{group}\Build again (your files, the lift, the compile)"; Filename: "{app}\run.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\{#LauncherExe}"
+; launch.py --repair: the install against manifest.json, then the check of your files and a rebuild of what changed
+Name: "{group}\Verify and rebuild"; Filename: "{app}\{#LauncherExe}"; Parameters: "--repair"; WorkingDir: "{app}"
+; the saves and settings folder in Explorer (%APPDATA%\Project Vekta, or work\vfs when portable)
+Name: "{group}\Open saves folder"; Filename: "{app}\{#LauncherExe}"; Parameters: "--open-data"; WorkingDir: "{app}"
+; one zip of the logs and settings for a bug report, on the Desktop (tools/release/support.py)
+Name: "{group}\Make a support package"; Filename: "{app}\{#LauncherExe}"; Parameters: "--support-package"; WorkingDir: "{app}"
 Name: "{group}\Project page"; Filename: "{#SiteURL}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"; Tasks: desktopicon

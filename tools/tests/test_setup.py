@@ -11,6 +11,7 @@ import os
 import json
 import pathlib
 import re
+import subprocess
 import sys
 import tempfile
 
@@ -134,8 +135,87 @@ for v in ("1", "0"):
     check(re.search(rf'Filename: "{{app}}\\{launch.INSTALL_INI}"; Section: "install"; Key: "portable"; '
                     rf'String: "{v}"', iss_text), f"the setup writes portable={v} in {launch.INSTALL_INI}")
 
+# The Start menu's entries run the launcher with options launch.py takes
+import support  # noqa: E402
+for opt in re.findall(r'Filename: "\{app\}\\\{#LauncherExe\}"; Parameters: "([^"]+)"', iss_text):
+    check(f'"{opt}"' in (ROOT / "tools/release/launch.py").read_text(), f"launch.py takes {opt}")
+check(len(re.findall(r'Parameters: "--', iss_text)) == 3, "three entries: repair, saves folder, support package")
+
+# --repair: the install's files against manifest.json, then firstrun.py; its message says how it went
+import hashlib  # noqa: E402
+with tempfile.TemporaryDirectory() as tmp:
+    t = pathlib.Path(tmp)
+    (t / "a.txt").write_text("a")
+    (t / "zlib").mkdir()
+    (t / "zlib" / "zconf.h.included").write_text("z")
+    files = [{"path": "a.txt", "size": 1, "sha256": hashlib.sha256(b"a").hexdigest()},
+             {"path": "zlib/zconf.h", "size": 1, "sha256": hashlib.sha256(b"z").hexdigest()}]
+    (t / "manifest.json").write_text(json.dumps({"files": files}))
+    check(launch.verify_install(tmp) == (2, []), "intact, and a file CMake renamed counts as there")
+    (t / "a.txt").write_text("b")
+    n, bad = launch.verify_install(tmp)
+    check(bad == ["a.txt (changed)"], f"a changed file is named: {bad}")
+    said, asked, ran = [], [], []
+    old = launch.notify, launch.ask
+    launch.notify = lambda text, error=True: said.append((text, error))
+    launch.ask = lambda text: asked.append(text) or True
+    try:
+        check(launch.repair(tmp, run=lambda *a, **k: ran.append(a)) == 1 and not ran and "setup program again" in
+              said[-1][0], "a damaged install is not rebuilt")
+        (t / "a.txt").write_text("a")
+
+        class Done:
+            def __init__(self, rc, lines):
+                self.rc, self.lines = rc, lines
+
+            def __call__(self, argv, **k):
+                ran.append(argv)
+                st = argv[argv.index("--status-file") + 1]
+                pathlib.Path(st).write_text("LOG x\n" + "\n".join(self.lines) + "\n")
+                return subprocess.CompletedProcess(argv, self.rc)
+        check(launch.repair(tmp, run=Done(0, ["RESULT ok=1 step=- elapsed=3"])) == 0 and "Verified" in said[-1][0] and
+              "--bar" in ran[-1] and ran[-1][1].endswith("firstrun.py"), f"a rebuild that passes: {said[-1]}")
+        check(launch.repair(tmp, run=Done(1, ["RESULT ok=0 step=check", "REASON EBOOT.elf: DIFFERENT"])) == 1 and
+              "EBOOT.elf: DIFFERENT" in said[-1][0], f"the reason a rebuild stopped: {said[-1]}")
+    finally:
+        launch.notify, launch.ask = old
+
+# The support package: logs and settings, the home folder taken out, never saves or game files
+with tempfile.TemporaryDirectory() as tmp:
+    t = pathlib.Path(tmp)
+    root, data, out = t / "app", t / "data", t / "out"
+    (root / "work" / "logs").mkdir(parents=True)
+    (data / "gamedata").mkdir(parents=True)
+    (root / "work" / "play.log").write_text("using device 0: NVIDIA GeForce RTX 3070 Ti\nD:\\Profiles\\player\\x\n")
+    for i in range(3):
+        (root / "work" / "logs" / f"firstrun-2026110{i}-000000.log").write_text(f"run {i}\n")
+    (root / "manifest.json").write_text(json.dumps({"version": "9.9.9", "commit": "abc", "patchset": "p"}))
+    (data / "kz1hd_pc.ini").write_text("fov=90\n")
+    (data / "gamedata" / "SAVE.DAT").write_text("save")
+    (root / "work" / "paths.env").write_text("KZ_GAME=secret\n")
+
+    def red(s):
+        return s.replace("D:\\Profiles\\player", "~")
+    dest, skipped = support.build(str(root), str(data), str(out), red, "20261102-000000")
+    import zipfile  # noqa: E402
+    with zipfile.ZipFile(dest) as z:
+        names = sorted(z.namelist())
+        body = {n: z.read(n).decode() for n in names}
+    check(names == ["facts.txt", "kz1hd_pc.ini", "logs/firstrun-20261101-000000.log",
+                    "logs/firstrun-20261102-000000.log", "play.log"], f"the files: {names}")
+    check("~\\x" in body["play.log"] and "player" not in "".join(body.values()), "the user folder is taken out")
+    check("Port version: 9.9.9" in body["facts.txt"] and "GPU: NVIDIA GeForce RTX 3070 Ti" in body["facts.txt"],
+          f"facts: {body['facts.txt']}")
+    check(dest.endswith("project-vekta-support-20261102-000000.zip"), dest)
+    check(support.refused("EBOOT.elf") and support.refused("x.psarc") and support.refused("SAVE.DAT") and
+          not support.refused("play.log"), "only text names, never game files")
+    texts = {"big.log": "line\n" * 5000, "small.ini": "a=1\n"}
+    trimmed = support.trim(texts, 2000)
+    check(trimmed == ["big.log"] and sum(len(v) for v in texts.values()) <= 2000 and
+          texts["big.log"].startswith(support.MARKER), "the oldest lines of the largest log go first")
+    check(support.build(str(t / "none"), str(t / "none"), str(out), red, "x") == ("", []), "nothing to collect")
+
 # The stand-ins release.yml installs with: the right kinds and sizes, refused only by their SHA-256
-import subprocess  # noqa: E402
 with tempfile.TemporaryDirectory() as tmp:
     r = subprocess.run([sys.executable, str(ROOT / "tools/release/fake_game_files.py"), tmp], capture_output=True,
                        text=True)
