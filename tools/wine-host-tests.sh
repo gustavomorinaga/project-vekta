@@ -21,7 +21,7 @@ python3 "$KZ_ROOT/tools/release/fetch_toolchain.py" --only llvm-mingw-linux,sdl2
 T="$KZ_WORK/toolchain-cache"; B="$T/llvm-mingw-linux/bin"; SD="$T/sdl2/x86_64-w64-mingw32"
 CC="$B/x86_64-w64-mingw32-clang"
 [[ -x "$CC" && -f "$SD/bin/SDL2.dll" ]] || { echo "wine-host-tests: no llvm-mingw or SDL2 in $T" >&2; exit 2; }
-O="$KZ_WORK/wine-host"; rm -rf "$O/bin"; mkdir -p "$O/bin"
+O="$KZ_WORK/wine-host"; mkdir -p "$O/bin"   # each run writes every exe again
 cp "$SD/bin/SDL2.dll" "$B/../x86_64-w64-mingw32/bin/libwinpthread-1.dll" "$O/bin/"
 export WINEPREFIX="$O/prefix" WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml=" DISPLAY=
 # the flags the Windows build uses (port/cmake/llvm-mingw.cmake)
