@@ -385,6 +385,7 @@ def write_tar(path, out, top):
     bits (the Linux folder's programs and scripts must run): the same payload gives the same bytes."""
     names = sorted(os.path.relpath(os.path.join(d, f), out).replace(os.sep, "/")
                    for d, _, fs in os.walk(out) for f in fs)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=6) as gz, \
             tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as t:

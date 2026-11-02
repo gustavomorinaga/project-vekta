@@ -147,12 +147,13 @@ with tempfile.TemporaryDirectory() as tmp:
           f"the Linux manifest and fetched.json hold the native entries and their sources: {sorted(ltc)}")
     check(ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--zip",
                    str(tmp / "l.zip")]) == 1, "the Linux folder refuses --zip")
-    r = ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar", str(tmp / "a.tgz")])
+    r = ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar", str(tmp / "new" / "a.tgz")])
     ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--replace", "--tar",
              str(tmp / "b.tgz")])
-    check(r == 0 and (tmp / "a.tgz").read_bytes() == (tmp / "b.tgz").read_bytes(), "the same sources give the same tar")
+    check(r == 0 and (tmp / "new" / "a.tgz").read_bytes() == (tmp / "b.tgz").read_bytes(),
+          "the same sources give the same tar (its folder is made)")
     import tarfile
-    with tarfile.open(tmp / "a.tgz") as t:
+    with tarfile.open(tmp / "new" / "a.tgz") as t:
         mem = {i.name: i for i in t.getmembers()}
     v = lman["version"]
     top = f"project-vekta-{v}-linux/"
