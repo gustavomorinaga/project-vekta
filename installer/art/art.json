@@ -1,0 +1,22 @@
+{
+ "about": "tools/release/installer_art.py's outputs; --check compares against this file",
+ "script": "8d12f6703b8bb3a30276680ec83c07937e84f5d0761fce454ce7bfa51d364ffa",
+ "pillow": "12.3.0",
+ "fonts": {
+  "FiraSansCondensed-Bold.ttf": "b9371052e58ec5b709153dd0fffc60b5205b4d3435cf957c2522705b31b0dbcc",
+  "FiraSansCondensed-Regular.ttf": "c67609f14fc9d328442bfffcc31988b0f76e5575cf460fcc1f3dd8e4912fe257"
+ },
+ "launcher_icon": "b060737097bfc4dcf50bbf679952fe17f0261e794ccf5c315e9b32beed79f292",
+ "files": {
+  "header-100.bmp": "67c71b2e66de301ed348b5bdc4664d1484f251648d382e6297660cf5985a4a06",
+  "header-125.bmp": "728bcb80dc19a5aba84f2eb75e4c5a3806d1ee92582ab1a883fb64818ccb6825",
+  "header-150.bmp": "f1e9a4aa13cbb70334ebe0a27a95dd67a9110a64ef34dc8fcded9e64bd5de55c",
+  "header-200.bmp": "8dbac6d1b5764e595061a18e35d0426cca7dc28a025944cc90255503a6b40d83",
+  "vekta-setup.ico": "de2e15d74fe7d54f1f0e6629d384ab5cec53a909006e5fb5748b6e36834fa18c",
+  "vekta-uninstall.ico": "90d8a25cb36f373c6352708e0813189ae139ac6505a66cef13bd706d9db96f91",
+  "wizard-100.bmp": "3b1b5cb2bac99606422ff696006598c9c38e9f62917e0115d1173ca8264e1480",
+  "wizard-125.bmp": "fa597e372f58de402e19a2f5742dcaea194b173f2b222b554ccb33106d8e9f56",
+  "wizard-150.bmp": "d3837220354b78fff7205b54a9cf95702478d42783882a9140cf6f5326beed6f",
+  "wizard-200.bmp": "5ae828939afc3051a458a71dce1080f4c707859eec1e15ed0b95dd21000b233a"
+ }
+}

@@ -200,6 +200,11 @@ the new version dropped does not linger; the build, the game folder, the logs an
 changed is rebuilt. The uninstaller asks whether to delete the saves and settings too (default No; a silent
 uninstall keeps them).
 
+The setup is dark, with its own side and header images at four DPI scales and its own setup and uninstall icons,
+all in `installer/art/` and made by `tools/release/installer_art.py` from the project's art in the site's palette
+(`--fetch-fonts` once for Fira Sans Condensed, then run it; `--check`, which the host tests run, says when an image
+no longer matches the script).
+
 The folder keeps this repository's layout: the port's sources, the patched ps3recomp in `work/ps3recomp-patched` (so
 the player needs no Git) and the toolchain in `work/toolchain-cache` (llvm-mingw, CMake, Ninja, the embeddable
 Python, SDL2, zlib, glslang, the Vulkan headers and FFmpeg). On Windows, `run.cmd` asks where your files are, checks

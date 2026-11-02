@@ -4,10 +4,10 @@
     tools/release/check_install.py DIR [--after-uninstall]
 
 Every file manifest.json lists must be in DIR with its size and SHA-256, and DIR must hold nothing else but
-manifest.json and the setup program's own files (unins000.exe, unins000.dat, vekta-install.ini). With --after-uninstall: DIR must be
-gone, or hold only what the uninstaller keeps (work\\vfs, the saves and settings). release.yml runs it on the Windows
-runner after a silent install and after the silent uninstall. Prints the problems, at most 20, and a summary line.
-Exit 0 = ok, 1 = a problem, 2 = usage. Standard library only.
+manifest.json and the setup program's own files (unins000.exe, unins000.dat, vekta-install.ini, vekta-uninstall.ico).
+With --after-uninstall: DIR must be gone, or hold only what the uninstaller keeps (work\\vfs, the saves and settings).
+release.yml runs it on the Windows runner after a silent install and after the silent uninstall. Prints the problems,
+at most 20, and a summary line. Exit 0 = ok, 1 = a problem, 2 = usage. Standard library only.
 """
 import argparse
 import hashlib
@@ -15,7 +15,7 @@ import json
 import os
 import sys
 
-OWN = {"manifest.json", "unins000.exe", "unins000.dat", "vekta-install.ini"}   # the list, the uninstaller, [INI]
+OWN = {"manifest.json", "unins000.exe", "unins000.dat", "vekta-install.ini", "vekta-uninstall.ico"}   # setup's own
 KEPT = "work/vfs/"                        # the uninstaller keeps the saves and settings ([UninstallDelete])
 
 

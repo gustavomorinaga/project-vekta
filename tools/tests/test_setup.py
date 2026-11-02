@@ -41,8 +41,15 @@ for ref in re.findall(r'\{#Payload\}\\\\?([^"\s;]+)', text):
 check('Source: "{#Payload}\\work\\ps3recomp-patched\\.patchset"' in text,
       "vekta.iss names .patchset itself (a wildcard skips hidden files)")
 check('#define LauncherExe "Project Vekta.exe"' in text, "vekta.iss starts the launcher assemble_payload ships")
-check((ROOT / "installer" / "art" / "vekta.ico").is_file() and "SetupIconFile=art\\vekta.ico" in text,
+check((ROOT / "installer" / "art" / "vekta.ico").is_file() and "SetupIconFile=art\\vekta-setup.ico" in text,
       "the setup icon is there")
+# The look: every image and icon the script names is in installer/art and matches art.json (installer_art.py --check)
+for f in re.findall(r"art\\([\w-]+\.(?:bmp|ico))", text):
+    check((ROOT / "installer" / "art" / f).is_file(), f"installer/art/{f} is there")
+check("WizardStyle=modern dark" in text and "DisableWelcomePage=no" in text, "dark, with the Welcome page's image")
+r = subprocess.run([sys.executable, str(ROOT / "tools/release/installer_art.py"), "--check", "--fonts",
+                    str(ROOT / "work" / "no-fonts")], capture_output=True, text=True)
+check(r.returncode == 0, f"the art is what installer_art.py made: {r.stdout}")
 check("PrivilegesRequired=lowest" in text and "{localappdata}\\Programs\\ProjectVekta" in text,
       "a per-user install, by default into a folder without spaces")
 # The pages check the files tools/check-game-files.py checks, with its sizes

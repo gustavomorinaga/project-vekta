@@ -21,6 +21,8 @@ program and folder that build it. Until a release that calls itself playable
   folders), also for silent installs. Installing over an earlier version replaces the payload's folders whole, so
   nothing stale is left, and keeps the build, the game folder and the saves. The uninstaller asks whether to delete
   the saves and settings (default No).
+- The setup program is dark, with side and header images for every screen scale and its own setup and uninstall
+  icons (`tools/release/installer_art.py`).
 
 ### Changed
 - A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or

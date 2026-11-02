@@ -39,8 +39,8 @@
 #if AppVersion != PayloadVersion
   #error AppVersion {#AppVersion} is not the payload's VERSION {#PayloadVersion}
 #endif
-#if VER < EncodeVer(6,5,0)
-  #error Inno Setup 6.5 or later is needed (tested with 6.7.3)
+#if VER < EncodeVer(6,6,0)
+  #error Inno Setup 6.6 or later is needed (WizardStyle dark; tested with 6.7.3)
 #endif
 #define AppName "Project Vekta"
 ; The tested files' sizes, as tools/check-game-files.py has them (tools/tests/test_setup.py checks they agree)
@@ -71,10 +71,19 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 LicenseFile={#Payload}\LICENSE
-SetupIconFile=art\vekta.ico
-UninstallDisplayIcon={app}\{#LauncherExe}
+; The look: installer\art\ (tools/release/installer_art.py, from the project's own art in the site's palette).
+SetupIconFile=art\vekta-setup.ico
+UninstallDisplayIcon={app}\vekta-uninstall.ico
 UninstallDisplayName={#AppName}
-WizardStyle=modern
+; Dark always, as the site and the game (Inno 6.7.3's help, WizardStyle: pages, message boxes and the title bar;
+; a Windows high-contrast theme, or /NOSTYLE, still wins). After Project Pyrrhus's and Project Helghast's setups.
+WizardStyle=modern dark
+; the Welcome page carries the side image (Inno 6 hides it by default)
+DisableWelcomePage=no
+; Inno picks the closest size for the screen's DPI (100/125/150/200 %); paths relative to this script
+WizardImageFile=art\wizard-100.bmp,art\wizard-125.bmp,art\wizard-150.bmp,art\wizard-200.bmp
+WizardSmallImageFile=art\header-100.bmp,art\header-125.bmp,art\header-150.bmp,art\header-200.bmp
+WizardImageStretch=yes
 Compression=lzma2/max
 SolidCompression=yes
 OutputDir=Output
@@ -115,6 +124,8 @@ Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cr
 ; Named again: a wildcard skips hidden files, and Wine shows a name that starts with a dot as hidden (firstrun.py
 ; finds the shipped patched tree by this file). tools/release/build_setup.py also turns Wine's ShowDotFiles on.
 Source: "{#Payload}\work\ps3recomp-patched\.patchset"; DestDir: "{app}\work\ps3recomp-patched"; Flags: ignoreversion
+; Apps & features' icon (UninstallDisplayIcon) and the Start menu's Uninstall entry
+Source: "art\vekta-uninstall.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"
@@ -125,7 +136,7 @@ Name: "{group}\Open saves folder"; Filename: "{app}\{#LauncherExe}"; Parameters:
 ; one zip of the logs and settings for a bug report, on the Desktop (tools/release/support.py)
 Name: "{group}\Make a support package"; Filename: "{app}\{#LauncherExe}"; Parameters: "--support-package"; WorkingDir: "{app}"
 Name: "{group}\Project page"; Filename: "{#SiteURL}"
-Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
+Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\vekta-uninstall.ico"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
