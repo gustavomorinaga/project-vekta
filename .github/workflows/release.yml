@@ -226,7 +226,7 @@ jobs:
           if ($text -notmatch "paths: saved") { Write-Error "setup did not save the paths"; exit 1 }
           if ($text -notmatch "build: did not finish: ") {
             Write-Error "the build in the wizard did not run and stop at the check"; exit 1 }
-          if (-not (Select-String -Path "$app\work\paths.env" -SimpleMatch "fake\NPUA80856" -Quiet)) {
+          if (-not (Select-String -Path "$app\work\paths.env" -SimpleMatch "fake\\NPUA80856" -Quiet)) {
             Write-Error "work\paths.env does not hold the game folder"; exit 1 }
           $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList `
             "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
