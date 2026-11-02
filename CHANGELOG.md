@@ -7,6 +7,16 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- The Linux release folder (`tools/release/assemble_payload.py --platform linux --tar`): the port's sources, the
+  patched ps3recomp and a pinned toolchain (Zig 0.17.0 as the C and C++ compiler, CMake, Ninja, SDL2, zlib,
+  glslang, the Vulkan headers and FFmpeg 9's libraries), so a player needs only Python 3 and the usual desktop
+  libraries (glibc 2.31 or newer, SDL2, a Vulkan driver). `run.sh` asks for your files and builds there, `play.sh`
+  starts the game. The binaries target glibc 2.31 (`port/cmake/zig-linux.cmake`, `tools/release/zig/`,
+  `tools/release/build_linux_deps.py`); `KZ_LINUX_TOOLCHAIN=pinned` selects that toolchain in a source checkout too.
+- Releases after 0.2.0 carry that folder as `project-vekta-X.Y.Z-linux.tar.gz`: `.github/workflows/release.yml`
+  builds it and checks it in a Debian 11 container with no compiler (`tools/release/check_linux_folder.sh`).
+
 ## [0.2.0] - 2026-11-01 (pre-release)
 
 ### Added

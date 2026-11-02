@@ -49,12 +49,20 @@ SOURCE_ONLY = (
     "Trilogy disc with its decrypted EBOOT and data archive, and the decrypted libsre and dev_flash of your own PS3 "
     "firmware; none of them is included or downloaded. What each must contain: "
     "[docs/GETTING-FILES.md]({blob}/docs/GETTING-FILES.md). SHA-256 sums: SHA256SUMS (and the .sha256 file).")
+LINUX_SOURCE = (
+    "Linux: project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its pinned commit; "
+    "tools/install.sh builds it ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). ")
+LINUX_FOLDER = (
+    "Linux: project-vekta-{version}-linux.tar.gz is the same kind of folder with its own toolchain (Zig, CMake, "
+    "Ninja; nothing to install but Python 3): unpack it, ./run.sh builds and offers an applications-menu entry, "
+    "./play.sh plays. The game needs glibc 2.31 or newer, a Vulkan driver and the system's SDL2. "
+    "project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its pinned commit, for building "
+    "with your own compilers ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). ")
 FILES = (
     "Windows: project-vekta-{version}-setup.exe installs the port's sources and the pinned toolchain for your user "
     "(no admin rights). Its launcher, Project Vekta.exe, asks where your files are, builds the port on its first "
     "start (about five minutes) and then plays. project-vekta-{version}-windows.zip is the same folder without the "
-    "setup program: run.cmd builds, play.cmd plays. Linux: project-vekta-{version}-source.tar.gz holds this tag's "
-    "tree with ps3recomp at its pinned commit; tools/install.sh builds it ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). "
+    "setup program: run.cmd builds, play.cmd plays. {linux}"
     "None of the files holds anything of the game: you need your own Killzone HD (NPUA80856) from the Killzone "
     "Trilogy disc with its decrypted EBOOT and data archive, and the decrypted libsre and dev_flash of your own PS3 "
     "firmware; none of them is included or downloaded. What each must contain: "
@@ -119,7 +127,9 @@ def notes(version, entry, first=False):
         *lists,
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
         *([SOURCE_ONLY.format(version=version, blob=blob)] if version == "0.1.0" else
-          [FILES.format(version=version, blob=blob)]),
+          [FILES.format(version=version, blob=blob, linux=(
+              LINUX_FOLDER if tuple(int(x) for x in version.split(".")) > (0, 2, 0) else LINUX_SOURCE
+          ).format(version=version, blob=blob))]),
         *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE]}.get(version, [])),
     ]) + "\n"
 

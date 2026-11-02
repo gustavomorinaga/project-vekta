@@ -1,6 +1,6 @@
-# Release: the source archive of a tag, and the Windows setup program and folder built from it, published as a DRAFT
-# GitHub release for the maintainer to read and publish. After Project Pyrrhus's and Project Helghast's release.yml
-# (undecuple, MIT). Every file carries the port's sources and the pinned toolchain, nothing of the game: the port is
+# Release: the source archive of a tag, and the Windows setup program and folder and the Linux folder built from it,
+# published as a DRAFT GitHub release for the maintainer to read and publish. After Project Pyrrhus's and Project
+# Helghast's release.yml (undecuple, MIT). Every file carries the port's sources and the pinned toolchain, nothing of the game: the port is
 # always built on the player's machine from their own game (docs/BUILDING.md).
 #
 # Triggers: a pushed tag vMAJOR.MINOR.PATCH (builds, then creates the draft) and workflow_dispatch (a dry run: builds
@@ -20,12 +20,17 @@
 #            (tools/release/build_setup.py; SHA-256 in toolchain.json), then installs it silently, checks the
 #            installed files against the payload's manifest.json (tools/release/check_install.py), runs the launcher's
 #            dry run and uninstalls it silently.
-#   publish  (tag pushes only) is the one job that may write: it creates the draft release from the three jobs'
+#   linux    (Linux) fetches the pinned Linux toolchain (Zig, CMake, Ninja, SDL2's source, FFmpeg) and assembles
+#            the Linux folder as a tar.gz (assemble_payload.py --platform linux), then checks it unpacked in a Debian 11
+#            container with Python and no compiler: its own toolchain builds ps3recomp's shader test and boot smoke,
+#            both run, and neither needs a glibc newer than 2.31 (tools/release/check_linux_folder.sh).
+#   publish  (tag pushes only) is the one job that may write: it creates the draft release from the other jobs'
 #            artifacts and runs no repository code.
 # Third-party: actions/checkout and actions/upload-artifact (GitHub, MIT), the gh CLI (MIT, on the images), the
-# toolchain.json downloads (each checked against its SHA-256).
+# toolchain.json downloads (each checked against its SHA-256), Docker's python:3.9-slim-bullseye image (the linux
+# job's clean system; nothing from it is published).
 # Published files: project-vekta-<version>-source.tar.gz, project-vekta-<version>-setup.exe,
-# project-vekta-<version>-windows.zip, a .sha256 for each, SHA256SUMS (tools/release/release_check.py checks them
+# project-vekta-<version>-windows.zip, project-vekta-<version>-linux.tar.gz, a .sha256 for each, SHA256SUMS (tools/release/release_check.py checks them
 # once the release is published).
 name: release
 
@@ -141,6 +146,61 @@ jobs:
           compression-level: 0   # already a zip
           retention-days: 14
 
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    needs: source
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - name: The patched ps3recomp (port/patches on its pinned commit)
+        run: bash tools/ps3recomp-patched.sh
+
+      - name: The Linux toolchain (tools/release/toolchain.json, host native and the sources, SHA-256 checked)
+        run: |
+          python3 tools/release/fetch_toolchain.py --host native
+          python3 tools/release/fetch_toolchain.py --only zlib,glslang,vulkan-headers
+
+      - name: The Linux folder and its tar.gz (tools/release/assemble_payload.py --platform linux)
+        env:
+          VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          tgz="project-vekta-$VERSION-linux.tar.gz"
+          python3 tools/release/assemble_payload.py --platform linux --out build/linux --tar "out/$tgz"
+          cd out && sha256sum "$tgz" > "$tgz.sha256" && cat "$tgz.sha256" && ls -l
+
+      # The folder as a player gets it, in Debian 11 (glibc 2.31, the oldest the build targets) with Python and no
+      # compiler: its own toolchain builds ps3recomp's shader test and boot smoke, and both run.
+      - name: The folder builds with nothing but its own toolchain (tools/release/check_linux_folder.sh)
+        env:
+          VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          mkdir -p build/unpacked && tar -xzf "out/project-vekta-$VERSION-linux.tar.gz" -C build/unpacked
+          d="build/unpacked/project-vekta-$VERSION-linux"
+          docker run --rm -v "$PWD/$d:/vekta" -v "$PWD/tools/release:/check:ro" python:3.9-slim-bullseye \
+            sh -c 'command -v cc gcc clang || true; sh /check/check_linux_folder.sh /vekta'
+          for f in "$d/work/check-build/test_shader_spirv" "$d/work/check-build/ps3recomp_boot_smoke"; do
+            v=$(objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1)
+            echo "$f needs $v"
+            [ "$(printf '%s\nGLIBC_2.31\n' "$v" | sort -V | tail -1)" = GLIBC_2.31 ] || {
+              echo "::error::$f needs $v (newer than glibc 2.31)"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: project-vekta-${{ needs.source.outputs.version }}-linux
+          path: |
+            out/project-vekta-${{ needs.source.outputs.version }}-linux.tar.gz
+            out/project-vekta-${{ needs.source.outputs.version }}-linux.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0   # already gzip
+          retention-days: 14
+
   setup:
     runs-on: windows-latest
     timeout-minutes: 40
@@ -224,7 +284,7 @@ jobs:
   # edited, re-uploaded or clobbered, and no tag is touched (--verify-tag refuses to create one). No checkout: the job
   # runs no repository code.
   publish:
-    needs: [source, payload, setup]
+    needs: [source, payload, setup, linux]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -241,11 +301,11 @@ jobs:
           set -euo pipefail
           [ "$GITHUB_REF_NAME" = "v$VERSION" ] || { echo "::error::tag $GITHUB_REF_NAME is not v$VERSION"; exit 1; }
           mkdir assets && cd assets
-          for a in "" -windows -setup; do
+          for a in "" -windows -setup -linux; do
             gh run download "$GITHUB_RUN_ID" --name "project-vekta-$VERSION$a" --dir .
           done
           files="project-vekta-$VERSION-source.tar.gz project-vekta-$VERSION-setup.exe"
-          files="$files project-vekta-$VERSION-windows.zip"
+          files="$files project-vekta-$VERSION-windows.zip project-vekta-$VERSION-linux.tar.gz"
           for f in $files; do
             { test -s "$f" && test -s "$f.sha256" && sha256sum -c "$f.sha256"; } || {
               echo "::error::$f or its .sha256 is missing or does not match"; exit 1; }
@@ -253,7 +313,7 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "::error::a release for $GITHUB_REF_NAME already exists; refusing to touch it"; exit 1
           fi
-          # shellcheck disable=SC2086  # $files is the three names above, without spaces
+          # shellcheck disable=SC2086  # $files is the four names above, without spaces
           sha256sum $files > SHA256SUMS
           cat SHA256SUMS
           pre=""; case "$VERSION" in 0.*) pre="--prerelease" ;; esac

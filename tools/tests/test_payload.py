@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Host test for tools/release/assemble_payload.py and tools/release/launch.py: the payload of this repository (with
 a stand-in toolchain cache) keeps the repository's layout, holds only the allowlist, the shipped patched ps3recomp and
-the Windows toolchain entries with their own fetched.json, gives the embeddable Python's ._pth the tools folders, and
+the Windows toolchain entries with their own fetched.json (the Linux folder: run.sh, play.sh and the pinned Zig
+toolchain with its other targets pruned, as a reproducible tar with execute bits), gives the embeddable Python's ._pth the tools folders, and
 has a manifest without timestamps; the same sources give the same zip; the scrub refuses game-data names and magics,
 home paths, a big file and a case clash; a toolchain entry not fetched from its pin or a stale patched tree refuses
 the payload; launch.py names the missing step and starts the build from the run folder with play.sh's settings.
@@ -83,8 +84,9 @@ with tempfile.TemporaryDirectory() as tmp:
     pth = gen["work/toolchain-cache/python/python313._pth"].decode()
     check(pth.split("\r\n")[:2] == ["python313.zip", "."] and "..\\..\\..\\tools" in pth and
           "..\\..\\ps3recomp-patched\\tools" in pth and "#" not in pth, f"the ._pth names the tools folders: {pth!r}")
-    check(man["count"] == len(paths) and man["patchset"] and set(man) == {"format", "version", "commit", "patchset", "toolchain", "count",
-                                                        "bytes", "files"}
+    check(man["count"] == len(paths) and man["patchset"] and set(man) == {"format", "version", "platform", "commit",
+                                                        "patchset", "toolchain", "count", "bytes", "files"}
+          and man["platform"] == "windows"
           and {t["name"] for t in man["toolchain"]} == tc, "the manifest: every file, the patch set, the toolchain")
 
     out = tmp / "payload"
@@ -98,6 +100,68 @@ with tempfile.TemporaryDirectory() as tmp:
         check(all(n.startswith("project-vekta-") for n in z.namelist()), "the zip has one top folder")
     for p, e in [(p, e) for e in man["files"][:50] for p in [out / e["path"]]]:
         check(hashlib.sha256(p.read_bytes()).hexdigest() == e["sha256"], f"manifest hash of {e['path']}")
+
+    # the Linux folder: the pinned Zig toolchain and the sources it builds, run.sh/play.sh, no Windows files
+    lin = ft.entries_for(m, "native")
+    for e in lin:
+        t = cache / e["name"]
+        t.mkdir(parents=True, exist_ok=True)
+        (t / "LICENSE").write_text(f"{e['name']} licence\n")
+        f = json.loads((cache / "fetched.json").read_text())
+        f[e["name"]] = e["sha256"]
+        (cache / "fetched.json").write_text(json.dumps(f))
+    z = cache / "zig"
+    for keep in ("lib/libc/include/x86-linux-gnu/bits/a.h", "lib/libc/include/generic-glibc/b.h",
+                 "lib/libc/glibc/abilists", "lib/std/std.zig"):
+        (z / keep).parent.mkdir(parents=True, exist_ok=True)
+        (z / keep).write_text("x\n")
+    for drop in ("lib/libc/include/aarch64-linux-gnu/c.h", "lib/libc/musl/d.c", "lib/libc/mingw/e.c", "doc/x.html",
+                 "RECORD"):
+        (z / drop).parent.mkdir(parents=True, exist_ok=True)
+        (z / drop).write_text("x\n")
+    (z / "zig").write_bytes(b"\x7fELF" + b"\0" * 60)
+    (z / "zig").chmod(0o755)
+    (cache / "ffmpeg-linux" / "lib").mkdir(parents=True, exist_ok=True)
+    (cache / "ffmpeg-linux" / "lib" / "libavutil.so.61.1.100").write_bytes(b"\x7fELF")
+    (cache / "ffmpeg-linux" / "lib" / "libavutil.so").write_bytes(b"\x7fELF")
+    lf, lg, lman = ap.plan(str(ROOT), str(cache), platform="linux")
+    lp = set(lf) | set(lg)
+    for need in ("run.sh", "play.sh", "tools/release/zig/cc", "tools/release/build_linux_deps.py", "tools/play.sh",
+                 "port/cmake/zig-linux.cmake", "work/toolchain-cache/zig/zig",
+                 "work/toolchain-cache/zig/lib/libc/include/x86-linux-gnu/bits/a.h",
+                 "work/toolchain-cache/zig/lib/libc/include/generic-glibc/b.h",
+                 "work/toolchain-cache/zig/lib/std/std.zig",
+                 "work/toolchain-cache/ffmpeg-linux/lib/libavutil.so.61.1.100"):
+        check(need in lp, f"the Linux folder has {need}")
+    check(not any(p in lp for p in ("run.cmd", "play.cmd")) and not any(p.endswith("._pth") for p in lp),
+          "the Linux folder has no .cmd files and no ._pth")
+    check(not any(p.startswith(("work/toolchain-cache/llvm-mingw/", "work/toolchain-cache/python/"))
+                  for p in lp), "the Linux folder has no Windows toolchain")
+    check(not any(s in p for p in lp for s in ("aarch64-linux-gnu", "/musl/", "/mingw/", "zig/doc/", "zig/RECORD"))
+          and "work/toolchain-cache/ffmpeg-linux/lib/libavutil.so" not in lp,
+          "Zig's other targets, docs and wheel files and FFmpeg's link names are left out")
+    ltc = {e["name"] for e in ap.linux_entries(m)}
+    check(lman["platform"] == "linux" and {t["name"] for t in lman["toolchain"]} == ltc and
+          set(json.loads(lg["work/toolchain-cache/fetched.json"])) == ltc and
+          {"zig", "zlib", "glslang", "vulkan-headers"} <= ltc and "llvm-mingw" not in ltc,
+          f"the Linux manifest and fetched.json hold the native entries and their sources: {sorted(ltc)}")
+    check(ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--zip",
+                   str(tmp / "l.zip")]) == 1, "the Linux folder refuses --zip")
+    r = ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar", str(tmp / "a.tgz")])
+    ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--replace", "--tar",
+             str(tmp / "b.tgz")])
+    check(r == 0 and (tmp / "a.tgz").read_bytes() == (tmp / "b.tgz").read_bytes(), "the same sources give the same tar")
+    import tarfile
+    with tarfile.open(tmp / "a.tgz") as t:
+        mem = {i.name: i for i in t.getmembers()}
+    v = lman["version"]
+    top = f"project-vekta-{v}-linux/"
+    check(all(n.startswith(top) for n in mem), "the tar has one top folder")
+    for x in ("run.sh", "play.sh", "tools/release/zig/cc", "work/toolchain-cache/zig/zig"):
+        check(mem.get(top + x) is not None and mem[top + x].mode == 0o755, f"{x} keeps its execute bit in the tar")
+    check(mem[top + "VERSION"].mode == 0o644 and mem[top + "VERSION"].uid == 0, "a plain file is 644, owner 0")
+    check(ap.scrub("t/zig", str(z / "zig"), toolchain=True, elf_ok=True) is None and
+          ap.scrub("t/zig", str(z / "zig"), toolchain=True), "ELF passes only where the Linux toolchain allows it")
 
     # refusals
     bad = tmp / "bad"

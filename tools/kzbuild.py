@@ -427,7 +427,11 @@ def ninja(e, b):
 
 
 def build_linux(e):
-    """Linux build of the port: clang, Ninja and the Vulkan renderer. KZ_MARCH sets -march (default x86-64-v3)."""
+    """Linux build of the port: clang, Ninja and the Vulkan renderer. KZ_MARCH sets -march (default x86-64-v3).
+    KZ_LINUX_TOOLCHAIN=pinned (the Linux release folder's run.sh sets it) builds with the pinned toolchain instead of
+    the system's: build_linux_pinned."""
+    if e.get("KZ_LINUX_TOOLCHAIN") == "pinned":
+        return build_linux_pinned(e)
     b = e.get("KZ_BUILD") or os.path.join(e["KZ_WORK"], "build")
     defs = lift_defs(e)
     # -O1 for the base flags, as in the maintainer's build; the lifted PPU code gets KZ_PPU_OPT (-O2) on its own.
@@ -436,6 +440,44 @@ def build_linux(e):
          f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}", "-DPS3RECOMP_RSX_VULKAN=ON", *defs], e, "null")
     ninja(e, b)
     print(f"build: {os.path.join(b, 'KZ1HD')}", flush=True)
+
+
+LINUX_PINNED = ("zig", "cmake-linux", "ninja-linux", "sdl2-src", "ffmpeg-linux", "zlib", "glslang", "vulkan-headers")
+
+
+def build_linux_pinned(e):
+    """KZ1HD with the pinned Linux toolchain (tools/release/toolchain.json, host native): Zig as the compiler for
+    x86_64-linux-gnu.2.31 (tools/release/zig/, port/cmake/zig-linux.cmake), the pinned CMake and Ninja, and the
+    libraries build_linux_deps.py builds; nothing from the system but Python. The program needs only glibc 2.31 or
+    newer, the system's libSDL2-2.0.so.0 and a Vulkan driver; the pinned FFmpeg goes to <build>/lib, which
+    tools/play.sh puts on LD_LIBRARY_PATH."""
+    root, w, j = e["KZ_ROOT"], e["KZ_WORK"], os.path.join
+    b = e.get("KZ_BUILD") or j(w, "build")
+    rel = j(root, "tools", "release")
+    cache, deps = j(w, "toolchain-cache"), j(w, "linux-deps")
+    run([sys.executable, j(rel, "fetch_toolchain.py"), "--only", ",".join(LINUX_PINNED)], e, "null")
+    run([sys.executable, j(rel, "build_linux_deps.py"), "--cache", cache, "--prefix", deps], e)
+    e["PATH"] = os.pathsep.join([j(cache, "cmake-linux", "bin"), j(cache, "ninja-linux"), e.get("PATH", "")])
+    e["KZ_ZIG"] = j(cache, "zig", "zig")
+    run(["cmake", "-G", "Ninja", "-S", j(root, "port", "kz1hd"), "-B", b,
+         f"-DCMAKE_TOOLCHAIN_FILE={j(root, 'port', 'cmake', 'zig-linux.cmake')}", f"-DKZ_LINUX_DEPS={deps}",
+         "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1", f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}",
+         "-DPS3RECOMP_RSX_VULKAN=ON", f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}",
+         f"-DKZ_FFMPEG_INCLUDE_DIR={j(deps, 'include')}", f"-DPython3_EXECUTABLE={sys.executable}",
+         # the link-only SDL2 in linux-deps must never be found at run time: no build RPATH
+         "-DCMAKE_SKIP_BUILD_RPATH=ON", *lift_defs(e)], e, "null")
+    ninja(e, b)
+    lib = j(b, "lib")
+    os.makedirs(lib, exist_ok=True)
+    for f in sorted(os.listdir(j(deps, "ffmpeg"))):
+        src, dst = j(deps, "ffmpeg", f), j(lib, f)
+        if os.path.islink(src):
+            if os.path.lexists(dst):
+                os.remove(dst)
+            os.symlink(os.readlink(src), dst)
+        else:
+            copy_newer(src, dst)
+    print(f"build: {j(b, 'KZ1HD')}", flush=True)
 
 
 FFMPEG_HEADERS = ("libavcodec", "libavformat", "libavutil", "libswscale", "libswresample")

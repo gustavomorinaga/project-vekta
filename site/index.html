@@ -195,6 +195,14 @@
 </article>
 <div id="news">
 <article class="news rel">
+<h2>Unreleased</h2>
+<p class="meta">not released yet</p>
+<ul class="rlist">
+<li><span class="sec">Added</span>The Linux release folder (<code>tools/release/assemble_payload.py --platform linux --tar</code>): the port&#x27;s sources, the patched ps3recomp and a pinned toolchain (Zig 0.17.0 as the C and C++ compiler, CMake, Ninja, SDL2, zlib, glslang, the Vulkan headers and FFmpeg 9&#x27;s libraries), so a player needs only Python 3 and the usual desktop libraries (glibc 2.31 or newer, SDL2, a Vulkan driver). <code>run.sh</code> asks for your files and builds there, <code>play.sh</code> starts the game. The binaries target glibc 2.31 (<code>port/cmake/zig-linux.cmake</code>, <code>tools/release/zig/</code>, <code>tools/release/build_linux_deps.py</code>); <code>KZ_LINUX_TOOLCHAIN=pinned</code> selects that toolchain in a source checkout too.</li>
+<li><span class="sec">Added</span>Releases after 0.2.0 carry that folder as <code>project-vekta-X.Y.Z-linux.tar.gz</code>: <code>.github/workflows/release.yml</code> builds it and checks it in a Debian 11 container with no compiler (<code>tools/release/check_linux_folder.sh</code>).</li>
+</ul>
+</article>
+<article class="news rel">
 <h2>0.2.0</h2>
 <p class="meta">1 Nov 2026 · pre-release</p>
 <ul class="rlist">
@@ -226,16 +234,6 @@
 <li><span class="sec">Fixed</span>An SPU that reserves a line while another SPU&#x27;s plain write to it is being copied now loses the reservation at once, not at the next 10 ms poll (patch 1020).</li>
 </ul>
 </article>
-<article class="news rel">
-<h2>First public tree</h2>
-<p class="meta">30 Oct 2026</p>
-<ul class="rlist">
-<li><span class="sec">Added</span>The port of Killzone HD (NPUA80856) on ps3recomp v0.18.0 with 93 patches, built on Linux, and on Linux for Windows.</li>
-<li><span class="sec">Added</span>Scripts that build it from the player&#x27;s own files with no fixed paths (<code>tools/</code>), a checker for those files, and the function seeds of the lift as a table (<code>re/function_seeds.txt</code>).</li>
-<li><span class="sec">Added</span>PC features: the in-game PC page (display, resolution, internal scale, V-Sync, frame-rate limit 30/60/144, FSR 1, anisotropic filtering, widescreen, field of view, HUD, presets, controllers, mouse, sound output, language, skip intro), direct mouse look, mouse in menus, remappable keys, device-aware button prompts, local trophies.</li>
-<li><span class="sec">Added</span>Documentation in English: README, getting files, building, how it works, features, known issues, roadmap, and the engineering notes in <code>docs/dev/</code>.</li>
-</ul>
-</article>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">The whole changelog<span aria-hidden="true"> &gt;</span></a></p>
 </div>
 <article id="about" class="news">
@@ -250,14 +248,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> The Linux release folder (tools/release/assemble_payload.py --platform linux --tar): the port&#x27;s sources, the patched...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Releases after 0.2.0 carry that folder as project-vekta-X.Y.Z-linux.tar.gz: .github/workflows/release.yml builds it...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows release folder (tools/release/assemble_payload.py): the port&#x27;s sources, the patched ps3recomp and the...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows setup program (installer/vekta.iss, Inno Setup, per-user install) and the launcher Project Vekta.exe with...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> Releases carry the Windows setup program and the Windows folder as a zip beside the source archive, each with a...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The build steps are one Python tool, tools/kzbuild.py (patch, lift, vfs, build), so the same code builds on Windows...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows build&#x27;s toolchain is pinned in the repository (tools/release/toolchain.json): llvm-mingw, SDL2, zlib...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> An applications-menu entry with the project&#x27;s own icon (assets/icon.svg): tools/install.sh offers it after a build...</span></li>
-<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> tools/install.sh: one command asks where your files are, checks them, then patches, lifts and builds with one progress...</span></li>
-<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> KZ_JOBS sets the lift&#x27;s and the compile&#x27;s parallel jobs (the installer picks it from free memory).</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

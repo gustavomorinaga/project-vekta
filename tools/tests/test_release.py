@@ -87,6 +87,8 @@ check("/blob/v0.2.0/docs/BUILDING.md" in body and "project-vekta-0.2.0-source.ta
 check(all(f"project-vekta-0.2.0-{f}" in body for f in ("setup.exe", "windows.zip")) and "Project Vekta.exe" in body,
       "notes after 0.1.0 name the setup program, the Windows zip and the launcher")
 check("setup.exe" not in release_notes.notes("0.1.0", es["0.2.0"], True), "v0.1.0's notes name the source only")
+check("linux.tar.gz" not in body and "project-vekta-0.3.0-linux.tar.gz" in release_notes.notes("0.3.0", es["0.2.0"]),
+      "notes after 0.2.0 name the Linux folder, 0.2.0's do not")
 check(release_notes.first_release("0.1.0", es) and not release_notes.first_release("0.2.0", es),
       "the first release is the one with no published version before it")
 with tempfile.TemporaryDirectory() as tmp:
@@ -190,8 +192,12 @@ with tempfile.TemporaryDirectory() as tmp:
         (assets / (n + ".sha256")).write_text(f"{h}  {n}\n")
         sums += f"{h}  {n}\n"
     (assets / "SHA256SUMS").write_text(sums)
-    check(release_check.files(v) == [src, f"project-vekta-{v}-setup.exe", f"project-vekta-{v}-windows.zip"],
-          "the release carries the source archive, the setup program and the Windows zip")
+    check(release_check.files(v) == [src, f"project-vekta-{v}-setup.exe", f"project-vekta-{v}-windows.zip",
+                                     f"project-vekta-{v}-linux.tar.gz"],
+          "the release carries the source archive, the setup program, the Windows zip and the Linux folder")
+    check(release_check.files("0.2.0") == [pack_source.name("0.2.0"), "project-vekta-0.2.0-setup.exe",
+                                           "project-vekta-0.2.0-windows.zip"], "0.2.0, published before it, has no "
+          "Linux folder")
     rel = {"tag_name": f"v{v}", "name": f"v{v}", "draft": False, "prerelease": True, "body": f"Project Vekta {v}",
            "assets": [{"name": n} for n in release_check.expected_assets(v)]}
     (tmp / "rel.json").write_text(json.dumps(rel))

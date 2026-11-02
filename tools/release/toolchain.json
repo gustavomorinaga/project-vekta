@@ -1,6 +1,6 @@
 {
  "format": 1,
- "about": "The pinned Windows toolchain and libraries, fetched by tools/release/fetch_toolchain.py into work/toolchain-cache/<name>/ (download, SHA-256 check, unpack). 'host' says where an entry is used: linux = the cross build on Linux (tools/build-win.sh), windows = the Windows-hosted build the installer will bundle, any = both. '{version}' in a url is the entry's own version. sha256 TO-FILL = never fetched: fetch_toolchain.py refuses it unless --fill, which records the hash of the first download (check it against the release page's published hash where there is one). pin TO-CONFIRM = the version was chosen without looking at the release page: confirm it there, then --fill. After Project Pyrrhus's and Project Helghast's tools/release/toolchain.json (undecuple, MIT): the same llvm-mingw, CMake, Ninja and Python pins.",
+ "about": "The pinned toolchains and libraries (Windows, and the Linux release folder's), fetched by tools/release/fetch_toolchain.py into work/toolchain-cache/<name>/ (download, SHA-256 check, unpack). 'host' says where an entry is used: linux = the cross build on Linux (tools/build-win.sh), windows = the Windows-hosted build the installer will bundle, any = both, native = the Linux build with a pinned toolchain (the Linux release folder; KZ_LINUX_TOOLCHAIN=pinned in a clone). '{version}' in a url is the entry's own version. sha256 TO-FILL = never fetched: fetch_toolchain.py refuses it unless --fill, which records the hash of the first download (check it against the release page's published hash where there is one). pin TO-CONFIRM = the version was chosen without looking at the release page: confirm it there, then --fill. After Project Pyrrhus's and Project Helghast's tools/release/toolchain.json (undecuple, MIT): the same llvm-mingw, CMake, Ninja and Python pins.",
  "build_tools": [
   {
    "name": "innosetup",
@@ -143,6 +143,71 @@
    "strip_top": true,
    "license": "LGPL-2.1-or-later (the lgpl-shared build: headers and DLLs; its source is named in the build's own files)",
    "about": "FFmpeg 9 for Windows, BtbN's lgpl-shared build of autobuild-2026-10-27-18-38: the headers the movie player's run-time loader compiles against, and the DLLs it loads beside the exe (avcodec-63, avformat-63, avutil-61, swresample-7, swscale-10; without them the movies are skipped). The maintainer's tested build, byte for byte. BtbN removes most dated builds after a while (keeping the month's last): when this url stops working, move the pin to a kept build and fill its hash again."
+  },
+  {
+   "name": "zig",
+   "host": "native",
+   "version": "0.17.0",
+   "pin": "confirmed",
+   "release_page": "https://pypi.org/project/ziglang/",
+   "url": "https://files.pythonhosted.org/packages/py3/z/ziglang/ziglang-{version}-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.musllinux_1_1_x86_64.whl",
+   "sha256": "97079827064a7492cce5541ceb438ae8003ce1e54e399676da2d62fb7a5dc08b",
+   "archive": "zip",
+   "strip_top": true,
+   "license": "MIT (Zig); its bundled clang/LLVM, libc++, libc++abi and libunwind: Apache-2.0 WITH LLVM-exception; glibc's headers and stub libraries: LGPL-2.1-or-later; the other libcs' headers under their own terms (the package's lib/ folder)",
+   "about": "The Linux build's C and C++ compiler: zig cc / zig c++ (clang with glibc's headers and libc++ inside, PyPI's ziglang wheel, a zip), driven by tools/release/zig/ for the target x86_64-linux-gnu.2.31, so the port builds with nothing from the system and runs on any glibc 2.31 or newer. Build-time only; libc++ is linked statically."
+  },
+  {
+   "name": "cmake-linux",
+   "host": "native",
+   "version": "4.4.4",
+   "pin": "confirmed",
+   "release_page": "https://github.com/Kitware/CMake/releases",
+   "url": "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-linux-x86_64.tar.gz",
+   "sha256": "e5bb807f7728cb60cd8b27ebc97a2edb469b68655f21e844a600c3575b76f5bb",
+   "archive": "tar.gz",
+   "strip_top": true,
+   "license": "BSD-3-Clause",
+   "about": "CMake for the Linux build with the pinned toolchain (the same version as the Windows one). Hash: by download, 2026-11-02."
+  },
+  {
+   "name": "ninja-linux",
+   "host": "native",
+   "version": "1.13.2",
+   "pin": "confirmed",
+   "release_page": "https://github.com/ninja-build/ninja/releases",
+   "url": "https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip",
+   "sha256": "5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6",
+   "archive": "zip",
+   "strip_top": false,
+   "license": "Apache-2.0",
+   "about": "Ninja for the Linux build with the pinned toolchain. Hash: by download, 2026-11-02."
+  },
+  {
+   "name": "sdl2-src",
+   "host": "native",
+   "version": "2.32.10",
+   "pin": "confirmed",
+   "release_page": "https://github.com/libsdl-org/SDL/releases",
+   "url": "https://github.com/libsdl-org/SDL/releases/download/release-{version}/SDL2-{version}.tar.gz",
+   "sha256": "5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165",
+   "archive": "tar.gz",
+   "strip_top": true,
+   "license": "Zlib",
+   "about": "SDL2's source, the same version as the Windows package: built by build_linux_deps.py only to link against (headers and libSDL2-2.0.so); the game uses the system's libSDL2-2.0.so.0 at run time, which every desktop with games has, so the window, sound and input follow the system's X11, Wayland and audio. Hash: by download, 2026-11-02."
+  },
+  {
+   "name": "ffmpeg-linux",
+   "host": "native",
+   "version": "n9.0.2-36-g6882969ce9",
+   "pin": "confirmed",
+   "release_page": "https://github.com/BtbN/FFmpeg-Builds/releases",
+   "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-27-18-38/ffmpeg-{version}-linux64-lgpl-shared-9.0.tar.xz",
+   "sha256": "ee15d7315e6c04a80b0c5874e9c6c677bc45630579977775209ff333435b9a21",
+   "archive": "tar.xz",
+   "strip_top": true,
+   "license": "LGPL-2.1-or-later (the lgpl-shared build: headers and shared libraries; its source is named in the build's own files)",
+   "about": "FFmpeg 9 for Linux, the same BtbN autobuild as the Windows pin: the headers the movie loader compiles against and the shared libraries it loads from beside the program (libavcodec.so.63 and the rest), so the movies play whatever FFmpeg the system has. Hash: by download, 2026-11-02. When BtbN removes the dated build, move both FFmpeg pins together."
   }
  ]
 }

@@ -27,8 +27,12 @@ patch's header in `port/patches/`. The port's own code is MIT ([LICENSE](LICENSE
 ## Libraries the build links or loads (not part of this repository)
 
 SDL2 (zlib licence), zlib (zlib licence), glslang (BSD-3-Clause and others), the Vulkan loader (Apache-2.0) and
-FFmpeg (LGPL-2.1 or later, loaded at run time from the player's own copy; the port only includes its headers).
-They come from your system or toolchain; see [docs/BUILDING.md](docs/BUILDING.md).
+FFmpeg (LGPL-2.1 or later, loaded at run time; the port only includes its headers).
+They come from your system or toolchain; see [docs/BUILDING.md](docs/BUILDING.md). The release folders carry the
+pinned toolchain unmodified, each part with its own licence files: on Windows llvm-mingw (Apache-2.0 with LLVM
+exceptions, and the MinGW-w64 licences), CMake (BSD-3-Clause), Ninja (Apache-2.0), Python (PSF) and FFmpeg's LGPL
+build from BtbN/FFmpeg-Builds; on Linux [Zig](https://ziglang.org) (MIT, with the licences of the libc headers and
+libc++ it bundles), CMake, Ninja, SDL2's source and FFmpeg's LGPL shared libraries from BtbN/FFmpeg-Builds.
 
 ## The game
 

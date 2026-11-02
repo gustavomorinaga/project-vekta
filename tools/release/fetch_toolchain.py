@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Fetch the pinned Windows toolchain and libraries (tools/release/toolchain.json) into work/toolchain-cache:
+"""Fetch the pinned toolchains and libraries (tools/release/toolchain.json) into work/toolchain-cache:
 download, check SHA-256, unpack.
 
-    tools/release/fetch_toolchain.py [--host linux|windows|all] [--only NAME[,NAME]] [--cache DIR] [--fill | --offline]
+    tools/release/fetch_toolchain.py [--host linux|windows|native|all] [--only NAME[,NAME]] [--cache DIR] [--fill | --offline]
     tools/release/fetch_toolchain.py --check [--strict]
 
 After Project Pyrrhus's and Project Helghast's tools/release/fetch_toolchain.py (undecuple, MIT): the manifest's
@@ -11,7 +11,8 @@ theirs; ours also unpacks .tar.gz and .tar.xz (SDL2's MinGW package, sources, th
 the entries by host.
 
   --host     the entries for the cross build on Linux (linux, the default on Linux), for the Windows-hosted build
-             (windows, the default on Windows), or all of them; "any" entries come with each
+             (windows, the default on Windows), for the Linux build with the pinned toolchain (native: Zig, CMake,
+             Ninja, SDL2's source and FFmpeg for Linux), or all of them; "any" entries come with linux and windows
   --cache    default work/toolchain-cache: downloads/<file>, <name>/ (the unpacked tree), fetched.json
   --fill     an entry whose sha256 is TO-FILL is fetched and its hash written into the manifest (trust on first fetch:
              compare it with the release page's published hash where there is one). Without it, TO-FILL is refused.
@@ -41,7 +42,7 @@ MANIFEST = os.path.join(HERE, "toolchain.json")
 TO_FILL, TO_CONFIRM = "TO-FILL", "TO-CONFIRM"
 HEX64 = re.compile(r"[0-9a-f]{64}")
 NAME_RX = re.compile(r"[a-z0-9][a-z0-9.-]*")
-HOSTS = ("linux", "windows", "any")
+HOSTS = ("linux", "windows", "any", "native")
 ARCHIVES = ("zip", "tar.gz", "tar.xz")
 REQUIRED = ("name", "host", "version", "pin", "release_page", "url", "sha256", "archive", "license")
 MAX_DOWNLOAD = 1 << 30
@@ -90,7 +91,7 @@ def validate(m, strict=False):
 
 
 def entries_for(m, host, only=None):
-    hosts = {"linux": ("linux", "any"), "windows": ("windows", "any"), "all": HOSTS}[host]
+    hosts = {"linux": ("linux", "any"), "windows": ("windows", "any"), "native": ("native",), "all": HOSTS}[host]
     es = [e for e in m["components"] if e["host"] in hosts]
     if only:
         es = [e for e in m["components"] if e["name"] in only]
@@ -267,7 +268,7 @@ def main(argv=None, out=sys.stdout, opener=open_url):
     ap.add_argument("--manifest", default=MANIFEST)
     ap.add_argument("--cache", default=os.path.join(os.environ.get("KZ_WORK") or os.path.join(ROOT, "work"),
                                                     "toolchain-cache"))
-    ap.add_argument("--host", choices=("linux", "windows", "all"), default="windows" if os.name == "nt" else "linux")
+    ap.add_argument("--host", choices=("linux", "windows", "native", "all"), default="windows" if os.name == "nt" else "linux")
     ap.add_argument("--only", help="comma-separated entry names (any host)")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--fill", action="store_true", help="fetch TO-FILL entries and write their hash")
