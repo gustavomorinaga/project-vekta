@@ -219,6 +219,23 @@ with tempfile.TemporaryDirectory() as tmp:
     del os.environ["XDG_DATA_HOME"]
 check((ROOT / "assets/icon.svg").is_file(), "the icon the entry names is in the tree")
 
+# --save-paths (the Windows setup program): writes only the paths given, keeps the others, runs no step
+with tempfile.TemporaryDirectory() as tmp:
+    work = os.path.join(tmp, "work")
+    os.environ["KZ_WORK"] = work
+    try:
+        check(firstrun.main(["--root", tmp, "--save-paths"]) == 2, "--save-paths without a path is refused")
+        win = "C:\\Games\\Kill zone\\EBOOT.elf"
+        check(firstrun.main(["--root", tmp, "--save-paths", "--game", "/g/NPUA80856"]) == 0, "--save-paths writes")
+        check(firstrun.main(["--root", tmp, "--save-paths", "--eboot", "/g/EBOOT.elf"]) == 0, "a second one adds")
+        saved = firstrun.read_paths(work)
+        check(saved == {"game": "/g/NPUA80856", "eboot": "/g/EBOOT.elf"}, f"both kept, nothing else: {saved}")
+        firstrun.write_paths(work, {"eboot": win})
+        check(firstrun.read_paths(work) == {"eboot": win}, "a Windows path with spaces reads back the same")
+        check(sorted(os.listdir(work)) == ["paths.env"], "no step ran: only paths.env in work/")
+    finally:
+        del os.environ["KZ_WORK"]
+
 check(firstrun.jobs_for(None, cores=16) == 4, "unknown memory: four jobs")
 check(firstrun.jobs_for(32 * firstrun.GIB, cores=16) == 16, "32 GiB free and 16 cores: 16 jobs")
 check(firstrun.jobs_for(6 * firstrun.GIB, cores=16) == 3, "6 GiB free: 3 jobs")

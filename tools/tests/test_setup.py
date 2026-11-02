@@ -3,7 +3,8 @@
 VERSION and the launcher) and its art; the launcher (installer/launcher/launcher.c) starts the Python and the script
 at the paths assemble_payload.py gives them, and passes --build-if-needed, which launch.py takes; the launcher's
 version block comes from VERSION; launch.py --build-if-needed without run.cmd says what is missing; the Inno Setup
-pin is there; .cmd and .iss files keep CRLF. No compiler and no Wine: tools/release/build_launcher.py and
+pin is there; .cmd and .iss files keep CRLF; the pages check check-game-files.py's sizes, and the build in the
+wizard passes firstrun.py's own options and labels its steps. No compiler and no Wine: tools/release/build_launcher.py and
 build_setup.py run on the maintainer's machine (docs/BUILDING.md)."""
 import io
 import json
@@ -42,6 +43,31 @@ check((ROOT / "installer" / "art" / "vekta.ico").is_file() and "SetupIconFile=ar
       "the setup icon is there")
 check("PrivilegesRequired=lowest" in text and "{localappdata}\\Programs\\ProjectVekta" in text,
       "a per-user install, by default into a folder without spaces")
+# The pages check the files tools/check-game-files.py checks, with its sizes
+import importlib.util  # noqa: E402
+spec = importlib.util.spec_from_file_location("cgf", ROOT / "tools" / "check-game-files.py")
+cgf = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cgf)
+sizes = {label: size for label, _p, size, *_ in cgf.FILES}
+for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc"), ("LibsreSize", "libsre.prx")):
+    m = re.search(r'#define %s "(\d+)"' % define, text)
+    check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
+# The build in the wizard runs firstrun.py with options it has, and names its steps
+import firstrun  # noqa: E402
+opts = set(re.findall(r"' --([a-z-]+)", text))
+known = {n.replace("_", "-") for n, *_ in firstrun.INPUTS} | {"root", "status-file", "stop-file", "save-paths"}
+check(opts and opts <= known, f"vekta.iss passes only firstrun.py's options: {sorted(opts - known)}")
+src = (ROOT / "tools/release/firstrun.py").read_text()
+for opt in ("root", "status-file", "stop-file", "save-paths"):
+    check(f'"--{opt}"' in src, f"firstrun.py has --{opt}")
+labels = set(re.findall(r"Name = '([a-z-]+)' then Result", text))
+steps = {st.name for st in firstrun.STEPS}
+check(labels and labels <= steps and steps - labels <= {"stamp"}, f"StepLabel names firstrun.py's steps: {labels} {steps}")
+check("tools\\release\\firstrun.py" in text and "work\\toolchain-cache\\python\\python.exe" in text,
+      "the wizard runs the payload's firstrun.py with its Python")
+for param in ("GAME", "EBOOT", "PSARC", "LIBSRE", "DEVFLASH"):
+    check(f"Pick('{param}'" in text, f"/{param}= is taken on the command line")
+
 for rel in ("installer/run.cmd", "installer/play.cmd"):
     data = (ROOT / rel).read_bytes()
     check(b"\n" not in data.replace(b"\r\n", b""), f"{rel} has CRLF line endings")
