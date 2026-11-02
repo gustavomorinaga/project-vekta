@@ -22,12 +22,12 @@
 #            dry run and uninstalls it silently.
 #   linux    (Linux) fetches the pinned Linux toolchain (Zig, CMake, Ninja, SDL2's source, FFmpeg) and assembles
 #            the Linux folder as a tar.gz (assemble_payload.py --platform linux), then checks it unpacked in a Debian 11
-#            container with Python and no compiler: its own toolchain builds ps3recomp's shader test and boot smoke,
+#            container with Python 3.10 and no compiler: its own toolchain builds ps3recomp's shader test and boot smoke,
 #            both run, and neither needs a glibc newer than 2.31 (tools/release/check_linux_folder.sh).
 #   publish  (tag pushes only) is the one job that may write: it creates the draft release from the other jobs'
 #            artifacts and runs no repository code.
 # Third-party: actions/checkout and actions/upload-artifact (GitHub, MIT), the gh CLI (MIT, on the images), the
-# toolchain.json downloads (each checked against its SHA-256), Docker's python:3.9-slim-bullseye image (the linux
+# toolchain.json downloads (each checked against its SHA-256), Docker's python:3.10-slim-bullseye image (the linux
 # job's clean system; nothing from it is published).
 # Published files: project-vekta-<version>-source.tar.gz, project-vekta-<version>-setup.exe,
 # project-vekta-<version>-windows.zip, project-vekta-<version>-linux.tar.gz, a .sha256 for each, SHA256SUMS (tools/release/release_check.py checks them
@@ -174,7 +174,7 @@ jobs:
           python3 tools/release/assemble_payload.py --platform linux --out build/linux --tar "out/$tgz"
           cd out && sha256sum "$tgz" > "$tgz.sha256" && cat "$tgz.sha256" && ls -l
 
-      # The folder as a player gets it, in Debian 11 (glibc 2.31, the oldest the build targets) with Python and no
+      # The folder as a player gets it, in Debian 11 (glibc 2.31, the oldest the build targets) with Python 3.10 and no
       # compiler: its own toolchain builds ps3recomp's shader test and boot smoke, and both run.
       - name: The folder builds with nothing but its own toolchain (tools/release/check_linux_folder.sh)
         env:
@@ -182,7 +182,7 @@ jobs:
         run: |
           mkdir -p build/unpacked && tar -xzf "out/project-vekta-$VERSION-linux.tar.gz" -C build/unpacked
           d="build/unpacked/project-vekta-$VERSION-linux"
-          docker run --rm -v "$PWD/$d:/vekta" -v "$PWD/tools/release:/check:ro" python:3.9-slim-bullseye \
+          docker run --rm -v "$PWD/$d:/vekta" -v "$PWD/tools/release:/check:ro" python:3.10-slim-bullseye \
             sh -c 'command -v cc gcc clang || true; sh /check/check_linux_folder.sh /vekta'
           for f in "$d/work/check-build/test_shader_spirv" "$d/work/check-build/ps3recomp_boot_smoke"; do
             v=$(objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1)

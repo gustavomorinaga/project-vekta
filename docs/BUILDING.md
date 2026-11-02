@@ -186,14 +186,15 @@ first run), and `play.cmd` starts the game (`tools/release/launch.py`). Without 
 the game folder gets copies of the EBOOT and the archive. The payload's scrub refuses game files, home paths and
 secrets; `manifest.json` lists every file with its SHA-256. macOS is not supported.
 
-Linux, without a developer setup: from the release after 0.2.0 a Linux folder ships beside them, the same layout
-with its own toolchain, so the player needs only Python 3 (3.9 or newer), glibc 2.31 or newer (Debian 11, Ubuntu
-20.04, Fedora 32 and later), SDL2 and a Vulkan driver, no compiler and no packages to install. Its compiler is
-[Zig](https://ziglang.org) 0.17.0 (`zig cc`, pinned in `tools/release/toolchain.json` from its PyPI wheel) aimed at
-`x86_64-linux-gnu.2.31` (`port/cmake/zig-linux.cmake`, the wrappers in `tools/release/zig/`), so what it builds
-runs on any distribution with that glibc or newer; CMake, Ninja, SDL2 (built to link against, the system's
-`libSDL2-2.0.so.0` is used at run time), zlib, glslang, the Vulkan headers and FFmpeg 9's shared libraries
-(copied to `work/build/lib`, which `tools/play.sh` puts on the library path) come with it.
+Linux, without a developer setup: from the release after 0.2.0 a Linux folder ships beside them, the same layout with
+its own toolchain, so the player needs only Python 3.10 or newer (ps3recomp's tools), glibc 2.31 or newer (with that
+Python: Ubuntu 22.04, Debian 12, Fedora 35, SteamOS 3 and later), SDL2 and a Vulkan driver, no compiler and no
+packages to install. Its compiler is [Zig](https://ziglang.org) 0.17.0 (`zig cc`, pinned in
+`tools/release/toolchain.json` from its PyPI wheel) aimed at `x86_64-linux-gnu.2.31` (`port/cmake/zig-linux.cmake`,
+the wrappers in `tools/release/zig/`), so what it builds runs on any distribution with that glibc or newer; CMake,
+Ninja, SDL2 (built to link against, the system's `libSDL2-2.0.so.0` is used at run time), zlib, glslang, the Vulkan
+headers and FFmpeg 9's shared libraries (copied to `work/build/lib`, which `tools/play.sh` puts on the library path)
+come with it.
 
 ```sh
 tools/release/fetch_toolchain.py --host native                          # Zig, CMake, Ninja, SDL2, FFmpeg

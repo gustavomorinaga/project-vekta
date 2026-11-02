@@ -2,7 +2,7 @@
 # Checks a Linux release folder (tools/release/assemble_payload.py --platform linux) with no game: its bundled
 # toolchain builds the libraries (build_linux_deps.py) and ps3recomp's own shader test and boot-smoke program from the
 # folder's patched tree, the shader test passes, and nothing it built needs a glibc newer than 2.31. Run it where
-# there is no compiler (release.yml runs it in a Debian 11 container with only Python); it writes only in the
+# there is no compiler (release.yml runs it in a Debian 11 container with only Python 3.10); it writes only in the
 # folder's work/. Exit 0 = ok, 1 = a check failed, 2 = usage.
 #   tools/release/check_linux_folder.sh FOLDER
 set -eu
@@ -19,7 +19,7 @@ cmake -G Ninja -S "$w/ps3recomp-patched" -B "$b" -DCMAKE_TOOLCHAIN_FILE="$f/port
   -DCMAKE_SKIP_BUILD_RPATH=ON > "$w/check-configure.log" 2>&1 || { tail -30 "$w/check-configure.log"; exit 1; }
 grep -q "guest programs available" "$w/check-configure.log" || { echo "FAIL: glslang was not found"; exit 1; }
 cmake --build "$b" --target test_shader_spirv ps3recomp_boot_smoke > "$w/check-build.log" 2>&1 ||
-  { grep -E "error|FAILED" "$w/check-build.log" | head -30; exit 1; }
+  { grep -E "error|FAILED" "$w/check-build.log" | head -30; tail -15 "$w/check-build.log"; exit 1; }
 "$b/test_shader_spirv" | tail -3
 for l in libavcodec.so.63 libavformat.so.63 libavutil.so.61 libswscale.so.10 libswresample.so.7; do
   [ -f "$w/linux-deps/ffmpeg/$l" ] || { echo "FAIL: no $l staged"; exit 1; }
