@@ -209,6 +209,33 @@ jobs:
           python tools/release/check_install.py $app --after-uninstall
           if ($LASTEXITCODE) { exit 1 }
 
+      # The pages and the build in the wizard, with stand-ins for the game files (tools/release/fake_game_files.py:
+      # the right kinds and sizes, no content): setup takes them, keeps them in work\paths.env and builds; the build's
+      # first step refuses them by their SHA-256, and setup logs why. Then the uninstaller removes what that made.
+      - name: Install with stand-in game files (the build in the wizard stops at the check)
+        run: |
+          $app = "$env:RUNNER_TEMP\ProjectVekta2"
+          $log = "$env:RUNNER_TEMP\setup2.log"
+          $switches = @(python tools/release/fake_game_files.py "$env:RUNNER_TEMP\fake")
+          if ($LASTEXITCODE) { exit 1 }
+          $p = Start-Process "out\project-vekta-$env:VERSION-setup.exe" -Wait -PassThru -ArgumentList (@(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$app", "/LOG=$log") + $switches)
+          $text = Get-Content $log -Raw
+          if ($p.ExitCode) { Write-Error "setup exit $($p.ExitCode)"; exit 1 }
+          Select-String -Path $log -Pattern "firstrun:|paths:|build:" | ForEach-Object { $_.Line }
+          if ($text -notmatch "paths: saved") { Write-Error "setup did not save the paths"; exit 1 }
+          if ($text -notmatch "build: did not finish: ") {
+            Write-Error "the build in the wizard did not run and stop at the check"; exit 1 }
+          if (-not (Select-String -Path "$app\work\paths.env" -SimpleMatch "fake\NPUA80856" -Quiet)) {
+            Write-Error "work\paths.env does not hold the game folder"; exit 1 }
+          $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList `
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          if ($p.ExitCode) { Write-Error "uninstall exit $($p.ExitCode)"; exit 1 }
+          for ($i = 0; $i -lt 30 -and (Test-Path "$app\unins000.exe"); $i++) { Start-Sleep 1 }
+          python tools/release/check_install.py $app --after-uninstall
+          if ($LASTEXITCODE) { exit 1 }
+          Remove-Item -Recurse -Force "$env:RUNNER_TEMP\fake"
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: project-vekta-${{ needs.source.outputs.version }}-setup
