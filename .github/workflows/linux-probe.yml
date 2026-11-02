@@ -1,0 +1,21 @@
+# TEMPORARY (removed before the pull request): does Zig build ps3recomp's runtime with the Vulkan backend, with
+# nothing from the system (no system compiler, headers or libraries)?
+name: linux-probe
+on:
+  push:
+    branches: [linux-folder]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Patches
+        run: bash tools/ps3recomp-patched.sh
+      - name: Probe
+        run: bash tools/release/probe_zig.sh
