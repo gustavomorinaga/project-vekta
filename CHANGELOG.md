@@ -17,6 +17,10 @@ program and folder that build it. Until a release that calls itself playable
 - Start menu entries "Verify and rebuild" (checks the installed files, then your game files, and rebuilds what
   changed), "Open saves folder" and "Make a support package" (a zip of the logs and settings for a bug report, without
   your user name, saves or game files). After Project Helghast's (MIT).
+- The setup refuses install folders the build cannot use (`[ ] ;` in the path, OneDrive, system and profile
+  folders), also for silent installs. Installing over an earlier version replaces the payload's folders whole, so
+  nothing stale is left, and keeps the build, the game folder and the saves. The uninstaller asks whether to delete
+  the saves and settings (default No).
 
 ### Changed
 - A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or

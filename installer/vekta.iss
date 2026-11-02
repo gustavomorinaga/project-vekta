@@ -93,6 +93,23 @@ Name: "portable"; Description: "&Portable: saves and settings in the install fol
 Filename: "{app}\vekta-install.ini"; Section: "install"; Key: "portable"; String: "1"; Tasks: portable
 Filename: "{app}\vekta-install.ini"; Section: "install"; Key: "portable"; String: "0"; Tasks: not portable
 
+[InstallDelete]
+; Install over an earlier version: the payload's own folders are replaced whole, so a file a newer version dropped
+; cannot linger and be compiled or run, and a toolchain entry of another version leaves nothing behind. Inno keeps
+; each file's time stamp, so ninja recompiles only the sources that changed. Never listed here: work\lift, work\fw,
+; work\build-win, work\win-deps (firstrun.py's markers decide what runs again), work\vfs (the game folder, and the
+; saves of a portable install), work\logs, work\paths.env, vekta-install.ini. After Project Pyrrhus's (MIT).
+Type: filesandordirs; Name: "{app}\port"
+Type: filesandordirs; Name: "{app}\re"
+Type: filesandordirs; Name: "{app}\tools"
+Type: filesandordirs; Name: "{app}\licenses"
+Type: filesandordirs; Name: "{app}\assets"
+Type: filesandordirs; Name: "{app}\docs"
+Type: filesandordirs; Name: "{app}\work\ps3recomp-patched"
+Type: filesandordirs; Name: "{app}\work\toolchain-cache"
+; v0.2.0's Start menu entry, replaced by "Verify and rebuild"
+Type: files; Name: "{group}\Build again (your files, the lift, the compile).lnk"
+
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Named again: a wildcard skips hidden files, and Wine shows a name that starts with a dot as hidden (firstrun.py
@@ -409,12 +426,91 @@ begin
   if CurPageID = FilesPage.ID then FillFiles;
 end;
 
+{ The install folder (after Project Helghast's and Project Pyrrhus's checks, MIT): a character CMake cannot take in
+  a path ('[' and ']' its list brackets, ';' its list separator: the build would stop while configuring), OneDrive
+  (it syncs and locks the build's thousands of files while they are written), or a folder of the system or the
+  user's own (a drive's root, Windows, Program Files, Documents, the Desktop, the profile, Downloads). }
+function CMakeBadChar(Dir: String): String;
+begin
+  Result := '';
+  if Pos('[', Dir) > 0 then Result := '['
+  else if Pos(']', Dir) > 0 then Result := ']'
+  else if Pos(';', Dir) > 0 then Result := ';';
+end;
+
+function InOneDrive(Dir: String): Boolean;
+var
+  D, B: String;
+  I: Integer;
+  Vars: array of String;
+begin
+  Result := False;
+  D := Lowercase(RemoveBackslashUnlessRoot(Dir));
+  SetArrayLength(Vars, 3);
+  Vars[0] := 'OneDrive';
+  Vars[1] := 'OneDriveConsumer';
+  Vars[2] := 'OneDriveCommercial';
+  for I := 0 to 2 do begin
+    B := Lowercase(RemoveBackslashUnlessRoot(GetEnv(Vars[I])));
+    if (B <> '') and ((D = B) or (Pos(B + '\', D) = 1)) then Result := True;
+  end;
+end;
+
+function SameDir(D, Other: String): Boolean;
+begin
+  Other := RemoveBackslashUnlessRoot(Other);
+  Result := (Other <> '') and (D = Lowercase(Other));
+end;
+
+function IsProtectedFolder(Dir: String): Boolean;
+var
+  D, Prof: String;
+begin
+  D := Lowercase(RemoveBackslashUnlessRoot(Dir));
+  Prof := GetEnv('USERPROFILE');
+  Result := SameDir(D, ExtractFileDrive(Dir)) or SameDir(D, ExpandConstant('{win}')) or
+    SameDir(D, ExpandConstant('{commonpf}')) or SameDir(D, ExpandConstant('{commonpf32}')) or
+    SameDir(D, ExpandConstant('{userdocs}')) or SameDir(D, ExpandConstant('{userdesktop}')) or
+    SameDir(D, Prof) or ((Prof <> '') and SameDir(D, AddBackslash(Prof) + 'Downloads'));
+end;
+
+{ '' when Dir is a good install folder, else why not }
+function InstallDirProblem(Dir: String): String;
+var
+  D, Fine: String;
+begin
+  Result := '';
+  D := RemoveBackslashUnlessRoot(Dir);
+  Fine := ' (the default, ' + ExpandConstant('{localappdata}') + '\Programs\ProjectVekta, is fine).';
+  if CMakeBadChar(D) <> '' then
+    Result := 'The folder ' + D + ' has the character "' + CMakeBadChar(D) + '" in its path. The build tools ' +
+      '(CMake) cannot use a folder with [ ] or ; and would stop. Choose a folder without them' + Fine
+  else if InOneDrive(D) then
+    Result := 'The folder ' + D + ' is inside OneDrive, which syncs the build''s thousands of files while they are ' +
+      'written and locks them. Choose a folder outside OneDrive' + Fine
+  else if IsProtectedFolder(D) then
+    Result := 'This folder cannot be the install folder: ' + D + '. Choose a folder of its own' + Fine;
+end;
+
+{ A silent install never presses Next on the folder page: a bad /DIR= stops here (exit code 7), before any file }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := InstallDirProblem(ExpandConstant('{app}'));
+  if Result <> '' then Log('install folder refused: ' + Result);
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Problem: String;
 begin
   Result := True;
-  if CurPageID = GamePage.ID then begin
+  if (CurPageID = wpSelectDir) and not WizardSilent then begin
+    Problem := InstallDirProblem(WizardDirValue);
+    if Problem <> '' then begin
+      MsgBox(Problem, mbError, MB_OK);
+      Result := False;
+    end;
+  end else if CurPageID = GamePage.ID then begin
     GamePage.Values[0] := ResolveGame(GamePage.Values[0]);
     Problem := GameProblem(GamePage.Values[0]);
     if Problem <> '' then begin
@@ -610,4 +706,34 @@ begin
     RunBuild
   else
     Log('build: not run, the game files are not all given or not right (silent install); the first start asks');
+end;
+
+{ Uninstall: the saves and settings stay unless the player says otherwise (default No; a silent uninstall keeps
+  them). They are in %APPDATA%\Project Vekta (launch.py SAVE_FOLDER), or in work\vfs in a portable install, where
+  only what the game wrote goes: [UninstallDelete] has already taken the copies and links of the game files. }
+function AskDelete(Where: String): Boolean;
+begin
+  Result := MsgBox('Delete your Project Vekta saves and settings too?' + #13#10 + Where + #13#10 + #13#10 +
+    'No keeps them for a later install.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Data, Vfs: String;
+begin
+  if (CurUninstallStep <> usPostUninstall) or UninstallSilent then Exit;
+  Data := ExpandConstant('{userappdata}\Project Vekta');
+  if DirExists(Data) and AskDelete(Data) then DelTree(Data, True, True, True);
+  Vfs := ExpandConstant('{app}\work\vfs');
+  if (DirExists(Vfs + '\gamedata') or FileExists(Vfs + '\kz1hd_pc.ini') or FileExists(Vfs + '\kz1hd_keys.ini')) and
+     AskDelete(Vfs) then begin
+    DelTree(Vfs + '\gamedata', True, True, True);
+    DeleteFile(Vfs + '\kz1hd_pc.ini');
+    DeleteFile(Vfs + '\kz1hd_keys.ini');
+    RemoveDir(Vfs + '\PS3_GAME\USRDIR');
+    RemoveDir(Vfs + '\PS3_GAME');
+    RemoveDir(Vfs);
+    RemoveDir(ExpandConstant('{app}\work'));
+    RemoveDir(ExpandConstant('{app}'));
+  end;
 end;

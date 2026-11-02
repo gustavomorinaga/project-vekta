@@ -215,6 +215,18 @@ with tempfile.TemporaryDirectory() as tmp:
           texts["big.log"].startswith(support.MARKER), "the oldest lines of the largest log go first")
     check(support.build(str(t / "none"), str(t / "none"), str(out), red, "x") == ("", []), "nothing to collect")
 
+# Stage 4: the uninstaller's saves folder is launch.py's; an install over an earlier one replaces only the payload's
+# own folders (never the build, the game folder, the logs or the player's choices)
+check("{userappdata}\\" + launch.SAVE_FOLDER + "'" in iss_text, "the uninstaller asks about launch.py's saves folder")
+gone = re.findall(r'Type: filesandordirs; Name: "\{app\}\\([^"]+)"', iss_text.split("[InstallDelete]")[1].split("[")[0])
+roots = {d.split("/")[0] if not d.startswith("work/") else "/".join(d.split("/")[:2]) for _, d, _, _ in ap.RULES}
+roots |= {"work/toolchain-cache"}
+check(gone and all(g.replace("\\", "/") in roots for g in gone), f"[InstallDelete] only the payload's folders: {gone}")
+for kept in ("work\\vfs", "work\\lift", "work\\build-win", "work\\logs", "vekta-install.ini"):
+    check(kept not in gone, f"an install over it keeps {kept}")
+check("function PrepareToInstall" in iss_text and "InstallDirProblem(ExpandConstant('{app}'))" in iss_text,
+      "a silent install with a bad /DIR= is refused too")
+
 # The stand-ins release.yml installs with: the right kinds and sizes, refused only by their SHA-256
 with tempfile.TemporaryDirectory() as tmp:
     r = subprocess.run([sys.executable, str(ROOT / "tools/release/fake_game_files.py"), tmp], capture_output=True,
