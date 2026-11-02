@@ -18,8 +18,10 @@
 ; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>
 ; /LIBSRE=<file> [/DEVFLASH=<dir>]] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with all four
 ; files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
-; asks. The uninstaller removes what the build made (the lift, the build, the logs, the copies of your game files in
-; the game folder) and keeps your saves and settings in work\vfs.
+; asks. The saves and settings go to %APPDATA%\Project Vekta, or with the "portable" task (/MERGETASKS="portable")
+; to the install folder's work\vfs; vekta-install.ini [install] portable tells launch.py which. The uninstaller removes
+; what the build made (the lift, the build, the logs, the copies of your game files in the game folder) and keeps your
+; saves and settings in both places.
 
 #ifndef Payload
   #define Payload "..\work\release\payload"
@@ -83,6 +85,12 @@ ExtraDiskSpaceRequired=5800000000
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"
 Name: "buildnow"; Description: "&Build now, in this wizard (about five minutes; else the first start builds)"
+Name: "portable"; Description: "&Portable: saves and settings in the install folder (else in %APPDATA%)"; Flags: unchecked
+
+[INI]
+; launch.py reads it (install_settings): where the game runs from, so where its saves and settings go.
+Filename: "{app}\vekta-install.ini"; Section: "install"; Key: "portable"; String: "1"; Tasks: portable
+Filename: "{app}\vekta-install.ini"; Section: "install"; Key: "portable"; String: "0"; Tasks: not portable
 
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -102,6 +110,7 @@ Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"; Description: "&Play {#App
 Filename: "{app}\run.cmd"; WorkingDir: "{app}"; Description: "&Build now in a console (it asks again where your files are)"; Flags: postinstall shellexec skipifsilent unchecked; Check: BuildNotDone
 
 [UninstallDelete]
+Type: files; Name: "{app}\vekta-install.ini"
 ; What the build made (tools/release/firstrun.py, tools/kzbuild.py); work\vfs keeps your saves and settings.
 Type: filesandordirs; Name: "{app}\work\lift"
 Type: filesandordirs; Name: "{app}\work\fw"

@@ -196,6 +196,9 @@ jobs:
           if ($p.ExitCode) { Get-Content $log -Tail 40; Write-Error "setup exit $($p.ExitCode)"; exit 1 }
           python tools/release/check_install.py $app --manifest "$env:PAYLOAD\manifest.json"
           if ($LASTEXITCODE) { exit 1 }
+          # not portable by default: launch.py runs the game from %APPDATA%\Project Vekta
+          if (-not (Select-String -Path "$app\vekta-install.ini" -SimpleMatch "portable=0" -Quiet)) {
+            Write-Error "vekta-install.ini does not say portable=0"; exit 1 }
           $p = Start-Process "$app\Project Vekta.exe" -Wait -PassThru -ArgumentList "--launcher-dry-run"
           $cmd = Get-Content "$app\launcher-dry-run.txt" -Raw
           Write-Host "launcher: $cmd"
@@ -209,17 +212,18 @@ jobs:
           python tools/release/check_install.py $app --after-uninstall
           if ($LASTEXITCODE) { exit 1 }
 
-      # The pages and the build in the wizard, with stand-ins for the game files (tools/release/fake_game_files.py:
+      # A portable install: the pages and the build in the wizard, with stand-ins for the game files (tools/release/fake_game_files.py:
       # the right kinds and sizes, no content): setup takes them, keeps them in work\paths.env and builds; the build's
       # first step refuses them by their SHA-256, and setup logs why. Then the uninstaller removes what that made.
-      - name: Install with stand-in game files (the build in the wizard stops at the check)
+      - name: Portable install with stand-in game files (the build in the wizard stops at the check)
         run: |
           $app = "$env:RUNNER_TEMP\ProjectVekta2"
           $log = "$env:RUNNER_TEMP\setup2.log"
           $switches = @(python tools/release/fake_game_files.py "$env:RUNNER_TEMP\fake")
           if ($LASTEXITCODE) { exit 1 }
           $p = Start-Process "out\project-vekta-$env:VERSION-setup.exe" -Wait -PassThru -ArgumentList (@(
-            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$app", "/LOG=$log") + $switches)
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$app", "/LOG=$log",
+            "/MERGETASKS=portable") + $switches)
           $text = Get-Content $log -Raw
           if ($p.ExitCode) { Write-Error "setup exit $($p.ExitCode)"; exit 1 }
           Select-String -Path $log -Pattern "game files:|firstrun:|paths:|build:" -Context 0,4 | ForEach-Object { $_.Line; $_.Context.PostContext }
@@ -228,6 +232,8 @@ jobs:
             Write-Error "the build in the wizard did not run and stop at the check"; exit 1 }
           if (-not (Select-String -Path "$app\work\paths.env" -SimpleMatch "fake\\NPUA80856" -Quiet)) {
             Write-Error "work\paths.env does not hold the game folder"; exit 1 }
+          if (-not (Select-String -Path "$app\vekta-install.ini" -SimpleMatch "portable=1" -Quiet)) {
+            Write-Error "the portable task did not reach vekta-install.ini"; exit 1 }
           $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList `
             "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
           if ($p.ExitCode) { Write-Error "uninstall exit $($p.ExitCode)"; exit 1 }

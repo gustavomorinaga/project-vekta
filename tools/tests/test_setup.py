@@ -103,6 +103,37 @@ with tempfile.TemporaryDirectory() as tmp:
     except ap.Refused as e:
         check("no launcher" in str(e), str(e))
 
+# Where the saves go: the run folder without vekta-install.ini or when portable, else %APPDATA%\Project Vekta; the
+# setup writes the key launch.py reads; an earlier version's saves move once and never over the player's files
+with tempfile.TemporaryDirectory() as tmp:
+    t = pathlib.Path(tmp)
+    run_folder, appdata = str(t / "work" / "vfs"), str(t / "appdata")
+    env = {"APPDATA": appdata}
+    check(launch.data_dir(tmp, run_folder, env) == run_folder, "no vekta-install.ini (Git clone, zip): the run folder")
+    (t / launch.INSTALL_INI).write_text("[install]\r\nportable=1\r\n")
+    check(launch.data_dir(tmp, run_folder, env) == run_folder, "portable=1: the run folder")
+    (t / launch.INSTALL_INI).write_text("[install]\r\nportable=0\r\n")
+    data = launch.data_dir(tmp, run_folder, env)
+    check(data == str(t / "appdata" / "Project Vekta"), f"portable=0: %APPDATA%: {data}")
+    check(launch.data_dir(tmp, run_folder, {}) == run_folder, "no %APPDATA%: the run folder")
+    (t / launch.INSTALL_INI).write_text("not an ini")
+    check(launch.data_dir(tmp, run_folder, env) == run_folder, "an unreadable ini: the saves stay where they are")
+    os.makedirs(os.path.join(run_folder, "gamedata", "dev_hdd0"))
+    pathlib.Path(run_folder, "kz1hd_pc.ini").write_text("old")
+    pathlib.Path(run_folder, "kz1hd_keys.ini").write_text("old keys")
+    os.makedirs(data)
+    pathlib.Path(data, "kz1hd_keys.ini").write_text("new keys")
+    moved = launch.migrate(run_folder, data)
+    check(moved == ["kz1hd_pc.ini", "gamedata"] and os.path.isdir(os.path.join(data, "gamedata", "dev_hdd0")),
+          f"the old saves and settings moved: {moved}")
+    check(pathlib.Path(data, "kz1hd_keys.ini").read_text() == "new keys" and
+          pathlib.Path(run_folder, "kz1hd_keys.ini").exists(), "a file already in the data folder is kept")
+    check(launch.migrate(run_folder, run_folder) == [], "portable: nothing moves")
+iss_text = (ROOT / "installer" / "vekta.iss").read_text()
+for v in ("1", "0"):
+    check(re.search(rf'Filename: "{{app}}\\{launch.INSTALL_INI}"; Section: "install"; Key: "portable"; '
+                    rf'String: "{v}"', iss_text), f"the setup writes portable={v} in {launch.INSTALL_INI}")
+
 # The stand-ins release.yml installs with: the right kinds and sizes, refused only by their SHA-256
 import subprocess  # noqa: E402
 with tempfile.TemporaryDirectory() as tmp:

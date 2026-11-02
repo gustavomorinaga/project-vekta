@@ -15,6 +15,11 @@ program and folder that build it. Until a release that calls itself playable
   setup programs (MIT). `release.yml` installs it on the Windows runner with stand-ins for the files
   (`tools/release/fake_game_files.py`) and checks that the build runs and stops at the check.
 
+### Changed
+- A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or
+  an uninstall leaves them alone; the setup's "Portable" option keeps them in the install folder instead. Saves an
+  earlier version left in the install folder move there on the next start.
+
 ## [0.2.0] - 2026-11-01 (pre-release)
 
 ### Added

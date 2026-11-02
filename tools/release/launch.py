@@ -9,7 +9,11 @@ work/build/KZ1HD elsewhere), the run folder (KZ_VFS, default work/vfs) and the f
 (work/fw/out/libsre_image.bin). The game runs from the run folder with tools/play.sh's settings (each one a default:
 the environment wins) and its log goes to work/play.log. When the window closes the game is stopped, as play.sh
 does. Without a build or a run folder it says which step is missing (run.cmd, or tools/install.sh).
---dry-run prints the command, the folder and the settings and starts nothing. --build-if-needed (the launcher, Project
+Where the saves and settings go (kz1hd_pc.ini, kz1hd_keys.ini, gamedata/): the game runs from that folder. In a
+copy the setup program installed (vekta-install.ini next to run.cmd) it is %APPDATA%/Project Vekta, unless the install
+is portable ([install] portable=1): then it is the run folder, as in a Git clone or the Windows zip. Saves an earlier
+version left in the run folder are moved there once (migrate), never over a file already there.
+--dry-run prints the command, the folders and the settings and starts nothing. --build-if-needed (the launcher, Project
 Vekta.exe, passes it): before the first build, run.cmd opens in a console of its own, then the game starts if it
 built.
 
@@ -17,7 +21,9 @@ After Project Pyrrhus's and Project Helghast's tools/release/launch.py (undecupl
 things for their launchers. Exit: the game's own code, 1 = not built yet, 2 = usage. Standard library only.
 """
 import argparse
+import configparser
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -33,10 +39,50 @@ SETTINGS = [
 ]
 FIXED = [("PS3RECOMP_VK_WINDOW", "1"), ("PS3_TITLE", "Killzone HD")]
 CLOSED = (b"window closed", b"window disabled")
+INSTALL_INI = "vekta-install.ini"   # the setup program writes it in the install folder ([INI] in installer/vekta.iss)
+SAVE_FOLDER = "Project Vekta"       # under %APPDATA% when the install is not portable
+PLAYER_FILES = ("kz1hd_pc.ini", "kz1hd_keys.ini", "gamedata")   # what the game writes in the folder it runs from
+
+
+def install_settings(root):
+    """vekta-install.ini's settings, or None in a folder the setup program did not install. A file that cannot be
+    read counts as portable: the saves stay where they are."""
+    path = os.path.join(root, INSTALL_INI)
+    if not os.path.isfile(path):
+        return None
+    c = configparser.ConfigParser(interpolation=None)
+    try:
+        c.read(path, encoding="utf-8-sig")
+    except (configparser.Error, OSError, UnicodeError):
+        return {"portable": True}
+    return {"portable": c.get("install", "portable", fallback="1").strip() != "0"}
+
+
+def data_dir(root, run_folder, environ):
+    """The folder the game runs from, which holds the saves and settings (see the docstring)."""
+    ini = install_settings(root)
+    appdata = environ.get("APPDATA", "")
+    if ini is None or ini["portable"] or not appdata:
+        return run_folder
+    return os.path.join(appdata, SAVE_FOLDER)
+
+
+def migrate(run_folder, data):
+    """Moves the saves and settings an earlier version left in the run folder to data; returns what moved."""
+    moved = []
+    if os.path.normcase(os.path.abspath(run_folder)) == os.path.normcase(os.path.abspath(data)):
+        return moved
+    for name in PLAYER_FILES:
+        src, dst = os.path.join(run_folder, name), os.path.join(data, name)
+        if os.path.lexists(src) and not os.path.lexists(dst):
+            os.makedirs(data, exist_ok=True)
+            shutil.move(src, dst)
+            moved.append(name)
+    return moved
 
 
 def plan(root, environ=None, fullscreen=False):
-    """(argv, cwd, env, log path); ValueError names the missing step."""
+    """(argv, cwd, env, log path); ValueError names the missing step. cwd is data_dir's folder."""
     e = kzbuild.resolve(environ, root=root)
     w = e["KZ_WORK"]
     exe = e.get("KZ_BIN") or (os.path.join(w, "build-win", "KZ1HD.exe") if kzbuild.WINDOWS
@@ -57,7 +103,8 @@ def plan(root, environ=None, fullscreen=False):
     log = os.path.join(w, "play.log")
     if kzbuild.WINDOWS:
         e.setdefault("KZ_LOG", log)   # the exe is a GUI program: it writes its own log there
-    return [exe, eboot], e["KZ_VFS"], e, log
+    # The game finds its files from the EBOOT's path (main.cpp derive_vfs_root), so it may run from elsewhere.
+    return [exe, eboot], data_dir(root, e["KZ_VFS"], e), e, log
 
 
 def window_closed(log):
@@ -122,12 +169,20 @@ def main(argv=None):
             return 1
     if a.dry_run:
         print("run:", " ".join(f'"{x}"' if " " in x else x for x in argv_))
-        print("in:", cwd)
+        print("in:", cwd, "(saves and settings)")
         print("log:", log)
         for k, _ in SETTINGS + FIXED + [("KZ_LIBSRE_IMAGE", ""), ("PS3RECOMP_VK_DISPLAY", ""), ("KZ_LOG", "")]:
             if k in env:
                 print(f"{k}={env[k]}")
         return 0
+    try:
+        os.makedirs(cwd, exist_ok=True)
+        moved = migrate(env["KZ_VFS"], cwd)
+    except OSError as err:
+        notify(f"cannot use {cwd} for the saves: {err}")
+        return 1
+    if moved and sys.stdout is not None:
+        print(f"launch: moved {', '.join(moved)} to {cwd}")
     rc = run(argv_, cwd, env, log)
     if sys.stdout is not None:
         print(f"log: {log}")

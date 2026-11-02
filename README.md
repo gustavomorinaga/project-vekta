@@ -74,7 +74,8 @@ ones you start: cloning this repository with its ps3recomp submodule, and your s
 Everything stays in the folder the game runs from, `work/vfs/` (made by `tools/setup-vfs.sh`): the PC settings in
 `kz1hd_pc.ini`, the key map in `kz1hd_keys.ini`, saves under `gamedata/dev_hdd0/home/00000001/savedata/`, and the
 local trophy log in `gamedata/trophies/`. The log of a run goes to `work/play.log`. Nothing is written outside the
-repository's `work/` folder, and nothing is written into your game files.
+repository's `work/` folder, and nothing is written into your game files. The Windows setup program is the one
+exception: unless you pick its "Portable" option, the settings and saves go to `%APPDATA%\Project Vekta` instead.
 
 ## Getting it
 
