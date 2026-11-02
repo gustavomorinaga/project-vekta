@@ -6,6 +6,7 @@
  * Built twice by test_pad_rawinput.sh: -DPAD_SDL_WIN32_HINTS=1 (the Windows
  * build's choice) and =0 (Linux). Only the hint step runs: no controller, no
  * window, no SDL subsystem. */
+#define SDL_MAIN_HANDLED   /* a plain main(), also in the Windows exe */
 #include "cellPad.c"   /* from the patched tree, -I $PS3RECOMP_DIR/libs/input */
 #include <assert.h>
 #include <stdio.h>
@@ -24,6 +25,18 @@ void spu_lockline_lock(void) {}
 void spu_lockline_unlock(void) {}
 u32 cellGcm_flip_request_count(void) { return 0; }
 
+/* the process environment, as SDL reads it (also built as a Windows exe, run under Wine) */
+static void env_set(const char* v)
+{
+#ifdef _WIN32
+    char b[64];
+    snprintf(b, sizeof b, "SDL_JOYSTICK_RAWINPUT=%s", v ? v : "");
+    _putenv(b);   /* "NAME=" removes it */
+#else
+    if (v) setenv("SDL_JOYSTICK_RAWINPUT", v, 1); else unsetenv("SDL_JOYSTICK_RAWINPUT");
+#endif
+}
+
 static int hint_is(const char* want)
 {
     const char* v = SDL_GetHint(SDL_HINT_JOYSTICK_RAWINPUT);
@@ -37,13 +50,13 @@ int main(void)
     fprintf(stderr, "FAIL: SDL headers without SDL_HINT_JOYSTICK_RAWINPUT (SDL 2.0.14 or newer needed)\n");
     return 1;
 #else
-    unsetenv("SDL_JOYSTICK_RAWINPUT");
+    env_set(NULL);
     pad_sdl_platform_hints();
 #if PAD_SDL_WIN32_HINTS
     if (!hint_is("0")) { fprintf(stderr, "FAIL: Windows build left Raw Input on\n"); return 1; }
     /* the player's environment overrides the port's default */
     SDL_ResetHints();
-    setenv("SDL_JOYSTICK_RAWINPUT", "1", 1);
+    env_set("1");
     pad_sdl_platform_hints();
     if (!hint_is("1")) { fprintf(stderr, "FAIL: SDL_JOYSTICK_RAWINPUT=1 did not win\n"); return 1; }
     puts("ok: Windows turns Raw Input off; the environment still wins");
