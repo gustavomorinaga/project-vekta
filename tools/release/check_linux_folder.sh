@@ -25,8 +25,10 @@ for l in libavcodec.so.63 libavformat.so.63 libavutil.so.61 libswscale.so.10 lib
   [ -f "$w/linux-deps/ffmpeg/$l" ] || { echo "FAIL: no $l staged"; exit 1; }
 done
 echo "check_linux_folder: built with the bundled toolchain: $b/test_shader_spirv $b/ps3recomp_boot_smoke"
-# The boot smoke: ps3recomp's hand-written title, lifted and run (no game, no GPU)
-( cd "$b" && timeout 120 ./ps3recomp_boot_smoke smoke/smoke.elf ) > "$w/check-smoke.log" 2>&1 && rc=0 || rc=$?
+# The boot smoke: ps3recomp's hand-written title, lifted and run (no game, no GPU). A player's desktop has SDL2; a
+# bare system may not, so the smoke runs on the one build_linux_deps.py made to link against (no video drivers).
+( cd "$b" && LD_LIBRARY_PATH="$w/linux-deps/lib:$w/linux-deps/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    timeout 120 ./ps3recomp_boot_smoke smoke/smoke.elf ) > "$w/check-smoke.log" 2>&1 && rc=0 || rc=$?
 tail -5 "$w/check-smoke.log"
 [ "$rc" = 0 ] || { echo "FAIL: the boot smoke exited $rc"; exit 1; }
 echo "check_linux_folder: ok"
