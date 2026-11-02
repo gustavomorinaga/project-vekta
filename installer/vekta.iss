@@ -216,11 +216,10 @@ begin
   try
     F := TFileStream.Create(Path, fmOpenRead or fmShareDenyNone);
     try
-      if F.Size >= 4 then begin
-        SetLength(Buf, 4);
-        F.ReadBuffer(Buf, 4);
-        Result := Buf;
-      end;
+      { No F.Size test: Pascal Script gives a size over 2 GB as a negative number. A short file raises here. }
+      SetLength(Buf, 4);
+      F.ReadBuffer(Buf, 4);
+      Result := Buf;
     finally
       F.Free;
     end;
