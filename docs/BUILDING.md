@@ -148,6 +148,9 @@ avoids the cost of the thread-locals MinGW's GCC emulates.
   for 60 s inside `tools/sandbox.sh`, with no window, no sound and a prefix of its own in `work/wine/`, and passes
   when the game keeps presenting at least 20 frames a second over the last 20 s (`--seconds`, `--min-fps`,
   `--window` to watch it). The first run makes the prefix.
+- **Without the game:** `tools/wine-host-tests.sh` cross-builds the host tests that also build for Windows (with the
+  pinned llvm-mingw and SDL2) and runs them under Wine, in a prefix of its own in `work/wine-host/`. CI runs it on
+  every push and pull request.
 - **The log:** the exe is a GUI program. Started from a shell, it logs to stderr; without one (double click, Steam,
   Proton) it writes `kz1hd.log` beside the exe. `KZ_LOG=<file>` picks another file, `KZ_CONSOLE=1` opens a console.
 - **On a Windows PC:** copy a folder with the exe and its DLLs, `work/fw/out/libsre_image.bin`, your `dev_flash`,
