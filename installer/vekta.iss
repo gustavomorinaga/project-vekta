@@ -434,9 +434,15 @@ end;
 
 { All four required files, checked; silent installs with any of them missing build nothing }
 function FilesReady: Boolean;
+var
+  P: String;
 begin
-  Result := (GamePage.Values[0] <> '') and (GameProblem(ResolveGame(GamePage.Values[0])) = '') and
-    (FilesProblem = '');
+  P := '';
+  if GamePage.Values[0] = '' then P := 'no game folder. '
+  else P := GameProblem(ResolveGame(GamePage.Values[0]));
+  P := P + FilesProblem;
+  Result := P = '';
+  if not Result then Log('game files: ' + P);
 end;
 
 function Quote(S: String): String;
@@ -589,5 +595,5 @@ begin
   if FilesReady then
     RunBuild
   else
-    Log('build: not run, the game files are not all given (silent install); the first start asks for them');
+    Log('build: not run, the game files are not all given or not right (silent install); the first start asks');
 end;
