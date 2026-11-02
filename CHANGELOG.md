@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- Windows: a controller that was detected but gave no input (seen on a OneXPlayer X2 Mini Pro's built-in Xbox-style
+  pad, issue #19) works without setting `SDL_JOYSTICK_RAWINPUT=0` by hand: the port turns SDL's Raw Input joystick
+  driver off (patch 4012). Setting `SDL_JOYSTICK_RAWINPUT=1` brings it back.
+
 ## [0.2.0] - 2026-11-01 (pre-release)
 
 ### Added
