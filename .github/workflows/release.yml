@@ -175,7 +175,8 @@ jobs:
           cd out && sha256sum "$tgz" > "$tgz.sha256" && cat "$tgz.sha256" && ls -l
 
       # The folder as a player gets it, in Debian 11 (glibc 2.31, the oldest the build targets) with Python 3.10 and no
-      # compiler: its own toolchain builds ps3recomp's shader test and boot smoke, and both run.
+      # compiler (only the SDL2 runtime library a desktop has): its own toolchain builds ps3recomp's shader test and
+      # boot smoke, and both run.
       - name: The folder builds with nothing but its own toolchain (tools/release/check_linux_folder.sh)
         env:
           VERSION: ${{ needs.source.outputs.version }}
@@ -183,7 +184,8 @@ jobs:
           mkdir -p build/unpacked && tar -xzf "out/project-vekta-$VERSION-linux.tar.gz" -C build/unpacked
           d="build/unpacked/project-vekta-$VERSION-linux"
           docker run --rm -v "$PWD/$d:/vekta" -v "$PWD/tools/release:/check:ro" python:3.10-slim-bullseye \
-            sh -c 'command -v cc gcc clang || true; sh /check/check_linux_folder.sh /vekta'
+            sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends libsdl2-2.0-0 >/dev/null &&
+                   for c in cc gcc clang; do ! command -v $c || exit 1; done && sh /check/check_linux_folder.sh /vekta'
           for f in "$d/work/check-build/test_shader_spirv" "$d/work/check-build/ps3recomp_boot_smoke"; do
             v=$(objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1)
             echo "$f needs $v"
