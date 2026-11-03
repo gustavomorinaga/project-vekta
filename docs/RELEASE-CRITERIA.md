@@ -23,7 +23,7 @@ is measured against. The first preview will be v0.1.0.
 
 ## How a release is made
 
-A release carries three files, each with a `.sha256`, and `SHA256SUMS`. None holds anything of the game; each builds
+A release carries four files (three up to 0.2.0, which had no Linux folder), each with a `.sha256`, and `SHA256SUMS`. None holds anything of the game; each builds
 the port from the player's own files ([BUILDING.md](BUILDING.md)).
 
 - `project-vekta-X.Y.Z-source.tar.gz`: the tagged tree with ps3recomp at its pinned commit
@@ -31,13 +31,16 @@ the port from the player's own files ([BUILDING.md](BUILDING.md)).
 - `project-vekta-X.Y.Z-windows.zip`: the Windows folder (`tools/release/assemble_payload.py --zip`, also the same
   bytes from the same commit): the sources, the patched ps3recomp, the pinned toolchain and the launcher.
 - `project-vekta-X.Y.Z-setup.exe`: that folder in the setup program (`tools/release/build_setup.py`, Inno Setup).
+- `project-vekta-X.Y.Z-linux.tar.gz`: the Linux folder (`tools/release/assemble_payload.py --platform linux --tar`,
+  the same bytes from the same commit): the sources, the patched ps3recomp and the pinned Zig toolchain.
 
 1. With the gates above met, on an up-to-date `main`: `python3 tools/release/bump_version.py X.Y.Z`. It writes
    `VERSION`, `CITATION.cff`, the README's release link and the `CHANGELOG.md` entry (from `## [Unreleased]`),
    regenerates the project page and checks the version mentions and the release notes.
 2. Commit that ("Release vX.Y.Z"), merge it through a pull request, then tag the merge commit `vX.Y.Z` and push the tag.
 3. `.github/workflows/release.yml` checks the tag against `VERSION`, writes the notes from the `CHANGELOG.md` entry,
-   builds the three files, installs and uninstalls the setup program on a Windows runner, and opens a **draft**
+   builds the four files, installs and uninstalls the setup program on a Windows runner, builds the Linux folder's
+   toolchain in a Debian 11 container with no compiler, and opens a **draft**
    pre-release with them. Read the draft and publish it by hand.
 4. Publishing runs `.github/workflows/release-check.yml`, which checks the published release against the tag
    (`tools/release/release_check.py`): title, pre-release flag, the files, their sums, and the links.

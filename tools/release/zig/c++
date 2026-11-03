@@ -1,0 +1,17 @@
+#!/bin/sh
+# The Linux build's C++ compiler with the pinned Zig (tools/release/toolchain.json, entry zig): c++ for
+# x86_64-linux-gnu.2.31, so what it builds runs on any glibc 2.31 or newer and uses nothing from the system's headers or
+# libraries. Zig comes from KZ_ZIG, else the toolchain cache beside this tree ($KZ_WORK/toolchain-cache/zig). Its own
+# cache goes to $KZ_WORK/zig-cache, not the home folder. -Wdate-time stays a warning: Zig makes it an error, and
+# ps3recomp stamps one file with __DATE__.
+here=$(cd "$(dirname "$0")" && pwd)
+work=${KZ_WORK:-$here/../../../work}
+export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-$work/zig-cache}"
+# GCC and clang spell -march's levels x86-64-v3; Zig wants its own CPU names (x86_64_v3): rewrite the value.
+n=$#
+while [ "$n" -gt 0 ]; do
+  a=$1; shift; n=$((n - 1))
+  case $a in -march=*) a="-march=$(printf '%s' "${a#-march=}" | tr - _)" ;; esac
+  set -- "$@" "$a"
+done
+exec "${KZ_ZIG:-$work/toolchain-cache/zig/zig}" c++ -target x86_64-linux-gnu.2.31 -Wno-error=date-time "$@"

@@ -38,6 +38,7 @@ only.
 """
 import argparse
 import fnmatch
+import gzip
 import hashlib
 import json
 import os
@@ -45,6 +46,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -81,8 +83,18 @@ RULES = [
     ("assets/icon.svg", "assets/icon.svg", "file", {}),
     ("docs/GETTING-FILES.md", "docs/GETTING-FILES.md", "file", {}),
     ("docs/BUILDING.md", "docs/BUILDING.md", "file", {}),
+]
+RULES_WINDOWS = [
     ("installer/run.cmd", "run.cmd", "file", {}),
     ("installer/play.cmd", "play.cmd", "file", {}),
+]
+RULES_LINUX = [
+    ("tools/release/build_linux_deps.py", "tools/release/build_linux_deps.py", "file", {}),
+    ("tools/release/zig", "tools/release/zig", "tree", {}),
+    ("tools/env.sh", "tools/env.sh", "file", {}),
+    ("tools/play.sh", "tools/play.sh", "file", {}),
+    ("installer/linux/run.sh", "run.sh", "file", {}),
+    ("installer/linux/play.sh", "play.sh", "file", {}),
 ]
 GAME_NAMES = ["EBOOT.*", "PARAM.SFO", "*.psarc", "*.elf", "*.self", "*.sprx", "*.prx", "*.edat", "*.sdat", "*.pkg",
               "*.rap", "*.pup", "*.trp", "*.pic"]
@@ -107,6 +119,19 @@ PRUNE = {"llvm-mingw": ["aarch64-w64-mingw32/*", "armv7-w64-mingw32/*", "i686-w6
          # the build takes FFmpeg's headers and DLLs only (build_win_deps.py), SDL2's x86_64 tree only
          "ffmpeg": ["bin/*.exe", "bin/avdevice-*.dll", "bin/avfilter-*.dll", "doc/*", "lib/*"], "sdl2": ["i686-w64-mingw32/*", "docs/*", "test/*"],
          "cmake": ["doc/*", "man/*"]}
+# The Linux folder (--platform linux): Zig keeps only what the x86_64-linux-gnu target reads (its libc headers for
+# Linux and glibc, glibc's stubs, libc++ and the standard library it builds compiler_rt from); FFmpeg its libraries.
+ZIG_KEEP_INCLUDE = ("any-linux-any", "generic-glibc", "x86-linux-any", "x86-linux-gnu")
+PRUNE_LINUX = {"zig": ["lib/libc/mingw/*", "lib/libc/musl/*", "lib/libc/wasi/*", "lib/libc/darwin/*",
+                       "lib/libc/freebsd/*", "lib/libc/netbsd/*", "lib/libc/openbsd/*", "doc/*",
+                       "METADATA", "RECORD", "WHEEL", "entry_points.txt", "__init__.py", "__main__.py"],
+               "cmake-linux": ["doc/*", "man/*", "bin/cmake-gui", "bin/ccmake", "bin/cpack", "bin/ctest"],
+               "zlib": ["amiga/*"],
+               # SDL2's tests and IDE projects (SDL_TEST is off; the build needs only CMake's files)
+               "sdl2-src": ["test/*", "Xcode/*", "Xcode-iOS/*", "VisualC/*", "VisualC-GDK/*", "VisualC-WinRT/*",
+                            "android-project/*", "android-project-ant/*", "docs/*"],
+               "ffmpeg-linux": ["bin/*", "doc/*", "man/*", "share/*", "lib/pkgconfig/*", "lib/libavdevice*",
+                                "lib/libavfilter*", "lib/*.so"]}
 # The ._pth of the embeddable Python: its own zip and folder, then the folders whose scripts import their neighbours
 # (relative to the ._pth, in work/toolchain-cache/python/).
 PTH_EXTRA = ["..\\..\\..\\tools", "..\\..\\..\\tools\\release", "..\\..\\ps3recomp-patched\\tools"]
@@ -125,10 +150,10 @@ def skipped(name, opts, is_dir):
     return bool(inc) and not any(fnmatch.fnmatch(name, p) for p in inc)
 
 
-def collect(repo):
-    """{payload path: source path} from RULES; a missing source raises Refused."""
+def collect(repo, rules=None):
+    """{payload path: source path} from the rules (default RULES + RULES_WINDOWS); a missing source raises Refused."""
     files = {}
-    for src, dst, kind, opts in RULES:
+    for src, dst, kind, opts in (RULES + RULES_WINDOWS if rules is None else rules):
         s = os.path.join(repo, src)
         if kind == "file":
             if not os.path.isfile(s):
@@ -156,14 +181,14 @@ def name_problem(rel):
     return None
 
 
-def scrub(rel, path, toolchain=False):
-    """The reason a file may not ship, or None."""
+def scrub(rel, path, toolchain=False, elf_ok=False):
+    """The reason a file may not ship, or None. elf_ok: the Linux toolchain's own programs and libraries."""
     why = name_problem(rel)
     if why:
         return why
     with open(path, "rb") as f:
         head = f.read(8)
-    if any(head.startswith(m) for m in MAGICS):
+    if any(head.startswith(m) for m in MAGICS if not (elf_ok and m == b"\x7fELF")):
         return f"game or ELF data ({head[:4]!r})"
     if toolchain:
         return None
@@ -192,18 +217,35 @@ def windows_entries(m):
     return fetch_toolchain.entries_for(m, "windows")
 
 
-def collect_toolchain(cache, m):
-    """{payload path: source} for the Windows entries' unpacked trees, and their fetched.json."""
+LINUX_SOURCES = ("zlib", "glslang", "vulkan-headers")   # the "any" sources the Linux build also builds
+
+
+def linux_entries(m):
+    return [e for e in m["components"] if e["host"] == "native" or e["name"] in LINUX_SOURCES]
+
+
+def pruned(platform, name, inner):
+    if platform == "linux":
+        if name == "zig" and inner.startswith("lib/libc/include/") and \
+                inner.split("/")[3] not in ZIG_KEEP_INCLUDE:
+            return True
+        return any(fnmatch.fnmatch(inner, g) for g in PRUNE_LINUX.get(name, ()))
+    return any(fnmatch.fnmatch(inner, g) for g in PRUNE.get(name, ()))
+
+
+def collect_toolchain(cache, m, platform="windows"):
+    """{payload path: source} for the platform's entries' unpacked trees, and their fetched.json."""
     fetched = fetch_toolchain.read_fetched(cache)
     files, done, problems = {}, {}, []
-    for e in windows_entries(m):
+    for e in (linux_entries(m) if platform == "linux" else windows_entries(m)):
         name = e["name"]
         tree = os.path.join(cache, name)
         if e["sha256"] == fetch_toolchain.TO_FILL:
             problems.append(f"{name}: its sha256 is still TO-FILL")
             continue
         if fetched.get(name) != e["sha256"] or not os.path.isdir(tree):
-            problems.append(f"{name}: not fetched from its pin (tools/release/fetch_toolchain.py --host windows)")
+            problems.append(f"{name}: not fetched from its pin (tools/release/fetch_toolchain.py --host "
+                            f"{'native' if platform == 'linux' else 'windows'})")
             continue
         done[name] = e["sha256"]
         for d, dirs, fs in os.walk(tree):
@@ -213,7 +255,7 @@ def collect_toolchain(cache, m):
                 if os.path.islink(p):
                     continue
                 inner = os.path.relpath(p, tree).replace(os.sep, "/")
-                if any(fnmatch.fnmatch(inner, g) for g in PRUNE.get(name, ())):
+                if pruned(platform, name, inner):
                     continue
                 files[f"{CACHE}/{name}/{inner}"] = p
     if problems:
@@ -266,25 +308,27 @@ def check_toolkit(repo):
     return have
 
 
-def plan(repo, cache, launcher=None):
+def plan(repo, cache, launcher=None, platform="windows"):
     """(files {payload path: source}, generated {payload path: bytes}, manifest)."""
     patchset = check_toolkit(repo)
-    files = collect(repo)
+    files = collect(repo, RULES + (RULES_LINUX if platform == "linux" else RULES_WINDOWS))
     if launcher:
         if not os.path.isfile(launcher):
             raise Refused(f"no launcher at {launcher} (tools/release/build_launcher.py)")
         files["Project Vekta.exe"] = launcher
     problems = [f"{rel}: {why}" for rel, src in sorted(files.items()) if (why := scrub(rel, src))]
     m = fetch_toolchain.load(os.path.join(repo, "tools", "release", "toolchain.json"))
-    tfiles, done = collect_toolchain(cache, m)
-    problems += [f"{rel}: {why}" for rel, src in sorted(tfiles.items()) if (why := scrub(rel, src, toolchain=True))]
+    tfiles, done = collect_toolchain(cache, m, platform)
+    problems += [f"{rel}: {why}" for rel, src in sorted(tfiles.items())
+                 if (why := scrub(rel, src, toolchain=True, elf_ok=platform == "linux"))]
     problems += [f"case clash: {c}" for c in case_clashes(list(files) + list(tfiles))]
     if problems:
         raise Refused("scrub:\n  " + "\n  ".join(problems))
     files.update(tfiles)
     gen = {}
-    pth = pth_name(files)
-    gen[pth] = pth_text(files.pop(pth)).encode()
+    if platform == "windows":
+        pth = pth_name(files)
+        gen[pth] = pth_text(files.pop(pth)).encode()
     gen[f"{CACHE}/fetched.json"] = (json.dumps(done, indent=1, sort_keys=True) + "\n").encode()
     with open(os.path.join(repo, "VERSION"), encoding="utf-8") as f:
         version = f.read().strip()
@@ -294,9 +338,11 @@ def plan(repo, cache, launcher=None):
             entries.append({"path": rel, "size": len(gen[rel]), "sha256": hashlib.sha256(gen[rel]).hexdigest()})
         else:
             entries.append({"path": rel, "size": os.path.getsize(files[rel]), "sha256": sha256(files[rel])})
-    manifest = {"format": 1, "version": version, "commit": git_commit(repo), "patchset": patchset,
+    manifest = {"format": 1, "version": version, "platform": platform, "commit": git_commit(repo),
+                "patchset": patchset,
                 "toolchain": [{"name": e["name"], "version": e["version"], "url": fetch_toolchain.expand(e)["url"],
-                               "sha256": e["sha256"], "license": e["license"]} for e in windows_entries(m)],
+                               "sha256": e["sha256"], "license": e["license"]}
+                              for e in (linux_entries(m) if platform == "linux" else windows_entries(m))],
                 "count": len(entries), "bytes": sum(e["size"] for e in entries), "files": entries}
     return files, gen, manifest
 
@@ -335,6 +381,28 @@ def write_zip(path, out, top):
     os.replace(tmp, path)
 
 
+def write_tar(path, out, top):
+    """A tar.gz of the payload under top/, in name order, with fixed times and owners and the files' own execute
+    bits (the Linux folder's programs and scripts must run): the same payload gives the same bytes."""
+    names = sorted(os.path.relpath(os.path.join(d, f), out).replace(os.sep, "/")
+                   for d, _, fs in os.walk(out) for f in fs)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=6) as gz, \
+            tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as t:
+        for rel in names:
+            src = os.path.join(out, *rel.split("/"))
+            info = tarfile.TarInfo(f"{top}/{rel}")
+            info.size = os.path.getsize(src)
+            info.mtime = 1767225600   # 2026-01-01
+            info.mode = 0o755 if os.stat(src).st_mode & 0o111 else 0o644
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            with open(src, "rb") as f:
+                t.addfile(info, f)
+    os.replace(tmp, path)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out")
@@ -343,13 +411,18 @@ def main(argv=None):
     ap.add_argument("--replace", action="store_true")
     ap.add_argument("--launcher", help="the launcher exe to ship as Project Vekta.exe (build_launcher.py)")
     ap.add_argument("--zip", help="also write the portable zip (its top folder: project-vekta-<version>)")
+    ap.add_argument("--platform", choices=("windows", "linux"), default="windows",
+                    help="the Windows folder (default) or the Linux one (the pinned Zig toolchain, run.sh, play.sh)")
+    ap.add_argument("--tar", help="also write the folder as a .tar.gz with its execute bits (the Linux folder)")
     ap.add_argument("--dry-run", action="store_true", help="check and list, write nothing")
     a = ap.parse_args(argv)
     if not a.out and not a.dry_run:
         ap.error("--out DIR (or --dry-run)")
     cache = a.cache or os.path.join(a.repo, *CACHE.split("/"))
     try:
-        files, gen, manifest = plan(a.repo, cache, a.launcher)
+        if a.platform == "linux" and (a.launcher or a.zip):
+            raise Refused("--launcher and --zip are for the Windows folder (the Linux one ships as --tar)")
+        files, gen, manifest = plan(a.repo, cache, a.launcher, a.platform)
         if a.dry_run:
             print(f"payload ok: {manifest['count']} files, {manifest['bytes'] / 1e6:.1f} MB "
                   f"(version {manifest['version']}, patch set {manifest['patchset']})")
@@ -357,11 +430,13 @@ def main(argv=None):
         write_payload(a.out, files, gen, manifest, a.replace)
         if a.zip:
             write_zip(a.zip, a.out, f"project-vekta-{manifest['version']}")
+        if a.tar:
+            write_tar(a.tar, a.out, f"project-vekta-{manifest['version']}-linux")
     except Refused as err:
         print(f"assemble_payload: refused: {err}", file=sys.stderr)
         return 1
     print(f"payload: {a.out} ({manifest['count']} files, {manifest['bytes'] / 1e6:.1f} MB)"
-          + (f"; zip: {a.zip}" if a.zip else ""))
+          + (f"; zip: {a.zip}" if a.zip else "") + (f"; tar: {a.tar}" if a.tar else ""))
     return 0
 
 

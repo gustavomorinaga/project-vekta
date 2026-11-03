@@ -148,6 +148,9 @@ avoids the cost of the thread-locals MinGW's GCC emulates.
   for 60 s inside `tools/sandbox.sh`, with no window, no sound and a prefix of its own in `work/wine/`, and passes
   when the game keeps presenting at least 20 frames a second over the last 20 s (`--seconds`, `--min-fps`,
   `--window` to watch it). The first run makes the prefix.
+- **Without the game:** `tools/wine-host-tests.sh` cross-builds the host tests that also build for Windows (with the
+  pinned llvm-mingw and SDL2) and runs them under Wine, in a prefix of its own in `work/wine-host/`. CI runs it on
+  every push and pull request.
 - **The log:** the exe is a GUI program. Started from a shell, it logs to stderr; without one (double click, Steam,
   Proton) it writes `kz1hd.log` beside the exe. `KZ_LOG=<file>` picks another file, `KZ_CONSOLE=1` opens a console.
 - **On a Windows PC:** copy a folder with the exe and its DLLs, `work/fw/out/libsre_image.bin`, your `dev_flash`,
@@ -212,3 +215,27 @@ them and builds `work/build-win/KZ1HD.exe` there (`tools/release/firstrun.py`; g
 first run), and `play.cmd` starts the game (`tools/release/launch.py`). Without the right to make symbolic links,
 the game folder gets copies of the EBOOT and the archive. The payload's scrub refuses game files, home paths and
 secrets; `manifest.json` lists every file with its SHA-256. macOS is not supported.
+
+Linux, without a developer setup: from the release after 0.2.0 a Linux folder ships beside them, the same layout with
+its own toolchain, so the player needs only Python 3.10 or newer (ps3recomp's tools), glibc 2.31 or newer (with that
+Python: Ubuntu 22.04, Debian 12, Fedora 35, SteamOS 3 and later), SDL2 and a Vulkan driver, no compiler and no
+packages to install. Its compiler is [Zig](https://ziglang.org) 0.17.0 (`zig cc`, pinned in
+`tools/release/toolchain.json` from its PyPI wheel) aimed at `x86_64-linux-gnu.2.31` (`port/cmake/zig-linux.cmake`,
+the wrappers in `tools/release/zig/`), so what it builds runs on any distribution with that glibc or newer; CMake,
+Ninja, SDL2 (built to link against, the system's `libSDL2-2.0.so.0` is used at run time), zlib, glslang, the Vulkan
+headers and FFmpeg 9's shared libraries (copied to `work/build/lib`, which `tools/play.sh` puts on the library path)
+come with it.
+
+```sh
+tools/release/fetch_toolchain.py --host native                          # Zig, CMake, Ninja, SDL2, FFmpeg
+tools/release/fetch_toolchain.py --only zlib,glslang,vulkan-headers     # the sources it also builds
+tools/release/assemble_payload.py --platform linux --out work/release/linux \
+    [--tar work/release/project-vekta-<version>-linux.tar.gz]
+```
+
+There, `./run.sh` asks where your files are and builds (`KZ_LINUX_TOOLCHAIN=pinned`; `tools/release/
+build_linux_deps.py` compiles SDL2, zlib and glslang on the first run), and `./play.sh` starts the game. In a source
+checkout `KZ_LINUX_TOOLCHAIN=pinned tools/install.sh` takes the same route. The release workflow unpacks the folder
+in a Debian 11 container with no compiler, builds its libraries and ps3recomp's boot smoke test with it and runs
+them (`tools/release/check_linux_folder.sh`). A launcher packaged as a Flatpak or AppImage around this folder is a
+later step.

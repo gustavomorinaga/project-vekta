@@ -36,7 +36,10 @@ export PS3_GCM_MAX_QUEUED_FLIPS=${PS3_GCM_MAX_QUEUED_FLIPS:-1}
 case "$bin" in
 *.exe)  # the Windows build (build-win.sh), under Wine (KZ_WINE: another runner)
     WINEDEBUG=${WINEDEBUG:--all} ${KZ_WINE:-wine} "$bin" "Z:$PWD/PS3_GAME/USRDIR/EBOOT.elf" > "$KZ_WORK/play.log" 2>&1 & ;;
-*)  "$bin" "$PWD/PS3_GAME/USRDIR/EBOOT.elf" > "$KZ_WORK/play.log" 2>&1 & ;;
+*)  # a build with the pinned Linux toolchain (KZ_LINUX_TOOLCHAIN=pinned) keeps its FFmpeg in lib/ beside it
+    libdir="$(dirname "$bin")/lib"
+    [ -d "$libdir" ] && export LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    "$bin" "$PWD/PS3_GAME/USRDIR/EBOOT.elf" > "$KZ_WORK/play.log" 2>&1 & ;;
 esac
 pid=$!
 # The window closing leaves the process running headless: stop it then.

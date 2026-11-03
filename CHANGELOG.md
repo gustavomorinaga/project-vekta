@@ -23,11 +23,31 @@ program and folder that build it. Until a release that calls itself playable
   the saves and settings (default No).
 - The setup program is dark, with side and header images for every screen scale and its own setup and uninstall
   icons (`tools/release/installer_art.py`).
+- The Linux release folder (`tools/release/assemble_payload.py --platform linux --tar`): the port's sources, the
+  patched ps3recomp and a pinned toolchain (Zig 0.17.0 as the C and C++ compiler, CMake, Ninja, SDL2, zlib, glslang,
+  the Vulkan headers and FFmpeg 9's libraries), so a player needs only the usual desktop libraries (Python 3.10 or
+  newer, glibc 2.31 or newer, SDL2, a Vulkan driver). `run.sh` asks for your files and builds there, `play.sh` starts
+  the game. The binaries target glibc 2.31 (`port/cmake/zig-linux.cmake`, `tools/release/zig/`,
+  `tools/release/build_linux_deps.py`); `KZ_LINUX_TOOLCHAIN=pinned` selects that toolchain in a source checkout too.
+- Releases after 0.2.0 carry that folder as `project-vekta-X.Y.Z-linux.tar.gz`: `.github/workflows/release.yml`
+  builds it and checks it in a Debian 11 container with no compiler (`tools/release/check_linux_folder.sh`).
 
 ### Changed
 - A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or
   an uninstall leaves them alone; the setup's "Portable" option keeps them in the install folder instead. Saves an
   earlier version left in the install folder move there on the next start.
+
+### Fixed
+- The Linux folder's build no longer stops at the compile step with "unknown CPU: 'x86'": its Zig wrappers spell
+  the port's `-march=x86-64-v3` the way Zig names CPUs (`x86_64_v3`).
+- The Linux folder's link no longer fails on `mallinfo2` (glibc 2.33; the folder targets 2.31): the stats line's
+  heap count looks it up at run time and falls back to `mallinfo`.
+- The limit of flips the game may queue ahead of the screen (`PS3_GCM_MAX_QUEUED_FLIPS`, default 2) no longer drifts:
+  each flip done at once, instead of queued in the command buffer, loosened it by one for good (patch 2040). The
+  `queued` value in the `[kz-stats]` lines stays at the real count.
+- Windows: a controller that was detected but gave no input (seen on a OneXPlayer X2 Mini Pro's built-in Xbox-style
+  pad, issue #19) works without setting `SDL_JOYSTICK_RAWINPUT=0` by hand: the port turns SDL's Raw Input joystick
+  driver off (patch 4012). Setting `SDL_JOYSTICK_RAWINPUT=1` brings it back.
 
 ## [0.2.0] - 2026-11-01 (pre-release)
 
