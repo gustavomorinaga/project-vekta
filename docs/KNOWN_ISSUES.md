@@ -1,6 +1,6 @@
 # Known issues
 
-Last checked 2026-11-01. Each item says what happens, where, and what to do about it today. Details for developers
+Last checked 2026-11-02. Each item says what happens, where, and what to do about it today. Details for developers
 are linked.
 
 ## Game
@@ -27,6 +27,13 @@ are linked.
 
 ## Windows
 
+- **Borderless fullscreen at 16:10 shows large black blocks** (1920×1200, AMD Radeon 8060S, issue #17): the menus and
+  the opening movie are partly covered. Windowed mode at the same size and borderless fullscreen with the desktop at
+  1920×1080 are fine. Workaround: play in a window, or set the desktop to a 16:9 resolution.
+- **Stutter in the opening movies and the menus, and slow menu input** (AMD Radeon 8060S, issue #18), while play
+  itself holds 60 fps. `PS3_GCM_MAX_QUEUED_FLIPS` 1 to 3 did not help. No workaround yet.
+- **A controller that is detected but gives no input** (a OneXPlayer X2 Mini Pro's built-in Xbox-style pad, issue
+  #19). Fixed for the next release (patch 4012); in 0.2.0 set `SDL_JOYSTICK_RAWINPUT=0` before `play.cmd`.
 - **Slower under Wine and Proton:** about 100 fps in Level 7 against about 134 for the Linux build (144 Hz mode,
   2026-10-28). On a real Windows, a 7-minute session held 140 to 144 fps most of the time with drops to 100 to 120.
 - **No MangoHUD row** on the PC page of the Windows exe (MangoHUD is a Linux Vulkan layer; under Proton use it from
