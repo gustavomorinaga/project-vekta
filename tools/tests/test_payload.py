@@ -214,6 +214,12 @@ with tempfile.TemporaryDirectory() as tmp:
     argv, cwd, e, log = launch.plan(str(root), dict(env, PS3_GCM_MAX_QUEUED_FLIPS="2"), fullscreen=True)
     check(argv == [str(exe), str(u / "EBOOT.elf")] and cwd == str(w / "vfs"), f"the build runs from vfs: {argv}")
     check(launch.run(argv, cwd, e, log, poll=0.05) == 0, "the game's exit code comes back")
+    check("PS3_VFS_ROOT" not in e, "from the run folder the game needs no PS3_VFS_ROOT")
+    (root / launch.INSTALL_INI).write_text("[install]\nportable=0\n")
+    _, cwd2, e2, _ = launch.plan(str(root), dict(env, APPDATA=str(tmp / "appdata")))
+    check(cwd2 == str(tmp / "appdata" / "Project Vekta") and e2.get("PS3_VFS_ROOT") == str(w / "vfs").replace("\\", "/"),
+          f"from the saves folder the game is told where its files are: {cwd2} {e2.get('PS3_VFS_ROOT')}")
+    (root / launch.INSTALL_INI).unlink()
     text = pathlib.Path(log).read_text()
     check(f"cwd={w / 'vfs'}" in text and "skip=1 flips=2" in text and "disp=borderless" in text and
           f"img={w / 'fw' / 'out' / 'libsre_image.bin'}" in text, f"play.sh's settings, the environment wins: {text}")

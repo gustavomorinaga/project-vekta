@@ -114,8 +114,12 @@ def plan(root, environ=None, fullscreen=False):
     log = os.path.join(w, "play.log")
     if kzbuild.WINDOWS:
         e.setdefault("KZ_LOG", log)   # the exe is a GUI program: it writes its own log there
-    # The game finds its files from the EBOOT's path (main.cpp derive_vfs_root), so it may run from elsewhere.
-    return [exe, eboot], data_dir(root, e["KZ_VFS"], e), e, log
+    cwd = data_dir(root, e["KZ_VFS"], e)
+    if cwd != e["KZ_VFS"]:
+        # The game runs from the saves folder, so the folder it reads the game from is named: main.cpp takes it from
+        # the EBOOT's path, but the raw file syscalls (sys_fs.c) and cellFs.c fall back to the working folder.
+        e.setdefault("PS3_VFS_ROOT", e["KZ_VFS"].replace("\\", "/"))
+    return [exe, eboot], cwd, e, log
 
 
 def window_closed(log):
@@ -330,7 +334,8 @@ def main(argv=None):
         print("run:", " ".join(f'"{x}"' if " " in x else x for x in argv_))
         print("in:", cwd, "(saves and settings)")
         print("log:", log)
-        for k, _ in SETTINGS + FIXED + [("KZ_LIBSRE_IMAGE", ""), ("PS3RECOMP_VK_DISPLAY", ""), ("KZ_LOG", "")]:
+        for k, _ in SETTINGS + FIXED + [("KZ_LIBSRE_IMAGE", ""), ("PS3RECOMP_VK_DISPLAY", ""), ("KZ_LOG", ""),
+                                        ("PS3_VFS_ROOT", "")]:
             if k in env:
                 print(f"{k}={env[k]}")
         return 0
