@@ -195,6 +195,13 @@
 </article>
 <div id="news">
 <article class="news rel">
+<h2>Unreleased</h2>
+<p class="meta">not released yet</p>
+<ul class="rlist">
+<li><span class="sec">Fixed</span>The limit of flips the game may queue ahead of the screen (<code>PS3_GCM_MAX_QUEUED_FLIPS</code>, default 2) no longer drifts: each flip done at once, instead of queued in the command buffer, loosened it by one for good (patch 2040). The <code>queued</code> value in the <code>[kz-stats]</code> lines stays at the real count.</li>
+</ul>
+</article>
+<article class="news rel">
 <h2>0.2.0</h2>
 <p class="meta">1 Nov 2026 · pre-release</p>
 <ul class="rlist">
@@ -226,22 +233,12 @@
 <li><span class="sec">Fixed</span>An SPU that reserves a line while another SPU&#x27;s plain write to it is being copied now loses the reservation at once, not at the next 10 ms poll (patch 1020).</li>
 </ul>
 </article>
-<article class="news rel">
-<h2>First public tree</h2>
-<p class="meta">30 Oct 2026</p>
-<ul class="rlist">
-<li><span class="sec">Added</span>The port of Killzone HD (NPUA80856) on ps3recomp v0.18.0 with 93 patches, built on Linux, and on Linux for Windows.</li>
-<li><span class="sec">Added</span>Scripts that build it from the player&#x27;s own files with no fixed paths (<code>tools/</code>), a checker for those files, and the function seeds of the lift as a table (<code>re/function_seeds.txt</code>).</li>
-<li><span class="sec">Added</span>PC features: the in-game PC page (display, resolution, internal scale, V-Sync, frame-rate limit 30/60/144, FSR 1, anisotropic filtering, widescreen, field of view, HUD, presets, controllers, mouse, sound output, language, skip intro), direct mouse look, mouse in menus, remappable keys, device-aware button prompts, local trophies.</li>
-<li><span class="sec">Added</span>Documentation in English: README, getting files, building, how it works, features, known issues, roadmap, and the engineering notes in <code>docs/dev/</code>.</li>
-</ul>
-</article>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">The whole changelog<span aria-hidden="true"> &gt;</span></a></p>
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 102 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 102 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 103 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 103 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -250,6 +247,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> The limit of flips the game may queue ahead of the screen (PS3_GCM_MAX_QUEUED_FLIPS, default 2) no longer drifts: each...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows release folder (tools/release/assemble_payload.py): the port&#x27;s sources, the patched ps3recomp and the...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows setup program (installer/vekta.iss, Inno Setup, per-user install) and the launcher Project Vekta.exe with...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> Releases carry the Windows setup program and the Windows folder as a zip beside the source archive, each with a...</span></li>
@@ -257,7 +255,6 @@
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows build&#x27;s toolchain is pinned in the repository (tools/release/toolchain.json): llvm-mingw, SDL2, zlib...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> An applications-menu entry with the project&#x27;s own icon (assets/icon.svg): tools/install.sh offers it after a build...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> tools/install.sh: one command asks where your files are, checks them, then patches, lifts and builds with one progress...</span></li>
-<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> KZ_JOBS sets the lift&#x27;s and the compile&#x27;s parallel jobs (the installer picks it from free memory).</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
