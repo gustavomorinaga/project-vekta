@@ -299,12 +299,18 @@ def jobs_for(avail, cores=None):
     return max(1, min(cores, 16, int((avail - 3 * GIB) / GIB)))
 
 
-def redactor(home=None):
-    """The home folder becomes ~ in the log (a log is meant to be attached to an issue)."""
-    home = (home or os.path.expanduser("~")).rstrip("/")
+def redactor(home=None, windows=None):
+    """The home folder becomes ~ in the log (a log is meant to be attached to an issue). Either slash counts as a
+    separator (CMake, Ninja and the game write C:/Users/<name> on Windows too), and on Windows the drive also matches
+    CMake's mangled form (C_/Users/<name>) and the case is ignored."""
+    windows = os.name == "nt" if windows is None else windows
+    home = (home or os.path.expanduser("~")).rstrip("/\\")
     if len(home) <= 1:
         return lambda s: s
-    rx = re.compile(re.escape(home) + r"(?=[/\\]|\b|$)", re.I if os.name == "nt" else 0)
+    parts = [re.escape(p) for p in re.split(r"[/\\]+", home)]
+    if windows and re.fullmatch(r"[A-Za-z]:", parts[0].replace("\\", "")):
+        parts[0] = parts[0][0] + "[:_]"
+    rx = re.compile(r"[/\\]+".join(parts) + r"(?=[/\\]|\b|$)", re.I if windows else 0)
     return lambda s: rx.sub("~", s)
 
 
