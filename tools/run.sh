@@ -7,6 +7,8 @@ KZ_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 secs=${1:-60}; log=$(readlink -m "${2:-$KZ_WORK/run.log}")
 bin="${KZ_BIN:-$KZ_WORK/build/KZ1HD}"
 cd "$KZ_VFS" || exit 1   # KZ_VFS: another VFS root (tests keep their own saves)
+libdir="$(dirname "$bin")/lib"   # the pinned Linux toolchain's build keeps its FFmpeg there (tools/play.sh)
+[ -d "$libdir" ] && export LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 GCM_PARK_SKIP=${GCM_PARK_SKIP:-1} PS3RECOMP_VK_GUEST_PROGRAMS=${PS3RECOMP_VK_GUEST_PROGRAMS:-1} KZ_LIBSRE_IMAGE=${KZ_LIBSRE_IMAGE:-$KZ_WORK/fw/out/libsre_image.bin} \
   timeout -s KILL "$secs" "$bin" "$PWD/PS3_GAME/USRDIR/EBOOT.elf" 2>&1 |
   grep -av -e 'event_queue_receive' -e '_SendSignal' -e 'WAIT_SIGNAL#' -e 'signal task' -e 'semaphore_wait' > "$log"

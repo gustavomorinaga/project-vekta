@@ -23,7 +23,8 @@ exports (a variable set in the environment still wins).
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
   check     tools/check-game-files.py (every run; a missing or different required file stops here)
-  venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads; Linux)
+  venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads; Linux
+            with the system's compilers only: not on Windows nor with KZ_LINUX_TOOLCHAIN=pinned)
   patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches (a release folder ships it)
   lift      work/lift and work/fw: the game's and the firmware's code as C++ (kzbuild.py lift)
   vfs       work/vfs: the folder the game runs from (kzbuild.py vfs; saves and settings there are kept)
@@ -214,7 +215,8 @@ def play_command(root):
 
 
 def cmd_venv(c):
-    if os.name == "nt":
+    # Windows and the pinned Linux toolchain bring CMake and Ninja; the lifters need only the standard library
+    if os.name == "nt" or os.environ.get("KZ_LINUX_TOOLCHAIN") == "pinned":
         return []
     venv = c.w("venv")
     cmds = [] if os.path.isfile(os.path.join(venv, "bin", "python")) else [[c.python, "-m", "venv", venv]]

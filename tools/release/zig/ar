@@ -1,0 +1,5 @@
+#!/bin/sh
+# zig ar with the pinned Zig (see tools/release/zig/cc).
+here=$(cd "$(dirname "$0")" && pwd)
+work=${KZ_WORK:-$here/../../../work}
+exec "${KZ_ZIG:-$work/toolchain-cache/zig/zig}" ar "$@"
