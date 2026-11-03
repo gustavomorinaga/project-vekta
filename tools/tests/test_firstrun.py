@@ -240,10 +240,10 @@ check(firstrun.jobs_for(None, cores=16) == 4, "unknown memory: four jobs")
 check(firstrun.jobs_for(32 * firstrun.GIB, cores=16) == 16, "32 GiB free and 16 cores: 16 jobs")
 check(firstrun.jobs_for(6 * firstrun.GIB, cores=16) == 3, "6 GiB free: 3 jobs")
 check(firstrun.jobs_for(2 * firstrun.GIB, cores=16) == 1, "little memory: one job")
-w = firstrun.redactor("C:\\Users\\jane", windows=True)
-for leak in ("C:\\Users\\jane\\x", "C:/Users/jane/x", "c:/users/JANE/x", "C_/Users/jane/x"):
-    check(w(leak) == "~" + leak[len("C:/Users/jane"):], f"Windows home in any spelling: {leak} -> {w(leak)}")
-check(w("C:/Users/janet/x") == "C:/Users/janet/x", "another user's folder is left alone")
+w = firstrun.redactor("D:\\Profiles\\jane", windows=True)
+for leak in ("D:\\Profiles\\jane\\x", "D:/Profiles/jane/x", "d:/profiles/JANE/x", "D_/Profiles/jane/x"):
+    check(w(leak) == "~" + leak[len("D:/Profiles/jane"):], f"Windows home in any spelling: {leak} -> {w(leak)}")
+check(w("D:/Profiles/janet/x") == "D:/Profiles/janet/x", "another user's folder is left alone")
 red = firstrun.redactor("/srv/players/jane")
 check(red("/srv/players/jane/Games and /srv/players/janet/x") == "~/Games and /srv/players/janet/x", "the log writes the home as ~")
 
