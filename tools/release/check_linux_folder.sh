@@ -21,6 +21,10 @@ grep -q "guest programs available" "$w/check-configure.log" || { echo "FAIL: gls
 cmake --build "$b" --target test_shader_spirv ps3recomp_boot_smoke > "$w/check-build.log" 2>&1 ||
   { grep -E "error|FAILED" "$w/check-build.log" | head -30; tail -15 "$w/check-build.log"; exit 1; }
 "$b/test_shader_spirv" | tail -3
+# The port itself builds with -march=x86-64-v3 (KZ_MARCH): the wrappers must hand Zig a CPU name it knows
+printf 'int main(void) { return 0; }\n' > "$w/check-march.c"
+"$f/tools/release/zig/cc" -O1 -march=x86-64-v3 "$w/check-march.c" -o "$w/check-march" && "$w/check-march" ||
+  { echo "FAIL: zig cc refused -march=x86-64-v3"; exit 1; }
 for l in libavcodec.so.63 libavformat.so.63 libavutil.so.61 libswscale.so.10 libswresample.so.7; do
   [ -f "$w/linux-deps/ffmpeg/$l" ] || { echo "FAIL: no $l staged"; exit 1; }
 done

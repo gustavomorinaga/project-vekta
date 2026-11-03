@@ -52,6 +52,7 @@ extern "C" int vm_inline_ok;
 #include <string.h>
 #ifndef _WIN32
 #include <sys/mman.h>
+#include <dlfcn.h>
 #include <malloc.h>
 #include <sys/prctl.h>
 #include <unistd.h>
@@ -62,14 +63,26 @@ extern "C" int vm_inline_ok;
 #endif
 
 /* The heap in use, for the stats line: glibc's allocator count, or the
- * process's private bytes on Windows (no mallinfo2 there). */
+ * process's private bytes on Windows (no mallinfo2 there). mallinfo2 came in
+ * glibc 2.33 and the Linux release folder targets 2.31, so it is looked up at
+ * run time; without it, mallinfo's int count (it wraps above 2 GB). */
+#ifndef _WIN32
+struct kz_mallinfo2 { size_t arena, ordblks, smblks, hblks, hblkhd, usmblks, fsmblks, uordblks, fordblks, keepcost; };
+#endif
 static size_t kz_heap_bytes(void)
 {
 #ifdef _WIN32
     PROCESS_MEMORY_COUNTERS_EX pmc;
     return GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof pmc) ? pmc.PrivateUsage : 0;
 #else
-    return mallinfo2().uordblks;
+    typedef struct kz_mallinfo2 (*mallinfo2_fn)(void);
+    static mallinfo2_fn mi2 = (mallinfo2_fn)dlsym(RTLD_DEFAULT, "mallinfo2");
+    if (mi2)
+        return mi2().uordblks;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    return (unsigned)mallinfo().uordblks;
+#pragma GCC diagnostic pop
 #endif
 }
 
