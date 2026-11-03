@@ -177,9 +177,36 @@ tools/release/build_setup.py --payload work/release/payload   # work/release/pro
 ```
 
 `build_setup.py` compiles `installer/vekta.iss` with the pinned Inno Setup (installed on the first run, checked by
-SHA-256; under Wine on Linux). The setup program installs per user into `%LOCALAPPDATA%\Programs\ProjectVekta`, adds
-the Start-menu entries and offers to build at once; the launcher (`Project Vekta.exe`) opens the first run itself
-when nothing is built yet, then starts the game.
+SHA-256; under Wine on Linux). The setup program installs per user into `%LOCALAPPDATA%\Programs\ProjectVekta`. It
+asks where your files are, on pages of its own: the installed game folder (NPUA80856), the decrypted `EBOOT.elf`,
+`data_ps3.psarc` and `libsre.prx`, and the firmware's `dev_flash`. It checks their kind and size before copying
+anything and keeps them in `work\paths.env`. Then it builds the port in the wizard, with a progress bar and a Stop
+button; the build's first step checks the files' SHA-256, and when it stops the wizard says why and opens its log. The
+launcher (`Project Vekta.exe`) builds on its first start when that did not happen, then starts the game. A silent
+install takes the files as switches: `/GAME=<dir> /EBOOT=<file> /PSARC=<file> /LIBSRE=<file> [/DEVFLASH=<dir>]`.
+
+Saves and settings (`kz1hd_pc.ini`, `kz1hd_keys.ini`, `gamedata/`) go to `%APPDATA%\Project Vekta`: the launcher runs
+the game from there. With the setup's "Portable" task (`/MERGETASKS=portable`) they stay in the install folder's
+`work\vfs`, as in the zip or a Git clone. `vekta-install.ini` in the install folder records the choice. Saves an
+earlier version left in `work\vfs` are moved to `%APPDATA%` on the next start, never over a file already there.
+
+The Start menu has, beside the game: "Verify and rebuild" (`launch.py --repair`: the install's files against
+`manifest.json`, then the check of your game files and a rebuild of what changed), "Open saves folder"
+(`--open-data`) and "Make a support package" (`--support-package`: one zip on the Desktop with the logs and settings,
+your user folder written as `~`, no saves and no game files; `tools/release/support.py`).
+
+The setup refuses an install folder the build cannot use: one with `[`, `]` or `;` in its path (CMake), one inside
+OneDrive, or a drive's root, Windows, Program Files, Documents, the Desktop, the profile or Downloads; a silent
+install with such a `/DIR=` ends with exit code 7 before writing anything. Installing over an earlier version
+replaces the payload's own folders whole (the sources, the tools, the patched ps3recomp and the toolchain), so a file
+the new version dropped does not linger; the build, the game folder, the logs and your choices stay, and only what
+changed is rebuilt. The uninstaller asks whether to delete the saves and settings too (default No; a silent
+uninstall keeps them).
+
+The setup is dark, with its own side and header images at four DPI scales and its own setup and uninstall icons,
+all in `installer/art/` and made by `tools/release/installer_art.py` from the project's art in the site's palette
+(`--fetch-fonts` once for Fira Sans Condensed, then run it; `--check`, which the host tests run, says when an image
+no longer matches the script).
 
 The folder keeps this repository's layout: the port's sources, the patched ps3recomp in `work/ps3recomp-patched` (so
 the player needs no Git) and the toolchain in `work/toolchain-cache` (llvm-mingw, CMake, Ninja, the embeddable

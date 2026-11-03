@@ -6,6 +6,7 @@ with one progress bar, and remember where the files are.
                               [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE] [--bar] [--dry-run]
     tools/release/firstrun.py --interactive [same options: they become the answers it offers]
     tools/release/firstrun.py --remove-desktop
+    tools/release/firstrun.py --save-paths [--game DIR] [--eboot FILE] ...   (the Windows setup program)
     tools/install.sh                        (the same as --interactive --bar)
 
 After Project Pyrrhus's and Project Helghast's tools/release/firstrun.py (undecuple, MIT): the table of steps with
@@ -34,7 +35,9 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
 
 After a build, --desktop (or a yes to --interactive's question) writes the applications-menu entry
 ($XDG_DATA_HOME/applications/project-vekta.desktop, icon assets/icon.svg) that starts tools/play.sh from this tree;
---remove-desktop takes it out again (Linux; on Windows the installer makes the shortcuts).
+--remove-desktop takes it out again (Linux; on Windows the installer makes the shortcuts). --save-paths writes the
+paths given (only those; the others keep their saved value) into work/paths.env and stops, without a check: the
+setup program keeps the player's answers so, and the build or the first start then finds them.
 
 Output: the steps' own lines, and PROGRESS step=i/n name=.. done=.. total=.. elapsed=s pct=..; at the end
 RESULT ok=1|0 step=<the step that stopped it, or -> elapsed=s, with REASON <text> lines before a RESULT ok=0. --bar
@@ -296,12 +299,18 @@ def jobs_for(avail, cores=None):
     return max(1, min(cores, 16, int((avail - 3 * GIB) / GIB)))
 
 
-def redactor(home=None):
-    """The home folder becomes ~ in the log (a log is meant to be attached to an issue)."""
-    home = (home or os.path.expanduser("~")).rstrip("/")
+def redactor(home=None, windows=None):
+    """The home folder becomes ~ in the log (a log is meant to be attached to an issue). Either slash counts as a
+    separator (CMake, Ninja and the game write C:/Users/<name> on Windows too), and on Windows the drive also matches
+    CMake's mangled form (C_/Users/<name>) and the case is ignored."""
+    windows = os.name == "nt" if windows is None else windows
+    home = (home or os.path.expanduser("~")).rstrip("/\\")
     if len(home) <= 1:
         return lambda s: s
-    rx = re.compile(re.escape(home) + r"(?=[/\\]|\b|$)", re.I if os.name == "nt" else 0)
+    parts = [re.escape(p) for p in re.split(r"[/\\]+", home)]
+    if windows and re.fullmatch(r"[A-Za-z]:", parts[0].replace("\\", "")):
+        parts[0] = parts[0][0] + "[:_]"
+    rx = re.compile(r"[/\\]+".join(parts) + r"(?=[/\\]|\b|$)", re.I if windows else 0)
     return lambda s: rx.sub("~", s)
 
 
@@ -700,6 +709,9 @@ def main(argv=None):
                     help="add (--no-desktop: do not add) the applications-menu entry after a build; "
                          "--interactive asks when neither is given")
     ap.add_argument("--remove-desktop", action="store_true", help="remove the applications-menu entry and stop")
+    ap.add_argument("--save-paths", action="store_true",
+                    help="write the paths given as options (only those) into work/paths.env and stop: the Windows "
+                         "setup program keeps the player's answers this way, before or instead of a build")
     a = ap.parse_args(argv)
     for s in (sys.stdout, sys.stderr):   # a tool's message in another code page must not stop the run
         if hasattr(s, "reconfigure"):
@@ -711,6 +723,14 @@ def main(argv=None):
     work = os.environ.get("KZ_WORK") or os.path.join(root, "work")
     c = Ctx(root=root, paths=resolve_paths(root, work, {n: getattr(a, n) for n, *_ in INPUTS}),
             jobs=a.jobs or jobs_for(available_ram()), work=work)
+    if a.save_paths:
+        given = {n: os.path.abspath(os.path.expanduser(getattr(a, n))) for n, *_ in INPUTS if getattr(a, n)}
+        if not given:
+            print("firstrun: --save-paths needs at least one path option", file=sys.stderr)
+            return 2
+        write_paths(work, dict(read_paths(work), **given))
+        print(f"paths: {os.path.join(work, PATHS_FILE)}")
+        return 0
     if a.remove_desktop:
         p = remove_desktop()
         print(f"removed {p}" if p else f"no menu entry at {desktop_path()}")

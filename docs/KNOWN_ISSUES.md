@@ -41,8 +41,8 @@ are linked.
 - **The setup program was tried on one real Windows** (the maintainer's, 2026-10-31: the first build took about four
   minutes, then the game held 60 fps), not yet on a clean Windows machine, and the full campaign was not played on
   Windows.
-- **The first start builds the port** on the player's PC (about four to five minutes, and about 1.6 GB more on disk):
-  the game is not shipped, so it cannot be prebuilt.
+- **The port is built on the player's PC**, by the setup program or on the first start (about four to five minutes,
+  and about 1.6 GB more on disk): the game is not shipped, so it cannot be prebuilt.
 
 ## Building
 

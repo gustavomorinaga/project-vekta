@@ -219,10 +219,31 @@ with tempfile.TemporaryDirectory() as tmp:
     del os.environ["XDG_DATA_HOME"]
 check((ROOT / "assets/icon.svg").is_file(), "the icon the entry names is in the tree")
 
+# --save-paths (the Windows setup program): writes only the paths given, keeps the others, runs no step
+with tempfile.TemporaryDirectory() as tmp:
+    work = os.path.join(tmp, "work")
+    os.environ["KZ_WORK"] = work
+    try:
+        check(firstrun.main(["--root", tmp, "--save-paths"]) == 2, "--save-paths without a path is refused")
+        win = "C:\\Games\\Kill zone\\EBOOT.elf"
+        check(firstrun.main(["--root", tmp, "--save-paths", "--game", "/g/NPUA80856"]) == 0, "--save-paths writes")
+        check(firstrun.main(["--root", tmp, "--save-paths", "--eboot", "/g/EBOOT.elf"]) == 0, "a second one adds")
+        saved = firstrun.read_paths(work)
+        check(saved == {"game": "/g/NPUA80856", "eboot": "/g/EBOOT.elf"}, f"both kept, nothing else: {saved}")
+        firstrun.write_paths(work, {"eboot": win})
+        check(firstrun.read_paths(work) == {"eboot": win}, "a Windows path with spaces reads back the same")
+        check(sorted(os.listdir(work)) == ["paths.env"], "no step ran: only paths.env in work/")
+    finally:
+        del os.environ["KZ_WORK"]
+
 check(firstrun.jobs_for(None, cores=16) == 4, "unknown memory: four jobs")
 check(firstrun.jobs_for(32 * firstrun.GIB, cores=16) == 16, "32 GiB free and 16 cores: 16 jobs")
 check(firstrun.jobs_for(6 * firstrun.GIB, cores=16) == 3, "6 GiB free: 3 jobs")
 check(firstrun.jobs_for(2 * firstrun.GIB, cores=16) == 1, "little memory: one job")
+w = firstrun.redactor("D:\\Profiles\\jane", windows=True)
+for leak in ("D:\\Profiles\\jane\\x", "D:/Profiles/jane/x", "d:/profiles/JANE/x", "D_/Profiles/jane/x"):
+    check(w(leak) == "~" + leak[len("D:/Profiles/jane"):], f"Windows home in any spelling: {leak} -> {w(leak)}")
+check(w("D:/Profiles/janet/x") == "D:/Profiles/janet/x", "another user's folder is left alone")
 red = firstrun.redactor("/srv/players/jane")
 check(red("/srv/players/jane/Games and /srv/players/janet/x") == "~/Games and /srv/players/janet/x", "the log writes the home as ~")
 

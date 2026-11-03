@@ -257,11 +257,40 @@ jobs:
           if ($p.ExitCode) { Get-Content $log -Tail 40; Write-Error "setup exit $($p.ExitCode)"; exit 1 }
           python tools/release/check_install.py $app --manifest "$env:PAYLOAD\manifest.json"
           if ($LASTEXITCODE) { exit 1 }
+          # not portable by default: launch.py runs the game from %APPDATA%\Project Vekta
+          if (-not (Select-String -Path "$app\vekta-install.ini" -SimpleMatch "portable=0" -Quiet)) {
+            Write-Error "vekta-install.ini does not say portable=0"; exit 1 }
           $p = Start-Process "$app\Project Vekta.exe" -Wait -PassThru -ArgumentList "--launcher-dry-run"
           $cmd = Get-Content "$app\launcher-dry-run.txt" -Raw
           Write-Host "launcher: $cmd"
           if ($p.ExitCode -or $cmd -notmatch "pythonw\.exe.+launch\.py.+--build-if-needed") {
             Write-Error "the launcher's dry run did not name pythonw and launch.py"; exit 1 }
+          # The Start menu's entries, through the console Python so their messages come out here (no message box)
+          $py = "$app\work\toolchain-cache\python\python.exe"
+          $out = "n" | & $py "$app\tools\release\launch.py" --root $app --repair 2>&1 | Out-String
+          Write-Host "repair: $out"
+          if ($LASTEXITCODE -or $out -notmatch "files of this install are intact") {
+            Write-Error "Verify and rebuild did not find the install intact"; exit 1 }
+          $out = & $py "$app\tools\release\launch.py" --root $app --support-package --out "$env:RUNNER_TEMP\sp" 2>&1 | Out-String
+          Write-Host "support: $out"
+          $zip = Get-ChildItem "$env:RUNNER_TEMP\sp\project-vekta-support-*.zip"
+          if ($LASTEXITCODE -or -not $zip) { Write-Error "no support package"; exit 1 }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $names = [IO.Compression.ZipFile]::OpenRead($zip.FullName).Entries.FullName -join " "
+          if ($names -notmatch "facts.txt" -or $names -notmatch "vekta-install.ini") {
+            Write-Error "the support package holds: $names"; exit 1 }
+          # Install again over it, as a newer version would: a file the payload no longer has goes, saves stay
+          Set-Content "$app\tools\dropped.py" "x"
+          New-Item -ItemType Directory -Force "$app\work\vfs" | Out-Null
+          Set-Content "$app\work\vfs\kz1hd_pc.ini" "fov=90"
+          $p = Start-Process "out\project-vekta-$env:VERSION-setup.exe" -Wait -PassThru -ArgumentList `
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$app", "/LOG=$log"
+          if ($p.ExitCode) { Get-Content $log -Tail 40; Write-Error "setup over setup exit $($p.ExitCode)"; exit 1 }
+          if (Test-Path "$app\tools\dropped.py") { Write-Error "a file the payload does not have survived"; exit 1 }
+          if (-not (Test-Path "$app\work\vfs\kz1hd_pc.ini")) { Write-Error "the install over it removed a setting"; exit 1 }
+          Remove-Item "$app\work\vfs\kz1hd_pc.ini", "$app\launcher-dry-run.txt"
+          python tools/release/check_install.py $app --manifest "$env:PAYLOAD\manifest.json"
+          if ($LASTEXITCODE) { exit 1 }
           $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList `
             "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
           if ($p.ExitCode) { Write-Error "uninstall exit $($p.ExitCode)"; exit 1 }
@@ -269,6 +298,46 @@ jobs:
           for ($i = 0; $i -lt 30 -and (Test-Path "$app\unins000.exe"); $i++) { Start-Sleep 1 }
           python tools/release/check_install.py $app --after-uninstall
           if ($LASTEXITCODE) { exit 1 }
+
+      # A folder the build cannot use is refused before any file is written (PrepareToInstall: exit code 7)
+      - name: A bad install folder is refused (silent)
+        run: |
+          $bad = "$env:RUNNER_TEMP\Vekta[1]"
+          $p = Start-Process "out\project-vekta-$env:VERSION-setup.exe" -Wait -PassThru -ArgumentList `
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$bad", "/LOG=$env:RUNNER_TEMP\setup3.log"
+          Select-String -Path "$env:RUNNER_TEMP\setup3.log" -Pattern "install folder refused" | ForEach-Object { $_.Line }
+          if ($p.ExitCode -ne 7) { Write-Error "setup exit $($p.ExitCode), not 7"; exit 1 }
+          if (Test-Path -LiteralPath "$bad\unins000.exe") { Write-Error "files were written to $bad"; exit 1 }
+
+      # A portable install: the pages and the build in the wizard, with stand-ins for the game files (tools/release/fake_game_files.py:
+      # the right kinds and sizes, no content): setup takes them, keeps them in work\paths.env and builds; the build's
+      # first step refuses them by their SHA-256, and setup logs why. Then the uninstaller removes what that made.
+      - name: Portable install with stand-in game files (the build in the wizard stops at the check)
+        run: |
+          $app = "$env:RUNNER_TEMP\ProjectVekta2"
+          $log = "$env:RUNNER_TEMP\setup2.log"
+          $switches = @(python tools/release/fake_game_files.py "$env:RUNNER_TEMP\fake")
+          if ($LASTEXITCODE) { exit 1 }
+          $p = Start-Process "out\project-vekta-$env:VERSION-setup.exe" -Wait -PassThru -ArgumentList (@(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$app", "/LOG=$log",
+            "/MERGETASKS=portable") + $switches)
+          $text = Get-Content $log -Raw
+          if ($p.ExitCode) { Write-Error "setup exit $($p.ExitCode)"; exit 1 }
+          Select-String -Path $log -Pattern "game files:|firstrun:|paths:|build:" -Context 0,4 | ForEach-Object { $_.Line; $_.Context.PostContext }
+          if ($text -notmatch "paths: saved") { Write-Error "setup did not save the paths"; exit 1 }
+          if ($text -notmatch "build: did not finish: ") {
+            Write-Error "the build in the wizard did not run and stop at the check"; exit 1 }
+          if (-not (Select-String -Path "$app\work\paths.env" -SimpleMatch "fake\\NPUA80856" -Quiet)) {
+            Write-Error "work\paths.env does not hold the game folder"; exit 1 }
+          if (-not (Select-String -Path "$app\vekta-install.ini" -SimpleMatch "portable=1" -Quiet)) {
+            Write-Error "the portable task did not reach vekta-install.ini"; exit 1 }
+          $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList `
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          if ($p.ExitCode) { Write-Error "uninstall exit $($p.ExitCode)"; exit 1 }
+          for ($i = 0; $i -lt 30 -and (Test-Path "$app\unins000.exe"); $i++) { Start-Sleep 1 }
+          python tools/release/check_install.py $app --after-uninstall
+          if ($LASTEXITCODE) { exit 1 }
+          Remove-Item -Recurse -Force "$env:RUNNER_TEMP\fake"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:

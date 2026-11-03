@@ -8,6 +8,21 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive
+  and libsre, and `dev_flash` for the music), checks their kind and size before copying anything, and builds the port
+  in the wizard with a progress bar and a Stop button; when the build stops it says why and opens the log. Silent
+  installs take the files as switches (`/GAME=` and the others). After Project Helghast's and Project Pyrrhus's
+  setup programs (MIT). `release.yml` installs it on the Windows runner with stand-ins for the files
+  (`tools/release/fake_game_files.py`) and checks that the build runs and stops at the check.
+- Start menu entries "Verify and rebuild" (checks the installed files, then your game files, and rebuilds what
+  changed), "Open saves folder" and "Make a support package" (a zip of the logs and settings for a bug report, without
+  your user name, saves or game files). After Project Helghast's (MIT).
+- The setup refuses install folders the build cannot use (`[ ] ;` in the path, OneDrive, system and profile
+  folders), also for silent installs. Installing over an earlier version replaces the payload's folders whole, so
+  nothing stale is left, and keeps the build, the game folder and the saves. The uninstaller asks whether to delete
+  the saves and settings (default No).
+- The setup program is dark, with side and header images for every screen scale and its own setup and uninstall
+  icons (`tools/release/installer_art.py`).
 - The Linux release folder (`tools/release/assemble_payload.py --platform linux --tar`): the port's sources, the
   patched ps3recomp and a pinned toolchain (Zig 0.17.0 as the C and C++ compiler, CMake, Ninja, SDL2, zlib, glslang,
   the Vulkan headers and FFmpeg 9's libraries), so a player needs only the usual desktop libraries (Python 3.10 or
@@ -16,6 +31,11 @@ program and folder that build it. Until a release that calls itself playable
   `tools/release/build_linux_deps.py`); `KZ_LINUX_TOOLCHAIN=pinned` selects that toolchain in a source checkout too.
 - Releases after 0.2.0 carry that folder as `project-vekta-X.Y.Z-linux.tar.gz`: `.github/workflows/release.yml`
   builds it and checks it in a Debian 11 container with no compiler (`tools/release/check_linux_folder.sh`).
+
+### Changed
+- A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or
+  an uninstall leaves them alone; the setup's "Portable" option keeps them in the install folder instead. Saves an
+  earlier version left in the install folder move there on the next start.
 
 ### Fixed
 - The Linux folder's build no longer stops at the compile step with "unknown CPU: 'x86'": its Zig wrappers spell
