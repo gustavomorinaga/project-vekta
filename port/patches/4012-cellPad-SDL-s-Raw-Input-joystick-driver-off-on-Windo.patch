@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 2 Nov 2026 21:16:37 +0000
+Subject: [PATCH] cellPad: SDL's Raw Input joystick driver off on Windows
+
+A built-in Xbox-style controller (OneXPlayer X2 Mini Pro, Windows 11) was
+opened and reported on port 0 but no button or stick state arrived; the
+reporter found that SDL_JOYSTICK_RAWINPUT=0 alone fixes it (port issue #19).
+The Windows build now sets that hint before the controller subsystem
+starts, so SDL reads Xbox pads through XInput; HIDAPI and DirectInput are
+untouched. Setting SDL_JOYSTICK_RAWINPUT in the environment still wins.
+Other platforms are unchanged.
+---
+ libs/input/cellPad.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 8290c32..788502b 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -753,6 +753,31 @@ static void pad_poll_sdl2(void)
+     s_port0_pad = p0->connected;
+ }
+ 
++/* Hints that differ by platform, set before the controller subsystem starts.
++ * Windows: SDL's Raw Input joystick driver off. On some built-in Xbox-style
++ * pads (a OneXPlayer X2 Mini Pro, port issue #19) it opens the controller,
++ * so it is reported connected, but no button or stick state ever arrives;
++ * with the driver off SDL reads the same pad through XInput and it works.
++ * ASSUMPTION (not checked on that hardware): Raw Input delivers WM_INPUT to a
++ * message window owned by the thread that started the subsystem, and the
++ * thread that calls cellPadInit is not the one that pumps window messages.
++ * XInput, HIDAPI and DirectInput stay on, so DualShock 4, DualSense and
++ * generic pads are read as before. SDL_JOYSTICK_RAWINPUT=1 in the
++ * environment still wins over this. */
++#ifndef PAD_SDL_WIN32_HINTS
++#  ifdef _WIN32
++#    define PAD_SDL_WIN32_HINTS 1
++#  else
++#    define PAD_SDL_WIN32_HINTS 0
++#  endif
++#endif
++static void pad_sdl_platform_hints(void)
++{
++#if PAD_SDL_WIN32_HINTS && defined(SDL_HINT_JOYSTICK_RAWINPUT)
++    SDL_SetHint(SDL_HINT_JOYSTICK_RAWINPUT, "0");
++#endif
++}
++
+ static void pad_init_backend(void)
+ {
+     if (!s_sdl_inited) {
+@@ -775,6 +800,7 @@ static void pad_init_backend(void)
+             SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
+             SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
+             SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
++            pad_sdl_platform_hints();
+             SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+         }
+         pad_virtual_attach();
