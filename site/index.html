@@ -198,6 +198,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Fixed</span>The limit of flips the game may queue ahead of the screen (<code>PS3_GCM_MAX_QUEUED_FLIPS</code>, default 2) no longer drifts: each flip done at once, instead of queued in the command buffer, loosened it by one for good (patch 2040). The <code>queued</code> value in the <code>[kz-stats]</code> lines stays at the real count.</li>
 <li><span class="sec">Fixed</span>Windows: a controller that was detected but gave no input (seen on a OneXPlayer X2 Mini Pro&#x27;s built-in Xbox-style pad, issue #19) works without setting <code>SDL_JOYSTICK_RAWINPUT=0</code> by hand: the port turns SDL&#x27;s Raw Input joystick driver off (patch 4012). Setting <code>SDL_JOYSTICK_RAWINPUT=1</code> brings it back.</li>
 </ul>
 </article>
@@ -237,8 +238,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 103 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 103 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 104 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 104 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 41 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -247,6 +248,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> The limit of flips the game may queue ahead of the screen (PS3_GCM_MAX_QUEUED_FLIPS, default 2) no longer drifts: each...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Windows: a controller that was detected but gave no input (seen on a OneXPlayer X2 Mini Pro&#x27;s built-in Xbox-style pad...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows release folder (tools/release/assemble_payload.py): the port&#x27;s sources, the patched ps3recomp and the...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows setup program (installer/vekta.iss, Inno Setup, per-user install) and the launcher Project Vekta.exe with...</span></li>
@@ -254,7 +256,6 @@
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The build steps are one Python tool, tools/kzbuild.py (patch, lift, vfs, build), so the same code builds on Windows...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> The Windows build&#x27;s toolchain is pinned in the repository (tools/release/toolchain.json): llvm-mingw, SDL2, zlib...</span></li>
 <li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> An applications-menu entry with the project&#x27;s own icon (assets/icon.svg): tools/install.sh offers it after a build...</span></li>
-<li><time datetime="2026-11-01">11-01</time><span><b>0.2.0</b> tools/install.sh: one command asks where your files are, checks them, then patches, lifts and builds with one progress...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
