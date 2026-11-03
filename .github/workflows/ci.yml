@@ -45,6 +45,23 @@ jobs:
       - name: Host tests (no game data; the list is tools/host-tests.txt)
         run: bash tools/run-host-tests.sh --gh
 
+  windows-host:
+    # The host tests that also build for Windows, cross-built with the pinned llvm-mingw and run under Wine
+    # (tools/wine-host-tests.sh): the runtime's Windows code paths, still with no game, no GPU and no Windows machine.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Patches apply to the pinned ps3recomp
+        run: bash tools/ps3recomp-patched.sh
+      - name: Wine
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends wine64 >/dev/null
+      - name: Windows host tests under Wine (the toolchain from tools/release/toolchain.json, SHA-256 checked)
+        run: bash tools/wine-host-tests.sh
+
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 15
