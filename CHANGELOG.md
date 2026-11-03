@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- The limit of flips the game may queue ahead of the screen (`PS3_GCM_MAX_QUEUED_FLIPS`, default 2) no longer drifts:
+  each flip done at once, instead of queued in the command buffer, loosened it by one for good (patch 2040). The
+  `queued` value in the `[kz-stats]` lines stays at the real count.
+
 ## [0.2.0] - 2026-11-01 (pre-release)
 
 ### Added
