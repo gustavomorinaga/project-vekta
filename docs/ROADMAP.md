@@ -4,7 +4,7 @@ Native PC versions (Linux and Windows, Vulkan) of the PS3 Killzone games by stat
 [ps3recomp](https://github.com/sp00nznet/ps3recomp), starting with Killzone HD. Technical plan:
 [dev/recomp-plan.md](dev/recomp-plan.md). The port's journal: [dev/port-journal.md](dev/port-journal.md).
 
-Updated 2026-10-30 from the maintainer's roadmap of 2026-10-29. Tick items as they are done; each phase's
+Updated 2026-11-02 (first reports from testers; the installer shipped in 0.2.0). Tick items as they are done; each phase's
 percentage comes from its items and its weight.
 
 ## Principles
@@ -22,7 +22,7 @@ percentage comes from its items and its weight.
 
 ## Progress
 
-Estimate: **about 41 % of the whole project** and **about 65 % of Killzone HD** (phases 0 to 8). The weights are
+Estimate: **about 43 % of the whole project** and **about 65 % of Killzone HD** (phases 0 to 8). The weights are
 each phase's estimated relative effort.
 
 | Phase | Weight | Done |
@@ -38,7 +38,7 @@ each phase's estimated relative effort.
 | 8. PC: the game's map | 12 | 30 % |
 | 9. Killzone 2 and Killzone 3 | 22 | 2 % |
 | 10. Multiplayer | 6 | 0 % |
-| 11. Launcher | 4 | 0 % |
+| 11. Launcher | 4 | 20 % |
 | 12. Workshop (mods and add-ons) | 5 | 0 % |
 
 ## Next steps
@@ -54,10 +54,10 @@ state, what was ruled out and what is left: [dev/performance.md](dev/performance
 3. **Windows build (phases 0, 4 and 6).** Done so far (2026-10-28, [dev/windows-build.md](dev/windows-build.md)): the
    exe is built on Linux (clang + MinGW-w64), runs under Wine and Proton with movies, menus and Level 1, goes on
    without movies when FFmpeg is missing, and writes `kz1hd.log` when there is no stderr. It also ran on a real
-   Windows (2026-10-29). Left: a clean Windows machine, the campaign on Windows, speed under Wine and Proton (about
-   100 fps against about 134 on Linux, Level 7) and **distribution: an installer that builds the port on the
-   player's machine**, the main thing left before testers without a build setup can play. Main reference:
-   [Project Helghast](https://github.com/undecuple/project-helghast), which does this for Killzone 3 on v0.18.0.
+   Windows (2026-10-29). The setup program that builds the port on the player's machine shipped in 0.2.0
+   (2026-11-01), after [Project Helghast](https://github.com/undecuple/project-helghast). Left: a clean Windows
+   machine, the campaign on Windows, speed under Wine and Proton (about 100 fps against about 134 on Linux, Level 7),
+   and the first testers' reports on AMD graphics ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)).
 4. **PC options of the runtime (phase 7):** the remaining items below.
 5. **Talk with the Killzone 2 and Killzone 3 ports (phase 9) and design the launcher (phase 11).**
 
@@ -205,8 +205,8 @@ and online modes whose servers were shut down.
 
 ### Phase 11. Launcher
 - [ ] Design the architecture (one executable per game or one process, language, interface)
-- [ ] "Bring your own game" installer: find the player's files, check them by hash, translate the EBOOT and compile
-      on their machine
+- [x] "Bring your own game" installer: find the player's files, check them by hash, translate the EBOOT and compile
+      on their machine (the Windows setup program and `tools/install.sh` on Linux, 0.2.0)
 - [ ] Library with the games, install state and port updates; global and per-game options; controller profiles
 - [ ] Save and local trophy manager
 - [ ] Windows and Linux builds; its own name, no Killzone branding
