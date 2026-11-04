@@ -3,6 +3,8 @@
 Every piece of code, patch, idea or text that came from outside this repository is listed here with its author,
 source, licence and what was used. Licence texts are in [licenses/](licenses/). Per-patch credit is also in each
 patch's header in `port/patches/`. The port's own code is MIT ([LICENSE](LICENSE)).
+That licence covers the port only: its code, patches, tools and documentation. It grants nothing in the game,
+which is (c) Sony Interactive Entertainment and is not part of this repository.
 
 ## Toolkit
 

@@ -164,5 +164,6 @@ holders' reports go privately through the Security tab ([SECURITY.md](.github/SE
 
 ## Licence
 
-The port is MIT ([LICENSE](LICENSE)); third-party parts and credits are in [NOTICE.md](NOTICE.md). Killzone and
-Killzone HD are (c) Sony Interactive Entertainment; nothing of the game is licensed or included here.
+The port is MIT ([LICENSE](LICENSE)): that licence covers the port only, its code, patches, tools and documentation.
+Third-party parts and credits are in [NOTICE.md](NOTICE.md). Killzone and Killzone HD are (c) Sony Interactive
+Entertainment; nothing of the game is licensed or included here.
