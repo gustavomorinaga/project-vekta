@@ -22,3 +22,4 @@ tools/tests/test_spu_put_recheck.sh
 tools/tests/test_pad_rawinput.sh
 tools/tests/test_wine_test.sh
 tools/tests/test_zig_wrappers.sh
+tools/tests/test_present_barrier.py

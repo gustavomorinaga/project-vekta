@@ -209,6 +209,7 @@
 <li><span class="sec">Fixed</span>The Linux folder&#x27;s link no longer fails on <code>mallinfo2</code> (glibc 2.33; the folder targets 2.31): the stats line&#x27;s heap count looks it up at run time and falls back to <code>mallinfo</code>.</li>
 <li><span class="sec">Fixed</span>The limit of flips the game may queue ahead of the screen (<code>PS3_GCM_MAX_QUEUED_FLIPS</code>, default 2) no longer drifts: each flip done at once, instead of queued in the command buffer, loosened it by one for good (patch 2040). The <code>queued</code> value in the <code>[kz-stats]</code> lines stays at the real count.</li>
 <li><span class="sec">Fixed</span>Windows: a controller that was detected but gave no input (seen on a OneXPlayer X2 Mini Pro&#x27;s built-in Xbox-style pad, issue #19) works without setting <code>SDL_JOYSTICK_RAWINPUT=0</code> by hand: the port turns SDL&#x27;s Raw Input joystick driver off (patch 4012). Setting <code>SDL_JOYSTICK_RAWINPUT=1</code> brings it back.</li>
+<li><span class="sec">Fixed</span>Large black blocks over the picture in borderless fullscreen on a 16:10 screen (1920×1200, AMD Radeon 8060S, issue #17): with bars around the frame, the present cleared the window&#x27;s image and blitted the frame onto it with nothing ordering the two, so a driver could run them out of order and parts of the clear covered the frame. A barrier now sits between them (patch 2041, <code>tools/tests/test_present_barrier.py</code>).</li>
 </ul>
 </article>
 <article class="news rel">
@@ -247,8 +248,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 104 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 104 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 105 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 105 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>

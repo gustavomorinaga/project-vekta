@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 05:00:00 +0000
+Subject: [PATCH] Vulkan present: a barrier between the bars' clear and the frame's blit
+
+When the window's aspect differs from the frame's (a 16:10 screen, 1920x1200
+borderless), vk_present_window clears the whole swapchain image to black for
+the bars and then blits the frame into the middle. Both are transfer writes to
+the same pixels and nothing ordered them, so a driver may run the two at once
+or out of order: parts of the clear then land over the frame. That is port
+issue #17, large black blocks with ragged edges on an AMD Radeon 8060S at
+1920x1200 and none at 1920x1080 or in the default window, where the frame
+fills the image and the clear is skipped. A transfer write -> transfer write
+barrier now sits between them, as every other clear in this backend already
+has. test_present_barrier (port tools/tests) checks the order.
+---
+ libs/video/rsx_vulkan_backend.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 0f9095b..6f909ea 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2486,6 +2486,17 @@ static void vk_present_window(void)
+         VkClearColorValue black = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+         VkImageSubresourceRange all = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+         pvkCmdClearColorImage(s_vk.cmd, s_vk.sc_images[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &all);
++        /* The clear and the blit both write the frame's rectangle: without a
++         * barrier a driver may run them out of order or at once, and parts of
++         * the clear land over the blitted frame (black blocks in the picture on
++         * AMD at 16:10, where the bars make this clear happen; port issue #17). */
++        VkImageMemoryBarrier waw = b;
++        waw.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
++        waw.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
++        waw.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
++        waw.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
++        pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
++                              0, 0, NULL, 0, NULL, 1, &waw);
+     }
+     VkImageBlit blit = {
+         .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },

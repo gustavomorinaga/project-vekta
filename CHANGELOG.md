@@ -48,6 +48,10 @@ program and folder that build it. Until a release that calls itself playable
 - Windows: a controller that was detected but gave no input (seen on a OneXPlayer X2 Mini Pro's built-in Xbox-style
   pad, issue #19) works without setting `SDL_JOYSTICK_RAWINPUT=0` by hand: the port turns SDL's Raw Input joystick
   driver off (patch 4012). Setting `SDL_JOYSTICK_RAWINPUT=1` brings it back.
+- Large black blocks over the picture in borderless fullscreen on a 16:10 screen (1920×1200, AMD Radeon 8060S, issue
+  #17): with bars around the frame, the present cleared the window's image and blitted the frame onto it with nothing
+  ordering the two, so a driver could run them out of order and parts of the clear covered the frame. A barrier now
+  sits between them (patch 2041, `tools/tests/test_present_barrier.py`).
 
 ## [0.2.0] - 2026-11-01 (pre-release)
 
