@@ -32,7 +32,9 @@ are linked.
   1920×1080 are fine. Workaround: play in a window, or set the desktop to a 16:9 resolution. Likely fixed for the next
   release (patch 2041: the present no longer lets the bars' clear land over the picture); not yet confirmed on AMD.
 - **Stutter in the opening movies and the menus, and slow menu input** (AMD Radeon 8060S, issue #18), while play
-  itself holds 60 fps. `PS3_GCM_MAX_QUEUED_FLIPS` 1 to 3 did not help. No workaround yet.
+  itself holds 60 fps. `PS3_GCM_MAX_QUEUED_FLIPS` 1 to 3 did not help. Likely fixed for the next release (patch
+  2042: where the driver has no mailbox present mode, the present no longer waits for the display); not yet confirmed
+  on AMD.
 - **A controller that is detected but gives no input** (a OneXPlayer X2 Mini Pro's built-in Xbox-style pad, issue
   #19). Fixed for the next release (patch 4012); in 0.2.0 set `SDL_JOYSTICK_RAWINPUT=0` before `play.cmd`.
 - **Slower under Wine and Proton:** about 100 fps in Level 7 against about 134 for the Linux build (144 Hz mode,

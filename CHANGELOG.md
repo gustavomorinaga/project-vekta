@@ -52,6 +52,12 @@ program and folder that build it. Until a release that calls itself playable
   #17): with bars around the frame, the present cleared the window's image and blitted the frame onto it with nothing
   ordering the two, so a driver could run them out of order and parts of the clear covered the frame. A barrier now
   sits between them (patch 2041, `tools/tests/test_present_barrier.py`).
+- Stutter and late input in the menus and the opening movies where the graphics driver has no mailbox present mode
+  (AMD on Windows, issue #18): the swapchain was left at FIFO, and the menus and movies, which flip at the 144 Hz
+  cadence, waited for a 60 Hz screen on every present, on the thread that also runs the guest's vblanks. Unless you
+  chose `vsync = fifo` (for a VRR display), a frame with no free image is now skipped instead, as mailbox would
+  (patch 2042, after Project Helghast patch 2127 and Project Pyrrhus patch 6054, MIT).
+  `PS3RECOMP_VK_PRESENT_WAIT_MS` sets how long a present may wait (default 0; -1 restores the old wait).
 
 ## [0.2.0] - 2026-11-01 (pre-release)
 

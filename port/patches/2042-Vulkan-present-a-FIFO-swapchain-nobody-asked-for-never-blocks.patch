@@ -1,0 +1,142 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 05:30:00 +0000
+Subject: [PATCH] Vulkan present: a FIFO swapchain nobody asked for never blocks
+
+The present runs on the thread that ticks the guest's vblanks and drains the
+FIFO. The backend asks for MAILBOX, where the acquire never waits, but a driver
+without MAILBOX (AMD's on Windows, for one) leaves FIFO, and there the acquire
+waits for the display once every image is queued. Killzone HD's menus and
+movies flip at the 144 Hz cadence, so on a 60 Hz screen each present held the
+guest up to a refresh: port issue #18, stutter and late input in the menus and
+movies while play at 60 fps, which never outran the screen, stayed smooth
+(PS3_GCM_MAX_QUEUED_FLIPS did not help: the wait was outside the flip queue).
+
+Unless the player asked for strict FIFO (vsync = fifo, for a VRR display), a
+FIFO or FIFO_RELAXED swapchain now acquires with a timeout,
+PS3RECOMP_VK_PRESENT_WAIT_MS (default 0, at most 100; -1 = the old wait). A
+frame with no free image is not shown, as MAILBOX would have replaced it, and
+"present skipped" lines count those. The policy is in rsx_vk_present_wait.h,
+checked by the port's tools/tests/test_present_wait.sh.
+
+After Project Helghast patch 2127 and Project Pyrrhus patch 6054 (undecuple,
+MIT), the same idea for a D3D12 swap chain with a frame-latency wait.
+---
+ libs/video/rsx_vk_present_wait.h | 50 +++++++++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c  | 23 ++++++++++++++++--
+ 2 files changed, 71 insertions(+), 2 deletions(-)
+ create mode 100644 libs/video/rsx_vk_present_wait.h
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 6f909ea..9930898 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -54,6 +54,7 @@
+ #include "vulkan/rsx_vk_fallback_frag.spv.h"
+ #include "vulkan/rsx_vk_depth_pack_comp.spv.h"
+ #include "vulkan/rsx_vk_mlaa_comp.spv.h"
++#include "rsx_vk_present_wait.h"
+ #include "vulkan/rsx_vk_fsr1_easu_comp.spv.h"
+ #include "vulkan/rsx_vk_fsr1_rcas_comp.spv.h"
+ /* FSR 1's constants, computed on the CPU (vulkan/ffx, MIT). */
+@@ -2059,6 +2060,7 @@ static void vk_window_open(const char* title)
+  * (the swapchain is rebuilt at the next present). rsx_vulkan_display_sizes
+  * lists the display's modes, largest first, read when the window opened. */
+ static char s_present_override[16];
++static int s_present_bounded;   /* rsx_vk_present_wait.h: the acquire does not wait for the display */
+ static struct { volatile int pending; char mode[16]; int w, h, hz; } s_disp_req;
+ static int s_disp_sizes[32][2], s_disp_nsizes;
+ 
+@@ -2216,8 +2218,10 @@ static int vk_create_swapchain(void)
+         if (want != VK_PRESENT_MODE_FIFO_KHR &&
+             pvkGetPhysicalDeviceSurfacePresentModesKHR(s_vk.phys, s_vk.surface, &n, modes) >= 0)
+             for (u32 k = 0; k < n; k++) if (modes[k] == want) mode = want;
++        s_present_bounded = rsx_vk_present_bounded((int)mode, (int)want);
+     }
+-    VK_LOG("window present mode %d (0 immediate, 1 mailbox, 2 fifo)\n", (int)mode);
++    VK_LOG("window present mode %d (0 immediate, 1 mailbox, 2 fifo)%s\n", (int)mode,
++           s_present_bounded ? ", asked for another: a present skips instead of waiting for the display" : "");
+     VkSwapchainKHR old = s_vk.swapchain;
+     VkSwapchainCreateInfoKHR sci = {
+         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+@@ -2446,8 +2450,23 @@ static void vk_present_window(void)
+ 
+     if (s_vk.resized) { s_vk.resized = 0; vk_swapchain_lost(); if (!s_vk.swapchain) return; }
+     u32 idx = 0;
+-    VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
++    /* patch 2042: a FIFO swapchain the player did not ask for does not hold
++     * this thread (the guest's vblanks and FIFO drain) until the display is
++     * ready; a frame with no free image is skipped, as MAILBOX would drop it */
++    static const char* wait_env = (const char*)-1;
++    if (wait_env == (const char*)-1) wait_env = getenv("PS3RECOMP_VK_PRESENT_WAIT_MS");
++    VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain,
++                                        rsx_vk_acquire_timeout_ns(s_present_bounded, wait_env),
+                                         s_vk.sem_acquire, VK_NULL_HANDLE, &idx);
++    if (r == VK_TIMEOUT || r == VK_NOT_READY) {
++        static u32 skipped, lines; static Uint32 last_line;
++        skipped++;
++        if (lines < 10 || SDL_TICKS_PASSED(SDL_GetTicks(), last_line + 10000)) {
++            lines++; last_line = SDL_GetTicks();
++            VK_LOG("present skipped: no free swapchain image (FIFO without the asked-for mode; %u in all)\n", skipped);
++        }
++        return;
++    }
+     if (r == VK_ERROR_OUT_OF_DATE_KHR) { vk_swapchain_lost(); return; }
+     if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) {
+         VK_LOG("vkAcquireNextImageKHR failed (VkResult %d)\n", (int)r); return;
+diff --git a/libs/video/rsx_vk_present_wait.h b/libs/video/rsx_vk_present_wait.h
+new file mode 100644
+index 0000000..81c3aef
+--- /dev/null
++++ b/libs/video/rsx_vk_present_wait.h
+@@ -0,0 +1,50 @@
++/* When the present may wait for the display (patch 2042, port issue #18).
++ *
++ * The thread that presents is also the one that ticks the guest's vblanks and
++ * drains the FIFO (Killzone HD's frame clock), so a present that blocks holds
++ * the whole guest back. With MAILBOX (the default where the driver has it) the
++ * acquire never waits. A driver without MAILBOX (AMD's on Windows, for one)
++ * leaves FIFO, where the acquire waits for the display once the swapchain's
++ * images are all queued: the menus and movies flip at the 144 Hz cadence, so
++ * on a 60 Hz screen every present waited up to a refresh, and the menus and
++ * movies stuttered and took input late, while play at 60 fps, which never
++ * outran the screen, was smooth.
++ *
++ * Unless the player asked for strict FIFO (vsync = fifo, for a VRR display,
++ * where the wait is the point), a FIFO swapchain gets a bounded acquire: an
++ * image not free within PS3RECOMP_VK_PRESENT_WAIT_MS (default 0) skips that
++ * present, as MAILBOX would have replaced it, and the guest runs on.
++ * PS3RECOMP_VK_PRESENT_WAIT_MS=-1 is the old blocking acquire.
++ *
++ * After Project Helghast patch 2127 and Project Pyrrhus patch 6054 (undecuple,
++ * MIT), which do the same for a D3D12 swap chain with a frame-latency wait.
++ * Pure functions, no Vulkan types: the modes are VkPresentModeKHR's values. */
++#ifndef RSX_VK_PRESENT_WAIT_H
++#define RSX_VK_PRESENT_WAIT_H
++
++#include <stdint.h>
++#include <stdlib.h>
++
++enum { RSX_VK_PM_IMMEDIATE = 0, RSX_VK_PM_MAILBOX = 1, RSX_VK_PM_FIFO = 2, RSX_VK_PM_FIFO_RELAXED = 3 };
++
++/* 1 when the swapchain's acquire may wait for the display and the player did
++ * not ask for that wait: `got` is the mode the swapchain has, `want` the one
++ * asked for (PS3RECOMP_VK_PRESENT or the PC menu's vsync). */
++static inline int rsx_vk_present_bounded(int got, int want)
++{
++    return (got == RSX_VK_PM_FIFO || got == RSX_VK_PM_FIFO_RELAXED) && want != RSX_VK_PM_FIFO;
++}
++
++/* The acquire's timeout in ns: UINT64_MAX (wait for the display) unless
++ * bounded; then PS3RECOMP_VK_PRESENT_WAIT_MS (`env`, NULL = unset) in ms,
++ * 0 by default, at most 100; -1 (or any negative) = wait as before. */
++static inline uint64_t rsx_vk_acquire_timeout_ns(int bounded, const char* env)
++{
++    if (!bounded) return UINT64_MAX;
++    long ms = env && *env ? strtol(env, NULL, 10) : 0;
++    if (ms < 0) return UINT64_MAX;
++    if (ms > 100) ms = 100;
++    return (uint64_t)ms * 1000000u;
++}
++
++#endif
