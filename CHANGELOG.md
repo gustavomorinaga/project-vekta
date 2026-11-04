@@ -48,6 +48,8 @@ program and folder that build it. Until a release that calls itself playable
 - Windows: a controller that was detected but gave no input (seen on a OneXPlayer X2 Mini Pro's built-in Xbox-style
   pad, issue #19) works without setting `SDL_JOYSTICK_RAWINPUT=0` by hand: the port turns SDL's Raw Input joystick
   driver off (patch 4012). Setting `SDL_JOYSTICK_RAWINPUT=1` brings it back.
+- GitHub shows the licence as MIT again (it read "Other", issue #27): `LICENSE` holds the MIT text alone, and the
+  note that it covers only the port, not the game, moved to `NOTICE.md` and the README. Same terms as before.
 
 ## [0.2.0] - 2026-11-01 (pre-release)
 

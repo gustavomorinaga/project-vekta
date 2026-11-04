@@ -209,6 +209,7 @@
 <li><span class="sec">Fixed</span>The Linux folder&#x27;s link no longer fails on <code>mallinfo2</code> (glibc 2.33; the folder targets 2.31): the stats line&#x27;s heap count looks it up at run time and falls back to <code>mallinfo</code>.</li>
 <li><span class="sec">Fixed</span>The limit of flips the game may queue ahead of the screen (<code>PS3_GCM_MAX_QUEUED_FLIPS</code>, default 2) no longer drifts: each flip done at once, instead of queued in the command buffer, loosened it by one for good (patch 2040). The <code>queued</code> value in the <code>[kz-stats]</code> lines stays at the real count.</li>
 <li><span class="sec">Fixed</span>Windows: a controller that was detected but gave no input (seen on a OneXPlayer X2 Mini Pro&#x27;s built-in Xbox-style pad, issue #19) works without setting <code>SDL_JOYSTICK_RAWINPUT=0</code> by hand: the port turns SDL&#x27;s Raw Input joystick driver off (patch 4012). Setting <code>SDL_JOYSTICK_RAWINPUT=1</code> brings it back.</li>
+<li><span class="sec">Fixed</span>GitHub shows the licence as MIT again (it read &quot;Other&quot;, issue #27): <code>LICENSE</code> holds the MIT text alone, and the note that it covers only the port, not the game, moved to <code>NOTICE.md</code> and the README. Same terms as before.</li>
 </ul>
 </article>
 <article class="news rel">
