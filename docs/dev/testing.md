@@ -8,6 +8,11 @@ How the port is driven and checked without hands on the keyboard. Everything her
 folder (`KZ_VFS`), with the per-wait diagnostic lines filtered out of LOG. SIGTERM is ignored by the game, so the
 script ends it with SIGKILL. `KZ_STATS=1` prints a `[kz-stats]` line every 2 s: flips, queued flips, the gap between
 flips, heap use and game ticks (60 flips and 120 ticks per 2 s = 60 fps on a 60 Hz game clock).
+With it comes a `[kz-present]` line for the same 2 s: the spread of the gaps between presents (min, median, 95th
+percentile, max, and `uneven=`, the share more than a quarter off the median), what the presents waited for on Vulkan
+(average and longest, in ms: `blit` the previous present's copy, `gpu` the frame's GPU work, `image` the swapchain
+image, `present` vkQueuePresentKHR; `skipped` = presents dropped for no free image, patch 2042) and, while a movie
+plays, its frames `shown`, `dropped` as late and `not-ready` (asked for before the decoder had one; patch 2043).
 
 Keep test runs away from your own saves: copy `work/vfs` to `work/vfs-test` and run with `KZ_VFS=work/vfs-test`.
 Delete the test save under `gamedata/dev_hdd0/home/00000001/savedata/NPUA80856` before a scripted run from the start:

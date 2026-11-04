@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 06:00:00 +0000
+Subject: [PATCH] Vulkan present: time each step's waits for a stats line
+
+Port issue #18 (stutter in the menus and movies on an AMD Radeon 8060S,
+smooth play) needs to know where a present spends its time. vk_present_window
+now times its four waits: the previous present's blit (its fence), the frame's
+GPU work (vk_flush), the swapchain image (the acquire) and vkQueuePresentKHR,
+and counts presents skipped for no free image (patch 2042).
+rsx_vulkan_present_waits() hands the averages and maxima since its last call
+and resets them; Killzone HD prints them on its KZ_STATS [kz-present] line.
+Only the presenting thread writes or reads them.
+---
+ libs/video/rsx_vulkan_backend.c | 35 ++++++++++++++++++++++++++++++++++-
+ libs/video/rsx_vulkan_backend.h |  8 ++++++++
+ 2 files changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 9930898..c092a84 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2425,6 +2425,32 @@ static void vk_fsr_record(u32 sw, u32 sh)
+     vk_barrier_image(s_fsr.out.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+ }
+ 
++/* patch 2043: how long each present waited, by step, for a stats line
++ * (rsx_vulkan_present_waits; Killzone HD's KZ_STATS, port issue #18). Only
++ * the presenting thread writes it; the reader is the same thread. */
++enum { VK_PW_FENCE, VK_PW_FLUSH, VK_PW_ACQUIRE, VK_PW_QUEUE, VK_PW_STEPS };
++static struct { u32 n, skipped; u64 sum_us[VK_PW_STEPS]; u32 max_us[VK_PW_STEPS]; } s_pw;
++static u64 vk_pw_now_us(void)
++{
++    static u64 freq;
++    if (!freq) freq = SDL_GetPerformanceFrequency();
++    return freq ? (u64)((double)SDL_GetPerformanceCounter() * 1e6 / (double)freq) : 0;
++}
++static void vk_pw_add(int step, u64 us)
++{
++    s_pw.sum_us[step] += us;
++    if (us > s_pw.max_us[step]) s_pw.max_us[step] = us > 0xFFFFFFFFu ? 0xFFFFFFFFu : (u32)us;
++}
++void rsx_vulkan_present_waits(rsx_vulkan_present_wait_stats* out)
++{
++    out->presents = s_pw.n; out->skipped = s_pw.skipped;
++    for (int i = 0; i < VK_PW_STEPS; i++) {
++        out->max_us[i] = s_pw.max_us[i];
++        out->avg_us[i] = s_pw.n ? (u32)(s_pw.sum_us[i] / s_pw.n) : 0;
++    }
++    memset(&s_pw, 0, sizeof s_pw);
++}
++
+ static void vk_present_window(void)
+ {
+     if (!s_vk.windowed || !s_vk.swapchain) return;
+@@ -2445,8 +2471,12 @@ static void vk_present_window(void)
+             VK_LOG("present command buffer: allocation failed\n"); return;
+         }
+     }
++    const u64 pw0 = vk_pw_now_us();
+     pvkWaitForFences(s_vk.device, 1, &s_vk.pfence, VK_TRUE, UINT64_MAX);
++    const u64 pw1 = vk_pw_now_us();
+     vk_flush();   /* whatever wrote the display image is submitted first */
++    const u64 pw2 = vk_pw_now_us();
++    s_pw.n++; vk_pw_add(VK_PW_FENCE, pw1 - pw0); vk_pw_add(VK_PW_FLUSH, pw2 - pw1);
+ 
+     if (s_vk.resized) { s_vk.resized = 0; vk_swapchain_lost(); if (!s_vk.swapchain) return; }
+     u32 idx = 0;
+@@ -2458,9 +2488,10 @@ static void vk_present_window(void)
+     VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain,
+                                         rsx_vk_acquire_timeout_ns(s_present_bounded, wait_env),
+                                         s_vk.sem_acquire, VK_NULL_HANDLE, &idx);
++    vk_pw_add(VK_PW_ACQUIRE, vk_pw_now_us() - pw2);
+     if (r == VK_TIMEOUT || r == VK_NOT_READY) {
+         static u32 skipped, lines; static Uint32 last_line;
+-        skipped++;
++        skipped++; s_pw.skipped++;
+         if (lines < 10 || SDL_TICKS_PASSED(SDL_GetTicks(), last_line + 10000)) {
+             lines++; last_line = SDL_GetTicks();
+             VK_LOG("present skipped: no free swapchain image (FIFO without the asked-for mode; %u in all)\n", skipped);
+@@ -2598,7 +2629,9 @@ static void vk_present_window(void)
+     VkPresentIdKHR pid = { .sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR, .swapchainCount = 1, .pPresentIds = &frame_id };
+     if (s_reflex.ok && s_reflex.present_id && frame_id > s_reflex.last_presented) pi.pNext = &pid;
+     vk_reflex_marker(frame_id, VK_LATENCY_MARKER_PRESENT_START_NV);
++    const u64 pw3 = vk_pw_now_us();
+     r = pvkQueuePresentKHR(s_vk.queue, &pi);
++    vk_pw_add(VK_PW_QUEUE, vk_pw_now_us() - pw3);
+     vk_reflex_marker(frame_id, VK_LATENCY_MARKER_PRESENT_END_NV);
+     if (frame_id) s_reflex.last_presented = frame_id;
+     vk_reflex_report();
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 735c696..30f40c6 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -93,6 +93,14 @@ void rsx_vulkan_latency_sleep(void);   /* the game's thread, after a flip */
+ void rsx_vulkan_set_crop(float f);
+ int  rsx_vulkan_output_size(int* w, int* h);
+ 
++/* What the window's presents waited for since the last call (which resets
++ * it), in microseconds: max_us/avg_us by step, [0] the previous present's
++ * blit, [1] the frame's GPU work (the flush), [2] the swapchain image,
++ * [3] vkQueuePresentKHR. skipped = presents dropped for no free image
++ * (patch 2042). Call from the thread that presents. */
++typedef struct { unsigned presents, skipped, max_us[4], avg_us[4]; } rsx_vulkan_present_wait_stats;
++void rsx_vulkan_present_waits(rsx_vulkan_present_wait_stats* out);
++
+ /* Read the frame back to host memory (and to PS3RECOMP_VK_DUMP if set), and
+  * show it in the window if there is one. Same as _present_begin() followed
+  * by _present_finish(). */

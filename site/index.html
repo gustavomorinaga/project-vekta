@@ -204,6 +204,7 @@
 <li><span class="sec">Added</span>The setup program is dark, with side and header images for every screen scale and its own setup and uninstall icons (<code>tools/release/installer_art.py</code>).</li>
 <li><span class="sec">Added</span>The Linux release folder (<code>tools/release/assemble_payload.py --platform linux --tar</code>): the port&#x27;s sources, the patched ps3recomp and a pinned toolchain (Zig 0.17.0 as the C and C++ compiler, CMake, Ninja, SDL2, zlib, glslang, the Vulkan headers and FFmpeg 9&#x27;s libraries), so a player needs only the usual desktop libraries (Python 3.10 or newer, glibc 2.31 or newer, SDL2, a Vulkan driver). <code>run.sh</code> asks for your files and builds there, <code>play.sh</code> starts the game. The binaries target glibc 2.31 (<code>port/cmake/zig-linux.cmake</code>, <code>tools/release/zig/</code>, <code>tools/release/build_linux_deps.py</code>); <code>KZ_LINUX_TOOLCHAIN=pinned</code> selects that toolchain in a source checkout too.</li>
 <li><span class="sec">Added</span>Releases after 0.2.0 carry that folder as <code>project-vekta-X.Y.Z-linux.tar.gz</code>: <code>.github/workflows/release.yml</code> builds it and checks it in a Debian 11 container with no compiler (<code>tools/release/check_linux_folder.sh</code>).</li>
+<li><span class="sec">Changed</span><code>KZ_STATS=1</code> adds a <code>[kz-present]</code> line every 2 s: the spread of the gaps between presents, what each present waited for (the previous copy, the frame&#x27;s GPU work, the swapchain image, the present call) and, during a movie, its frames shown, dropped and not ready (patch 2043), to find where the menus and movies of issue #18 lose their rhythm.</li>
 <li><span class="sec">Changed</span>A copy the setup program installed keeps its saves and settings in <code>%APPDATA%\Project Vekta</code>, so a new install or an uninstall leaves them alone; the setup&#x27;s &quot;Portable&quot; option keeps them in the install folder instead. Saves an earlier version left in the install folder move there on the next start.</li>
 <li><span class="sec">Fixed</span>The Linux folder&#x27;s build no longer stops at the compile step with &quot;unknown CPU: &#x27;x86&#x27;&quot;: its Zig wrappers spell the port&#x27;s <code>-march=x86-64-v3</code> the way Zig names CPUs (<code>x86_64_v3</code>).</li>
 <li><span class="sec">Fixed</span>The Linux folder&#x27;s link no longer fails on <code>mallinfo2</code> (glibc 2.33; the folder targets 2.31): the stats line&#x27;s heap count looks it up at run time and falls back to <code>mallinfo</code>.</li>
@@ -249,8 +250,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 106 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 106 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 107 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 107 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -265,8 +266,8 @@
 <li><time>next</time><span><b>Unreleased</b> The setup program is dark, with side and header images for every screen scale and its own setup and uninstall icons...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The Linux release folder (tools/release/assemble_payload.py --platform linux --tar): the port&#x27;s sources, the patched...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Releases after 0.2.0 carry that folder as project-vekta-X.Y.Z-linux.tar.gz: .github/workflows/release.yml builds it...</span></li>
+<li><time>next</time><span><b>Unreleased</b> KZ_STATS=1 adds a [kz-present] line every 2 s: the spread of the gaps between presents, what each present waited for...</span></li>
 <li><time>next</time><span><b>Unreleased</b> A copy the setup program installed keeps its saves and settings in %APPDATA%\Project Vekta, so a new install or an...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The Linux folder&#x27;s build no longer stops at the compile step with &quot;unknown CPU: &#x27;x86&#x27;&quot;: its Zig wrappers spell the...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

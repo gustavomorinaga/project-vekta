@@ -33,6 +33,9 @@ program and folder that build it. Until a release that calls itself playable
   builds it and checks it in a Debian 11 container with no compiler (`tools/release/check_linux_folder.sh`).
 
 ### Changed
+- `KZ_STATS=1` adds a `[kz-present]` line every 2 s: the spread of the gaps between presents, what each present waited
+  for (the previous copy, the frame's GPU work, the swapchain image, the present call) and, during a movie, its frames
+  shown, dropped and not ready (patch 2043), to find where the menus and movies of issue #18 lose their rhythm.
 - A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or
   an uninstall leaves them alone; the setup's "Portable" option keeps them in the install folder instead. Saves an
   earlier version left in the install folder move there on the next start.

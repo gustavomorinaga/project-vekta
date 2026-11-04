@@ -40,6 +40,7 @@
 #include "win32_compat.h"
 #include "../ps3_trace.h"   /* runtime/, via the runtime/ppu include directory */
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 #include <thread>
@@ -161,6 +162,7 @@ extern "C" int  rsx_vulkan_backend_pump_messages(void);
 #  define rsx_backend_present rsx_vulkan_backend_present
 #  define rsx_backend_pump    rsx_vulkan_backend_pump_messages
 #  define RSX_BACKEND_NAME    "Vulkan"
+#  include "rsx_vulkan_backend.h"   /* rsx_vulkan_present_waits, for KZ_STATS */
 #elif defined(_WIN32)
 extern "C" int  rsx_d3d12_backend_init(uint32_t w, uint32_t h, const char* title);
 extern "C" void rsx_d3d12_backend_present(void);
@@ -223,6 +225,8 @@ extern "C" unsigned ppu_boot_frames_presented(void)
 
 /* KZ_STATS: presents in the last window, and the longest gap between two. */
 static unsigned s_present_n, s_present_gap_max_us;
+/* KZ_STATS (issue #18): every gap of the window, for its spread ([kz-present]). */
+static unsigned s_present_gaps[2048], s_present_ngaps;
 
 static void present_guest_frame(void)
 {
@@ -231,6 +235,8 @@ static void present_guest_frame(void)
       const uint64_t now = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
           std::chrono::steady_clock::now().time_since_epoch()).count();
       if (last && now - last > s_present_gap_max_us) s_present_gap_max_us = (unsigned)(now - last);
+      if (last && s_present_ngaps < sizeof s_present_gaps / sizeof s_present_gaps[0])
+          s_present_gaps[s_present_ngaps++] = (unsigned)(now - last);
       last = now; s_present_n++; }
     rsx_backend_present();
     /* This thread increments and guest threads read, so interlocked rather
@@ -306,6 +312,42 @@ extern "C" void kz_quit(const char* why)
  * window does; the frame clock does the quitting, outside the handler. */
 static volatile sig_atomic_t s_quit_signal;
 static void on_quit_signal(int) { s_quit_signal = 1; }
+
+/* KZ_STATS, a second line per window (issue #18: menus and movies that stutter
+ * while play is smooth): the spread of the gaps between presents, the share of
+ * them off the median by more than a quarter (an uneven rhythm), what the
+ * window's presents waited for (Vulkan), and the movie frames shown, dropped
+ * late and not ready when the game asked. */
+extern "C" void kz_sail_stats(unsigned* shown, unsigned* dropped, unsigned* not_ready);
+static void kz_present_stats_line(void)
+{
+    char gaps[160] = "no presents";
+    const unsigned n = s_present_ngaps;
+    if (n) {
+        std::sort(s_present_gaps, s_present_gaps + n);
+        const unsigned p50 = s_present_gaps[n / 2], p95 = s_present_gaps[(n * 95) / 100 < n ? (n * 95) / 100 : n - 1];
+        unsigned off = 0;
+        for (unsigned i = 0; i < n; i++)
+            if (s_present_gaps[i] * 4 < p50 * 3 || s_present_gaps[i] * 4 > p50 * 5) off++;
+        snprintf(gaps, sizeof gaps, "gaps n=%u min=%.1f p50=%.1f p95=%.1f max=%.1fms uneven=%u%%", n,
+                 s_present_gaps[0] / 1000.0, p50 / 1000.0, p95 / 1000.0, s_present_gaps[n - 1] / 1000.0, off * 100 / n);
+    }
+    s_present_ngaps = 0;
+    char waits[200] = "";
+#if defined(PS3RECOMP_RSX_VULKAN)
+    rsx_vulkan_present_wait_stats w;
+    rsx_vulkan_present_waits(&w);
+    snprintf(waits, sizeof waits, " | waits avg/max ms: blit %.1f/%.1f gpu %.1f/%.1f image %.1f/%.1f present %.1f/%.1f skipped=%u",
+             w.avg_us[0] / 1000.0, w.max_us[0] / 1000.0, w.avg_us[1] / 1000.0, w.max_us[1] / 1000.0,
+             w.avg_us[2] / 1000.0, w.max_us[2] / 1000.0, w.avg_us[3] / 1000.0, w.max_us[3] / 1000.0, w.skipped);
+#endif
+    unsigned shown, dropped, not_ready;
+    kz_sail_stats(&shown, &dropped, &not_ready);
+    char movie[96] = "";
+    if (shown || dropped || not_ready)
+        snprintf(movie, sizeof movie, " | movie shown=%u dropped=%u not-ready=%u", shown, dropped, not_ready);
+    fprintf(stderr, "[kz-present] %s%s%s\n", gaps, waits, movie);
+}
 
 static DWORD WINAPI frame_clock(LPVOID)
 {
@@ -462,6 +504,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                     cellGcm_flip_request_count(),
                     (int)(cellGcm_flip_written_count() - cellGcm_flip_request_count()),
                     s_present_gap_max_us / 1000, kz_heap_bytes() >> 20, ticks);
+            kz_present_stats_line();
             s_present_gap_max_us = 0; s_present_n = 0;
             next_stats = now + 2000;
         }

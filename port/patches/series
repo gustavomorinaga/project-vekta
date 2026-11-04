@@ -108,3 +108,4 @@
 4012-cellPad-SDL-s-Raw-Input-joystick-driver-off-on-Windo.patch
 2041-Vulkan-present-a-barrier-between-the-bars-clear-and-the-frame-s-blit.patch
 2042-Vulkan-present-a-FIFO-swapchain-nobody-asked-for-never-blocks.patch
+2043-Vulkan-present-time-each-step-s-waits-for-a-stats-line.patch

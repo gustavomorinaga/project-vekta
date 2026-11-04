@@ -498,6 +498,10 @@ void blank_frame(ppu_context* ctx)
     RET(0x100);
 }
 
+/* KZ_STATS (main.cpp's [kz-present] line, issue #18): movie frames handed to
+ * the game, dropped as late, and asked for while the decoder had none ready. */
+std::atomic<unsigned> s_st_shown, s_st_dropped, s_st_not_ready;
+
 void graphics_adapter_get_frame(ppu_context* ctx)
 {
     Movie* mv = g_player.movie;
@@ -507,16 +511,19 @@ void graphics_adapter_get_frame(ppu_context* ctx)
     Frame f; bool have = false;
     static unsigned calls, dropped;
     calls++;
+    bool late = false;
     {
         std::lock_guard<std::mutex> l(mv->m);
         /* One frame per call; frames more than 0.2 s late are skipped. */
-        while (mv->frames.size() > 1 && mv->frames[1].pts <= now - 0.2) { mv->frames.pop_front(); dropped++; }
+        while (mv->frames.size() > 1 && mv->frames[1].pts <= now - 0.2) { mv->frames.pop_front(); dropped++; s_st_dropped++; }
         if (!mv->frames.empty() && mv->frames.front().pts <= now) {
             f = std::move(mv->frames.front()); mv->frames.pop_front(); have = true;
-        }
+        } else if (mv->frames.empty() && !mv->eof) late = true;   /* the decoder has not caught up */
     }
     mv->cv.notify_all();
+    if (late) s_st_not_ready++;
     if (!have) { check_end(mv); RET(0); return; }
+    s_st_shown++;
     static int dbg = getenv("KZ_SAIL_DBG") != nullptr;
     static unsigned shown;
     if (dbg && ++shown % 150 == 0)
@@ -658,4 +665,10 @@ extern "C" void kz_sail_register(void)
         if (trace && n < 48) { names[n] = e.name; fns[n] = e.fn; ps3_hle_register_ctx(e.nid, e.name, wrap[n]); n++; }
         else ps3_hle_register_ctx(e.nid, e.name, e.fn);
     }
+}
+
+/* KZ_STATS: the counts since the last call, which resets them (main.cpp). */
+extern "C" void kz_sail_stats(unsigned* shown, unsigned* dropped, unsigned* not_ready)
+{
+    *shown = s_st_shown.exchange(0); *dropped = s_st_dropped.exchange(0); *not_ready = s_st_not_ready.exchange(0);
 }
