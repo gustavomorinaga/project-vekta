@@ -134,3 +134,4 @@ private series: 0004 and 2039 now come from the private branch, made on top of t
 | 0115 | 2048 | vulkan: the sprint motion blur over a temporal upscaler's output |
 | 0116 | 2049 | vulkan: rsx_vulkan_temporal_built, the temporal upscalers this build has |
 | 0117 | 2050 | vulkan: per-object motion pairs by the rows a program reads, and is on by default |
+| (none) | 0005 | tests: upstream's host tests follow patches 3029 and 3031 (written in this tree) |

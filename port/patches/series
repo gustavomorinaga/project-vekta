@@ -121,3 +121,4 @@
 4013-cellPad-pad_active_style-which-pad-the-player-last-t.patch
 2049-vulkan-rsx_vulkan_temporal_built-the-temporal-upscal.patch
 2050-vulkan-per-object-motion-pairs-by-the-rows-a-program.patch
+0005-tests-upstream-s-host-tests-follow-3029-and-3031.patch
