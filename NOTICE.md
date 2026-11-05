@@ -25,7 +25,7 @@ which is (c) Sony Interactive Entertainment and is not part of this repository.
 | Component | Author | Licence | What was used |
 |---|---|---|---|
 | FidelityFX Super Resolution 1 (`ffx_a.h`, `ffx_fsr1.h`) | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-FSR1-LICENSE.txt](licenses/AMD-FidelityFX-FSR1-LICENSE.txt)) | the EASU upscaler and RCAS sharpener, unmodified, added by patch 2033 under `libs/video/vulkan/ffx/` |
-| FidelityFX SDK 1.1.4: FSR 3.1 upscaler and Vulkan backend | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-SDK-LICENSE.txt](licenses/AMD-FidelityFX-SDK-LICENSE.txt)) | the sources, headers and compiled shader permutations the FSR 3.1 path needs, vendored in `third_party/fidelityfx-fsr3/` (two files adapted for Linux, see its README.md) and built into the Linux program |
+| FidelityFX SDK 1.1.4: FSR 3.1 upscaler and Vulkan backend | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-SDK-LICENSE.txt](licenses/AMD-FidelityFX-SDK-LICENSE.txt)) | the sources, headers and compiled shader permutations the FSR 3.1 path needs, vendored in `third_party/fidelityfx-fsr3/` (two files adapted for Linux, see its README.md) and built into the Linux program and the Windows exe |
 | Input Prompts | Kenney (kenney.nl) | CC0 1.0 | the button prompts, as signed distance fields made by `tools/glyphs/kenney_prep.py` into `port/kz1hd/glyphs_kenney.inc` |
 
 ## Fonts
@@ -40,8 +40,9 @@ SDL2 (zlib licence), zlib (zlib licence), glslang (BSD-3-Clause and others), the
 FFmpeg (LGPL-2.1 or later, loaded at run time; the port only includes its headers).
 NVIDIA DLSS: the NVIDIA DLSS SDK 310.9.16 (<https://github.com/NVIDIA/DLSS>, (c) NVIDIA Corporation, under NVIDIA's
 DLSS SDK licence) is not in this repository nor in any release. The build downloads it from NVIDIA's repository on
-the player's machine, only after the player accepts that licence (`tools/release/firstrun.py --dlss accept`), and
-links it into the program there, with `libnvidia-ngx-dlss.so` beside it. DLSS is NVIDIA's technology; this project is
+the player's machine, only after the player accepts that licence (`tools/release/firstrun.py --dlss accept`, or the
+Windows setup's DLSS box), and links it into the program there, with `libnvidia-ngx-dlss.so` (Linux) or
+`nvngx_dlss.dll` (Windows) beside it. DLSS is NVIDIA's technology; this project is
 not affiliated with or endorsed by NVIDIA.
 Only when given to CMake: another FidelityFX FSR 3 build (`PS3RECOMP_FFX_DIR`; MIT) and Tracy (`KZ_TRACY_DIR`;
 BSD-3-Clause).

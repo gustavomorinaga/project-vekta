@@ -34,8 +34,9 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
             question; the choice is kept in work/dlss-choice): the DLSS SDK files fetched from NVIDIA's repository and
             checked (tools/release/fetch_toolchain.py --set dlss-sdk, work/toolchain-cache/dlss-sdk); the compile
             then builds DLSS in and puts its runtime library beside the program. Declined or never answered: no
-            download, no DLSS (the PC menu shows it as "(not built)"). Linux only for now. Run again with
-            --dlss accept or --dlss decline to change the choice
+            download, no DLSS (the PC menu shows it as "(not built)"). On Windows the runtime library is
+            nvngx_dlss.dll beside KZ1HD.exe, on the player's machine only. Run again with --dlss accept or
+            --dlss decline to change the choice (the Windows setup passes its checkbox's answer)
   compile   work/build/KZ1HD, on Windows work/build-win/KZ1HD.exe (kzbuild.py build; every run: Ninja itself
             skips what is up to date)
   stamp     work/build-stamp.json: the version, the patch set and the inputs this build was made from
@@ -141,8 +142,8 @@ class Ctx:
         self.work = self.work or os.environ.get("KZ_WORK") or os.path.join(self.root, "work")
 
     def dlss_on(self):
-        """DLSS is built in only when the player accepted its licence, and only on Linux for now."""
-        return self.dlss == "accept" and os.name != "nt"
+        """DLSS is built in only when the player accepted its licence."""
+        return self.dlss == "accept"
 
     def w(self, *rel):
         return os.path.join(self.work, *rel)
@@ -709,7 +710,7 @@ NVIDIA's own repository and build DLSS in. It is NVIDIA's software under NVIDIA'
   {url}
   (its text, downloaded: {path})
 Without it the port builds with AMD FSR 3.1 as its temporal upscaler, and DLSS shows as "(not built)".
-To change this later: tools/install.sh --dlss accept (or --dlss decline)."""
+To change this later: {again} --dlss accept (or --dlss decline)."""
 
 
 def fetch_license(c):
@@ -725,9 +726,9 @@ def fetch_license(c):
 
 
 def ask_dlss(c, ask=input, say=print):
-    """Once, on Linux: the licence's link and text, then accept or decline; the answer is kept in work/dlss-choice."""
+    """Once: the licence's link and text, then accept or decline; the answer is kept in work/dlss-choice."""
     path = fetch_license(c) or "(could not be downloaded; read it at the link)"
-    say(DLSS_QUESTION.format(url=DLSS_LICENSE_URL, path=path))
+    say(DLSS_QUESTION.format(url=DLSS_LICENSE_URL, path=path, again="run.cmd" if os.name == "nt" else "tools/install.sh"))
     got = ask("Download NVIDIA DLSS and accept the NVIDIA DLSS SDK licence? [y/N] ").strip().lower()
     c.dlss = "accept" if got in ("y", "yes") else "decline"
     write_dlss(c.work, c.dlss)
@@ -749,7 +750,7 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
         if ask("Enter to choose the files again, q to quit: ").strip().lower() == "q":
             return 1
         only = r.fail_inputs or None
-    if not c.dlss and os.name != "nt":
+    if not c.dlss:
         ask_dlss(c, ask, say)
     log = new_log(c, redactor())
     say(f"Building (log: {log.path})")
@@ -775,7 +776,7 @@ def main(argv=None):
     ap.add_argument("--dlss", choices=("accept", "decline"),
                     help="accept: you accept NVIDIA's DLSS SDK licence (" + DLSS_LICENSE_URL + "), and the build "
                          "downloads the SDK from NVIDIA and builds DLSS in; decline: no DLSS. Kept for later runs "
-                         "(work/dlss-choice); --interactive asks once when it was never answered. Linux only for now")
+                         "(work/dlss-choice); --interactive asks once when it was never answered")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: from free memory)")
     ap.add_argument("--root", default=ROOT, help="the source tree (the tests use a copy)")
     ap.add_argument("--status-file", help="keep the LOG line and the latest PROGRESS/RESULT line in this file")

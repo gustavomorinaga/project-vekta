@@ -12,6 +12,8 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
                   firstrun.py, launch.py, support.py, fetch_toolchain.py, build_win_deps.py, toolchain.json
   re/             function_seeds.txt (the lift's seeds)
   port/           port/kz1hd (its sources, no tests) and port/cmake/*.cmake
+  third_party/fidelityfx-fsr3/  AMD FSR 3.1's vendored sources (MIT), which the build compiles, and in tools/ffx/
+                  the header that adapts them to the platform's compiler (ffx_mingw_compat.h, ffx_linux_compat.h)
   work/ps3recomp-patched/  the patched ps3recomp (tools/ps3recomp-patched.sh), without .github, docs, packaging and
                   scratch: the player needs no Git, the patches are already applied. Its .patchset must be the one
                   of the repository's port/patches (a stale tree is refused).
@@ -85,8 +87,11 @@ RULES = [
     ("assets/icon.svg", "assets/icon.svg", "file", {}),
     ("docs/GETTING-FILES.md", "docs/GETTING-FILES.md", "file", {}),
     ("docs/BUILDING.md", "docs/BUILDING.md", "file", {}),
+    # AMD FSR 3.1, built from source by both builds (port/kz1hd/CMakeLists.txt)
+    ("third_party/fidelityfx-fsr3", "third_party/fidelityfx-fsr3", "tree", {}),
 ]
 RULES_WINDOWS = [
+    ("tools/ffx/ffx_mingw_compat.h", "tools/ffx/ffx_mingw_compat.h", "file", {}),
     ("installer/run.cmd", "run.cmd", "file", {}),
     ("installer/play.cmd", "play.cmd", "file", {}),
 ]
@@ -97,8 +102,6 @@ RULES_LINUX = [
     ("tools/play.sh", "tools/play.sh", "file", {}),
     ("installer/linux/run.sh", "run.sh", "file", {}),
     ("installer/linux/play.sh", "play.sh", "file", {}),
-    # AMD FSR 3.1, built from source by the Linux build (port/kz1hd/CMakeLists.txt)
-    ("third_party/fidelityfx-fsr3", "third_party/fidelityfx-fsr3", "tree", {}),
     ("tools/ffx/ffx_linux_compat.h", "tools/ffx/ffx_linux_compat.h", "file", {}),
 ]
 GAME_NAMES = ["EBOOT.*", "PARAM.SFO", "*.psarc", "*.elf", "*.self", "*.sprx", "*.prx", "*.edat", "*.sdat", "*.pkg",

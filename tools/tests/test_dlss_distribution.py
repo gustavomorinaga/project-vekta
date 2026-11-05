@@ -3,8 +3,9 @@
 tools/release/toolchain.json (the v310.9.16 pins, the files the code includes, consent and licence link); fetching it
 (refused without the player's acceptance, only the build OS's files, each checked by size and SHA-256, a wrong
 download deleted, --license-only, --offline); firstrun.py's choice (work/dlss-choice, the dlss step and KZ_DLSS_SDK
-only when accepted, never on Windows); kzbuild.py putting the runtime library beside the program only with DLSS; and
-assemble_payload.py and check-tree.sh refusing NVIDIA files by name, folder and content. No network: the downloads
+only when accepted, on Linux and Windows alike); kzbuild.py putting the runtime library beside the program only with
+DLSS (libnvidia-ngx-dlss.so beside KZ1HD, nvngx_dlss.dll beside KZ1HD.exe); and assemble_payload.py and check-tree.sh
+refusing NVIDIA files by name, folder and content. No network: the downloads
 come from a stand-in opener."""
 import hashlib
 import io
@@ -63,6 +64,11 @@ if dl:
     check(paths.get("lib/Linux_x86_64/libnvsdk_ngx.a", {}).get("os") == "linux", "the Linux NGX library is pinned")
     check(all(f["os"] == "windows" for p, f in paths.items() if p.startswith("lib/Windows")),
           "the Windows files are fetched only for Windows")
+    # what kzbuild.py links and puts beside the program is in the set, for its OS
+    for target, runtime in (("linux", "libnvidia-ngx-dlss.so.310.9.16"), ("windows", "nvngx_dlss.dll")):
+        lib, rel, _ = kb.DLSS_FILES[target]
+        for p in ("/".join(lib), "/".join(rel) + "/" + runtime):
+            check(paths.get(p, {}).get("os") == target, f"the {target} build's {p} is pinned")
     # every NGX header the DLSS path includes, and what those include, is in the set
     want = {"include/nvsdk_ngx_vk.h", "include/nvsdk_ngx_helpers.h", "include/nvsdk_ngx_helpers_vk.h",
             "include/nvsdk_ngx.h", "include/nvsdk_ngx_defs.h", "include/nvsdk_ngx_defs_vk.h",
@@ -122,12 +128,11 @@ with tempfile.TemporaryDirectory() as tmp:
           "never answered: no dlss step, no KZ_DLSS_SDK")
     fr.write_dlss(tmp, "accept")
     c.dlss = fr.read_dlss(tmp)
-    if os.name != "nt":
-        cmds = fr.cmd_dlss(c)
-        check(len(cmds) == 1 and "--accept-license" in cmds[0] and "dlss-sdk" in cmds[0],
-              "accepted: the step fetches the set with the acceptance")
-        check(c.env().get("KZ_DLSS_SDK") == os.path.join(tmp, "toolchain-cache", "dlss-sdk"),
-              "accepted: the compile gets KZ_DLSS_SDK")
+    cmds = fr.cmd_dlss(c)
+    check(len(cmds) == 1 and "--accept-license" in cmds[0] and "dlss-sdk" in cmds[0],
+          "accepted: the step fetches the set with the acceptance (Linux and Windows)")
+    check(c.env().get("KZ_DLSS_SDK") == os.path.join(tmp, "toolchain-cache", "dlss-sdk"),
+          "accepted: the compile gets KZ_DLSS_SDK")
     fr.write_dlss(tmp, "decline")
     c.dlss = fr.read_dlss(tmp)
     os.environ["KZ_DLSS_SDK"] = "/somewhere"
@@ -155,6 +160,27 @@ with tempfile.TemporaryDirectory() as tmp:
     check(os.path.isfile(os.path.join(b, "libnvidia-ngx-dlss.so.9.9")), "with DLSS the runtime goes beside KZ1HD")
     kb.place_dlss({}, b)
     check(sorted(os.listdir(b)) == ["KZ1HD"], "without DLSS no NVIDIA file is left beside KZ1HD")
+    # the Windows exe: the MSVC NGX library to link, nvngx_dlss.dll beside KZ1HD.exe
+    bw = os.path.join(tmp, "build-win")
+    os.makedirs(os.path.join(sdk, "lib", "Windows_x86_64", "x64"))
+    os.makedirs(os.path.join(sdk, "lib", "Windows_x86_64", "rel"))
+    os.makedirs(bw)
+    try:
+        kb.dlss_defs({"KZ_DLSS_SDK": sdk}, "windows")
+        check(False, "the Windows build refuses an SDK without nvsdk_ngx_s.lib")
+    except kb.Fail as err:
+        check("nvsdk_ngx_s.lib" in str(err), str(err))
+    open(os.path.join(sdk, "lib", "Windows_x86_64", "x64", "nvsdk_ngx_s.lib"), "wb").close()
+    for n in ("nvngx_dlss.dll", "nvngx_dlssg.dll"):
+        open(os.path.join(sdk, "lib", "Windows_x86_64", "rel", n), "wb").write(b"MZ")
+    open(os.path.join(bw, "KZ1HD.exe"), "wb").close()
+    check(kb.dlss_defs({"KZ_DLSS_SDK": sdk}, "windows") == [f"-DPS3RECOMP_DLSS_SDK={sdk}"],
+          "the Windows build takes the SDK with nvsdk_ngx_s.lib")
+    kb.place_dlss({"KZ_DLSS_SDK": sdk}, bw, "windows")
+    check(sorted(os.listdir(bw)) == ["KZ1HD.exe", "nvngx_dlss.dll"], f"with DLSS nvngx_dlss.dll alone goes beside "
+          f"KZ1HD.exe: {sorted(os.listdir(bw))}")
+    kb.place_dlss({}, bw, "windows")
+    check(sorted(os.listdir(bw)) == ["KZ1HD.exe"], "without DLSS no NVIDIA file is left beside KZ1HD.exe")
 
 # --- no NVIDIA file in a release, nor in the repository
 pins = ap.nvidia_pins(m)

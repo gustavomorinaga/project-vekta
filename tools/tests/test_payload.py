@@ -64,14 +64,27 @@ with tempfile.TemporaryDirectory() as tmp:
     tmp = pathlib.Path(tmp)
     cache = tmp / "cache"
     fake_cache(cache, m)
+    # the player's own DLSS download sits in the same cache: it is never collected
+    (cache / "dlss-sdk" / "lib" / "Windows_x86_64" / "rel").mkdir(parents=True)
+    (cache / "dlss-sdk" / "lib" / "Windows_x86_64" / "rel" / "nvngx_dlss.dll").write_bytes(b"MZnvidia")
     files, gen, man = ap.plan(str(ROOT), str(cache))
     paths = set(files) | set(gen)
+    check(not any("dlss" in p.lower() and "rsx_vk_dlss" not in p or "nvngx" in p.lower() for p in paths),
+          f"no NVIDIA file in the payload: {sorted(p for p in paths if 'nvngx' in p.lower() or 'dlss-sdk' in p)}")
+    (cache / "sdl2" / "bin" / "nvngx_dlss.dll").write_bytes(b"MZnvidia")
+    try:
+        ap.plan(str(ROOT), str(cache))
+        check(False, "an NVIDIA file in a toolchain entry is refused")
+    except ap.Refused as err:
+        check("nvngx_dlss.dll" in str(err) and "NVIDIA" in str(err), str(err))
+    (cache / "sdl2" / "bin" / "nvngx_dlss.dll").unlink()
     for need in ("tools/kzbuild.py", "tools/release/firstrun.py", "tools/release/launch.py", "run.cmd", "play.cmd",
                  "port/kz1hd/CMakeLists.txt", "port/cmake/llvm-mingw.cmake", "re/function_seeds.txt", "VERSION",
                  "work/ps3recomp-patched/.patchset", "work/ps3recomp-patched/tools/ppu_lifter.py",
-                 "work/toolchain-cache/fetched.json", "work/toolchain-cache/llvm-mingw/bin/llvm-mingw.exe"):
+                 "work/toolchain-cache/fetched.json", "work/toolchain-cache/llvm-mingw/bin/llvm-mingw.exe",
+                 "third_party/fidelityfx-fsr3/src/backends/vk/ffx_vk.cpp", "tools/ffx/ffx_mingw_compat.h"):
         check(need in paths, f"the payload has {need}")
-    check(not any(p.startswith(("third_party/", "port/patches/", ".github/", "work/toolchain-cache/downloads/",
+    check(not any(p.startswith(("third_party/ps3recomp/", "port/patches/", ".github/", "work/toolchain-cache/downloads/",
                                 "work/toolchain-cache/llvm-mingw-linux/", "work/ps3recomp-patched/docs/"))
                   for p in paths), "no submodule, patches, workflows, downloads, Linux compiler or ps3recomp docs")
     check(not any("/lib/linux/" in p or "/amiga/" in p for p in paths), "clang's Linux runtimes and zlib's Amiga "

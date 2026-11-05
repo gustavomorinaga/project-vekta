@@ -164,7 +164,7 @@
 <tr><td>Frame-rate limit 30, 60, 144 (the game clock follows)</td><td>60</td><td><code>fps_limit</code>; 30 is the PS3&#x27;s</td></tr>
 <tr><td>AMD FSR 1 upscaling and RCAS sharpening</td><td>bilinear</td><td><code>upscaler</code>, <code>sharpness</code></td></tr>
 <tr><td>Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td>the game&#x27;s</td><td><code>anisotropic</code></td></tr>
-<tr><td>Temporal upscaling (Linux): AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: DLSS 122.2 fps, FSR 3.1 123.7 fps</td></tr>
+<tr><td>Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer&#x27;s private build) DLSS Quality 135.7 fps</td></tr>
 <tr><td>Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code></td></tr>
 <tr><td>Field of view, 40 to 90 degrees vertical (the game&#x27;s is 56.25)</td><td>the game&#x27;s</td><td><code>fov</code>; zoom and the first-person weapon keep the game&#x27;s framing</td></tr>
 <tr><td>HUD size and position</td><td>the game&#x27;s</td><td><code>hud_size</code>, <code>hud_position</code></td></tr>
@@ -199,7 +199,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
-<li><span class="sec">Added</span>Temporal upscalers on Linux (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution and DLAA, chosen on the PC page (&quot;Temporal Upscaler (on restart)&quot;) or with <code>PS3RECOMP_TEMPORAL</code>, with the camera jittered and per-object motion vectors; the HUD is drawn at the output resolution (patches 2045 to 2051, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/upscalers.md">docs/dev/upscalers.md</a>). FSR 3.1 is in every Linux build, from the FidelityFX SDK&#x27;s files vendored in <code>third_party/fidelityfx-fsr3/</code>. DLSS is downloaded from NVIDIA on your machine only if you accept NVIDIA&#x27;s DLSS SDK licence when <code>tools/install.sh</code> asks (<code>--dlss accept|decline</code>); no release carries NVIDIA&#x27;s files.</li>
+<li><span class="sec">Added</span>Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution and DLAA, chosen on the PC page (&quot;Temporal Upscaler (on restart)&quot;) or with <code>PS3RECOMP_TEMPORAL</code>, with the camera jittered and per-object motion vectors; the HUD is drawn at the output resolution (patches 2045 to 2052, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/upscalers.md">docs/dev/upscalers.md</a>). FSR 3.1 is in every build, from the FidelityFX SDK&#x27;s files vendored in <code>third_party/fidelityfx-fsr3/</code>. DLSS is downloaded from NVIDIA on your machine only if you accept NVIDIA&#x27;s DLSS SDK licence: when <code>tools/install.sh</code> or <code>run.cmd</code> asks (<code>--dlss accept|decline</code>), or with the Windows setup&#x27;s &quot;Download NVIDIA DLSS&quot; box, unticked by default; no release carries NVIDIA&#x27;s files.</li>
 <li><span class="sec">Added</span>The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</li>
 <li><span class="sec">Added</span>Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch Pro and keyboard on the Controls screen, by the pad last touched (patch 4013).</li>
 <li><span class="sec">Added</span>The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</li>
@@ -255,8 +255,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 121 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 121 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 122 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 122 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -265,7 +265,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> Temporal upscalers on Linux (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution and DLAA...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</span></li>
 <li><time>next</time><span><b>Unreleased</b> Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</span></li>

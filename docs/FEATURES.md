@@ -52,7 +52,7 @@ are off by default; display and input improvements may be on.
 | Frame-rate limit 30, 60, 144 (the game clock follows) | 60 | `fps_limit`; 30 is the PS3's |
 | AMD FSR 1 upscaling and RCAS sharpening | bilinear | `upscaler`, `sharpness` |
 | Anisotropic filtering: the game's own, off, 2x to 16x | the game's | `anisotropic` |
-| Temporal upscaling (Linux): AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA | off | `temporal` (on restart); DLSS only when downloaded at install with NVIDIA's licence accepted, else "(not built)"; Level 7, 2560x1440 Quality, 2026-11-05: DLSS 122.2 fps, FSR 3.1 123.7 fps |
+| Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA | off | `temporal` (on restart); DLSS only when downloaded at install with NVIDIA's licence accepted, else "(not built)"; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer's private build) DLSS Quality 135.7 fps |
 | Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9 | on | `widescreen` |
 | Field of view, 40 to 90 degrees vertical (the game's is 56.25) | the game's | `fov`; zoom and the first-person weapon keep the game's framing |
 | HUD size and position | the game's | `hud_size`, `hud_position` |

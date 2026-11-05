@@ -4,8 +4,9 @@ ENHANCEMENT: with `PS3RECOMP_TEMPORAL=dlss` or `PS3RECOMP_TEMPORAL=fsr3` the gam
 resolution than the output (or at the same one, in `native`) and a temporal upscaler makes the final image. The HUD
 is drawn afterwards, at the output resolution. Patches: 2045 (the temporal path and DLSS), 2046 (FSR 3.1), 2047 (the
 jitter fix and per-object motion), 2048 (sprint motion blur over the upscaled output), 2049 (which upscalers a build
-has, for the PC menu) and 2050 (per-object motion pairs, on by default). In the maintainer's private series they are
-0112 to 0117 ([patch-numbers.md](patch-numbers.md)).
+has, for the PC menu), 2050 (per-object motion pairs, on by default), 2051 (FSR 3.1 from a CMake target) and 2052
+(both in the Windows exe). In the maintainer's private series they are 0112 to 0118, except 2051
+([patch-numbers.md](patch-numbers.md)).
 
 ## Using them
 
@@ -27,9 +28,9 @@ The output is the size the scaling already gave: the window's with `PS3RECOMP_VK
 
 ## Distribution
 
-Linux only for now: the Windows program has neither upscaler yet (its build of both is not in the tree).
+The same on Linux and Windows: FSR 3.1 is in every build, and DLSS only where the player accepted NVIDIA's licence.
 
-- **FSR 3.1** is in every Linux build. The FidelityFX SDK's files it needs (MIT) are vendored in
+- **FSR 3.1** is in every build, the Linux program and the Windows exe. The FidelityFX SDK's files it needs (MIT) are vendored in
   `third_party/fidelityfx-fsr3/` with its shaders already compiled, and `port/kz1hd/CMakeLists.txt` builds them into
   the static library `kz_ffx_fsr3`, which ps3recomp links (patch 2051, `PS3RECOMP_FFX_TARGET`): no SDK checkout, no
   Wine. `tools/ffx/build_fsr3.sh <FidelityFX SDK 1.1.4> <out>` is how those files are made again (it runs the SDK's
@@ -43,14 +44,64 @@ Linux only for now: the Windows program has neither upscaler yet (its build of b
   is kept in `work/dlss-choice`. Accepted, firstrun's `dlss` step fetches the SDK's files from
   `raw.githubusercontent.com/NVIDIA/DLSS/v310.9.16/` into `work/toolchain-cache/dlss-sdk/` (laid out as the SDK
   folder), each checked by size and SHA-256 against `tools/release/toolchain.json`'s `file_sets`: the license, the
-  headers `rsx_vk_dlss.cpp` reads, `libnvsdk_ngx.a` and the runtime `libnvidia-ngx-dlss.so.310.9.16`. The compile then
-  passes `KZ_DLSS_SDK` (`-DPS3RECOMP_DLSS_SDK`) and puts the runtime library beside the program. Declined, nothing is
+  headers `rsx_vk_dlss.cpp` reads, and for the build's own OS the NGX library it links (`libnvsdk_ngx.a`, or on
+  Windows `nvsdk_ngx_s.lib`) and the runtime (`libnvidia-ngx-dlss.so.310.9.16`, or `nvngx_dlss.dll`). The compile
+  then passes `KZ_DLSS_SDK` (`-DPS3RECOMP_DLSS_SDK`) and puts the runtime library beside the program. On Windows the
+  setup program asks instead, on a page of its own: a box, unticked by default, "Download NVIDIA DLSS (NVIDIA RTX
+  GPUs). I accept the NVIDIA DLSS SDK license", with the licence's link; its answer goes to `firstrun.py --dlss` and
+  `work\dlss-choice` and is offered again on an upgrade. `run.cmd` (the zip) asks as `tools/install.sh` does. Declined, nothing is
   downloaded, the build has no DLSS, and the PC menu shows it as "(not built)"; no NVIDIA file is left beside the
   program. NVIDIA DLSS is credited by name (NOTICE.md, the project page); no NVIDIA logo is used.
 - By hand: `-DPS3RECOMP_DLSS_SDK=<DLSS SDK folder>` (github.com/NVIDIA/DLSS; 310.9.16 tested) with
-  `lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.<version>` next to the program.
+  `lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.<version>`, or on Windows `lib/Windows_x86_64/rel/nvngx_dlss.dll`, next
+  to the program.
 
 Without DLSS the upscaler is a stub and that choice behaves as off.
+
+## Windows
+
+`tools/build-win.sh` (`KZ_DLSS_SDK=<the SDK>` for DLSS) builds both into `KZ1HD.exe` with the pinned llvm-mingw, and
+the setup program and `run.cmd` do the same on the player's PC.
+
+- **FSR 3.1:** the vendored sources build with llvm-mingw as they are. `wchar_t` is 2 bytes on Windows and MinGW has
+  the MSVC calls the SDK uses, so `tools/ffx/ffx_mingw_compat.h` only brings in the headers MSVC's own headers
+  include by themselves (`<mutex>`, `<cmath>`, `<new>`) and `_countof` for libc++. The bigger default context of the
+  vendored `ffx_types.h` (made for Linux) is harmless here: ps3recomp and the library read the same header. The
+  scratch memory comes from `_aligned_malloc`, as the Windows C library has no `aligned_alloc` (patch 2052).
+  `tools/ffx/build_fsr3.sh <SDK> <out> windows` still makes a separate library for `-DPS3RECOMP_FFX_DIR`, with the
+  system clang and MinGW-w64.
+- **DLSS:** NVIDIA ships the NGX loader (`nvsdk_ngx_s.lib`) for MSVC only. lld links it; the MSVC runtime libraries
+  its objects ask for (`libcmt`, `libcpmt`, `oldnames`) are dropped, and `rsx_vk_ngx_mingw.cpp` (patch 2052) answers
+  what it calls from them: `operator new`/`delete` under their MSVC names, the `/GS` stack cookie and its unwind
+  handlers, thread-safe local statics, and `std::_Xbad_alloc`/`_Xlength_error`. Its C library calls go to the UCRT,
+  and `__CxxFrameHandler3` comes from it too, so the exe needs no `vcruntime140.dll`. The loader also imports
+  `d3d12.dll`, `dxgi.dll` and `D3DCompiler_47.dll`, which come with Windows 10 and later.
+- **Control Flow Guard:** NGX calls through `__guard_check_icall_fptr` before its indirect calls. With a GCC-built
+  MinGW-w64 runtime, the do-nothing check that pointer holds sits in `.00cfg`, which the linker merges into read-only
+  data, and the first call faulted. The shim points it at a do-nothing function in code at start-up.
+- **Beside the exe:** `nvngx_dlss.dll`, besides the usual DLLs, and only on the machine of a player who accepted
+  NVIDIA's licence. The NVIDIA driver brings the rest of NGX.
+
+Measured (Level 7 from a save, 144 Hz mode, headless; fps over the play):
+
+| Date | Build | Runner | Upscaler | fps | What the log said |
+|---|---|---|---|---|---|
+| 2026-11-04 | private (GCC MinGW-w64), 1280x720 output | Wine 11.21 | none | 117.2 | |
+| 2026-11-04 | same | Wine 11.21 | FSR 3.1 Quality, 853x480 to 1280x720 | 105.8 | image right |
+| 2026-11-04 | same | Wine 11.21 | DLSS Quality | 119.3 | `NGX init failed (0xBAD00001)`: plain Wine has no NVAPI nor the driver's NGX; the game goes on without an upscaler |
+| 2026-11-04 | same | GE-Proton 11 (`PROTON_ENABLE_NVAPI=1`) | DLSS Quality, 853x480 to 1280x720 | 109.1 (with captures) | `DLSS: available`, image right |
+| 2026-11-04 | same | GE-Proton 11 | FSR 3.1 Quality | 107.4 | image right |
+| 2026-11-05 | this tree (llvm-mingw, `tools/build-win.sh` with `KZ_DLSS_SDK`), 2560x1440 output, 128 s | GE-Proton 11 (`PROTON_ENABLE_NVAPI=1`) | none (2560x1440 native) | 108.6 | |
+| 2026-11-05 | same | GE-Proton 11 | FSR 3.1 Quality, 1706x960 to 2560x1440 | 104.7 | `FSR 3: available`, 10,800+ frames upscaled |
+| 2026-11-05 | same | GE-Proton 11 (`PROTON_ENABLE_NVAPI=1`) | DLSS Quality, 1707x960 to 2560x1440 | 105.2 | `DLSS: available`, 10,800+ frames upscaled |
+| 2026-11-05 | same | Wine 11.21 | FSR 3.1 Quality, 1706x960 to 2560x1440 | 105.8 | `FSR 3: available`, 10,800+ frames upscaled |
+| 2026-11-05 | built by the setup program (Windows-hosted llvm-mingw, under Wine), DLSS box ticked | GE-Proton 11 (`PROTON_ENABLE_NVAPI=1`) | DLSS Quality, 1707x960 to 2560x1440 | 107.1 | `DLSS: available`, 10,800+ frames upscaled |
+| 2026-11-05 | private, real Windows (RTX 3070 Ti, fullscreen 3440x1440, 144 cap, Reflex boost) | Windows | DLSS Quality, about 13 min | 135.7 | `DLSS: available`, about 93,600 upscaled frames, clean exit; FSR 3.1 worked too |
+
+Proton copies the driver's `nvngx.dll` and `_nvngx.dll` (`/usr/lib/nvidia/wine`) into its prefix and dxvk-nvapi
+answers NGX: that is why DLSS runs there and not under plain Wine. On Windows with `scale=75` DLSS outputs 75% of
+the screen (2580x1080 from 1720x720) and the scaling stretches the rest; `scale=100` lets it deliver the screen's
+resolution.
 
 ## How it works
 

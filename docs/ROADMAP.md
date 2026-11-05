@@ -185,7 +185,7 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] Motion vectors and camera jitter (camera and per-object motion, for the temporal upscalers)
 - [x] FSR 3.1, DLSS Super Resolution and DLAA, on Linux: FSR 3.1 built in, DLSS downloaded from NVIDIA at install when
       the player accepts its licence ([dev/upscalers.md](dev/upscalers.md))
-- [ ] FSR 3.1 and DLSS in the Windows build
+- [x] FSR 3.1 and DLSS in the Windows build (the setup's DLSS box, unticked by default)
 - [ ] Dynamic resolution scale
 - [ ] FSR Frame Generation
 - [x] Debug menu: `KZ_DEBUG_MENU=1` turns on the game's own Debug Options in the pause menu (God Mode, Next Level, ...)

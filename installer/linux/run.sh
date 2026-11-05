@@ -3,8 +3,9 @@
 # them, then lifts the game's code and compiles the port here with the bundled toolchain (Zig, CMake, Ninja:
 # KZ_LINUX_TOOLCHAIN=pinned), with one progress bar (tools/release/firstrun.py; its options pass through, e.g.
 # --jobs 4). At the end it offers an applications-menu entry. Run it again after moving your files; a stopped run
-# resumes. Nothing is downloaded. Needs Python 3.10 or newer (ps3recomp's tools); the game then needs a Vulkan
-# driver and the system's SDL2 (libSDL2-2.0.so.0). The log is in work/logs/.
+# resumes. Nothing is downloaded, except NVIDIA DLSS if you accept its licence when asked (--dlss accept or
+# --dlss decline changes the answer later). Needs Python 3.10 or newer (ps3recomp's tools); the game then needs a
+# Vulkan driver and the system's SDL2 (libSDL2-2.0.so.0). The log is in work/logs/.
 here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null ||
   { echo "run.sh: Python 3.10 or newer is needed (python3): install it from your distribution" >&2; exit 2; }

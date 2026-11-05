@@ -64,7 +64,7 @@ for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc"
 # The build in the wizard runs firstrun.py with options it has, and names its steps
 import firstrun  # noqa: E402
 opts = set(re.findall(r"' --([a-z-]+)", text))
-known = {n.replace("_", "-") for n, *_ in firstrun.INPUTS} | {"root", "status-file", "stop-file", "save-paths"}
+known = {n.replace("_", "-") for n, *_ in firstrun.INPUTS} | {"root", "status-file", "stop-file", "save-paths", "dlss"}
 check(opts and opts <= known, f"vekta.iss passes only firstrun.py's options: {sorted(opts - known)}")
 src = (ROOT / "tools/release/firstrun.py").read_text()
 for opt in ("root", "status-file", "stop-file", "save-paths"):
@@ -74,8 +74,19 @@ steps = {st.name for st in firstrun.STEPS}
 check(labels and labels <= steps and steps - labels <= {"stamp"}, f"StepLabel names firstrun.py's steps: {labels} {steps}")
 check("tools\\release\\firstrun.py" in text and "work\\toolchain-cache\\python\\python.exe" in text,
       "the wizard runs the payload's firstrun.py with its Python")
-for param in ("GAME", "EBOOT", "PSARC", "LIBSRE", "DEVFLASH"):
+for param in ("GAME", "EBOOT", "PSARC", "LIBSRE", "DEVFLASH", "DLSS"):
     check(f"Pick('{param}'" in text, f"/{param}= is taken on the command line")
+# NVIDIA DLSS: an optional page whose box, unticked unless accepted before, accepts the licence firstrun.py shows;
+# its answer goes to firstrun.py and work\dlss-choice, and setup ships no NVIDIA file
+m_url = re.search(r'#define DlssLicenseURL "([^"]+)"', text)
+check(m_url and m_url.group(1) == firstrun.DLSS_LICENSE_URL, "the setup links the licence firstrun.py names")
+check("I accept the NVIDIA DLSS SDK license" in text and "DlssCheck.Checked := CompareText(Pick('DLSS', 'Dlss'), "
+      "'accept') = 0" in text and "Checked := True" not in text, "the DLSS box is unticked unless accepted before")
+check("' --dlss ' + DlssChoice" in text and "work\\dlss-choice'), DlssChoice" in text and
+      "SetPreviousData(PreviousDataKey, 'Dlss'" in text, "the answer goes to firstrun.py, work\\dlss-choice and "
+      "the next setup")
+check(not re.search(r"(?im)^Source:.*(nvngx|nvsdk|dlss)", text), "setup names no NVIDIA file to install")
+check('Name: "{app}\\work\\toolchain-cache\\dlss-sdk"' in text, "the uninstaller removes the DLSS download")
 
 for rel in ("installer/run.cmd", "installer/play.cmd"):
     data = (ROOT / rel).read_bytes()

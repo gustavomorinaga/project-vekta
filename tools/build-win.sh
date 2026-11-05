@@ -11,6 +11,9 @@
 # KZ_WIN_TOOLCHAIN=system keeps the earlier route: the system clang and lld with the distribution's mingw-w64
 # sysroot and its SDL2, zlib and glslang packages (Arch: mingw-w64-gcc mingw-w64-sdl2 mingw-w64-zlib
 # mingw-w64-glslang), the host's Vulkan and FFmpeg headers, and the player's own FFmpeg DLLs.
+#
+# KZ_DLSS_SDK=<NVIDIA DLSS SDK> (default unset: no DLSS), on both routes: the exe has DLSS and nvngx_dlss.dll goes
+# beside it (docs/dev/upscalers.md). FSR 3.1 is built from third_party/fidelityfx-fsr3 on both.
 set -e
 KZ_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 . "$KZ_ROOT/tools/env.sh"
@@ -28,13 +31,15 @@ if [ "${KZ_WIN_TOOLCHAIN:-pinned}" = system ]; then
     # shellcheck disable=SC2086  # LIFT is a list of -D options
     cmake -G Ninja -S "$HERE" -B "$B" -DCMAKE_TOOLCHAIN_FILE="$KZ_ROOT/port/cmake/clang-mingw.cmake" \
         -DCMAKE_BUILD_TYPE=Release $LIFT -DPS3RECOMP_RSX_VULKAN=ON -DPS3RECOMP_VULKAN_INCLUDE_DIR="$H" \
-        -DKZ_FFMPEG_INCLUDE_DIR="$H" > /dev/null
+        -DKZ_FFMPEG_INCLUDE_DIR="$H" -DPS3RECOMP_DLSS_SDK="${KZ_DLSS_SDK:-}" > /dev/null
     ninja -C "$B" ${KZ_JOBS:+-j "$KZ_JOBS"}
     M=/usr/x86_64-w64-mingw32/bin
     for d in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll libssp-0.dll SDL2.dll zlib1.dll glslang.dll \
              libglslang-default-resource-limits.dll; do
         cp -u "$M/$d" "$B/"
     done
+    if [ -n "${KZ_DLSS_SDK:-}" ]; then cp -u "$KZ_DLSS_SDK/lib/Windows_x86_64/rel/nvngx_dlss.dll" "$B/"
+    else rm -f "$B/nvngx_dlss.dll"; fi
     ls "$B"/avcodec-*.dll > /dev/null 2>&1 || echo "note: no FFmpeg DLLs in $B (the movies are skipped)"
     echo "built: $B/KZ1HD.exe"
     exit 0

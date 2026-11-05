@@ -13,9 +13,11 @@ tools/ps3recomp-patched.sh, tools/lift.sh, tools/setup-vfs.sh, tools/build.sh an
 The paths are tools/env.sh's: each KZ_* variable from the environment, else work/paths.env (written by
 tools/install.sh), else its default under Game/ and work/. KZ_JOBS: parallel jobs (default: every core).
 KZ_PY: the Python that runs ps3recomp's lifters (default work/venv's, else this one: they need only the standard
-library). KZ_DLSS_SDK (Linux build, default unset: no DLSS): the NVIDIA DLSS SDK folder, as tools/release/firstrun.py's
-dlss step fetches it into work/toolchain-cache/dlss-sdk after the player accepted NVIDIA's licence; the build then has
-DLSS and its runtime library goes beside KZ1HD. Unset, the build has no DLSS and no NVIDIA file is left beside it. Exit 0 = done, 1 = a step failed (its reason on stderr). Standard library only, Python 3.8+.
+library). KZ_DLSS_SDK (default unset: no DLSS): the NVIDIA DLSS SDK folder, as tools/release/firstrun.py's dlss step
+fetches it into work/toolchain-cache/dlss-sdk after the player accepted NVIDIA's licence; the build then has DLSS and
+its runtime library goes beside the program (libnvidia-ngx-dlss.so.* beside KZ1HD, nvngx_dlss.dll beside KZ1HD.exe).
+Unset, the build has no DLSS and no NVIDIA file is left beside it. Exit 0 = done, 1 = a step failed (its reason on
+stderr). Standard library only, Python 3.8+.
 
 The patch step is adapted from Project Helghast's tools/ps3recomp-patched.sh (undecuple, MIT): the line-ending check
 and the content-only sync are theirs; the series file is ours.
@@ -445,28 +447,35 @@ def build_linux(e):
     print(f"build: {os.path.join(b, 'KZ1HD')}", flush=True)
 
 
-# The DLSS runtime library the Linux build puts beside KZ1HD (the SDK's own path; NGX looks in the program's folder).
-DLSS_RUNTIME = ("lib", "Linux_x86_64", "rel")
-DLSS_RUNTIME_RX = re.compile(r"^libnvidia-ngx-dlss\.so(\.[0-9.]+)?$")
+# The NGX library each build links and the DLSS runtime library it puts beside the program (the SDK's own paths; NGX
+# looks in the program's folder).
+DLSS_FILES = {
+    "linux": (("lib", "Linux_x86_64", "libnvsdk_ngx.a"), ("lib", "Linux_x86_64", "rel"),
+              re.compile(r"^libnvidia-ngx-dlss\.so(\.[0-9.]+)?$")),
+    "windows": (("lib", "Windows_x86_64", "x64", "nvsdk_ngx_s.lib"), ("lib", "Windows_x86_64", "rel"),
+                re.compile(r"^nvngx_dlss\.dll$", re.I)),
+}
 
 
-def dlss_defs(e):
+def dlss_defs(e, target="linux"):
     """-DPS3RECOMP_DLSS_SDK from KZ_DLSS_SDK; empty when unset, so a build reconfigured after a decline drops it."""
     sdk = e.get("KZ_DLSS_SDK") or ""
-    if sdk and not os.path.isfile(os.path.join(sdk, "lib", "Linux_x86_64", "libnvsdk_ngx.a")):
-        raise Fail(f"KZ_DLSS_SDK={sdk} is not the DLSS SDK (no lib/Linux_x86_64/libnvsdk_ngx.a)")
+    lib = os.path.join(*DLSS_FILES[target][0])
+    if sdk and not os.path.isfile(os.path.join(sdk, lib)):
+        raise Fail(f"KZ_DLSS_SDK={sdk} is not the DLSS SDK (no {lib.replace(os.sep, '/')})")
     return [f"-DPS3RECOMP_DLSS_SDK={sdk}"]
 
 
-def place_dlss(e, b):
+def place_dlss(e, b, target="linux"):
     """The DLSS runtime library beside the program when the build has DLSS; otherwise none is left there."""
+    _, runtime, rx = DLSS_FILES[target]
     sdk = e.get("KZ_DLSS_SDK") or ""
-    src = os.path.join(sdk, *DLSS_RUNTIME) if sdk else ""
-    want = {n for n in os.listdir(src) if DLSS_RUNTIME_RX.match(n)} if src and os.path.isdir(src) else set()
+    src = os.path.join(sdk, *runtime) if sdk else ""
+    want = {n for n in os.listdir(src) if rx.match(n)} if src and os.path.isdir(src) else set()
     if not os.path.isdir(b):
         return
     for n in os.listdir(b):
-        if DLSS_RUNTIME_RX.match(n) and n not in want:
+        if rx.match(n) and n not in want:
             os.remove(os.path.join(b, n))
     for n in sorted(want):
         copy_newer(os.path.join(src, n), os.path.join(b, n))
@@ -557,8 +566,9 @@ def build_windows(e):
          f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}", f"-DKZ_FFMPEG_INCLUDE_DIR={ff}",
          # the build's generators (gen_hle_nids.py and ps3recomp's): this Python, the bundled one on Windows,
          # which is neither registered nor on PATH
-         f"-DPython3_EXECUTABLE={sys.executable}"], e, "null")
+         f"-DPython3_EXECUTABLE={sys.executable}", *dlss_defs(e, "windows")], e, "null")
     ninja(e, b)
+    place_dlss(e, b, "windows")
     # SDL2 and the FFmpeg libraries the movie loader opens (not avdevice or avfilter).
     dll_dir = j(deps, "bin")
     for d in sorted(os.listdir(dll_dir)) if os.path.isdir(dll_dir) else []:

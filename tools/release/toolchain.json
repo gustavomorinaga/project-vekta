@@ -221,7 +221,7 @@
    "license_url": "https://github.com/NVIDIA/DLSS/blob/v{version}/LICENSE.txt",
    "consent": "dlss",
    "license_file": "LICENSE.txt",
-   "about": "The NVIDIA DLSS SDK files the DLSS path compiles and links against, and the DLSS runtime library that goes beside the program: fetched on the player's machine only, by tools/release/firstrun.py's dlss step after the player accepted NVIDIA's licence (tools/release/fetch_toolchain.py --set dlss-sdk --accept-license), into work/toolchain-cache/dlss-sdk/ laid out as the SDK folder. Never in this repository or a release asset (tools/release/assemble_payload.py refuses any NVIDIA file). Only the files for the build's OS (os) are fetched; the Windows ones are pinned for when the Windows build has DLSS. Headers: the ones rsx_vk_dlss.cpp includes, and what they include. Hashes checked against the v310.9.16 tag's files (2026-11-05).",
+   "about": "The NVIDIA DLSS SDK files the DLSS path compiles and links against, and the DLSS runtime library that goes beside the program: fetched on the player's machine only, by tools/release/firstrun.py's dlss step after the player accepted NVIDIA's licence (tools/release/fetch_toolchain.py --set dlss-sdk --accept-license), into work/toolchain-cache/dlss-sdk/ laid out as the SDK folder. Never in this repository or a release asset (tools/release/assemble_payload.py refuses any NVIDIA file). Only the files for the build's OS (os) are fetched: on Windows the static NGX loader the exe links (nvsdk_ngx_s.lib, built for MSVC; ps3recomp patch 2052 answers its MSVC runtime calls) and nvngx_dlss.dll. Headers: the ones rsx_vk_dlss.cpp includes, and what they include. Hashes checked against the v310.9.16 tag's files (2026-11-05).",
    "files": [
     {
      "path": "LICENSE.txt",
@@ -306,12 +306,6 @@
      "os": "windows",
      "size": 3782490,
      "sha256": "7b9a5239c1145af5f645ab472aa066f9ea79db36ac819562312aae69d65f3765"
-    },
-    {
-     "path": "lib/Windows_x86_64/x64/nvsdk_ngx_d.lib",
-     "os": "windows",
-     "size": 4090658,
-     "sha256": "bc43df9ec032004fde681d3e3afd01cde239e03a0125b822e88674c84287f99c"
     }
    ]
   }

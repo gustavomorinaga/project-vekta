@@ -15,9 +15,12 @@
 ; the full SHA-256 check is the build's first step). Start-menu entries (the game, "Verify and rebuild", "Open saves
 ; folder", "Make a support package", the project page, the uninstaller) and an optional desktop shortcut, all on
 ; the launcher "Project Vekta.exe", which builds on its first start when the build did not run here. It downloads
-; nothing.
+; nothing, except NVIDIA DLSS when the player ticks its box (unticked by default): the box accepts NVIDIA's DLSS SDK
+; licence, and the build then fetches the SDK's files from NVIDIA's repository on this machine (firstrun.py --dlss
+; accept; nvngx_dlss.dll goes beside KZ1HD.exe). The answer is kept in work\dlss-choice and offered again on an
+; upgrade; running setup again (or run.cmd --dlss accept|decline) changes it.
 ; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>
-; /LIBSRE=<file> [/DEVFLASH=<dir>]] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with all four
+; /LIBSRE=<file> [/DEVFLASH=<dir>]] [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with all four
 ; files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
 ; asks. The saves and settings go to %APPDATA%\Project Vekta, or with the "portable" task (/MERGETASKS="portable")
 ; to the install folder's work\vfs; vekta-install.ini [install] portable tells launch.py which. The uninstaller removes
@@ -52,6 +55,8 @@
 #define LauncherExe "Project Vekta.exe"
 #define SiteURL "https://gustavomorinaga.github.io/project-vekta/"
 #define IssuesURL "https://github.com/gustavomorinaga/project-vekta/issues"
+; firstrun.py's DLSS_LICENSE_URL (tools/tests/test_setup.py checks they agree)
+#define DlssLicenseURL "https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt"
 
 [Setup]
 AppId={{CB817149-6B3B-4EEA-88D9-BACB092686D5}
@@ -145,6 +150,9 @@ Filename: "{app}\run.cmd"; WorkingDir: "{app}"; Description: "&Build now in a co
 
 [UninstallDelete]
 Type: files; Name: "{app}\vekta-install.ini"
+; NVIDIA DLSS, when the player chose it: the SDK's files the build fetched, and the choice
+Type: filesandordirs; Name: "{app}\work\toolchain-cache\dlss-sdk"
+Type: files; Name: "{app}\work\dlss-choice"
 ; What the build made (tools/release/firstrun.py, tools/kzbuild.py); work\vfs keeps your saves and settings.
 Type: filesandordirs; Name: "{app}\work\lift"
 Type: filesandordirs; Name: "{app}\work\fw"
@@ -176,6 +184,8 @@ var
   GamePage: TInputDirWizardPage;
   FilesPage: TInputFileWizardPage;
   FlashPage: TInputQueryWizardPage;
+  DlssPage: TWizardPage;
+  DlssCheck: TNewCheckBox;
   FlashBrowse, StopBtn: TNewButton;
   StopFile: String;
   BuildRan, BuildOK, BuildStopped: Boolean;
@@ -382,6 +392,53 @@ begin
 end;
 
 { A value from the command line (/GAME= and the others), else the last install's }
+procedure DlssLinkClick(Sender: TObject);
+var
+  RC: Integer;
+begin
+  ShellExec('open', '{#DlssLicenseURL}', '', '', SW_SHOWNORMAL, ewNoWait, RC);
+end;
+
+{ The optional NVIDIA DLSS page: a box, unticked by default, that accepts NVIDIA's licence (with its link) }
+procedure CreateDlssPage(After: Integer);
+var
+  Text, Link: TNewStaticText;
+begin
+  DlssPage := CreateCustomPage(After, 'NVIDIA DLSS (optional)',
+    'An upscaler for NVIDIA RTX graphics cards, downloaded from NVIDIA if you want it.');
+  Text := TNewStaticText.Create(DlssPage);
+  Text.Parent := DlssPage.Surface;
+  Text.AutoSize := False;
+  Text.WordWrap := True;
+  Text.Width := DlssPage.SurfaceWidth;
+  Text.Height := ScaleY(84);
+  Text.Caption := 'Project Vekta builds with AMD FSR 3.1 as its temporal upscaler. NVIDIA DLSS is NVIDIA''s ' +
+    'software under NVIDIA''s licence, not this project''s, and this installer does not include it: with the box ' +
+    'ticked, the build downloads the DLSS SDK''s files from NVIDIA''s own repository and builds DLSS in. Left ' +
+    'unticked, nothing of NVIDIA''s is downloaded and DLSS shows as "(not built)" in the game''s PC menu. Run ' +
+    'setup again to change this.';
+  DlssCheck := TNewCheckBox.Create(DlssPage);
+  DlssCheck.Parent := DlssPage.Surface;
+  DlssCheck.Top := Text.Top + Text.Height + ScaleY(8);
+  DlssCheck.Width := DlssPage.SurfaceWidth;
+  DlssCheck.Height := ScaleY(34);
+  DlssCheck.Caption := '&Download NVIDIA DLSS (NVIDIA RTX GPUs). I accept the NVIDIA DLSS SDK license';
+  Link := TNewStaticText.Create(DlssPage);
+  Link.Parent := DlssPage.Surface;
+  Link.Top := DlssCheck.Top + DlssCheck.Height + ScaleY(6);
+  Link.Caption := '{#DlssLicenseURL}';
+  Link.Font.Style := Link.Font.Style + [fsUnderline];
+  Link.Font.Color := clHighlight;
+  Link.Cursor := crHand;
+  Link.OnClick := @DlssLinkClick;
+end;
+
+{ firstrun.py's --dlss answer: the box, or /DLSS=accept on a silent install }
+function DlssChoice: String;
+begin
+  if DlssCheck.Checked then Result := 'accept' else Result := 'decline';
+end;
+
 function Pick(Param, Prev: String): String;
 begin
   Result := ExpandConstant('{param:' + Param + '|}');
@@ -398,7 +455,7 @@ begin
   FilesPage := CreateInputFilePage(GamePage.ID, 'Your decrypted files',
     'Three files made from your own game and PS3 firmware.',
     'Decrypted, as docs/GETTING-FILES.md says: not EBOOT.BIN, not the .edat archive, not the .sprx. This installer ' +
-    'includes no decryption tools and downloads nothing; the files are only read.');
+    'includes no decryption tools and downloads nothing for them; the files are only read.');
   FilesPage.Add('EBOOT.elf (the game''s executable, decrypted):', 'ELF files (*.elf)|*.elf|All files|*.*', '.elf');
   FilesPage.Add('data_ps3.psarc (the data archive, decrypted; about 3 GB):', 'PSARC files (*.psarc)|*.psarc|All files|*.*', '.psarc');
   FilesPage.Add('libsre.prx (SPURS, from PS3 system software 4.93, decrypted):', 'PRX files (*.prx)|*.prx|All files|*.*', '.prx');
@@ -416,11 +473,14 @@ begin
   FlashBrowse.Height := FlashPage.Edits[0].Height + ScaleY(2);
   FlashBrowse.Caption := 'B&rowse...';
   FlashBrowse.OnClick := @FlashBrowseClick;
+  CreateDlssPage(FlashPage.ID);
   GamePage.Values[0] := Pick('GAME', 'Game');
   FilesPage.Values[0] := Pick('EBOOT', 'Eboot');
   FilesPage.Values[1] := Pick('PSARC', 'Psarc');
   FilesPage.Values[2] := Pick('LIBSRE', 'Libsre');
   FlashPage.Values[0] := Pick('DEVFLASH', 'DevFlash');
+  { unticked unless the player accepted before (an upgrade) or passed /DLSS=accept }
+  DlssCheck.Checked := CompareText(Pick('DLSS', 'Dlss'), 'accept') = 0;
 end;
 
 procedure RegisterPreviousData(PreviousDataKey: Integer);
@@ -430,6 +490,7 @@ begin
   SetPreviousData(PreviousDataKey, 'Psarc', FilesPage.Values[1]);
   SetPreviousData(PreviousDataKey, 'Libsre', FilesPage.Values[2]);
   SetPreviousData(PreviousDataKey, 'DevFlash', FlashPage.Values[0]);
+  SetPreviousData(PreviousDataKey, 'Dlss', DlssChoice);
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -550,7 +611,8 @@ end;
 { Silent installs never press Next: the pages are skipped, and the values are checked here instead }
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := WizardSilent and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID));
+  Result := WizardSilent and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID) or
+    (PageID = DlssPage.ID));
 end;
 
 { All four required files, checked; silent installs with any of them missing build nothing }
@@ -633,7 +695,7 @@ begin
   Status := ExpandConstant('{tmp}\firstrun.status');
   StopFile := ExpandConstant('{tmp}\firstrun.stop');
   Params := Quote(ExpandConstant('{app}\tools\release\firstrun.py')) + ' --root ' + Quote(ExpandConstant('{app}')) +
-    PathArgs + ' --status-file ' + Quote(Status) + ' --stop-file ' + Quote(StopFile);
+    PathArgs + ' --dlss ' + DlssChoice + ' --status-file ' + Quote(Status) + ' --stop-file ' + Quote(StopFile);
   Log('firstrun: ' + Py + ' ' + Params);
   BuildRan := True;
   Page := CreateOutputProgressPage('Building {#AppName}', 'From your own game files: about five minutes.');
@@ -712,6 +774,11 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep <> ssPostInstall then Exit;
+  { The DLSS answer, for the build here or the launcher's first start (firstrun.py reads work\dlss-choice) }
+  if SaveStringToFile(ExpandConstant('{app}\work\dlss-choice'), DlssChoice + #10, False) then
+    Log('dlss: ' + DlssChoice)
+  else
+    Log('dlss: the choice could not be saved');
   SavePaths;
   if not WizardIsTaskSelected('buildnow') then Exit;
   if FilesReady then

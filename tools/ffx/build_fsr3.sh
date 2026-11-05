@@ -1,8 +1,12 @@
 #!/bin/bash
 # Builds the FidelityFX SDK's FSR 3 upscaler and VK backend into one static library for
-# ps3recomp's FSR 3 path (CMake: -DPS3RECOMP_FFX_DIR=<out>), on Linux.
+# ps3recomp's FSR 3 path (CMake: -DPS3RECOMP_FFX_DIR=<out>), on Linux, or for the Windows exe.
 #
-#   tools/ffx/build_fsr3.sh <FidelityFX-SDK checkout (v1.1.4)> <out dir>
+#   tools/ffx/build_fsr3.sh <FidelityFX-SDK checkout (v1.1.4)> <out dir> [windows]
+#
+# With "windows" the library is cross-compiled for the Windows exe (tools/build-win.sh, -DPS3RECOMP_FFX_DIR=<out>
+# in place of the vendored build): the system clang with the mingw-w64 sysroot, as port/cmake/clang-mingw.cmake.
+# There wchar_t is 2 bytes and the MSVC calls exist, so only the scratch alignment applies.
 #
 # The SDK's shaders are compiled by its own FidelityFX_SC.exe (Windows only), run here under
 # Wine in a prefix of its own. The SDK targets Windows; ffx_linux_compat.h stands in for the
@@ -12,6 +16,7 @@
 set -eu
 SDK=$(cd "$1/sdk" && pwd); OUT=$(mkdir -p "$2" && cd "$2" && pwd)
 here=$(cd "$(dirname "$0")" && pwd)
+WIN=$([ "${3:-}" = windows ] && echo 1 || true)
 G=$SDK/include/FidelityFX/gpu
 mkdir -p "$OUT/perm" "$OUT/obj" "$OUT/src" "$OUT/lib"
 
@@ -42,9 +47,9 @@ done
 
 # 2. headers: the SDK's, with bigger contexts
 rm -rf "$OUT/include"; cp -r "$SDK/include" "$OUT/include"
-sed -i 's|#define FFX_SDK_DEFAULT_CONTEXT_SIZE (1024 \* 128)|#define FFX_SDK_DEFAULT_CONTEXT_SIZE (1024 * 512)   /* Linux: wchar_t is 4 bytes */|' \
+[ -n "$WIN" ] || sed -i 's|#define FFX_SDK_DEFAULT_CONTEXT_SIZE (1024 \* 128)|#define FFX_SDK_DEFAULT_CONTEXT_SIZE (1024 * 512)   /* Linux: wchar_t is 4 bytes */|' \
     "$OUT/include/FidelityFX/host/ffx_types.h"
-grep -q "1024 \* 512" "$OUT/include/FidelityFX/host/ffx_types.h"
+[ -n "$WIN" ] || grep -q "1024 \* 512" "$OUT/include/FidelityFX/host/ffx_types.h"
 
 # 3. the VK backend with its scratch arrays aligned
 sed -E -e '/ArraySize *= *FFX_ALIGN_UP/ s/, sizeof\(uint32_t\)\)/, 64)/' \
@@ -54,13 +59,20 @@ sed -E -e '/ArraySize *= *FFX_ALIGN_UP/ s/, sizeof\(uint32_t\)\)/, 64)/' \
 grep -q "return 64 + FFX_ALIGN_UP" "$OUT/src/ffx_vk.cpp"
 
 # 4. compile
-CXX=${CXX:-clang++}
+CXX=${CXX:-clang++}; AR="ar"; FLAGS=(-fPIC -include "$here/ffx_linux_compat.h")
+if [ -n "$WIN" ]; then
+    S=/usr/x86_64-w64-mingw32; GV=$(basename "$(ls -d /usr/lib/gcc/x86_64-w64-mingw32/* | head -1)")
+    # the host's Vulkan headers, copied alone (as build-win.sh does)
+    [ -d "$OUT/vk/vulkan" ] || { mkdir -p "$OUT/vk"; cp -r /usr/include/vulkan /usr/include/vk_video "$OUT/vk/"; }
+    AR="llvm-ar"; FLAGS=(--target=x86_64-w64-windows-gnu --sysroot="$S" -isystem "$S/include/c++/$GV"
+                       -isystem "$S/include/c++/$GV/x86_64-w64-mingw32" -I"$OUT/vk" -include new -include cmath -include cwchar -Dswprintf_s=swprintf)
+fi
 for f in "$OUT/src/ffx_vk.cpp" src/components/fsr3upscaler/ffx_fsr3upscaler.cpp src/backends/shared/ffx_shader_blobs.cpp \
          src/backends/shared/blob_accessors/ffx_fsr3upscaler_shaderblobs.cpp src/shared/ffx_assert.cpp src/shared/ffx_message.cpp \
          src/shared/ffx_object_management.cpp src/shared/ffx_breadcrumbs_list.cpp; do
-    $CXX -std=c++17 -O2 -fPIC -c -include "$here/ffx_linux_compat.h" -DFFX_FSR3UPSCALER -DFFX_GCC \
+    $CXX -std=c++17 -O2 -c "${FLAGS[@]}" -DFFX_FSR3UPSCALER -DFFX_GCC \
         -I"$OUT/include" -I"$OUT/include/FidelityFX/host" -Isrc/shared -Isrc/backends/shared -Isrc/backends/vk \
         -Isrc/components -I"$OUT/perm" "$f" -o "$OUT/obj/$(basename "$f" .cpp).o"
 done
-rm -f "$OUT/lib/libffx_fsr3_vk.a"; ar rcs "$OUT/lib/libffx_fsr3_vk.a" "$OUT"/obj/*.o
+rm -f "$OUT/lib/libffx_fsr3_vk.a"; $AR rcs "$OUT/lib/libffx_fsr3_vk.a" "$OUT"/obj/*.o
 echo "built $OUT/lib/libffx_fsr3_vk.a: configure with -DPS3RECOMP_FFX_DIR=$OUT"
