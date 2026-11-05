@@ -82,6 +82,39 @@ if(KZ_MARCH AND NOT MSVC)
     add_compile_options(-march=${KZ_MARCH})
 endif()
 
+# ENHANCEMENT: AMD FSR 3.1 as a temporal upscaler (docs/dev/upscalers.md). The FidelityFX SDK's FSR 3 upscaler and
+# Vulkan backend are built here from third_party/fidelityfx-fsr3 (its shaders compiled ahead by
+# tools/ffx/build_fsr3.sh; README.md there), and ps3recomp links the target (patch 2051). PS3RECOMP_FFX_DIR=<another
+# build> takes its place; KZ_FSR3=OFF builds without FSR 3.1. Linux only for now: the Windows build has no temporal
+# upscalers yet.
+option(KZ_FSR3 "Build AMD FSR 3.1 from third_party/fidelityfx-fsr3 (Linux)" ON)
+if(KZ_FSR3 AND NOT WIN32 AND NOT PS3RECOMP_FFX_DIR AND PS3RECOMP_RSX_VULKAN)
+    set(_ffx "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/fidelityfx-fsr3")
+    add_library(kz_ffx_fsr3 STATIC
+        "${_ffx}/src/backends/vk/ffx_vk.cpp"
+        "${_ffx}/src/components/fsr3upscaler/ffx_fsr3upscaler.cpp"
+        "${_ffx}/src/backends/shared/ffx_shader_blobs.cpp"
+        "${_ffx}/src/backends/shared/blob_accessors/ffx_fsr3upscaler_shaderblobs.cpp"
+        "${_ffx}/src/shared/ffx_assert.cpp"
+        "${_ffx}/src/shared/ffx_message.cpp"
+        "${_ffx}/src/shared/ffx_object_management.cpp"
+        "${_ffx}/src/shared/ffx_breadcrumbs_list.cpp")
+    target_include_directories(kz_ffx_fsr3 PUBLIC "${_ffx}/include"
+        PRIVATE "${_ffx}/include/FidelityFX/host" "${_ffx}/src/shared" "${_ffx}/src/backends/shared"
+                "${_ffx}/src/backends/vk" "${_ffx}/src/components" "${_ffx}/perm")
+    if(PS3RECOMP_VULKAN_INCLUDE_DIR)
+        target_include_directories(kz_ffx_fsr3 PRIVATE "${PS3RECOMP_VULKAN_INCLUDE_DIR}")
+    endif()
+    target_compile_definitions(kz_ffx_fsr3 PRIVATE FFX_FSR3UPSCALER FFX_GCC)
+    # the SDK is written for MSVC: ffx_linux_compat.h stands in for the calls it uses; its warnings are not ours
+    target_compile_options(kz_ffx_fsr3 PRIVATE -O2 -w
+        -include "${CMAKE_CURRENT_SOURCE_DIR}/../../tools/ffx/ffx_linux_compat.h")
+    set_target_properties(kz_ffx_fsr3 PROPERTIES CXX_STANDARD 17 POSITION_INDEPENDENT_CODE ON)
+    set(PS3RECOMP_FFX_TARGET kz_ffx_fsr3 CACHE STRING "CMake target of the FidelityFX FSR 3 library" FORCE)
+elseif(PS3RECOMP_FFX_TARGET STREQUAL "kz_ffx_fsr3")
+    set(PS3RECOMP_FFX_TARGET "" CACHE STRING "CMake target of the FidelityFX FSR 3 library" FORCE)
+endif()
+
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 # Line tables for the runtime too (KZ_PROF reports and gdb), and -O2: the

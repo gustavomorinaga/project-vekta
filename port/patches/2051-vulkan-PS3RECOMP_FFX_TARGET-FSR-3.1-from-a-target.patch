@@ -1,0 +1,53 @@
+From 813ff732dd3cc5c22d82d965bf7f90133f6e915b Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 22:00:22 -0300
+Subject: [PATCH] vulkan: PS3RECOMP_FFX_TARGET, FSR 3.1 from a library target
+
+Besides PS3RECOMP_FFX_DIR (an SDK build with lib/libffx_fsr3_vk.a), the
+FSR 3 path takes PS3RECOMP_FFX_TARGET: a static library target the
+including project defines before add_subdirectory, built from the
+FidelityFX sources, whose interface carries the include folder. A port can
+then build the library with its own toolchain from sources it keeps,
+without a prebuilt archive.
+---
+ CMakeLists.txt | 18 +++++++++++++++---
+ 1 file changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7091cdd..d5a78a2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -223,18 +223,30 @@ if(PS3RECOMP_RSX_VULKAN)
+     # into one static library with its shaders (the SDK's shader compiler is a
+     # Windows program), next to the SDK's include/ folder:
+     # PS3RECOMP_FFX_DIR/include, PS3RECOMP_FFX_DIR/lib/libffx_fsr3_vk.a.
++    # Or PS3RECOMP_FFX_TARGET: a library target the including project builds
++    # from the same sources, whose interface carries the include folder.
+     set(PS3RECOMP_FFX_DIR "" CACHE PATH "FidelityFX FSR 3 build (include/, lib/libffx_fsr3_vk.a)")
+-    if(PS3RECOMP_FFX_DIR)
++    set(PS3RECOMP_FFX_TARGET "" CACHE STRING "CMake target of the FidelityFX FSR 3 library (instead of PS3RECOMP_FFX_DIR)")
++    if(PS3RECOMP_FFX_TARGET)
++        if(NOT TARGET ${PS3RECOMP_FFX_TARGET})
++            message(FATAL_ERROR "PS3RECOMP_FFX_TARGET: no target ${PS3RECOMP_FFX_TARGET}")
++        endif()
++        target_link_libraries(ps3recomp_runtime PUBLIC ${PS3RECOMP_FFX_TARGET})
++        set(_ffx_from "target ${PS3RECOMP_FFX_TARGET}")
++    elseif(PS3RECOMP_FFX_DIR)
+         if(NOT EXISTS "${PS3RECOMP_FFX_DIR}/lib/libffx_fsr3_vk.a")
+             message(FATAL_ERROR "PS3RECOMP_FFX_DIR: ${PS3RECOMP_FFX_DIR}/lib/libffx_fsr3_vk.a not found")
+         endif()
+         target_include_directories(ps3recomp_runtime PRIVATE "${PS3RECOMP_FFX_DIR}/include")
+-        target_compile_definitions(ps3recomp_runtime PRIVATE PS3RECOMP_FSR3 FFX_GCC)
+         target_link_libraries(ps3recomp_runtime PUBLIC "${PS3RECOMP_FFX_DIR}/lib/libffx_fsr3_vk.a")
++        set(_ffx_from "${PS3RECOMP_FFX_DIR}")
++    endif()
++    if(_ffx_from)
++        target_compile_definitions(ps3recomp_runtime PRIVATE PS3RECOMP_FSR3 FFX_GCC)
+         # the SDK's headers use C++20 (std::popcount)
+         set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_vk_fsr3.cpp"
+                                     TARGET_DIRECTORY ps3recomp_runtime PROPERTIES COMPILE_OPTIONS "-std=c++20")
+-        message(STATUS "  FSR 3:        FidelityFX from ${PS3RECOMP_FFX_DIR}")
++        message(STATUS "  FSR 3:        FidelityFX from ${_ffx_from}")
+     endif()
+ endif()
+ 

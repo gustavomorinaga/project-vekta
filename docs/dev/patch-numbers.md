@@ -135,3 +135,4 @@ private series: 0004 and 2039 now come from the private branch, made on top of t
 | 0116 | 2049 | vulkan: rsx_vulkan_temporal_built, the temporal upscalers this build has |
 | 0117 | 2050 | vulkan: per-object motion pairs by the rows a program reads, and is on by default |
 | (none) | 0005 | tests: upstream's host tests follow patches 3029 and 3031 (written in this tree) |
+| (none) | 2051 | vulkan: PS3RECOMP_FFX_TARGET, FSR 3.1 from a library target (written in this tree) |
