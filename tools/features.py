@@ -114,7 +114,7 @@ def markdown(checked, rows):
             out.append(table_row(r["feature"], r["status"], r["evidence"]))
     out += [
         "",
-        "Planned items (post-processing toggles, HDR, FSR 3.1 and DLSS, an in-game key remapping page, narrower aspect",
+        "Planned items (post-processing toggles, HDR, FSR 3.1 and DLSS on Windows, an in-game key remapping page, narrower aspect",
         "ratios, a steady 144 fps): [ROADMAP.md](ROADMAP.md).",
         "",
         "## 3. The port itself",

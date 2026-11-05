@@ -182,8 +182,10 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [ ] Aspect ratios narrower than 16:9 (16:10, 4:3): today 16:9 with bars
 - [ ] HDR (brightness, paper white, tone mapping)
 - [ ] Shadows: resolution and distance; level of detail
-- [ ] Motion vectors and camera jitter
-- [ ] FSR 3.1, DLSS Super Resolution and DLAA
+- [x] Motion vectors and camera jitter (camera and per-object motion, for the temporal upscalers)
+- [x] FSR 3.1, DLSS Super Resolution and DLAA, on Linux: FSR 3.1 built in, DLSS downloaded from NVIDIA at install when
+      the player accepts its licence ([dev/upscalers.md](dev/upscalers.md))
+- [ ] FSR 3.1 and DLSS in the Windows build
 - [ ] Dynamic resolution scale
 - [ ] FSR Frame Generation
 - [x] Debug menu: `KZ_DEBUG_MENU=1` turns on the game's own Debug Options in the pause menu (God Mode, Next Level, ...)

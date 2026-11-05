@@ -209,5 +209,111 @@
    "license": "LGPL-2.1-or-later (the lgpl-shared build: headers and shared libraries; its source is named in the build's own files)",
    "about": "FFmpeg 9 for Linux, the same BtbN autobuild as the Windows pin: the headers the movie loader compiles against and the shared libraries it loads from beside the program (libavcodec.so.63 and the rest), so the movies play whatever FFmpeg the system has. Hash: by download, 2026-11-02. When BtbN removes the dated build, move both FFmpeg pins together."
   }
+ ],
+ "file_sets": [
+  {
+   "name": "dlss-sdk",
+   "version": "310.9.16",
+   "pin": "confirmed",
+   "release_page": "https://github.com/NVIDIA/DLSS/releases/tag/v310.9.16",
+   "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/v{version}/{path}",
+   "license": "NVIDIA RTX SDKs License (LICENSE.txt of the SDK): proprietary, not redistributable here",
+   "license_url": "https://github.com/NVIDIA/DLSS/blob/v{version}/LICENSE.txt",
+   "consent": "dlss",
+   "license_file": "LICENSE.txt",
+   "about": "The NVIDIA DLSS SDK files the DLSS path compiles and links against, and the DLSS runtime library that goes beside the program: fetched on the player's machine only, by tools/release/firstrun.py's dlss step after the player accepted NVIDIA's licence (tools/release/fetch_toolchain.py --set dlss-sdk --accept-license), into work/toolchain-cache/dlss-sdk/ laid out as the SDK folder. Never in this repository or a release asset (tools/release/assemble_payload.py refuses any NVIDIA file). Only the files for the build's OS (os) are fetched; the Windows ones are pinned for when the Windows build has DLSS. Headers: the ones rsx_vk_dlss.cpp includes, and what they include. Hashes checked against the v310.9.16 tag's files (2026-11-05).",
+   "files": [
+    {
+     "path": "LICENSE.txt",
+     "os": "any",
+     "size": 26620,
+     "sha256": "d4216e39ebef5f9b50a6712ebb37beeb5379862a67733a9999c651f21592aaf0"
+    },
+    {
+     "path": "include/nvsdk_ngx.h",
+     "os": "any",
+     "size": 40289,
+     "sha256": "dc38e7467cf415379c9d12ae1b6e4a494c453ed92720fb53e92aecb523e7b848"
+    },
+    {
+     "path": "include/nvsdk_ngx_defs.h",
+     "os": "any",
+     "size": 44313,
+     "sha256": "ea23f33497cd274860d1c25a97644fce807dcb0037c594547203343103fad03e"
+    },
+    {
+     "path": "include/nvsdk_ngx_defs_vk.h",
+     "os": "any",
+     "size": 3196,
+     "sha256": "0a24d0861ace7d6b9362a67b7f08bea1b33ea123c5ce730b19133de8a891d031"
+    },
+    {
+     "path": "include/nvsdk_ngx_helpers.h",
+     "os": "any",
+     "size": 5317,
+     "sha256": "5bcbadfe7478b802cf6d3aca4dc5ddd7d0889b99726e69c63f9e9bd555f44471"
+    },
+    {
+     "path": "include/nvsdk_ngx_helpers_vk.h",
+     "os": "any",
+     "size": 19720,
+     "sha256": "c192bff72138f12f770db48e12c1d8f712dfc81ea0e8e055ebb27d8dd1b31623"
+    },
+    {
+     "path": "include/nvsdk_ngx_params.h",
+     "os": "any",
+     "size": 7744,
+     "sha256": "943bc8cc5cdae03b6303016fbad3183636f2335ae27a2d18776798c3b4efabbc"
+    },
+    {
+     "path": "include/nvsdk_ngx_vk.h",
+     "os": "any",
+     "size": 38382,
+     "sha256": "2d364ce7132881eb669e9498fd570d74cba563b1fbebc82c235f8e1ad2dd8b6d"
+    },
+    {
+     "path": "include/nvsdk_ngx_helpers_d3d.h",
+     "os": "any",
+     "size": 31976,
+     "sha256": "ec75224f36ed6580baaf250fa83620405ad81a1d98c2c436654a0c9cf6a6b8ba"
+    },
+    {
+     "path": "include/nvsdk_ngx_helpers_cuda.h",
+     "os": "any",
+     "size": 3593,
+     "sha256": "f2851a76107bdf4fbcb7b261f3c35573c312d8ecb4bc18fb02d9e2cec7705042"
+    },
+    {
+     "path": "lib/Linux_x86_64/libnvsdk_ngx.a",
+     "os": "linux",
+     "size": 89002,
+     "sha256": "d3c50bb0d9624fc35e502a8e929b8fc1e2b505017ebdb84c0d5b627e11a235df"
+    },
+    {
+     "path": "lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.310.9.16",
+     "os": "linux",
+     "size": 59481944,
+     "sha256": "30982c937afed85c96b8d313323de9a650a2eec6de1bb0f714b21750f4ce98f6"
+    },
+    {
+     "path": "lib/Windows_x86_64/rel/nvngx_dlss.dll",
+     "os": "windows",
+     "size": 58956912,
+     "sha256": "d00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e"
+    },
+    {
+     "path": "lib/Windows_x86_64/x64/nvsdk_ngx_s.lib",
+     "os": "windows",
+     "size": 3782490,
+     "sha256": "7b9a5239c1145af5f645ab472aa066f9ea79db36ac819562312aae69d65f3765"
+    },
+    {
+     "path": "lib/Windows_x86_64/x64/nvsdk_ngx_d.lib",
+     "os": "windows",
+     "size": 4090658,
+     "sha256": "bc43df9ec032004fde681d3e3afd01cde239e03a0125b822e88674c84287f99c"
+    }
+   ]
+  }
  ]
 }

@@ -13,7 +13,9 @@ tools/ps3recomp-patched.sh, tools/lift.sh, tools/setup-vfs.sh, tools/build.sh an
 The paths are tools/env.sh's: each KZ_* variable from the environment, else work/paths.env (written by
 tools/install.sh), else its default under Game/ and work/. KZ_JOBS: parallel jobs (default: every core).
 KZ_PY: the Python that runs ps3recomp's lifters (default work/venv's, else this one: they need only the standard
-library). Exit 0 = done, 1 = a step failed (its reason on stderr). Standard library only, Python 3.8+.
+library). KZ_DLSS_SDK (Linux build, default unset: no DLSS): the NVIDIA DLSS SDK folder, as tools/release/firstrun.py's
+dlss step fetches it into work/toolchain-cache/dlss-sdk after the player accepted NVIDIA's licence; the build then has
+DLSS and its runtime library goes beside KZ1HD. Unset, the build has no DLSS and no NVIDIA file is left beside it. Exit 0 = done, 1 = a step failed (its reason on stderr). Standard library only, Python 3.8+.
 
 The patch step is adapted from Project Helghast's tools/ps3recomp-patched.sh (undecuple, MIT): the line-ending check
 and the content-only sync are theirs; the series file is ours.
@@ -437,9 +439,37 @@ def build_linux(e):
     # -O1 for the base flags, as in the maintainer's build; the lifted PPU code gets KZ_PPU_OPT (-O2) on its own.
     run(["cmake", "-G", "Ninja", "-S", os.path.join(e["KZ_ROOT"], "port", "kz1hd"), "-B", b,
          "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++", "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1",
-         f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}", "-DPS3RECOMP_RSX_VULKAN=ON", *defs], e, "null")
+         f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}", "-DPS3RECOMP_RSX_VULKAN=ON", *dlss_defs(e), *defs], e, "null")
     ninja(e, b)
+    place_dlss(e, b)
     print(f"build: {os.path.join(b, 'KZ1HD')}", flush=True)
+
+
+# The DLSS runtime library the Linux build puts beside KZ1HD (the SDK's own path; NGX looks in the program's folder).
+DLSS_RUNTIME = ("lib", "Linux_x86_64", "rel")
+DLSS_RUNTIME_RX = re.compile(r"^libnvidia-ngx-dlss\.so(\.[0-9.]+)?$")
+
+
+def dlss_defs(e):
+    """-DPS3RECOMP_DLSS_SDK from KZ_DLSS_SDK; empty when unset, so a build reconfigured after a decline drops it."""
+    sdk = e.get("KZ_DLSS_SDK") or ""
+    if sdk and not os.path.isfile(os.path.join(sdk, "lib", "Linux_x86_64", "libnvsdk_ngx.a")):
+        raise Fail(f"KZ_DLSS_SDK={sdk} is not the DLSS SDK (no lib/Linux_x86_64/libnvsdk_ngx.a)")
+    return [f"-DPS3RECOMP_DLSS_SDK={sdk}"]
+
+
+def place_dlss(e, b):
+    """The DLSS runtime library beside the program when the build has DLSS; otherwise none is left there."""
+    sdk = e.get("KZ_DLSS_SDK") or ""
+    src = os.path.join(sdk, *DLSS_RUNTIME) if sdk else ""
+    want = {n for n in os.listdir(src) if DLSS_RUNTIME_RX.match(n)} if src and os.path.isdir(src) else set()
+    if not os.path.isdir(b):
+        return
+    for n in os.listdir(b):
+        if DLSS_RUNTIME_RX.match(n) and n not in want:
+            os.remove(os.path.join(b, n))
+    for n in sorted(want):
+        copy_newer(os.path.join(src, n), os.path.join(b, n))
 
 
 LINUX_PINNED = ("zig", "cmake-linux", "ninja-linux", "sdl2-src", "ffmpeg-linux", "zlib", "glslang", "vulkan-headers")
@@ -465,8 +495,9 @@ def build_linux_pinned(e):
          "-DPS3RECOMP_RSX_VULKAN=ON", f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}",
          f"-DKZ_FFMPEG_INCLUDE_DIR={j(deps, 'include')}", f"-DPython3_EXECUTABLE={sys.executable}",
          # the link-only SDL2 in linux-deps must never be found at run time: no build RPATH
-         "-DCMAKE_SKIP_BUILD_RPATH=ON", *lift_defs(e)], e, "null")
+         "-DCMAKE_SKIP_BUILD_RPATH=ON", *dlss_defs(e), *lift_defs(e)], e, "null")
     ninja(e, b)
+    place_dlss(e, b)
     lib = j(b, "lib")
     os.makedirs(lib, exist_ok=True)
     for f in sorted(os.listdir(j(deps, "ffmpeg"))):

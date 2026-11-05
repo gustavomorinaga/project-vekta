@@ -8,11 +8,12 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
-- Temporal upscalers (ENHANCEMENT, off by default): NVIDIA DLSS Super Resolution and DLAA, and AMD FSR 3.1, chosen
-  on the PC page ("Temporal Upscaler (on restart)") or with `PS3RECOMP_TEMPORAL`, with the camera jittered and
-  per-object motion vectors; the HUD is drawn at the output resolution. Built in only when the SDKs are given to
-  CMake (`tools/ffx/build_fsr3.sh` builds the FSR 3.1 library); patches 2045 to 2050,
-  [docs/dev/upscalers.md](docs/dev/upscalers.md).
+- Temporal upscalers on Linux (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution and DLAA,
+  chosen on the PC page ("Temporal Upscaler (on restart)") or with `PS3RECOMP_TEMPORAL`, with the camera jittered and
+  per-object motion vectors; the HUD is drawn at the output resolution (patches 2045 to 2051,
+  [docs/dev/upscalers.md](docs/dev/upscalers.md)). FSR 3.1 is in every Linux build, from the FidelityFX SDK's files
+  vendored in `third_party/fidelityfx-fsr3/`. DLSS is downloaded from NVIDIA on your machine only if you accept
+  NVIDIA's DLSS SDK licence when `tools/install.sh` asks (`--dlss accept|decline`); no release carries NVIDIA's files.
 - The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).
 - Button prompts: Kenney's Input Prompts (CC0) in the game's own finish, and pad pictures of our own for Xbox,
   Switch Pro and keyboard on the Controls screen, by the pad last touched (patch 4013).

@@ -22,6 +22,13 @@ step that was stopped or failed is where the next run starts. The log is in `wor
 as `~`). Without questions: `tools/release/firstrun.py --eboot PATH ...` (`--help`, `--dry-run` shows the plan).
 It is `tools/release/firstrun.py`, after Project Pyrrhus's and Project Helghast's first-run builder.
 
+It also asks once whether to download NVIDIA DLSS (Linux): yes means you accept NVIDIA's DLSS SDK licence
+(<https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt>; the question shows the text it downloaded), and the build
+then fetches the SDK's files from NVIDIA's repository, checks them against the pins in `tools/release/toolchain.json`,
+builds DLSS in and puts `libnvidia-ngx-dlss.so.310.9.16` beside `work/build/KZ1HD`. No means no download and no DLSS
+(the PC menu shows it as "(not built)"); AMD FSR 3.1 is built either way. The answer is kept in `work/dlss-choice`;
+to change it, run `tools/install.sh --dlss accept` or `--dlss decline`.
+
 ## 1. Get the code
 
 ```sh
@@ -94,6 +101,11 @@ tools/build.sh               # work/build/KZ1HD
 - These scripts run `tools/kzbuild.py patch`, `lift`, `vfs` and `build`: the steps are Python, so the same code will
   build on Windows (`tools/kzbuild.py env` prints the paths they use).
 - `KZ_MARCH` sets the CPU target (default `x86-64-v3`, AVX2; `x86-64-v4` for AVX-512 machines).
+- Temporal upscalers (Linux): AMD FSR 3.1 is built from `third_party/fidelityfx-fsr3` (`-DKZ_FSR3=OFF` leaves it
+  out). `KZ_DLSS_SDK=<the NVIDIA DLSS SDK folder>` builds DLSS in and copies its runtime library beside the program;
+  `tools/release/fetch_toolchain.py --set dlss-sdk --accept-license` fetches that folder into
+  `work/toolchain-cache/dlss-sdk` (the option says you accept NVIDIA's licence). See
+  [dev/upscalers.md](dev/upscalers.md).
 - After changing `port/patches/`, run `tools/ps3recomp-patched.sh` and `tools/lift.sh` again (the lifters are
   patched too), then `tools/build.sh`.
 - Optional, about 15 minutes: `tools/pgo.sh` plays an instrumented build into Level 1 for ten minutes and rebuilds

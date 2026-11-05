@@ -589,6 +589,7 @@ begin
   else if Name = 'patch' then Result := 'Patching ps3recomp'
   else if Name = 'lift' then Result := 'Translating the game''s code'
   else if Name = 'vfs' then Result := 'Preparing the game folder'
+  else if Name = 'dlss' then Result := 'Downloading NVIDIA DLSS'
   else if Name = 'compile' then Result := 'Compiling'
   else Result := 'Finishing';
 end;

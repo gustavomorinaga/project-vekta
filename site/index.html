@@ -49,7 +49,7 @@
 <main class="main">
 <article id="status" class="news">
 <h2>Status: Partly playable</h2>
-<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 23 PC features</p>
+<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 24 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><span class="st st-ok">Works</span></li>
@@ -151,8 +151,8 @@
 </tbody></table></div>
 </details>
 <h3>What the port adds</h3>
-<p>23 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
-<details><summary>All 23 PC features</summary>
+<p>24 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
+<details><summary>All 24 PC features</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>Default</th><th>Where it is set</th></tr></thead>
 <tbody>
@@ -164,6 +164,7 @@
 <tr><td>Frame-rate limit 30, 60, 144 (the game clock follows)</td><td>60</td><td><code>fps_limit</code>; 30 is the PS3&#x27;s</td></tr>
 <tr><td>AMD FSR 1 upscaling and RCAS sharpening</td><td>bilinear</td><td><code>upscaler</code>, <code>sharpness</code></td></tr>
 <tr><td>Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td>the game&#x27;s</td><td><code>anisotropic</code></td></tr>
+<tr><td>Temporal upscaling (Linux): AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: DLSS 122.2 fps, FSR 3.1 123.7 fps</td></tr>
 <tr><td>Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code></td></tr>
 <tr><td>Field of view, 40 to 90 degrees vertical (the game&#x27;s is 56.25)</td><td>the game&#x27;s</td><td><code>fov</code>; zoom and the first-person weapon keep the game&#x27;s framing</td></tr>
 <tr><td>HUD size and position</td><td>the game&#x27;s</td><td><code>hud_size</code>, <code>hud_position</code></td></tr>
@@ -198,7 +199,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
-<li><span class="sec">Added</span>Temporal upscalers (ENHANCEMENT, off by default): NVIDIA DLSS Super Resolution and DLAA, and AMD FSR 3.1, chosen on the PC page (&quot;Temporal Upscaler (on restart)&quot;) or with <code>PS3RECOMP_TEMPORAL</code>, with the camera jittered and per-object motion vectors; the HUD is drawn at the output resolution. Built in only when the SDKs are given to CMake (<code>tools/ffx/build_fsr3.sh</code> builds the FSR 3.1 library); patches 2045 to 2050, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/upscalers.md">docs/dev/upscalers.md</a>.</li>
+<li><span class="sec">Added</span>Temporal upscalers on Linux (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution and DLAA, chosen on the PC page (&quot;Temporal Upscaler (on restart)&quot;) or with <code>PS3RECOMP_TEMPORAL</code>, with the camera jittered and per-object motion vectors; the HUD is drawn at the output resolution (patches 2045 to 2051, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/upscalers.md">docs/dev/upscalers.md</a>). FSR 3.1 is in every Linux build, from the FidelityFX SDK&#x27;s files vendored in <code>third_party/fidelityfx-fsr3/</code>. DLSS is downloaded from NVIDIA on your machine only if you accept NVIDIA&#x27;s DLSS SDK licence when <code>tools/install.sh</code> asks (<code>--dlss accept|decline</code>); no release carries NVIDIA&#x27;s files.</li>
 <li><span class="sec">Added</span>The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</li>
 <li><span class="sec">Added</span>Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch Pro and keyboard on the Controls screen, by the pad last touched (patch 4013).</li>
 <li><span class="sec">Added</span>The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</li>
@@ -254,8 +255,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 120 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 120 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 121 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 121 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -264,7 +265,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> Temporal upscalers (ENHANCEMENT, off by default): NVIDIA DLSS Super Resolution and DLAA, and AMD FSR 3.1, chosen on...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Temporal upscalers on Linux (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution and DLAA...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</span></li>
 <li><time>next</time><span><b>Unreleased</b> Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</span></li>
@@ -357,7 +358,7 @@ tools/play.sh</pre>
 </div>
 <div id="legal" class="legal">
 <p>Killzone and Killzone HD are trademarks of Sony Interactive Entertainment. This project is not affiliated with or endorsed by Sony Interactive Entertainment or Guerrilla Games; the names are used only to say which game the port runs. "Vekta" is the name of the game's own colony world. No game content is distributed: no disc or PSN files, no decrypted or translated game code, no assets, no firmware and no keys. Players supply their own copy of the game; the game's code is translated and compiled on the player's own machine from their own files.</p>
-<p>The port's own code, tools and documentation are <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/LICENSE">MIT</a>. Third-party components and credits: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/NOTICE.md">NOTICE.md</a>.</p>
+<p>The port's own code, tools and documentation are <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/LICENSE">MIT</a>. Third-party components and credits: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/NOTICE.md">NOTICE.md</a>. Temporal upscaling: AMD FidelityFX FSR 3.1 (MIT, built in) and NVIDIA DLSS (NVIDIA's, under its own licence; downloaded from NVIDIA on the player's machine only when they accept it, and never distributed here). AMD, FidelityFX, NVIDIA and DLSS are trademarks of their owners.</p>
 <ul class="marks" aria-label="Platform"><li><b>Linux</b>x64 native</li><li><b>Windows</b>x64</li><li><b>Vulkan</b>renderer</li><li><b>Proton</b>tested</li><li><b>MIT</b>licence</li><li><b>No game</b>files shipped</li></ul>
 <p class="credit">Project Vekta by gustavomorinaga</p></div></div></footer>
 </body>

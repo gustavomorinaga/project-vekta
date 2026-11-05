@@ -28,7 +28,9 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
 Nothing else is copied. The scrub refuses the whole payload (nothing is written) on: game-data names and extensions
 (EBOOT.*, PARAM.SFO, .psarc .elf .self .sprx .prx .edat .sdat .pkg .rap .pup .trp .pic), PS3 or ELF magics at a
 file's start, home-folder paths, secrets, a file over 8 MB, or two paths equal under case-folding (Windows keeps one)
-outside the toolchain; the toolchain's files get the name and magic checks only. manifest.json at the root lists
+outside the toolchain; the toolchain's files get the name and magic checks only. Anything of NVIDIA's DLSS SDK (its
+file names, a dlss-sdk folder, or a file equal by size and SHA-256 to one pinned in toolchain.json's file_sets) is
+refused everywhere: the player's machine fetches it, after they accept NVIDIA's licence, and no release carries it. manifest.json at the root lists
 every file with its size and SHA-256, the version, the commit, the patch set and the toolchain's components; no
 timestamps, so the same sources give the same manifest (and --zip the same zip).
 
@@ -95,6 +97,9 @@ RULES_LINUX = [
     ("tools/play.sh", "tools/play.sh", "file", {}),
     ("installer/linux/run.sh", "run.sh", "file", {}),
     ("installer/linux/play.sh", "play.sh", "file", {}),
+    # AMD FSR 3.1, built from source by the Linux build (port/kz1hd/CMakeLists.txt)
+    ("third_party/fidelityfx-fsr3", "third_party/fidelityfx-fsr3", "tree", {}),
+    ("tools/ffx/ffx_linux_compat.h", "tools/ffx/ffx_linux_compat.h", "file", {}),
 ]
 GAME_NAMES = ["EBOOT.*", "PARAM.SFO", "*.psarc", "*.elf", "*.self", "*.sprx", "*.prx", "*.edat", "*.sdat", "*.pkg",
               "*.rap", "*.pup", "*.trp", "*.pic"]
@@ -106,6 +111,11 @@ TEXT_RULES = [
     ("secret", re.compile(b"sk-" b"ant-|gh" b"p_[A-Za-z0-9]{20}|github_" b"pat_|BEGIN [A-Z ]*PRIVATE" b" KEY")),
 ]
 MAX_FILE = 8 << 20
+# NVIDIA's DLSS SDK is fetched on the player's machine after they accept its licence (firstrun.py's dlss step) and is
+# never part of a release: its file names, its cache folder, and any file equal to one of its pinned files (by size
+# and SHA-256, tools/release/toolchain.json's file_sets) refuse the payload, whatever the file is called.
+NVIDIA_NAMES = ["nvngx*", "nvsdk_ngx*", "libnvidia-ngx*", "*nvngx_dlss*"]
+NVIDIA_DIRS = ["dlss-sdk"]
 # Toolchain files the Windows build never uses, left out (paths inside the entry's tree): among them clang's Linux
 # runtimes in the Windows llvm-mingw (ELF files) and zlib's Amiga makefiles (Makefile.pup reads as a game-data name).
 # Project Pyrrhus's llvm-mingw list also drops the other targets (ARM, 32-bit), LLDB, its Python and make.
@@ -200,6 +210,24 @@ def scrub(rel, path, toolchain=False, elf_ok=False):
     for what, rx in TEXT_RULES:
         if rx.search(data):
             return what
+    return None
+
+
+def nvidia_pins(m):
+    """{(size, sha256)} of every file of the manifest's file sets that need consent (the DLSS SDK)."""
+    return {(f["size"], f["sha256"]) for s in m.get("file_sets", []) if "consent" in s for f in s["files"]}
+
+
+def nvidia_problem(rel, path, pins):
+    """Why a file is NVIDIA's (and may not ship), or None."""
+    parts = rel.split("/")
+    if any(d in NVIDIA_DIRS for d in parts[:-1]):
+        return "in the DLSS SDK's folder (NVIDIA's files are never shipped)"
+    if any(fnmatch.fnmatch(parts[-1].lower(), p) for p in NVIDIA_NAMES):
+        return "an NVIDIA DLSS SDK file name (NVIDIA's files are never shipped)"
+    size = os.path.getsize(path)
+    if any(size == s for s, _ in pins) and (size, sha256(path)) in pins:
+        return "a file of the NVIDIA DLSS SDK (NVIDIA's files are never shipped)"
     return None
 
 
@@ -321,6 +349,9 @@ def plan(repo, cache, launcher=None, platform="windows"):
     tfiles, done = collect_toolchain(cache, m, platform)
     problems += [f"{rel}: {why}" for rel, src in sorted(tfiles.items())
                  if (why := scrub(rel, src, toolchain=True, elf_ok=platform == "linux"))]
+    pins = nvidia_pins(m)
+    problems += [f"{rel}: {why}" for rel, src in sorted({**files, **tfiles}.items())
+                 if (why := nvidia_problem(rel, src, pins))]
     problems += [f"case clash: {c}" for c in case_clashes(list(files) + list(tfiles))]
     if problems:
         raise Refused("scrub:\n  " + "\n  ".join(problems))

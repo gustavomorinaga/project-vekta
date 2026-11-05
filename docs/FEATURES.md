@@ -52,6 +52,7 @@ are off by default; display and input improvements may be on.
 | Frame-rate limit 30, 60, 144 (the game clock follows) | 60 | `fps_limit`; 30 is the PS3's |
 | AMD FSR 1 upscaling and RCAS sharpening | bilinear | `upscaler`, `sharpness` |
 | Anisotropic filtering: the game's own, off, 2x to 16x | the game's | `anisotropic` |
+| Temporal upscaling (Linux): AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA | off | `temporal` (on restart); DLSS only when downloaded at install with NVIDIA's licence accepted, else "(not built)"; Level 7, 2560x1440 Quality, 2026-11-05: DLSS 122.2 fps, FSR 3.1 123.7 fps |
 | Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9 | on | `widescreen` |
 | Field of view, 40 to 90 degrees vertical (the game's is 56.25) | the game's | `fov`; zoom and the first-person weapon keep the game's framing |
 | HUD size and position | the game's | `hud_size`, `hud_position` |
@@ -68,7 +69,7 @@ are off by default; display and input improvements may be on.
 | All 11 levels selectable in the campaign menu | off | `KZ_UNLOCK_LEVELS=1` |
 | Local trophy log from the game's own trophy set | on | needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`) |
 
-Planned items (post-processing toggles, HDR, FSR 3.1 and DLSS, an in-game key remapping page, narrower aspect
+Planned items (post-processing toggles, HDR, FSR 3.1 and DLSS on Windows, an in-game key remapping page, narrower aspect
 ratios, a steady 144 fps): [ROADMAP.md](ROADMAP.md).
 
 ## 3. The port itself

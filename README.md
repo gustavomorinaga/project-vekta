@@ -58,6 +58,8 @@ All optional, set in a **PC** page inside the game's own Options and Pause menus
 - display mode (window, borderless, fullscreen), output resolution, internal resolution scale, V-Sync (on, off,
   adaptive), VRR, frame-rate limit (30, 60, 144), NVIDIA Reflex
 - AMD FSR 1 upscaling and RCAS sharpening, anisotropic filtering (the game's own or 2x to 16x)
+- temporal upscaling on Linux: AMD FSR 3.1 in every build, and NVIDIA DLSS (Super Resolution and DLAA) when you
+  choose to download it at install ([docs/dev/upscalers.md](docs/dev/upscalers.md))
 - widescreen (Hor+ for 21:9, 32:9 and wider, with the menus and movies kept 16:9), field of view, HUD size and position
 - presets: Original (PS3), Performance, Balanced, Quality
 - keyboard and mouse (direct mouse look, mouse in menus, remappable keys), Xbox, PlayStation, Nintendo and generic
@@ -66,8 +68,15 @@ All optional, set in a **PC** page inside the game's own Options and Pause menus
 
 ## What goes online
 
-Nothing. The port, its scripts and the build make no network connection of their own. The only downloads are the
-ones you start: cloning this repository with its ps3recomp submodule, and your system's packages.
+Nothing, unless you choose it. The port and its scripts make no network connection of their own. The downloads are
+the ones you start: cloning this repository with its ps3recomp submodule, your system's packages, the build tools'
+Python packages, and these, only when you choose them:
+
+- **NVIDIA DLSS** (Linux build): only if you accept NVIDIA's DLSS SDK licence when `tools/install.sh` asks (or pass
+  `--dlss accept`), the build downloads the DLSS SDK's files from NVIDIA's repository on GitHub
+  (`raw.githubusercontent.com/NVIDIA/DLSS`, pinned to v310.9.16 and checked by SHA-256) into
+  `work/toolchain-cache/dlss-sdk/`. The question first downloads the licence's text from there, for you to read.
+  Declined, nothing is downloaded and the build has no DLSS.
 
 ## Where your data goes
 

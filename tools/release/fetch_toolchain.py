@@ -3,6 +3,7 @@
 download, check SHA-256, unpack.
 
     tools/release/fetch_toolchain.py [--host linux|windows|native|all] [--only NAME[,NAME]] [--cache DIR] [--fill | --offline]
+    tools/release/fetch_toolchain.py --set NAME [--os linux|windows] [--accept-license | --license-only] [--cache DIR] [--offline]
     tools/release/fetch_toolchain.py --check [--strict]
 
 After Project Pyrrhus's and Project Helghast's tools/release/fetch_toolchain.py (undecuple, MIT): the manifest's
@@ -18,6 +19,11 @@ the entries by host.
              compare it with the release page's published hash where there is one). Without it, TO-FILL is refused.
   --offline  only downloads already in downloads/ whose hash is the pin; never the network
   --check    validate the manifest only (no network); --strict also refuses TO-FILL hashes and TO-CONFIRM pins
+  --set      one of the manifest's file_sets instead (single files, each with its own size and SHA-256, laid out under
+             <cache>/<name>/ by their paths): only the files for --os (default: this machine's) and "any". A set with
+             "consent" (the NVIDIA DLSS SDK) is fetched only with --accept-license, the player's acceptance of its
+             licence (license_url); fetched by tools/release/firstrun.py's dlss step, never by the release builds.
+             --license-only fetches just the set's licence text (license_file), for the player to read first
 
 A tree already unpacked from the pinned hash is kept (fetched.json says which). A download whose hash is not the
 pin is deleted and refused. Archive members with absolute paths, "..", or (in a zip) symlink modes are refused, and a
@@ -45,6 +51,8 @@ NAME_RX = re.compile(r"[a-z0-9][a-z0-9.-]*")
 HOSTS = ("linux", "windows", "any", "native")
 ARCHIVES = ("zip", "tar.gz", "tar.xz")
 REQUIRED = ("name", "host", "version", "pin", "release_page", "url", "sha256", "archive", "license")
+SET_REQUIRED = ("name", "version", "pin", "release_page", "url", "license", "files")
+SET_OS = ("any", "linux", "windows")
 MAX_DOWNLOAD = 1 << 30
 
 
@@ -87,6 +95,29 @@ def validate(m, strict=False):
             out.append(f"{name}: sha256 is {TO_FILL}")
         if strict and TO_CONFIRM in (e["pin"], e["version"], e["url"]):
             out.append(f"{name}: pin is {TO_CONFIRM}")
+    for s in m.get("file_sets", []):
+        name = s.get("name", "?")
+        miss = [k for k in SET_REQUIRED if k not in s]
+        if miss:
+            out.append(f"{name}: missing {', '.join(miss)}")
+            continue
+        if not NAME_RX.fullmatch(name) or name in seen:
+            out.append(f"{name}: bad or repeated name")
+        seen.add(name)
+        if not s["url"].startswith("https://") or "{path}" not in s["url"]:
+            out.append(f"{name}: url must be https with {{path}}")
+        if "consent" in s and not s.get("license_url", "").startswith("https://"):
+            out.append(f"{name}: a set that needs consent needs an https license_url")
+        paths = set()
+        for f in s["files"]:
+            fp = f.get("path", "")
+            if safe_rel(fp) != fp or fp in paths:
+                out.append(f"{name}: bad or repeated path {fp!r}")
+            paths.add(fp)
+            if f.get("os") not in SET_OS:
+                out.append(f"{name}: {fp}: os must be one of {', '.join(SET_OS)}")
+            if not HEX64.fullmatch(str(f.get("sha256", ""))) or not isinstance(f.get("size"), int) or f["size"] <= 0:
+                out.append(f"{name}: {fp}: needs a sha256 (64 hex digits) and a size")
     return out
 
 
@@ -247,6 +278,45 @@ def fetch_one(raw, cache, fill=False, offline=False, manifest_path=MANIFEST, ope
     return tree
 
 
+def set_files(s, os_name):
+    """The files of a file set for one OS: its own and the "any" ones."""
+    return [f for f in s["files"] if f["os"] in ("any", os_name)]
+
+
+def fetch_set(raw, cache, os_name, accepted=False, offline=False, opener=open_url, out=sys.stdout,
+              license_only=False):
+    """Fetch and check the files of one file set into <cache>/<name>/; returns that folder (with license_only, the
+    licence file's path). A file already there with the pinned size and hash is kept; a download that is not the pin
+    is deleted and refused."""
+    s = dict(raw)
+    name = s["name"]
+    tree = os.path.join(cache, name)
+    files = set_files(s, os_name)
+    if license_only:
+        files = [f for f in s["files"] if f["path"] == s.get("license_file")]
+        if not files:
+            raise ValueError(f"{name}: no license_file among its files")
+    elif "consent" in s and not accepted:
+        lic = s["license_url"].format(version=s["version"])
+        raise ValueError(f"{name}: its licence must be accepted first ({lic}): --accept-license")
+    for f in files:
+        dest = os.path.join(tree, *f["path"].split("/"))
+        if os.path.isfile(dest) and os.path.getsize(dest) == f["size"] and sha256_file(dest) == f["sha256"]:
+            continue
+        if offline:
+            raise ValueError(f"{name}: --offline and no {f['path']} with the pinned hash at {dest}")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        url = s["url"].format(version=s["version"], path=f["path"])
+        print(f"{name}: downloading {url}", file=out)
+        download(url, dest, opener)
+        size, got = os.path.getsize(dest), sha256_file(dest)
+        if (size, got) != (f["size"], f["sha256"]):
+            os.remove(dest)
+            raise ValueError(f"{name}: {f['path']} is {size} bytes, sha256 {got}; the pin is {f['size']} bytes, "
+                             f"{f['sha256']}; deleted it")
+    return os.path.join(tree, *files[0]["path"].split("/")) if license_only else tree
+
+
 def read_fetched(cache):
     try:
         with open(os.path.join(cache, "fetched.json"), encoding="utf-8") as f:
@@ -275,6 +345,12 @@ def main(argv=None, out=sys.stdout, opener=open_url):
     g.add_argument("--offline", action="store_true", help="never the network")
     ap.add_argument("--check", action="store_true", help="validate the manifest only")
     ap.add_argument("--strict", action="store_true", help="with --check: refuse TO-FILL and TO-CONFIRM")
+    ap.add_argument("--set", help="fetch one of the manifest's file_sets instead of components")
+    ap.add_argument("--os", choices=("linux", "windows"), default="windows" if os.name == "nt" else "linux",
+                    help="with --set: the OS whose files to fetch")
+    ap.add_argument("--accept-license", action="store_true",
+                    help="with --set: the player accepted the set's licence (needed for a set with consent)")
+    ap.add_argument("--license-only", action="store_true", help="with --set: fetch only the set's licence text")
     a = ap.parse_args(argv)
     try:
         m = load(a.manifest)
@@ -291,6 +367,18 @@ def main(argv=None, out=sys.stdout, opener=open_url):
         for p in problems:
             print(f"fetch_toolchain: {p}", file=sys.stderr)
         return 1
+    if a.set:
+        sets = [s for s in m.get("file_sets", []) if s["name"] == a.set]
+        if not sets:
+            print(f"fetch_toolchain: no file set named {a.set}", file=sys.stderr)
+            return 2
+        try:
+            print(f"{a.set} {fetch_set(sets[0], a.cache, a.os, a.accept_license, a.offline, opener, out, a.license_only)}",
+                  file=out)
+        except (OSError, ValueError) as err:
+            print(f"fetch_toolchain: {err}", file=sys.stderr)
+            return 1
+        return 0
     only = set(a.only.split(",")) if a.only else None
     es = entries_for(m, a.host, only)
     if only and len(es) != len(only):

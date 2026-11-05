@@ -3,7 +3,8 @@
 with one progress bar, and remember where the files are.
 
     tools/release/firstrun.py [--game DIR] [--eboot FILE] [--psarc FILE] [--libsre FILE] [--dev-flash DIR]
-                              [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE] [--bar] [--dry-run]
+                              [--dlss accept|decline] [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE]
+                              [--bar] [--dry-run]
     tools/release/firstrun.py --interactive [same options: they become the answers it offers]
     tools/release/firstrun.py --remove-desktop
     tools/release/firstrun.py --save-paths [--game DIR] [--eboot FILE] ...   (the Windows setup program)
@@ -29,6 +30,12 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
   patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches (a release folder ships it)
   lift      work/lift and work/fw: the game's and the firmware's code as C++ (kzbuild.py lift)
   vfs       work/vfs: the folder the game runs from (kzbuild.py vfs; saves and settings there are kept)
+  dlss      only when the player accepted NVIDIA's DLSS SDK licence (--dlss accept, or a yes to --interactive's
+            question; the choice is kept in work/dlss-choice): the DLSS SDK files fetched from NVIDIA's repository and
+            checked (tools/release/fetch_toolchain.py --set dlss-sdk, work/toolchain-cache/dlss-sdk); the compile
+            then builds DLSS in and puts its runtime library beside the program. Declined or never answered: no
+            download, no DLSS (the PC menu shows it as "(not built)"). Linux only for now. Run again with
+            --dlss accept or --dlss decline to change the choice
   compile   work/build/KZ1HD, on Windows work/build-win/KZ1HD.exe (kzbuild.py build; every run: Ninja itself
             skips what is up to date)
   stamp     work/build-stamp.json: the version, the patch set and the inputs this build was made from
@@ -67,6 +74,9 @@ KEEP_LOGS = 5
 GIB = 1 << 30
 NINJA_RE = re.compile(r"^\[(\d+)/(\d+)\]")
 REASON_MAX = 900
+DLSS_CHOICE = "dlss-choice"
+DLSS_SET = "dlss-sdk"
+DLSS_LICENSE_URL = "https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt"
 # The player's files: (option, variable, what it is, default under the root); tools/env.sh has the same defaults.
 INPUTS = [
     ("game", "KZ_GAME", "the installed game folder (NPUA80856: PARAM.SFO, TROPDIR, USRDIR)",
@@ -124,10 +134,15 @@ class Ctx:
     jobs: int = 1
     work: str = ""
     python: str = sys.executable
+    dlss: str = ""                               # "accept", "decline" or "" (never answered: no DLSS)
     cache: dict = dataclasses.field(default_factory=dict, repr=False)
 
     def __post_init__(self):
         self.work = self.work or os.environ.get("KZ_WORK") or os.path.join(self.root, "work")
+
+    def dlss_on(self):
+        """DLSS is built in only when the player accepted its licence, and only on Linux for now."""
+        return self.dlss == "accept" and os.name != "nt"
 
     def w(self, *rel):
         return os.path.join(self.work, *rel)
@@ -141,6 +156,10 @@ class Ctx:
             if self.paths.get(name):
                 e[var] = self.paths[name]
         e["KZ_WORK"] = self.work
+        if self.dlss_on():
+            e["KZ_DLSS_SDK"] = self.w("toolchain-cache", DLSS_SET)
+        else:
+            e.pop("KZ_DLSS_SDK", None)
         e["KZ_JOBS"] = str(self.jobs)
         e["PYTHONUNBUFFERED"] = "1"
         return e
@@ -161,6 +180,8 @@ class Ctx:
                                   "port/kz1hd/native", "port/kz1hd/native_ppu"])
             elif key == "vfs":
                 v = tree_hash(r, ["tools/kzbuild.py", "tools/psarc_ls.py"])
+            elif key == "dlss":
+                v = _h16(str(self.dlss_on())) + tree_hash(r, ["tools/release/toolchain.json"])
             else:
                 raise KeyError(key)
             self.cache[key] = v
@@ -227,9 +248,31 @@ def cmd_venv(c):
                     "ninja", "-r", os.path.join(c.root, "third_party", "ps3recomp", "requirements.txt")]]
 
 
+def cmd_dlss(c):
+    if not c.dlss_on():
+        return []
+    return [[c.python, c.t("release", "fetch_toolchain.py"), "--set", DLSS_SET, "--accept-license", "--cache",
+             c.w("toolchain-cache")]]
+
+
+def read_dlss(work):
+    try:
+        with open(os.path.join(work, DLSS_CHOICE), encoding="utf-8") as f:
+            v = f.read().strip()
+        return v if v in ("accept", "decline") else ""
+    except OSError:
+        return ""
+
+
+def write_dlss(work, choice):
+    os.makedirs(work, exist_ok=True)
+    with open(os.path.join(work, DLSS_CHOICE), "w", encoding="utf-8", newline="\n") as f:
+        f.write(choice + "\n")
+
+
 def after_stamp(c):
     stamp = {"version": read_version(c.root), "built": datetime.datetime.now().isoformat(timespec="seconds"),
-             "inputs": {k: c.part(k) for k in ("files", "patch", "lift", "vfs")}}
+             "inputs": {k: c.part(k) for k in ("files", "patch", "lift", "vfs")}, "dlss": c.dlss_on()}
     try:
         with open(c.w("ps3recomp-patched", ".patchset")) as f:
             stamp["patchset"] = f.read().strip()
@@ -248,6 +291,7 @@ STEPS = [
     Step("patch", "Patching ps3recomp", 5, cmd_patch, keys=("patch",)),
     Step("lift", "Translating the game's code", 20, kzbuild("lift"), keys=("files", "patch", "lift")),
     Step("vfs", "Preparing the game folder", 15, kzbuild("vfs"), keys=("files", "vfs")),
+    Step("dlss", "Downloading NVIDIA DLSS", 3, cmd_dlss, keys=("dlss",), always=True),
     Step("compile", "Compiling", 51, kzbuild("build"), always=True, ninja=True),
     Step("stamp", "Finishing", 1, lambda c: [], always=True, after=after_stamp),
 ]
@@ -578,7 +622,7 @@ class Runner:
 
 
 def dry_run(c, steps, out=sys.stdout):
-    print(f"firstrun (dry run): {c.root}, work {c.work}, {c.jobs} jobs", file=out)
+    print(f"firstrun (dry run): {c.root}, work {c.work}, {c.jobs} jobs, DLSS {'on' if c.dlss_on() else 'off'}", file=out)
     for name, var, what, _ in INPUTS:
         print(f"  {var:<14} {c.paths.get(name, '')}" + ("" if os.path.exists(c.paths.get(name, "")) else
                                                          "   (not there)"), file=out)
@@ -660,6 +704,35 @@ def ask_paths(paths, only=None, ask=input, say=print):
     return out
 
 
+DLSS_QUESTION = """NVIDIA DLSS (optional, for NVIDIA RTX graphics cards): this build can download the DLSS SDK from
+NVIDIA's own repository and build DLSS in. It is NVIDIA's software under NVIDIA's licence, not this project's:
+  {url}
+  (its text, downloaded: {path})
+Without it the port builds with AMD FSR 3.1 as its temporal upscaler, and DLSS shows as "(not built)".
+To change this later: tools/install.sh --dlss accept (or --dlss decline)."""
+
+
+def fetch_license(c):
+    """The DLSS SDK licence's text, downloaded for the player to read (fetch_toolchain.py --license-only): its path,
+    or None when it could not be fetched."""
+    try:
+        r = subprocess.run([c.python, c.t("release", "fetch_toolchain.py"), "--set", DLSS_SET, "--license-only",
+                            "--cache", c.w("toolchain-cache")], capture_output=True, text=True, env=c.env(), timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    line = next((ln for ln in r.stdout.splitlines() if ln.startswith(DLSS_SET + " ")), "")
+    return line.split(" ", 1)[1] if r.returncode == 0 and line else None
+
+
+def ask_dlss(c, ask=input, say=print):
+    """Once, on Linux: the licence's link and text, then accept or decline; the answer is kept in work/dlss-choice."""
+    path = fetch_license(c) or "(could not be downloaded; read it at the link)"
+    say(DLSS_QUESTION.format(url=DLSS_LICENSE_URL, path=path))
+    got = ask("Download NVIDIA DLSS and accept the NVIDIA DLSS SDK licence? [y/N] ").strip().lower()
+    c.dlss = "accept" if got in ("y", "yes") else "decline"
+    write_dlss(c.work, c.dlss)
+
+
 def interactive(c, a, ask=input, say=print, out=sys.stdout):
     """Ask for the paths, run the check until it passes (or the player quits), then build with the bar."""
     say(NOTICE.format(version=read_version(c.root)))
@@ -676,6 +749,8 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
         if ask("Enter to choose the files again, q to quit: ").strip().lower() == "q":
             return 1
         only = r.fail_inputs or None
+    if not c.dlss and os.name != "nt":
+        ask_dlss(c, ask, say)
     log = new_log(c, redactor())
     say(f"Building (log: {log.path})")
     r = Runner(c, STEPS, log, out=out, status_file=a.status_file, bar=True)
@@ -697,6 +772,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     for name, var, what, _ in INPUTS:
         ap.add_argument("--" + name.replace("_", "-"), dest=name, metavar="PATH", help=f"{what} ({var})")
+    ap.add_argument("--dlss", choices=("accept", "decline"),
+                    help="accept: you accept NVIDIA's DLSS SDK licence (" + DLSS_LICENSE_URL + "), and the build "
+                         "downloads the SDK from NVIDIA and builds DLSS in; decline: no DLSS. Kept for later runs "
+                         "(work/dlss-choice); --interactive asks once when it was never answered. Linux only for now")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: from free memory)")
     ap.add_argument("--root", default=ROOT, help="the source tree (the tests use a copy)")
     ap.add_argument("--status-file", help="keep the LOG line and the latest PROGRESS/RESULT line in this file")
@@ -723,6 +802,9 @@ def main(argv=None):
     work = os.environ.get("KZ_WORK") or os.path.join(root, "work")
     c = Ctx(root=root, paths=resolve_paths(root, work, {n: getattr(a, n) for n, *_ in INPUTS}),
             jobs=a.jobs or jobs_for(available_ram()), work=work)
+    if a.dlss and not a.dry_run:
+        write_dlss(work, a.dlss)
+    c.dlss = a.dlss or read_dlss(work)
     if a.save_paths:
         given = {n: os.path.abspath(os.path.expanduser(getattr(a, n))) for n, *_ in INPUTS if getattr(a, n)}
         if not given:

@@ -25,17 +25,32 @@ The output is the size the scaling already gave: the window's with `PS3RECOMP_VK
 `PS3RECOMP_VK_SCALE` times 1280x720. The scene is drawn at the size the upscaler asks for that output; Quality at
 2560x1440, for example, draws the scene at 1707x960.
 
-No SDK is in the repository. To build them in:
+## Distribution
 
-- **DLSS:** configure with `-DPS3RECOMP_DLSS_SDK=<DLSS SDK folder>` (github.com/NVIDIA/DLSS; 310.9.16 tested) and put
-  `lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.<version>` next to the program. On Windows the file is
-  `nvngx_dlss.dll`.
-- **FSR 3.1:** run `tools/ffx/build_fsr3.sh <FidelityFX SDK 1.1.4> <out>` and configure with
-  `-DPS3RECOMP_FFX_DIR=<out>`. The script compiles the shaders with the SDK's own compiler, which exists only for
-  Windows, under Wine in a prefix of its own, and adapts the SDK's Windows code to Linux without changing the SDK in
-  place (`tools/ffx/ffx_linux_compat.h`).
+Linux only for now: the Windows program has neither upscaler yet (its build of both is not in the tree).
 
-Without either option the upscaler is a stub and the program behaves as before.
+- **FSR 3.1** is in every Linux build. The FidelityFX SDK's files it needs (MIT) are vendored in
+  `third_party/fidelityfx-fsr3/` with its shaders already compiled, and `port/kz1hd/CMakeLists.txt` builds them into
+  the static library `kz_ffx_fsr3`, which ps3recomp links (patch 2051, `PS3RECOMP_FFX_TARGET`): no SDK checkout, no
+  Wine. `tools/ffx/build_fsr3.sh <FidelityFX SDK 1.1.4> <out>` is how those files are made again (it runs the SDK's
+  Windows-only shader compiler under Wine; `third_party/fidelityfx-fsr3/README.md`). `-DKZ_FSR3=OFF` leaves FSR 3.1
+  out; `-DPS3RECOMP_FFX_DIR=<a build_fsr3.sh output>` links that build instead.
+- **DLSS** is NVIDIA's, under NVIDIA's DLSS SDK licence, and the project never redistributes it: no NVIDIA file is in
+  the repository (`tools/check-tree.sh`) or in a release folder, zip or tarball (`tools/release/assemble_payload.py`
+  refuses one by name, by its folder, and by size and SHA-256 of every pinned file). The player's own machine
+  downloads it, and only after the player accepts that licence: `tools/install.sh` asks once (with the licence's link
+  and its downloaded text), `tools/release/firstrun.py --dlss accept|decline` answers without asking, and the answer
+  is kept in `work/dlss-choice`. Accepted, firstrun's `dlss` step fetches the SDK's files from
+  `raw.githubusercontent.com/NVIDIA/DLSS/v310.9.16/` into `work/toolchain-cache/dlss-sdk/` (laid out as the SDK
+  folder), each checked by size and SHA-256 against `tools/release/toolchain.json`'s `file_sets`: the license, the
+  headers `rsx_vk_dlss.cpp` reads, `libnvsdk_ngx.a` and the runtime `libnvidia-ngx-dlss.so.310.9.16`. The compile then
+  passes `KZ_DLSS_SDK` (`-DPS3RECOMP_DLSS_SDK`) and puts the runtime library beside the program. Declined, nothing is
+  downloaded, the build has no DLSS, and the PC menu shows it as "(not built)"; no NVIDIA file is left beside the
+  program. NVIDIA DLSS is credited by name (NOTICE.md, the project page); no NVIDIA logo is used.
+- By hand: `-DPS3RECOMP_DLSS_SDK=<DLSS SDK folder>` (github.com/NVIDIA/DLSS; 310.9.16 tested) with
+  `lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.<version>` next to the program.
+
+Without DLSS the upscaler is a stub and that choice behaves as off.
 
 ## How it works
 
