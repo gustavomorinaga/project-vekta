@@ -22,6 +22,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+extern "C" {
+int rsx_temporal_next_jitter(float* jitter_x, float* jitter_y);
+void rsx_temporal_set_view(const float vp[16], float jitter_x, float jitter_y,
+                           float near_z, float far_z, float fov_y);
+}
+
 namespace {
 
 constexpr uint32_t kWorldRet = 0x002B81DC, kModelRet = 0x0021A190;
@@ -45,11 +51,68 @@ void log_camera(uint32_t cam, uint32_t ret)
             vm_read8(cam + 0x78), vm_read8(cam + 0x80));
 }
 
+/* Temporal upscalers (rsx_temporal.h in ps3recomp): the world and the
+ * first-person model are drawn with this frame's sub-pixel jitter, an
+ * off-centre frustum. out: the projection built, camera position +0x04,
+ * forward +0x10, up +0x1C, near +0x28, far +0x2C, frustum tangents left +0x30
+ * right +0x34 top +0x38 bottom +0x3C. KZ_JITTER_TEST=x,y: a constant offset
+ * instead, in pixels of the 1280x720 frame. */
+float s_jx, s_jy;
+
+/* The world's view-projection, as the render view the game makes of `out`
+ * (func_001AA618, from 0x2B81F4) has it, but without the jitter: for a row
+ * vector, the view's axes are forward x up, forward, up, and the projection
+ * gives (x, depth, y, w). Handed on for column vectors giving (x, y, depth, w). */
+void publish_view(uint32_t out)
+{
+    const double px = ldf(out + 0x04), py = ldf(out + 0x08), pz = ldf(out + 0x0C);
+    const double a[3] = { ldf(out + 0x10), ldf(out + 0x14), ldf(out + 0x18) };
+    const double b[3] = { ldf(out + 0x1C), ldf(out + 0x20), ldf(out + 0x24) };
+    const double x[3] = { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
+    const double n = ldf(out + 0x28), f = ldf(out + 0x2C);
+    const double l = ldf(out + 0x30), r = ldf(out + 0x34), t = ldf(out + 0x38), bt = ldf(out + 0x3C);
+    if (r == l || t == bt || f == n) return;
+    double v[4][4] = {
+        { x[0], a[0], b[0], 0 }, { x[1], a[1], b[1], 0 }, { x[2], a[2], b[2], 0 },
+        { -(px * x[0] + py * x[1] + pz * x[2]), -(px * a[0] + py * a[1] + pz * a[2]), -(px * b[0] + py * b[1] + pz * b[2]), 1 } };
+    double pr[4][4] = {};
+    pr[0][0] = 2.0 / (r - l); pr[1][0] = -(r + l) / (r - l);
+    pr[1][1] = (f + n) / (f - n); pr[1][2] = -(t + bt) / (t - bt); pr[1][3] = 1.0;
+    pr[2][2] = 2.0 / (t - bt); pr[3][1] = -2.0 * f * n / (f - n);
+    static const int col[4] = { 0, 2, 1, 3 };
+    float vp[16];
+    for (int k = 0; k < 4; k++)
+        for (int i = 0; i < 4; i++) {
+            double s = 0.0;
+            for (int j = 0; j < 4; j++) s += v[i][j] * pr[j][col[k]];
+            vp[4 * k + i] = (float)s;
+        }
+    /* the frustum moves right and up: the picture moves left and down */
+    rsx_temporal_set_view(vp, -s_jx, s_jy, (float)n, (float)f, (float)(2.0 * atan(0.5 * (t - bt))));
+}
+
+void jitter_frustum(uint32_t out, bool next)
+{
+    static int test = -1;
+    static float tx, ty;
+    if (test < 0) { const char* e = getenv("KZ_JITTER_TEST"); test = e && sscanf(e, "%f,%f", &tx, &ty) == 2; }
+    if (next) {
+        if (test) { s_jx = tx; s_jy = ty; }
+        else rsx_temporal_next_jitter(&s_jx, &s_jy);
+        publish_view(out);   /* before the jitter moves the frustum */
+    }
+    if (s_jx == 0.0f && s_jy == 0.0f) return;
+    const float l = ldf(out + 0x30), r = ldf(out + 0x34), t = ldf(out + 0x38), b = ldf(out + 0x3C);
+    const float dx = s_jx * (r - l) / 1280.0f, dy = s_jy * (t - b) / 720.0f;
+    stf(out + 0x30, l + dx); stf(out + 0x34, r + dx);
+    stf(out + 0x38, t + dy); stf(out + 0x3C, b + dy);
+}
+
 }  // namespace
 
 void func_001A9FC8(ppu_context* ctx)
 {
-    const uint32_t cam = (uint32_t)ctx->gpr[4], ret = (uint32_t)ctx->lr;
+    const uint32_t cam = (uint32_t)ctx->gpr[4], ret = (uint32_t)ctx->lr, out = (uint32_t)ctx->gpr[3];
     log_camera(cam, ret);
     if (ret == kModelRet) s_model_n = s_world_n;
     if (!vm_read8(cam + 0x78)) {   /* orthographic */
@@ -61,6 +124,7 @@ void func_001A9FC8(ppu_context* ctx)
     kz_view_3d++;   /* a 3D picture is being drawn (pcoptions.cpp: no crop) */
     if (ret != kWorldRet || !(kz_view.fov > 0.0f) || s_world_n++ - s_model_n > 2 || vm_read8(cam + 0x80)) {
         func_001A9FC8_lifted(ctx);
+        if (ret == kWorldRet || ret == kModelRet) jitter_frustum(out, ret == kWorldRet);
         return;
     }
     /* tan(fov/2) scales with the setting, so a zoomed FOV keeps its magnification */
@@ -70,5 +134,5 @@ void func_001A9FC8(ppu_context* ctx)
     stf(cam + 0x70, 2.0 * atan(t) / kDeg);
     func_001A9FC8_lifted(ctx);
     vm_write32(cam + 0x70, fov_bits);
+    jitter_frustum(out, true);
 }
-

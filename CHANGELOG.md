@@ -8,6 +8,18 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- Temporal upscalers (ENHANCEMENT, off by default): NVIDIA DLSS Super Resolution and DLAA, and AMD FSR 3.1, chosen
+  on the PC page ("Temporal Upscaler (on restart)") or with `PS3RECOMP_TEMPORAL`, with the camera jittered and
+  per-object motion vectors; the HUD is drawn at the output resolution. Built in only when the SDKs are given to
+  CMake (`tools/ffx/build_fsr3.sh` builds the FSR 3.1 library); patches 2045 to 2050,
+  [docs/dev/upscalers.md](docs/dev/upscalers.md).
+- The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).
+- Button prompts: Kenney's Input Prompts (CC0) in the game's own finish, and pad pictures of our own for Xbox,
+  Switch Pro and keyboard on the Controls screen, by the pad last touched (patch 4013).
+- The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).
+- Developer tools: Tracy zones (patch 3029), frame-time and per-thread CPU measurement (`perf.cpp`, `tools/perf/`),
+  recorded input routes replayed with the sound on the route's clock (`route.cpp`, patch 3028), opt-in guest write
+  tracking (patch 3031), and the motion blur harness (`tools/mb_harness/`).
 - The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive
   and libsre, and `dev_flash` for the music), checks their kind and size before copying anything, and builds the port
   in the wizard with a progress bar and a Stop button; when the build stops it says why and opens the log. Silent
@@ -33,6 +45,7 @@ program and folder that build it. Until a release that calls itself playable
   builds it and checks it in a Debian 11 container with no compiler (`tools/release/check_linux_folder.sh`).
 
 ### Changed
+- The lifted PPU functions take their context as `__restrict` (patch 3030).
 - A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or
   an uninstall leaves them alone; the setup's "Portable" option keeps them in the install folder instead. Saves an
   earlier version left in the install folder move there on the next start.

@@ -1,7 +1,8 @@
-From 61975bfb28cd9e7732985ed398fd963e276eea1f Mon Sep 17 00:00:00 2001
+From 9d452ac26de4bd1df411a799355fc06ef1b310f3 Mon Sep 17 00:00:00 2001
 From: Gustavo Morinaga <me@gustavomorinaga.dev>
 Date: Fri, 30 Oct 2026 21:25:54 +0000
-Subject: [PATCH] tests: upstream's host tests follow the port's patches
+Subject: [PATCH] tests: upstream's host tests follow the port's
+ patches
 
 ps3recomp's own tests, run on the patched tree, failed where the port changed a
 design on purpose or added a call from a unit the tests compile on its own:
@@ -22,8 +23,11 @@ design on purpose or added a call from a unit the tests compile on its own:
 - The SPU interpreter fixtures and test_spu_program_pipeline: spu_wrch is a
   function-like macro outside spu_channels.c (the inline MFC latch, patch
   1004), so a stub definition parenthesises the name.
+
+In this series the port_links.h stub of rsx_draw_engine_mlaa takes the
+field arguments that the GPU motion blur patch (0101) added.
 ---
- libs/video/tests/port_links.h                   |  6 ++++++
+ libs/video/tests/port_links.h                   |  7 +++++++
  libs/video/tests/test_gcm_flip_stream.c         |  1 +
  libs/video/tests/test_gcm_get_on_jump.c         |  1 +
  libs/video/tests/test_gcm_get_on_release.c      |  1 +
@@ -43,23 +47,24 @@ design on purpose or added a call from a unit the tests compile on its own:
  tools/test_lwcond_layout.py                     | 10 ++++++++++
  tools/test_rsx_immediate_vertices.py            |  2 +-
  tools/test_spu_program_pipeline.py              |  4 ++++
- 20 files changed, 46 insertions(+), 10 deletions(-)
+ 20 files changed, 47 insertions(+), 10 deletions(-)
  create mode 100644 libs/video/tests/port_links.h
 
 diff --git a/libs/video/tests/port_links.h b/libs/video/tests/port_links.h
 new file mode 100644
-index 0000000..8fed634
+index 00000000..123ca3eb
 --- /dev/null
 +++ b/libs/video/tests/port_links.h
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,7 @@
 +/* What cellGcmSys.c calls outside itself since the port's patches, for the
 + * fixtures that compile it in: the tracing spans (runtime/ps3_trace.c itself,
 + * off unless PS3_TRACE asks) and the GPU MLAA pass, which answers "not run" as
 + * the draw engine does before it is ready. Include it after cellGcmSys.c. */
 +#include "../../../runtime/ps3_trace.c"
-+int rsx_draw_engine_mlaa(u32 location, u32 offset) { (void)location; (void)offset; return 0; }
++int rsx_draw_engine_mlaa(u32 location, u32 offset, u32 field_location, u32 field_offset)
++{ (void)location; (void)offset; (void)field_location; (void)field_offset; return 0; }
 diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
-index 832f0fb..99ce147 100644
+index 832f0fbd..99ce147d 100644
 --- a/libs/video/tests/test_gcm_flip_stream.c
 +++ b/libs/video/tests/test_gcm_flip_stream.c
 @@ -28,6 +28,7 @@
@@ -71,7 +76,7 @@ index 832f0fb..99ce147 100644
  #include <stdlib.h>
  uint8_t* vm_base;
 diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
-index 07e5a95..07df6b5 100644
+index 07e5a959..07df6b5b 100644
 --- a/libs/video/tests/test_gcm_get_on_jump.c
 +++ b/libs/video/tests/test_gcm_get_on_jump.c
 @@ -17,6 +17,7 @@
@@ -83,7 +88,7 @@ index 07e5a95..07df6b5 100644
  #include <stdlib.h>
  uint8_t* vm_base;
 diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
-index 830f672..37e4d30 100644
+index 830f6724..37e4d307 100644
 --- a/libs/video/tests/test_gcm_get_on_release.c
 +++ b/libs/video/tests/test_gcm_get_on_release.c
 @@ -22,6 +22,7 @@
@@ -95,7 +100,7 @@ index 830f672..37e4d30 100644
  #include <stdlib.h>
  #include <string.h>
 diff --git a/libs/video/tests/test_gcm_legacy_state_filter.c b/libs/video/tests/test_gcm_legacy_state_filter.c
-index 7fe49e3..ea0684f 100644
+index 7fe49e37..ea0684fd 100644
 --- a/libs/video/tests/test_gcm_legacy_state_filter.c
 +++ b/libs/video/tests/test_gcm_legacy_state_filter.c
 @@ -11,6 +11,7 @@
@@ -107,7 +112,7 @@ index 7fe49e3..ea0684f 100644
  #include <stdlib.h>
  #include <string.h>
 diff --git a/libs/video/tests/test_gcm_nop_runs.c b/libs/video/tests/test_gcm_nop_runs.c
-index b4713b8..2d5b842 100644
+index b4713b87..2d5b842b 100644
 --- a/libs/video/tests/test_gcm_nop_runs.c
 +++ b/libs/video/tests/test_gcm_nop_runs.c
 @@ -12,6 +12,7 @@
@@ -119,7 +124,7 @@ index b4713b8..2d5b842 100644
  #include <stdlib.h>
  uint8_t* vm_base;
 diff --git a/libs/video/tests/test_gcm_park_reuse.c b/libs/video/tests/test_gcm_park_reuse.c
-index 1efb7a8..7168866 100644
+index 1efb7a8c..71688660 100644
 --- a/libs/video/tests/test_gcm_park_reuse.c
 +++ b/libs/video/tests/test_gcm_park_reuse.c
 @@ -20,6 +20,7 @@
@@ -131,7 +136,7 @@ index 1efb7a8..7168866 100644
  #include <stdlib.h>
  #include <unistd.h>
 diff --git a/libs/video/tests/test_gcm_resync_labels.c b/libs/video/tests/test_gcm_resync_labels.c
-index 5f99a3f..50985fa 100644
+index 5f99a3f2..50985faf 100644
 --- a/libs/video/tests/test_gcm_resync_labels.c
 +++ b/libs/video/tests/test_gcm_resync_labels.c
 @@ -18,6 +18,7 @@
@@ -143,7 +148,7 @@ index 5f99a3f..50985fa 100644
  #include <stdlib.h>
  #include <time.h>
 diff --git a/libs/video/tests/test_gcm_walker_prof.c b/libs/video/tests/test_gcm_walker_prof.c
-index ba32a57..d61d586 100644
+index ba32a572..d61d586e 100644
 --- a/libs/video/tests/test_gcm_walker_prof.c
 +++ b/libs/video/tests/test_gcm_walker_prof.c
 @@ -11,6 +11,7 @@
@@ -155,7 +160,7 @@ index ba32a57..d61d586 100644
  #include <stdlib.h>
  #include <string.h>
 diff --git a/runtime/spu/tests/spu_interp_selftest.c b/runtime/spu/tests/spu_interp_selftest.c
-index 21bc39e..dd958ca 100644
+index 21bc39e7..dd958ca6 100644
 --- a/runtime/spu/tests/spu_interp_selftest.c
 +++ b/runtime/spu/tests/spu_interp_selftest.c
 @@ -15,7 +15,7 @@
@@ -168,7 +173,7 @@ index 21bc39e..dd958ca 100644
  
  /* The rest of the runtime the interpreter reaches: probes off, nothing lifted. */
 diff --git a/runtime/spu/tests/test_mfc_resume_elements.c b/runtime/spu/tests/test_mfc_resume_elements.c
-index 2a930b5..ac51d63 100644
+index 2a930b50..ac51d634 100644
 --- a/runtime/spu/tests/test_mfc_resume_elements.c
 +++ b/runtime/spu/tests/test_mfc_resume_elements.c
 @@ -17,6 +17,7 @@ int g_cri_video_dma;
@@ -180,7 +185,7 @@ index 2a930b5..ac51d63 100644
  volatile unsigned g_sn_defer;
  unsigned long long ps3_ms_now(void) { return 0; }
 diff --git a/runtime/spu/tests/test_spu_coherency.c b/runtime/spu/tests/test_spu_coherency.c
-index b9c714d..4407ccb 100644
+index b9c714da..4407ccb2 100644
 --- a/runtime/spu/tests/test_spu_coherency.c
 +++ b/runtime/spu/tests/test_spu_coherency.c
 @@ -160,8 +160,10 @@ static void test_ppu_store_raises_lr(void)
@@ -197,7 +202,7 @@ index b9c714d..4407ccb 100644
      TEST("a second store with no live reservation raises nothing more");
      vm_write32(LINE_A + 8, 0x11111111u);
 diff --git a/runtime/spu/tests/test_spu_interpreter_ilh.c b/runtime/spu/tests/test_spu_interpreter_ilh.c
-index 35a5669..c4060bf 100644
+index 35a5669c..c4060bf1 100644
 --- a/runtime/spu/tests/test_spu_interpreter_ilh.c
 +++ b/runtime/spu/tests/test_spu_interpreter_ilh.c
 @@ -9,7 +9,7 @@
@@ -210,7 +215,7 @@ index 35a5669..c4060bf 100644
  int g_spu_ls_watch_n, g_spu_ls_probe, g_wws_read_probe, g_wws_code_probe, g_spu_smc_watch;
  spu_lifted_fn spu_lifted_lookup(const spu_context* c, uint32_t a) { (void)c; (void)a; abort(); }
 diff --git a/runtime/spu/tests/test_spu_poison_scan.c b/runtime/spu/tests/test_spu_poison_scan.c
-index 710392d..4300d81 100644
+index 710392d8..4300d81f 100644
 --- a/runtime/spu/tests/test_spu_poison_scan.c
 +++ b/runtime/spu/tests/test_spu_poison_scan.c
 @@ -18,6 +18,7 @@ int g_cri_video_dma;
@@ -222,7 +227,7 @@ index 710392d..4300d81 100644
  volatile unsigned g_sn_defer;
  unsigned long long ps3_ms_now(void) { return 0; }
 diff --git a/tests/test_sail_boot_callback.cpp b/tests/test_sail_boot_callback.cpp
-index 2b92932..5482f20 100644
+index 2b92932e..5482f205 100644
 --- a/tests/test_sail_boot_callback.cpp
 +++ b/tests/test_sail_boot_callback.cpp
 @@ -19,6 +19,7 @@ uint32_t prx_resolve_export(uint32_t) { return 0; }
@@ -234,7 +239,7 @@ index 2b92932..5482f20 100644
  uint32_t ppu_prof_resolve_host(void*) { return 0; }
  void ps3_msf(const char*,...) {}
 diff --git a/tests/test_spurs_coordinator_kick.c b/tests/test_spurs_coordinator_kick.c
-index 8d67906..0a97f0b 100644
+index 8d679068..0a97f0b2 100644
 --- a/tests/test_spurs_coordinator_kick.c
 +++ b/tests/test_spurs_coordinator_kick.c
 @@ -30,7 +30,7 @@ static DWORD WINAPI waiter(LPVOID p)
@@ -271,7 +276,7 @@ index 8d67906..0a97f0b 100644
      assert(t);
      for (;;) {
 diff --git a/tests/test_sysmodule_unload_module_ex.cpp b/tests/test_sysmodule_unload_module_ex.cpp
-index c254688..5e6e184 100644
+index c2546882..5e6e1843 100644
 --- a/tests/test_sysmodule_unload_module_ex.cpp
 +++ b/tests/test_sysmodule_unload_module_ex.cpp
 @@ -20,6 +20,7 @@ uint32_t prx_resolve_export(uint32_t) { return 0; }
@@ -283,7 +288,7 @@ index c254688..5e6e184 100644
  uint32_t ppu_prof_resolve_host(void*) { return 0; }
  void ps3_msf(const char*,...) {}
 diff --git a/tools/test_lwcond_layout.py b/tools/test_lwcond_layout.py
-index 7423261..676c502 100644
+index 74232614..676c5025 100644
 --- a/tools/test_lwcond_layout.py
 +++ b/tools/test_lwcond_layout.py
 @@ -31,9 +31,13 @@ def extract(src, name):
@@ -314,7 +319,7 @@ index 7423261..676c502 100644
  %s
  int main() {
 diff --git a/tools/test_rsx_immediate_vertices.py b/tools/test_rsx_immediate_vertices.py
-index 4722489..d6a2ff3 100644
+index 47224895..d6a2ff3b 100644
 --- a/tools/test_rsx_immediate_vertices.py
 +++ b/tools/test_rsx_immediate_vertices.py
 @@ -12,7 +12,7 @@ def main():
@@ -327,7 +332,7 @@ index 4722489..d6a2ff3 100644
          binary = Path(directory) / "test_rsx_draw_engine"
          subprocess.run([os.environ.get("CC", "cc"), "-std=gnu17",
 diff --git a/tools/test_spu_program_pipeline.py b/tools/test_spu_program_pipeline.py
-index cdfa2ad..05af223 100644
+index cdfa2ad5..05af223f 100644
 --- a/tools/test_spu_program_pipeline.py
 +++ b/tools/test_spu_program_pipeline.py
 @@ -226,6 +226,8 @@ class Pipeline(unittest.TestCase):

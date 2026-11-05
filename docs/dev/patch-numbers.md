@@ -112,3 +112,25 @@ older series on v0.14.0, which do not appear here. This table maps the v0.18.0 s
 
 The last four were written in this tree (2026-10-30): 0004 to 1019 from ps3recomp's own tests run on the patched tree
 (`tools/tests/test_upstream_suite.sh`), 1020 from `tools/tests/test_spu_put_recheck.sh`. They have no private number until the private branch takes them.
+
+The private series has since taken those four as 0102 to 0105. Its other new patches came over on 2026-11-04 with
+`tools/sync-from-private.py`. 2041 to 2043 come before 0004 in `series`, as 0099 to 0101 come before 0102 in the
+private series: 0004 and 2039 now come from the private branch, made on top of them.
+
+| Private series (2026-11-04) | Public number | Patch |
+|---|---|---|
+| 0099 | 2041 | NV0039_STATS: what a title's post chain did to each frame copied through NV0039 |
+| 0100 | 2042 | MLAA pass: the row pass's runs also for each later row job's first pair |
+| 0101 | 2043 | Killzone HD's sprint motion blur on the GPU (PS3RECOMP_MB_GPU) |
+| 0106 | 3028 | cellAudio: mix on the title's own clock (ps3_audio_set_clock_ms) |
+| 0107 | 3029 | trace: PS3_TRACE spans as Tracy zones |
+| 0108 | 2044 | vulkan: a pipeline list per title, built ahead on worker threads |
+| 0109 | 4013 | cellPad: pad_active_style, which pad the player last touched |
+| 0110 | 3031 | memory: guest write tracking by page protection (PS3RECOMP_WTRACK=1) |
+| 0111 | 3030 | ppu_lifter: each lifted function's ctx is PPU_CTX_RESTRICT |
+| 0112 | 2045 | vulkan: DLSS super resolution and DLAA at the end of the scene (PS3RECOMP_TEMPORAL=dlss) |
+| 0113 | 2046 | vulkan: AMD FSR 3.1 as the temporal upscaler too (PS3RECOMP_TEMPORAL=fsr3) |
+| 0114 | 2047 | vulkan: the frame's jitter is the last record's; per-object motion |
+| 0115 | 2048 | vulkan: the sprint motion blur over a temporal upscaler's output |
+| 0116 | 2049 | vulkan: rsx_vulkan_temporal_built, the temporal upscalers this build has |
+| 0117 | 2050 | vulkan: per-object motion pairs by the rows a program reads, and is on by default |

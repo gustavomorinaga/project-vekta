@@ -186,14 +186,18 @@ endif()
 # full optimization instead of the target-wide -O1 the lifted TUs need.
 file(GLOB KZ_NATIVE_PPU CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/native_ppu/*.cpp")
 set_source_files_properties(${KZ_NATIVE_PPU} PROPERTIES COMPILE_OPTIONS "-O2")
+# glyphs.cpp embeds the Controls screen's pad pictures (pads/, #embed).
+set_source_files_properties(glyphs.cpp PROPERTIES COMPILE_OPTIONS "-Wno-c23-extensions")
 
 add_executable(${PROJECT_NAME}
     main.cpp
     stubs.cpp
     pcoptions.cpp
+    route.cpp
     glyphs.cpp
     sail.cpp
     prof.cpp
+    perf.cpp
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
     ${RECOMP_SOURCES}
@@ -336,8 +340,10 @@ set(KZ_PGO_USE "" CACHE FILEPATH "Merged .profdata to optimize the lifted PPU co
 # The runtime's RSX/video code runs on the one FIFO thread, so it is profiled too.
 # PPU_STORE_SNAP: the lifted stores take the store diagnostics and the SPU
 # reservation bitmap once per function (ppu_recomp.h) instead of after every
-# store.
-set(KZ_PPU_FLAGS "${KZ_PPU_OPT}" -DPPU_STORE_SNAP)
+# store. PPU_CTX_RESTRICT: each lifted function's ctx is __restrict, so a guest
+# store no longer makes it reload ctx->fpr/vr/lr (Level 7 route as timedemo,
+# alternated runs: see docs/dev/performance.md).
+set(KZ_PPU_FLAGS "${KZ_PPU_OPT}" -DPPU_STORE_SNAP -DPPU_CTX_RESTRICT=__restrict)
 set(KZ_PGO_FLAGS "")
 if(KZ_PGO_GEN)
     set(KZ_PGO_FLAGS -fprofile-instr-generate -mllvm -disable-vp=true)
@@ -371,6 +377,40 @@ endif()
 if(LIBSRE_SOURCES)
     set_property(SOURCE ${LIBSRE_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${LIBSRE_DIR}")
     set_source_files_properties(stubs.cpp PROPERTIES COMPILE_DEFINITIONS KZ_LIBSRE)
+endif()
+
+# ---------------------------------------------------------------------------
+# Tracy (docs/medicao.md): KZ_TRACY_DIR=<a checkout of github.com/wolfpld/tracy,
+# the same version as the profiler that connects> builds its client in. Every
+# PS3_TRACE span of the runtime becomes a zone (ps3_trace.h), the presents and
+# the game's frames are frame marks. On demand: nothing is collected until a
+# profiler (tracy-profiler, tracy-capture) connects. The lifted code is not
+# touched, so switching it on or off rebuilds only the runtime and the port.
+# ---------------------------------------------------------------------------
+set(KZ_TRACY_DIR "" CACHE PATH "Tracy checkout to build its client from (empty = no Tracy)")
+if(KZ_TRACY_DIR)
+    set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+    add_subdirectory("${KZ_TRACY_DIR}" "${CMAKE_BINARY_DIR}/tracy" EXCLUDE_FROM_ALL)
+    target_link_libraries(ps3recomp_runtime PUBLIC TracyClient)
+    target_compile_definitions(ps3recomp_runtime PRIVATE PS3RECOMP_TRACY)
+    set_property(SOURCE main.cpp native_ppu/clock.cpp APPEND PROPERTY COMPILE_DEFINITIONS KZ_TRACY)
+    message(STATUS "Tracy:           ${KZ_TRACY_DIR} (on demand)")
+endif()
+
+# KZ_ASAN=ON: AddressSanitizer (and LeakSanitizer at exit) on the runtime and
+# the port's own sources; the lifted code stays as it is (its guest memory is
+# one mapping ASan does not see into). For soak tests of host leaks and
+# overruns: tools/perf/asan.supp, docs/medicao.md.
+option(KZ_ASAN "AddressSanitizer on the runtime and the port's own sources" OFF)
+if(KZ_ASAN)
+    set(_kz_asan -fsanitize=address -fno-omit-frame-pointer)
+    target_compile_options(ps3recomp_runtime PRIVATE ${_kz_asan})
+    get_target_property(_kz_srcs ${PROJECT_NAME} SOURCES)
+    list(FILTER _kz_srcs INCLUDE REGEX "^[^/]+\\.cpp$|/native_ppu/")
+    set_property(SOURCE ${_kz_srcs} APPEND PROPERTY COMPILE_OPTIONS ${_kz_asan})
+    target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address)
+    message(STATUS "ASan:            runtime and port sources")
 endif()
 
 # ---------------------------------------------------------------------------

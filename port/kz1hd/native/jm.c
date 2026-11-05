@@ -23,8 +23,9 @@
  * KZ_JM_CAPTURE=<dir>: once <dir>/go exists, for 3 flips, every transfer of
  * jm_post's SPUs goes to <dir>/dma.log (one line each: ctx, get/put, EA, LSA,
  * size, offset of its bytes in <dir>/dma.bin), and each MLAA/Transpose job
- * entry (modules 203, 206) adds a line and writes the 128 registers and the
- * local store to <dir>/job<n>.bin: what tools/mlaa_harness replays.
+ * entry (modules 203, 206; KZ_JM_CAPTURE_MODULES=<a,b,...> for others) adds a
+ * line and writes the 128 registers and the local store to <dir>/job<n>.bin:
+ * what tools/mlaa_harness replays.
  */
 #include "native.h"
 #include <pthread.h>
@@ -507,6 +508,17 @@ static void cap_dma(spu_context* ctx, uint32_t ea, uint32_t lsa, uint32_t size, 
     }
     pthread_mutex_unlock(&s_mu);
 }
+static int cap_module(int module)
+{
+    static int set[16] = { -1 };
+    if (set[0] < 0) {
+        memset(set, 0, sizeof set);
+        const char* e = getenv("KZ_JM_CAPTURE_MODULES");
+        if (!e) set[3] = set[6] = 1;
+        else for (const char* p = e; *p; ) { long m = strtol(p, (char**)&p, 10); if (m >= 200 && m < 216) set[m - 200] = 1; if (*p) p++; }
+    }
+    return module >= 200 && module < 216 && set[module - 200];
+}
 static void cap_job(spu_context* ctx, int module)
 {
     pthread_mutex_lock(&s_mu);
@@ -557,7 +569,7 @@ static void job_hook(spu_context* ctx)
     if (!s || !s->desc_n) return;
     kz_job j;
     const int module = ctx->resident_ovl;
-    if (s_cap_dir && (module == 203 || module == 206) && cap_on()) cap_job(ctx, module);
+    if (s_cap_dir && cap_module(module) && cap_on()) cap_job(ctx, module);
     if (!parse_job(s, module, &j)) return;
     if (module >= 200 && module < 216) __atomic_add_fetch(&s_jobs[module - 200], 1, __ATOMIC_RELAXED);
     extern unsigned cellGcm_flip_request_count(void);
@@ -645,16 +657,23 @@ static void jm_found(uint32_t spurs_ea, uint32_t wid, const char* cls, const cha
 
 __attribute__((constructor)) static void kz_jm_init(void)
 {
-    /* KZ_MLAA: where jm_post's MLAA (the only post effect in normal play) comes
-     * from. gpu (default): the renderer runs it on the display buffer where the
-     * game copies its frame to the SPUs (ps3recomp PS3RECOMP_MLAA_GPU, same
-     * rules as native/mlaa_ref.c); spu: the game's own SPU chain, with the
-     * render targets kept coherent and the NV0039 copies done (exact, slow);
-     * off: none. Glow and motion blur only exist on the spu path. */
+    /* KZ_MLAA: where jm_post's post effects come from. gpu (default): the
+     * renderer runs the MLAA (the only one in normal play) on the display
+     * buffer where the game copies its frame to the SPUs (ps3recomp
+     * PS3RECOMP_MLAA_GPU, same rules as native/mlaa_ref.c), then the sprint
+     * motion blur with the field the game draws at IO 0xF1000
+     * (PS3RECOMP_MB_GPU, native/mb_ref.c; KZ_MOTION_BLUR=0 leaves it out);
+     * spu: the game's own SPU chain, with the render targets kept coherent and
+     * the NV0039 copies done (exact, slow, the only path with the glow);
+     * off: none. */
     { const char* m = getenv("KZ_MLAA");
       if (m && !strcmp(m, "spu")) {
           setenv("KZ_JM_SKIP", "0", 0); setenv("PS3RECOMP_ENG_MAIN_COHERENCE", "1", 0); setenv("PS3RECOMP_NV0039", "1", 0);
-      } else if (!m || strcmp(m, "off")) setenv("PS3RECOMP_MLAA_GPU", "1", 0); }
+      } else if (!m || strcmp(m, "off")) {
+          setenv("PS3RECOMP_MLAA_GPU", "1", 0);
+          const char* b = getenv("KZ_MOTION_BLUR");
+          if (!b || atoi(b)) setenv("PS3RECOMP_MB_GPU", "0xF1000", 0);
+      } }
     { const char* e = getenv("KZ_JM_HLE_PM"); s_hle_pm = !e || atoi(e); }
     { const char* e = getenv("KZ_JM_SKIP"); s_skip = !e || atoi(e); }
     { const char* e = getenv("KZ_JM_SKIP_US"); s_skip_us = e ? atol(e) : 0; }

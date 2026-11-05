@@ -25,6 +25,7 @@ which is (c) Sony Interactive Entertainment and is not part of this repository.
 | Component | Author | Licence | What was used |
 |---|---|---|---|
 | FidelityFX Super Resolution 1 (`ffx_a.h`, `ffx_fsr1.h`) | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-FSR1-LICENSE.txt](licenses/AMD-FidelityFX-FSR1-LICENSE.txt)) | the EASU upscaler and RCAS sharpener, unmodified, added by patch 2033 under `libs/video/vulkan/ffx/` |
+| Input Prompts | Kenney (kenney.nl) | CC0 1.0 | the button prompts, as signed distance fields made by `tools/glyphs/kenney_prep.py` into `port/kz1hd/glyphs_kenney.inc` |
 
 ## Fonts
 
@@ -36,6 +37,9 @@ which is (c) Sony Interactive Entertainment and is not part of this repository.
 
 SDL2 (zlib licence), zlib (zlib licence), glslang (BSD-3-Clause and others), the Vulkan loader (Apache-2.0) and
 FFmpeg (LGPL-2.1 or later, loaded at run time; the port only includes its headers).
+Only when given to CMake (none is in this repository): the NVIDIA DLSS SDK (`PS3RECOMP_DLSS_SDK`; NVIDIA RTX SDKs
+licence, with `libnvidia-ngx-dlss.so` or `nvngx_dlss.dll` beside the program), AMD's FidelityFX SDK 1.1.4 built by
+`tools/ffx/build_fsr3.sh` (`PS3RECOMP_FFX_DIR`; MIT) and Tracy (`KZ_TRACY_DIR`; BSD-3-Clause).
 They come from your system or toolchain; see [docs/BUILDING.md](docs/BUILDING.md). The release folders carry the
 pinned toolchain unmodified, each part with its own licence files: on Windows llvm-mingw (Apache-2.0 with LLVM
 exceptions, and the MinGW-w64 licences), CMake (BSD-3-Clause), Ninja (Apache-2.0), Python (PSF) and FFmpeg's LGPL

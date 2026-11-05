@@ -1,0 +1,125 @@
+From 7bdef20573f0c100c98035404120caa044514188 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 05:59:41 -0300
+Subject: [PATCH] ppu_lifter: each lifted function's ctx is
+ PPU_CTX_RESTRICT (a port's build choice)
+
+The lifted code reaches guest memory through a byte pointer and is built
+with -fno-strict-aliasing, so the compiler has to assume any guest store
+may have changed the context: ctx->fpr, ctx->vr, ctx->lr and the rest are
+reloaded after every store. A port that defines PPU_CTX_RESTRICT=__restrict
+tells it otherwise. That holds: contexts live on host thread stacks, never
+in guest memory, and a lifted function hands its callees ctx itself.
+Empty by default, so the output builds as before. ppu_regcache.py and the
+tools that match the emitted signature accept the qualifier.
+
+Killzone HD, Level 7 route as a timedemo, 6 alternated pairs: 131.6 ->
+133.6 fps (+1.5%), ahead in every pair; its exact Level 1 combat routes
+replay with no position difference, as before.
+
+---
+ tools/ppu_lifter.py                | 14 +++++++++++++-
+ tools/ppu_regcache.py              |  2 +-
+ tools/show_func.py                 |  2 +-
+ tools/spbalance.py                 |  2 +-
+ tools/test_ppu_jumptable_extent.py |  2 +-
+ tools/test_ppu_lifter_chunks.py    |  2 +-
+ 6 files changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index 480b7d14..4ffa6800 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -74,6 +74,18 @@ HEADER_PREAMBLE = """\
+ #pragma once
+ #include <stdint.h>
+ 
++/* PPU_CTX_RESTRICT: the qualifier on each lifted function's ctx parameter, a
++ * port's build choice (empty by default; __restrict where the host compiler
++ * has it). The lifted code reaches guest memory through a byte pointer and
++ * builds with -fno-strict-aliasing, so without it the compiler must assume
++ * any guest store may have changed ctx->fpr, ctx->vr, ctx->lr and the rest,
++ * and reloads them after each one. Nothing else reaches a context while its
++ * function runs: contexts live on host thread stacks, never in guest memory,
++ * and a callee is handed ctx itself. */
++#ifndef PPU_CTX_RESTRICT
++#  define PPU_CTX_RESTRICT
++#endif
++
+ """ + FENCE_PREAMBLE + """
+ /* 128-bit vector register for VMX/AltiVec */
+ typedef union {
+@@ -4297,7 +4309,7 @@ class PPULifter:
+         # emitted as <name>_lifted; the port defines <name>, and may call the
+         # lifted one (for the cases it does not handle, or to verify).
+         suffix = "_lifted" if func.name in _native_overrides() else ""
+-        lines.append(f"void {weak}{func.name}{suffix}(ppu_context* ctx) {{")
++        lines.append(f"void {weak}{func.name}{suffix}(ppu_context* PPU_CTX_RESTRICT ctx) {{")
+         lines.append("    PPU_MM_SNAP")
+         stk = os.environ.get("PPU_LIFT_NO_STK", "") != "1"
+         for bline in _fuse_cr(func.body_lines):
+diff --git a/tools/ppu_regcache.py b/tools/ppu_regcache.py
+index 4cbe1b27..d426950b 100644
+--- a/tools/ppu_regcache.py
++++ b/tools/ppu_regcache.py
+@@ -33,7 +33,7 @@ ppu_recomp_*.cpp in it, in place)
+ """
+ import os, re, sys
+ 
+-FUNC_RE = re.compile(r'^void (\w+)\(ppu_context\* ctx\) \{\s*$')
++FUNC_RE = re.compile(r'^void (\w+)\(ppu_context\* (?:PPU_CTX_RESTRICT )?ctx\) \{\s*$')
+ GPR_RE = re.compile(r'ctx->gpr\[(\d+)\]')
+ ESCAPE_RE = re.compile(r'\bctx\b(?!->)')          # ctx passed on, not dereferenced
+ WRITE_RE = re.compile(r'(_g\d+|_cr|_xer)\s*(?:[-+*/|&^]|<<|>>)?=(?!=)')
+diff --git a/tools/show_func.py b/tools/show_func.py
+index 51b0aca6..9fb59fc7 100644
+--- a/tools/show_func.py
++++ b/tools/show_func.py
+@@ -33,7 +33,7 @@ def norm_addr(text: str) -> int:
+ 
+ def find_lifted(addr: int, recomp_dir: str, max_lines: int) -> bool:
+     name = f"func_{addr:08X}"
+-    pat = re.compile(rf"^(/\* .* \*/\n)?void {name}\(ppu_context\* ctx\) \{{",
++    pat = re.compile(rf"^(/\* .* \*/\n)?void {name}\(ppu_context\* (?:PPU_CTX_RESTRICT )?ctx\) \{{",
+                      re.M)
+     paths = sorted(glob.glob(os.path.join(recomp_dir, "ppu_recomp_*.cpp")))
+     single = os.path.join(recomp_dir, "ppu_recomp.c")
+diff --git a/tools/spbalance.py b/tools/spbalance.py
+index 2316643c..3cfa96d6 100644
+--- a/tools/spbalance.py
++++ b/tools/spbalance.py
+@@ -16,7 +16,7 @@ import glob, os, re, sys, collections
+ 
+ ALLOC = re.compile(r'ctx->gpr\[1\] \+= -(0x[0-9A-Fa-f]+);')
+ REST  = re.compile(r'ctx->gpr\[1\] = \(int64_t\)\(int32_t\)\(ctx->gpr\[1\] \+ (0x[0-9A-Fa-f]+)\)')
+-SIG   = re.compile(r'^void (func_[0-9A-Fa-f]{8})\(ppu_context\* ctx\) \{')
++SIG   = re.compile(r'^void (func_[0-9A-Fa-f]{8})\(ppu_context\* (?:PPU_CTX_RESTRICT )?ctx\) \{')
+ TRAMP = re.compile(r'g_trampoline_fn = \(void\(\*\)\(void\*\)\)(func_[0-9A-Fa-f]{8})')
+ 
+ def parse(d):
+diff --git a/tools/test_ppu_jumptable_extent.py b/tools/test_ppu_jumptable_extent.py
+index c65fcb22..b5e69ae9 100644
+--- a/tools/test_ppu_jumptable_extent.py
++++ b/tools/test_ppu_jumptable_extent.py
+@@ -136,7 +136,7 @@ def lift(td, words, at, bounds):
+ 
+ 
+ def body(src, addr):
+-    m = re.search(r"^void func_%08X\(ppu_context\* ctx\) \{\n(.*?)^\}\n" % addr, src, re.M | re.S)
++    m = re.search(r"^void func_%08X\(ppu_context\* (?:PPU_CTX_RESTRICT )?ctx\) \{\n(.*?)^\}\n" % addr, src, re.M | re.S)
+     return m.group(1) if m else None
+ 
+ 
+diff --git a/tools/test_ppu_lifter_chunks.py b/tools/test_ppu_lifter_chunks.py
+index fbc5523f..8a62f1c4 100644
+--- a/tools/test_ppu_lifter_chunks.py
++++ b/tools/test_ppu_lifter_chunks.py
+@@ -60,7 +60,7 @@ def snapshot(out):
+ 
+ def chunk_of(snap, name):
+     return [f for f, (_, txt) in snap.items()
+-            if f.startswith("ppu_recomp_") and f"void {name}(ppu_context* ctx) {{" in txt]
++            if f.startswith("ppu_recomp_") and f"void {name}(ppu_context* PPU_CTX_RESTRICT ctx) {{" in txt]
+ 
+ 
+ def main() -> int:

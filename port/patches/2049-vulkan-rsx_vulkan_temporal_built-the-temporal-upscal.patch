@@ -1,0 +1,82 @@
+From 57e5bde19b2b11f5431b7a89503adc623799b4d0 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 20:10:14 -0300
+Subject: [PATCH] vulkan: rsx_vulkan_temporal_built, the temporal
+ upscalers this build has
+
+For a title's options screen: bit 0 FSR 3 (PS3RECOMP_FFX_DIR), bit 1
+DLSS (PS3RECOMP_DLSS_SDK).
+
+---
+ libs/video/rsx_vk_fsr3.cpp      | 3 +++
+ libs/video/rsx_vk_fsr3.h        | 2 ++
+ libs/video/rsx_vulkan_backend.c | 6 ++++++
+ libs/video/rsx_vulkan_backend.h | 4 ++++
+ 4 files changed, 15 insertions(+)
+
+diff --git a/libs/video/rsx_vk_fsr3.cpp b/libs/video/rsx_vk_fsr3.cpp
+index 672373be..ed768d71 100644
+--- a/libs/video/rsx_vk_fsr3.cpp
++++ b/libs/video/rsx_vk_fsr3.cpp
+@@ -7,6 +7,7 @@
+ #ifndef PS3RECOMP_FSR3
+ 
+ extern "C" {
++int rsx_fsr3_built(void) { return 0; }
+ int rsx_fsr3_init(VkInstance, VkPhysicalDevice, VkDevice, PFN_vkGetInstanceProcAddr, PFN_vkGetDeviceProcAddr) { return -1; }
+ int rsx_fsr3_render_size(int, uint32_t, uint32_t, uint32_t*, uint32_t*) { return -1; }
+ int rsx_fsr3_evaluate(VkCommandBuffer, const rsx_dlss_frame*) { return -1; }
+@@ -107,6 +108,8 @@ VkResult VKAPI_CALL vkCreateBuffer(VkDevice d, const VkBufferCreateInfo* ci, con
+ /* frame generation is not used: its swapchain is not built in */
+ FfxErrorCode ffxSetFrameGenerationConfigToSwapchainVK(FfxFrameGenerationConfig const*) { return FFX_ERROR_INVALID_ARGUMENT; }
+ 
++int rsx_fsr3_built(void) { return 1; }
++
+ int rsx_fsr3_init(VkInstance instance, VkPhysicalDevice phys, VkDevice device,
+                   PFN_vkGetInstanceProcAddr gipa, PFN_vkGetDeviceProcAddr gdpa)
+ {
+diff --git a/libs/video/rsx_vk_fsr3.h b/libs/video/rsx_vk_fsr3.h
+index 9187b704..e05ca377 100644
+--- a/libs/video/rsx_vk_fsr3.h
++++ b/libs/video/rsx_vk_fsr3.h
+@@ -16,6 +16,8 @@ extern "C" {
+ enum { RSX_FSR3_NATIVE_AA = 0, RSX_FSR3_QUALITY = 1, RSX_FSR3_BALANCED = 2,
+        RSX_FSR3_PERFORMANCE = 3, RSX_FSR3_ULTRA_PERFORMANCE = 4 };
+ 
++/* 1 when this build has FSR 3 (PS3RECOMP_FFX_DIR). */
++int rsx_fsr3_built(void);
+ /* After the device. 0 when FSR 3 can run on it. */
+ int rsx_fsr3_init(VkInstance instance, VkPhysicalDevice phys, VkDevice device,
+                   PFN_vkGetInstanceProcAddr gipa, PFN_vkGetDeviceProcAddr gdpa);
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 28f16801..79c9f87d 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -510,6 +510,12 @@ void rsx_vulkan_set_reflex(int mode)
+ }
+ 
+ int rsx_vulkan_reflex_available(void) { return s_reflex.ok; }
++int rsx_vulkan_temporal_built(void)
++{
++    u32 a, b; const char* const* ia; const char* const* da;
++    rsx_dlss_required_extensions(&a, &ia, &b, &da);
++    return (rsx_fsr3_built() ? 1 : 0) | (b ? 2 : 0);
++}
+ 
+ /* The game's thread, after it queued a flip: this frame's simulation ended,
+  * sleep until the driver wants the next one to start. */
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 8d704496..bfde453e 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -92,6 +92,10 @@ void rsx_vulkan_set_reflex(int mode);
+  * the next frame; PS3RECOMP_MB_ON=0 starts it off. */
+ void rsx_vulkan_set_motion_blur(int on);
+ int  rsx_vulkan_reflex_available(void);
++/* The temporal upscalers this build has (PS3RECOMP_TEMPORAL): bit 0 FSR 3
++ * (PS3RECOMP_FFX_DIR), bit 1 DLSS (PS3RECOMP_DLSS_SDK; it also needs an
++ * NVIDIA GPU at run time). */
++int  rsx_vulkan_temporal_built(void);
+ void rsx_vulkan_latency_sleep(void);   /* the game's thread, after a flip */
+ void rsx_vulkan_set_crop(float f);
+ int  rsx_vulkan_output_size(int* w, int* h);

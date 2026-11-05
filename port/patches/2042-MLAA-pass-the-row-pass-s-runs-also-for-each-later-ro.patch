@@ -1,0 +1,28 @@
+From e84ac974529aa9d5e065c9bc68d1fd2f3511a2e4 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 31 Oct 2026 07:06:19 -0300
+Subject: [PATCH] MLAA pass: the row pass's runs also for each later
+ row job's first pair (REC2 dispatched H - 1 + 4)
+
+The shader computes the ops of a row job's first line pair, as that job sees
+it, in workgroups H-1..H+2, but the renderer dispatched only H-1 groups: in
+the game the four seams (rows 143/144, 287/288, ...) got no blend, ~200 pixels
+a frame off the C reference. mlaa_vk_test already dispatched them.
+
+---
+ libs/video/rsx_vulkan_backend.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 0f9095b1..dfa9598b 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -3745,7 +3745,7 @@ static int vk_eng_mlaa(void* user, u32 surface)
+         vk_mlaa_stage(4, j, (H + 255) / 256, last - lo + 1u);   /* CHAIN1 */
+     }
+     vk_mlaa_stage(5, 0, W / 256, H);                      /* PREP2 */
+-    vk_mlaa_stage(6, 0, H - 1, 1);                        /* REC2 */
++    vk_mlaa_stage(6, 0, H - 1 + 4, 1);                    /* REC2, and each later row job's first pair */
+     for (int j = 0; j < 5; j++) {                         /* CHAIN2, row job by row job */
+         const u32 lo = j ? 144u * j - 1u : 0u, last = j == 4 ? H - 2u : 144u * j + 143u;
+         vk_mlaa_stage(7, j, W / 256, last - lo + 1u);

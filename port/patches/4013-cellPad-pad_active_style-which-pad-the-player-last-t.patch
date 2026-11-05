@@ -1,0 +1,110 @@
+From d126f859faa7bab1a81319e70716f3d4a512e600 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 04:26:56 -0300
+Subject: [PATCH] cellPad: pad_active_style, which pad the player last
+ touched
+
+Beside the family pad_active_device gives (keyboard, Xbox, PlayStation,
+Nintendo), pad_active_style names the pad itself: Xbox One/Series or 360,
+DualShock 3, DualShock 4 or DualSense, Switch, Steam's own pads (vendor
+0x28DE: Steam Deck, Steam Controller) or a generic one. A title that draws
+each pad's own prompts reads it. PAD_VIRTUAL also takes xbox360, ps4 and
+steam.
+
+---
+ libs/input/cellPad.c | 44 ++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 42 insertions(+), 2 deletions(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 8290c32f..cdc8e065 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -457,8 +457,17 @@ enum { PAD_DEV_KEYBOARD = 0, PAD_DEV_XBOX = 1, PAD_DEV_PLAYSTATION = 2, PAD_DEV_
+  * that controller's family. */
+ static volatile int s_active_dev = PAD_DEV_KEYBOARD;
+ int pad_active_device(void) { return s_active_dev; }
++
++/* The finer kind behind the family, for titles that draw each pad's own
++ * prompts: which Xbox, which PlayStation, Steam's own pads. */
++enum { PAD_STYLE_KEYBOARD = 0, PAD_STYLE_XBOX_ONE, PAD_STYLE_XBOX_360, PAD_STYLE_PS3, PAD_STYLE_PS4,
++       PAD_STYLE_PS5, PAD_STYLE_SWITCH, PAD_STYLE_STEAM, PAD_STYLE_GENERIC };
++static volatile int s_active_style = PAD_STYLE_KEYBOARD;
++int pad_active_style(void) { return s_active_style; }
++
+ static void pad_set_active(int dev)
+ {
++    if (dev == PAD_DEV_KEYBOARD) s_active_style = PAD_STYLE_KEYBOARD;
+     if (s_active_dev == dev) return;
+     s_active_dev = dev;
+     static const char* const names[] = { "keyboard and mouse", "Xbox", "PlayStation", "Nintendo" };
+@@ -469,6 +478,31 @@ static int s_port0_pad;   /* a controller drives port 0 (the keyboard adds to it
+ static int s_pad_merge = -1;   /* PAD_MERGE; pad_set_merge changes it */
+ void pad_set_merge(int on) { s_pad_merge = on != 0; }
+ static int s_sdl_family[PAD_MAX_HOST_PORTS];
++static int s_sdl_style[PAD_MAX_HOST_PORTS];
++
++static int pad_sdl_style(SDL_GameController* gc)
++{
++    switch (SDL_GameControllerGetType(gc)) {
++    case SDL_CONTROLLER_TYPE_XBOX360: return PAD_STYLE_XBOX_360;
++    case SDL_CONTROLLER_TYPE_XBOXONE: return PAD_STYLE_XBOX_ONE;
++    case SDL_CONTROLLER_TYPE_PS3:     return PAD_STYLE_PS3;
++    case SDL_CONTROLLER_TYPE_PS4:     return PAD_STYLE_PS4;
++    case SDL_CONTROLLER_TYPE_PS5:     return PAD_STYLE_PS5;
++    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO:
++    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
++    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
++    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
++        return PAD_STYLE_SWITCH;
++    default:
++        switch (SDL_GameControllerGetVendor(gc)) {
++        case 0x28DE: return PAD_STYLE_STEAM;     /* Steam Deck, Steam Controller */
++        case 0x045E: return PAD_STYLE_XBOX_ONE;
++        case 0x054C: return PAD_STYLE_PS4;
++        case 0x057E: return PAD_STYLE_SWITCH;
++        default:     return PAD_STYLE_GENERIC;
++        }
++    }
++}
+ 
+ static int pad_sdl_family(SDL_GameController* gc)
+ {
+@@ -489,7 +523,7 @@ static int pad_sdl_family(SDL_GameController* gc)
+     }
+ }
+ 
+-/* PAD_VIRTUAL=xbox|ps5|switch: a virtual controller of that kind (no hardware
++/* PAD_VIRTUAL=xbox|xbox360|ps4|ps5|switch|steam: a virtual controller of that kind (no hardware
+  * needed), driven by PAD_VIRTUAL_FILE: "buttons lx ly rx ry lt rt" with
+  * buttons an SDL_CONTROLLER_BUTTON_* bit mask (hex), sticks -32768..32767 and
+  * triggers 0..32767. */
+@@ -505,6 +539,9 @@ static void pad_virtual_attach(void)
+     d.naxes = SDL_CONTROLLER_AXIS_MAX;
+     d.nbuttons = SDL_CONTROLLER_BUTTON_MAX;
+     if (!SDL_strcasecmp(kind, "ps5"))         { d.vendor_id = 0x054C; d.product_id = 0x0CE6; d.name = "Virtual DualSense"; }
++    else if (!SDL_strcasecmp(kind, "ps4"))    { d.vendor_id = 0x054C; d.product_id = 0x09CC; d.name = "Virtual DualShock 4"; }
++    else if (!SDL_strcasecmp(kind, "xbox360")) { d.vendor_id = 0x045E; d.product_id = 0x028E; d.name = "Virtual Xbox 360"; }
++    else if (!SDL_strcasecmp(kind, "steam"))  { d.vendor_id = 0x28DE; d.product_id = 0x1205; d.name = "Virtual Steam Deck"; }
+     else if (!SDL_strcasecmp(kind, "switch")) { d.vendor_id = 0x057E; d.product_id = 0x2009; d.name = "Virtual Switch Pro"; }
+     else                                      { d.vendor_id = 0x045E; d.product_id = 0x0B12; d.name = "Virtual Xbox"; }
+     s_virt_index = SDL_JoystickAttachVirtualEx(&d);
+@@ -620,6 +657,7 @@ static void pad_sdl_scan(void)
+         memset(&s_rumble[port], 0, sizeof s_rumble[port]);   /* nothing left over from before */
+         SDL_GameControllerRumble(gc, 0, 0, 0);
+         s_sdl_family[port] = pad_sdl_family(gc);
++        s_sdl_style[port] = pad_sdl_style(gc);
+         if (SDL_GameControllerHasLED(gc)) SDL_GameControllerSetLED(gc, 255, 48, 0);   /* Helghast orange */
+         SDL_GameControllerSetPlayerIndex(gc, port);
+         const char* name = SDL_GameControllerName(gc);
+@@ -725,8 +763,10 @@ static void pad_poll_sdl2(void)
+         const PadHostState* h = &s_host_state[i];
+         if (btns || h->trigger_l2 > 40 || h->trigger_r2 > 40 ||
+             abs(h->analog_lx - 128) > 48 || abs(h->analog_ly - 128) > 48 ||
+-            abs(h->analog_rx - 128) > 48 || abs(h->analog_ry - 128) > 48)
++            abs(h->analog_rx - 128) > 48 || abs(h->analog_ry - 128) > 48) {
++            s_active_style = s_sdl_style[i];
+             pad_set_active(s_sdl_family[i]);
++        }
+     }
+ 
+     /* PAD_MERGE=1: every controller drives port 0 (single-player titles

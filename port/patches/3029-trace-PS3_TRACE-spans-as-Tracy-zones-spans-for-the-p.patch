@@ -1,0 +1,175 @@
+From e0ca0fff4dbd4c2c4c2926548f942ef2428879fe Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 03:03:31 -0300
+Subject: [PATCH] trace: PS3_TRACE spans as Tracy zones; spans for the
+ present, SPURS workloads and lwmutex contention; thread names on Linux
+
+A port that builds Tracy's client in defines PS3RECOMP_TRACY for the
+runtime: PS3_TRACE_BEGIN/END then also open and close a Tracy zone,
+named by the span's name as it ends, with arg as its value. Without the
+define the macros are as before.
+
+New spans (PS3_TRACE and Tracy alike): "present" around the window's
+present, "spurs_workload" around each SPURS policy module run (arg: the
+workload id) and "lwmutex_wait" when an lwmutex lock has to wait (the
+timeout path breaks out of the loop instead of returning, so the span
+always closes).
+
+ps3_thread_name names threads on Linux too (prctl PR_SET_NAME, 15
+characters), so per-thread CPU tables and profilers tell them apart. The
+process's first thread keeps its name: pgrep/pkill -x match it.
+
+---
+ include/ps3emu/thread_name.h    | 27 +++++++++++++++++++++++----
+ libs/spurs/cellSpurs.c          |  6 ++++--
+ libs/video/rsx_vulkan_backend.c | 10 +++++++++-
+ runtime/ppu/ppu_sysprx.cpp      |  8 ++++++--
+ runtime/ps3_trace.h             | 14 ++++++++++++++
+ 5 files changed, 56 insertions(+), 9 deletions(-)
+
+diff --git a/include/ps3emu/thread_name.h b/include/ps3emu/thread_name.h
+index da9c5928..99a8d80c 100644
+--- a/include/ps3emu/thread_name.h
++++ b/include/ps3emu/thread_name.h
+@@ -3,10 +3,13 @@
+  * "audio mix", ...), so a debugger, a profiler or a per-thread CPU table can
+  * tell the guest's PPU and SPU threads and the runtime's own threads apart.
+  *
+- * Windows only for now: SetThreadDescription (Windows 10 1607 and later) is
+- * looked up at run time, so older systems just skip it. Elsewhere it does
+- * nothing; pthread_setname_np needs _GNU_SOURCE on glibc before the first
+- * pthread.h, which a header included this late cannot promise.
++ * Windows: SetThreadDescription (Windows 10 1607 and later) is looked up at
++ * run time, so older systems just skip it. Linux: prctl(PR_SET_NAME), which
++ * names the calling thread with no _GNU_SOURCE (pthread_setname_np needs it
++ * before the first pthread.h, which a header included this late cannot
++ * promise); the kernel keeps 15 characters (/proc/<pid>/task/<tid>/comm).
++ * The process's first thread keeps its name: it is the process name that
++ * pgrep/pkill -x match. Elsewhere it does nothing.
+  */
+ #ifndef PS3EMU_THREAD_NAME_H
+ #define PS3EMU_THREAD_NAME_H
+@@ -39,6 +42,22 @@ static inline void ps3_thread_name(const char* fmt, ...)
+     w[i] = 0;
+     set_desc(GetCurrentThread(), w);
+ }
++#elif defined(__linux__)
++#include <sys/prctl.h>
++#include <sys/syscall.h>
++#include <unistd.h>
++
++static inline void ps3_thread_name(const char* fmt, ...)
++{
++    if (syscall(SYS_gettid) == getpid()) return;
++    char s[64];
++    va_list ap;
++    va_start(ap, fmt);
++    vsnprintf(s, sizeof s, fmt, ap);
++    va_end(ap);
++    s[15] = 0;
++    prctl(PR_SET_NAME, s, 0, 0, 0);
++}
+ #else
+ static inline void ps3_thread_name(const char* fmt, ...) { (void)fmt; }
+ #endif
+diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
+index 993243d2..76b282cc 100644
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -1795,8 +1795,10 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
+         if (si->stopping && !slot->busy) break;
+         ReleaseSRWLockExclusive(&si->lock);
+         g_spurs_cur_wid = (int)slot->wid;   /* for a port's sampling profiler */
+-        spu_run_policy_module(slot->fn, slot->image_id, slot->pm, slot->pm_size,
+-                              slot->data, slot->wid, slot->ea, slot->spu_num);
++        { PS3_TRACE_BEGIN(_tr);
++          spu_run_policy_module(slot->fn, slot->image_id, slot->pm, slot->pm_size,
++                                slot->data, slot->wid, slot->ea, slot->spu_num);
++          PS3_TRACE_END(_tr, "spurs_workload", slot->wid); }
+         g_spurs_cur_wid = -1;
+         extern SPU_THREAD_LOCAL volatile unsigned g_spurs_pm_polls;
+         unsigned polls = g_spurs_pm_polls;
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index fc47be02..fff0c355 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2422,7 +2422,7 @@ static void vk_fsr_record(u32 sw, u32 sh)
+     vk_barrier_image(s_fsr.out.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+ }
+ 
+-static void vk_present_window(void)
++static void vk_present_window_body(void)
+ {
+     if (!s_vk.windowed || !s_vk.swapchain) return;
+ 
+@@ -2577,6 +2577,14 @@ static void vk_present_window(void)
+     else if (r != VK_SUCCESS) VK_LOG("vkQueuePresentKHR failed (VkResult %d)\n", (int)r);
+ }
+ 
++/* the present as a span (PS3_TRACE, and a Tracy zone in a Tracy build) */
++static void vk_present_window(void)
++{
++    PS3_TRACE_BEGIN(_tr);
++    vk_present_window_body();
++    PS3_TRACE_END(_tr, "present", 0);
++}
++
+ static u32 s_dump_ms;
+ static void vk_dump_ppm(const unsigned char* rgba)
+ {
+diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
+index a1b7b04f..1e067c5b 100644
+--- a/runtime/ppu/ppu_sysprx.cpp
++++ b/runtime/ppu/ppu_sysprx.cpp
+@@ -233,18 +233,22 @@ static int lwm_try(struct LwmSlot* sl)
+ static int lwm_acquire(struct LwmSlot* sl, uint64_t timeout_us)
+ {
+     if (lwm_try(sl)) return 1;
++    /* contended: the wait is a span (lock contention in a trace) */
++    PS3_TRACE_BEGIN(_tr);
++    int got = 1;
+     const long long deadline = timeout_us ? lwm_now_us() + (long long)timeout_us : 0;
+     while (InterlockedExchange(&sl->state, 2) != 0) {
+         DWORD ms = INFINITE;
+         if (timeout_us) {
+             const long long left = deadline - lwm_now_us();
+-            if (left <= 0) return 0;
++            if (left <= 0) { got = 0; break; }
+             const unsigned long long m = ((unsigned long long)left + 999) / 1000;
+             ms = m > 0xFFFFFFFEull ? 0xFFFFFFFEu : (DWORD)m;
+         }
+         WaitForSingleObject(sl->sem, ms);
+     }
+-    return 1;
++    PS3_TRACE_END(_tr, "lwmutex_wait", 0);
++    return got;
+ }
+ static void lwm_release(struct LwmSlot* sl)
+ {
+diff --git a/runtime/ps3_trace.h b/runtime/ps3_trace.h
+index c9d72f99..4e366445 100644
+--- a/runtime/ps3_trace.h
++++ b/runtime/ps3_trace.h
+@@ -16,8 +16,22 @@ uint64_t ps3_trace_now(void);
+ void ps3_trace_span(const char* name, uint64_t t0_ns, uint64_t t1_ns, uint32_t arg);
+ /* PS3_TRACE="0,<seconds>,...": recording waits for this call. */
+ void ps3_trace_arm(void);
++#ifdef PS3RECOMP_TRACY
++/* A port built with Tracy (https://github.com/wolfpld/tracy) defines
++ * PS3RECOMP_TRACY for the runtime: every span is also a Tracy zone, named as
++ * it ends (the names are string literals), with arg as its value. A span's
++ * BEGIN and END are in one block on one thread, as Tracy's zones nest. */
++#include <string.h>
++#include "tracy/TracyC.h"
++#define PS3_TRACE_BEGIN(v) TracyCZone(v##_tz, 1); uint64_t v = g_ps3_trace_on ? ps3_trace_now() : 0
++#define PS3_TRACE_END(v, name, arg) do { \
++        if (v && g_ps3_trace_on) ps3_trace_span((name), (v), ps3_trace_now(), (uint32_t)(arg)); \
++        TracyCZoneName(v##_tz, (name), strlen(name)); TracyCZoneValue(v##_tz, (uint64_t)(arg)); TracyCZoneEnd(v##_tz); \
++    } while (0)
++#else
+ #define PS3_TRACE_BEGIN(v) uint64_t v = g_ps3_trace_on ? ps3_trace_now() : 0
+ #define PS3_TRACE_END(v, name, arg) do { if (v && g_ps3_trace_on) ps3_trace_span((name), (v), ps3_trace_now(), (uint32_t)(arg)); } while (0)
++#endif
+ #ifdef __cplusplus
+ }
+ #endif
