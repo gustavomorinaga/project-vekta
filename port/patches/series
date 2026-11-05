@@ -123,3 +123,4 @@
 2050-vulkan-per-object-motion-pairs-by-the-rows-a-program.patch
 0005-tests-upstream-s-host-tests-follow-3029-and-3031.patch
 2051-vulkan-PS3RECOMP_FFX_TARGET-FSR-3.1-from-a-target.patch
+2052-vulkan-DLSS-and-FSR-3.1-in-the-MinGW-Windows-build.patch

@@ -1,0 +1,227 @@
+From c6530552da40ccf77440a48ba9c82a960830f6fa Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 22:02:34 -0300
+Subject: [PATCH] vulkan: DLSS and FSR 3.1 in the MinGW (Windows) build
+
+- NVIDIA ships the NGX loader (nvsdk_ngx_s.lib) for MSVC only. With MinGW
+  its default-library requests (libcmt, libcpmt, oldnames) are dropped and
+  rsx_vk_ngx_mingw.cpp answers the MSVC runtime pieces it calls: operator
+  new/delete by their MSVC names, the /GS cookie and its unwind handlers,
+  thread-safe statics, std::_Xbad_alloc/_Xlength_error. Its C library calls
+  and __CxxFrameHandler3 go to the UCRT, so no vcruntime140.dll is needed.
+- libmingwex (GCC-built) keeps the do-nothing CFG check in .00cfg, merged
+  into read-only data: NGX's indirect calls through __guard_check_icall_fptr
+  faulted. The pointer is set to a check in code at start-up.
+- FSR 3: the scratch memory with _aligned_malloc on Windows.
+- NV0039_STATS: its clock through get_timestamp_ns (no clock_gettime on
+  Windows), which broke the MinGW build.
+
+---
+ CMakeLists.txt                  |   8 +++
+ libs/video/cellGcmSys.c         |   3 +-
+ libs/video/rsx_vk_fsr3.cpp      |  16 ++++-
+ libs/video/rsx_vk_ngx_mingw.cpp | 117 ++++++++++++++++++++++++++++++++
+ 4 files changed, 139 insertions(+), 5 deletions(-)
+ create mode 100644 libs/video/rsx_vk_ngx_mingw.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7091cdd2..b3b4c8e8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -217,6 +217,14 @@ if(PS3RECOMP_RSX_VULKAN)
+         target_include_directories(ps3recomp_runtime PRIVATE "${PS3RECOMP_DLSS_SDK}/include")
+         target_compile_definitions(ps3recomp_runtime PRIVATE PS3RECOMP_DLSS)
+         target_link_libraries(ps3recomp_runtime PUBLIC "${_ngx_lib}" ${CMAKE_DL_LIBS})
++        if(MINGW)
++            # NVIDIA ships the NGX loader for MSVC only: its objects ask for the
++            # MSVC static runtime, and the few MSVC runtime calls it makes are
++            # answered by rsx_vk_ngx_mingw.cpp (the C library ones by the UCRT).
++            target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_vk_ngx_mingw.cpp")
++            target_link_options(ps3recomp_runtime PUBLIC "LINKER:--Xlink=-nodefaultlib:libcmt"
++                                "LINKER:--Xlink=-nodefaultlib:libcpmt" "LINKER:--Xlink=-nodefaultlib:oldnames")
++        endif()
+         message(STATUS "  DLSS:         NGX from ${PS3RECOMP_DLSS_SDK}")
+     endif()
+     # AMD FSR 3.1: the FidelityFX SDK's FSR 3 upscaler and VK backend, built
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 57dd8bea..0b1b7c8d 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -1236,8 +1236,7 @@ static struct { u32 ea[2]; u8* raw[2]; double last_dump, last_line; unsigned fra
+ 
+ static double nvst_now(void)
+ {
+-    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+-    return ts.tv_sec + ts.tv_nsec * 1e-9;
++    return (double)get_timestamp_ns() * 1e-9;
+ }
+ 
+ static void nvst_ppm(const char* path, const u8* p, int argb)
+diff --git a/libs/video/rsx_vk_fsr3.cpp b/libs/video/rsx_vk_fsr3.cpp
+index ed768d71..791bec7c 100644
+--- a/libs/video/rsx_vk_fsr3.cpp
++++ b/libs/video/rsx_vk_fsr3.cpp
+@@ -22,6 +22,16 @@ void rsx_fsr3_shutdown(void) {}
+ 
+ #define FSR3_LOG(...) fprintf(stderr, "[RSX vulkan] FSR 3: " __VA_ARGS__)
+ 
++/* the Windows C library has no aligned_alloc */
++#ifdef _WIN32
++#include <malloc.h>
++#define scratch_alloc(a, n) _aligned_malloc((n), (a))
++#define scratch_free(p) _aligned_free(p)
++#else
++#define scratch_alloc(a, n) aligned_alloc((a), (n))
++#define scratch_free(p) free(p)
++#endif
++
+ namespace {
+ 
+ struct {
+@@ -115,12 +125,12 @@ int rsx_fsr3_init(VkInstance instance, VkPhysicalDevice phys, VkDevice device,
+ {
+     s.instance = instance; s.phys = phys; s.device = device; s.gipa = gipa; s.gdpa = gdpa;
+     const size_t size = ffxGetScratchMemorySizeVK(phys, 1);
+-    s.scratch = aligned_alloc(64, (size + 63) & ~(size_t)63);
++    s.scratch = scratch_alloc(64, (size + 63) & ~(size_t)63);
+     if (s.scratch) memset(s.scratch, 0, size);
+     VkDeviceContext dc = { device, phys, device_fn };
+     if (!s.scratch || ffxGetInterfaceVK(&s.iface, ffxGetDeviceVK(&dc), s.scratch, size, 1) != FFX_OK) {
+         FSR3_LOG("no FidelityFX VK interface\n");
+-        free(s.scratch); s.scratch = nullptr;
++        scratch_free(s.scratch); s.scratch = nullptr;
+         return -1;
+     }
+     s.ok = true;
+@@ -195,7 +205,7 @@ int rsx_fsr3_evaluate(VkCommandBuffer cmd, const rsx_dlss_frame* f)
+ void rsx_fsr3_shutdown(void)
+ {
+     if (s.have_ctx) ffxFsr3UpscalerContextDestroy(&s.ctx);
+-    free(s.scratch);
++    scratch_free(s.scratch);
+     s = {};
+ }
+ 
+diff --git a/libs/video/rsx_vk_ngx_mingw.cpp b/libs/video/rsx_vk_ngx_mingw.cpp
+new file mode 100644
+index 00000000..0e61bc16
+--- /dev/null
++++ b/libs/video/rsx_vk_ngx_mingw.cpp
+@@ -0,0 +1,117 @@
++/* The MSVC runtime pieces NVIDIA's NGX loader (nvsdk_ngx_s.lib, built with
++ * MSVC only) calls, for a MinGW build. Its C library calls go to the UCRT
++ * MinGW links against, and __CxxFrameHandler3 / _CxxThrowException come from
++ * ucrtbase too; what is left is what MSVC links statically into every
++ * program: operator new and delete in MSVC's mangling, the /GS stack cookie
++ * and its unwind handlers, the thread-safe initialization of local statics
++ * and the two throw helpers of its standard library; and one fix for a
++ * MinGW runtime pointer it calls (Control Flow Guard, below). Built only with
++ * PS3RECOMP_DLSS on MinGW (CMakeLists.txt). */
++#include <windows.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <limits.h>
++
++extern "C" {
++
++int _fltused = 0;
++
++/* /GS: the loader's functions check their frame against this value. */
++uintptr_t __security_cookie = 0x00002B992DDFA232ull;
++void __security_check_cookie(uintptr_t c)
++{
++    if (c != __security_cookie) __fastfail(2 /* FAST_FAIL_STACK_COOKIE_CHECK_FAILURE */);
++}
++
++/* The unwind handlers of functions with a stack buffer (and of those with
++ * C++ exception handling too): let the exception go on to the caller's
++ * handlers, after the C++ handler for the _EH one. */
++EXCEPTION_DISPOSITION __CxxFrameHandler3(EXCEPTION_RECORD*, void*, CONTEXT*, void*);
++EXCEPTION_DISPOSITION __GSHandlerCheck(EXCEPTION_RECORD*, void*, CONTEXT*, void*)
++{
++    return ExceptionContinueSearch;
++}
++EXCEPTION_DISPOSITION __GSHandlerCheck_EH(EXCEPTION_RECORD* rec, void* frame, CONTEXT* ctx, void* dc)
++{
++    return __CxxFrameHandler3(rec, frame, ctx, dc);
++}
++
++/* Control Flow Guard: the NGX code calls through __guard_check_icall_fptr
++ * before its indirect calls. In this program CFG is off and the pointer
++ * holds mingw-w64's do-nothing check, but libmingwex (as built with GCC)
++ * places that function in .00cfg, which the linker merges into read-only
++ * data: calling it faults with DEP. The pointer is set here to a check in
++ * code that does the same nothing. */
++extern void (*__guard_check_icall_fptr)(uintptr_t);   /* not const: it is written */
++static void ngx_guard_check_icall(uintptr_t) {}
++static int ngx_guard_fixup(void)
++{
++    void* volatile* p = (void* volatile*)&__guard_check_icall_fptr;
++    DWORD old;
++    if (*p != (void*)ngx_guard_check_icall && VirtualProtect((void*)p, sizeof *p, PAGE_READWRITE, &old)) {
++        *p = (void*)ngx_guard_check_icall;
++        VirtualProtect((void*)p, sizeof *p, old, &old);
++    }
++    return 0;
++}
++static int s_ngx_guard_fixed = ngx_guard_fixup();
++
++/* Thread-safe local statics, MSVC's protocol (its thread_safe_statics.cpp):
++ * the guard holds 0 before, -1 while one thread initializes, then the global
++ * epoch at the time it finished; a thread whose own epoch is older than a
++ * guard calls the header. */
++int _Init_global_epoch = INT_MIN;
++thread_local int _Init_thread_epoch = INT_MIN;
++static SRWLOCK s_init_lock = SRWLOCK_INIT;
++static CONDITION_VARIABLE s_init_cv = CONDITION_VARIABLE_INIT;
++
++void _Init_thread_header(int* once)
++{
++    AcquireSRWLockExclusive(&s_init_lock);
++    if (*once == 0) {
++        *once = -1;
++    } else {
++        while (*once == -1) {
++            SleepConditionVariableSRW(&s_init_cv, &s_init_lock, INFINITE, 0);
++            if (*once == 0) { *once = -1; break; }
++        }
++        _Init_thread_epoch = _Init_global_epoch;
++    }
++    ReleaseSRWLockExclusive(&s_init_lock);
++}
++
++void _Init_thread_footer(int* once)
++{
++    AcquireSRWLockExclusive(&s_init_lock);
++    *once = ++_Init_global_epoch;
++    _Init_thread_epoch = _Init_global_epoch;
++    ReleaseSRWLockExclusive(&s_init_lock);
++    WakeAllConditionVariable(&s_init_cv);
++}
++
++void _Init_thread_abort(int* once)
++{
++    AcquireSRWLockExclusive(&s_init_lock);
++    *once = 0;
++    ReleaseSRWLockExclusive(&s_init_lock);
++    WakeAllConditionVariable(&s_init_cv);
++}
++
++/* operator new / delete and std::_Xbad_alloc / _Xlength_error, by their MSVC
++ * names. The loader does not catch, so a failure ends the program as an
++ * uncaught throw would. */
++void* ngx_operator_new(size_t n) __asm__("??2@YAPEAX_K@Z");
++void* ngx_operator_new(size_t n)
++{
++    void* p = malloc(n ? n : 1);
++    if (!p) abort();
++    return p;
++}
++void ngx_operator_delete(void* p) __asm__("??3@YAXPEAX@Z");
++void ngx_operator_delete(void* p) { free(p); }
++void ngx_xbad_alloc(void) __asm__("?_Xbad_alloc@std@@YAXXZ");
++void ngx_xbad_alloc(void) { abort(); }
++void ngx_xlength_error(const char*) __asm__("?_Xlength_error@std@@YAXPEBD@Z");
++void ngx_xlength_error(const char*) { abort(); }
++
++}
