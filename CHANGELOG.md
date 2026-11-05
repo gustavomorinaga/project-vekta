@@ -53,6 +53,12 @@ program and folder that build it. Until a release that calls itself playable
   earlier version left in the install folder move there on the next start.
 
 ### Fixed
+- Installing over an earlier version: on a tester's Windows machine the game started and closed again at once, with
+  nothing on screen, until the old version was uninstalled (its log went with the uninstall). The lift now starts
+  from empty output folders, so no source an earlier version lifted is compiled in; the build now configures CMake afresh when the build folder was made from another
+  version or patch set (`firstrun.py`); the launcher rebuilds before playing when the build there is not the one the
+  installed files make (another version, patch set or DLSS choice, as when the setup's build was skipped or stopped);
+  and a game that stops within 20 seconds of starting gets a message with the end of its log instead of silence.
 - The Linux folder's build no longer stops at the compile step with "unknown CPU: 'x86'": its Zig wrappers spell
   the port's `-march=x86-64-v3` the way Zig names CPUs (`x86_64_v3`).
 - The Linux folder's link no longer fails on `mallinfo2` (glibc 2.33; the folder targets 2.31): the stats line's

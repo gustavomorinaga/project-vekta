@@ -23,7 +23,11 @@ check of your game files runs again, and every later step whose inputs changed (
 with a message that says how it went. --open-data ("Open saves folder"): the folder of the saves and settings in
 Explorer. --support-package [--out DIR] ("Make a support package"): tools/release/support.py's zip, on the Desktop. --build-if-needed (the launcher, Project
 Vekta.exe, passes it): before the first build, run.cmd opens in a console of its own, then the game starts if it
-built.
+built. With a build there that this install's files did not make (stale_build: its build-stamp.json names another
+version, patch set or DLSS choice, as after an install over an earlier release without the build in the setup),
+firstrun.py --bar rebuilds it first in a console of its own (run.cmd when no paths were saved yet), so the game of
+an earlier version never starts from the new install. A game that ends within EARLY_EXIT seconds without its window
+being closed did not start: a message then says so, with the end of its log.
 
 After Project Pyrrhus's and Project Helghast's tools/release/launch.py (undecuple, MIT), which decide the same
 things for their launchers. Exit: the game's own code, 1 = not built yet, 2 = usage. Standard library only.
@@ -53,6 +57,7 @@ CLOSED = (b"window closed", b"window disabled")
 INSTALL_INI = "vekta-install.ini"   # the setup program writes it in the install folder ([INI] in installer/vekta.iss)
 SAVE_FOLDER = "Project Vekta"       # under %APPDATA% when the install is not portable
 PLAYER_FILES = ("kz1hd_pc.ini", "kz1hd_keys.ini", "gamedata")   # what the game writes in the folder it runs from
+EARLY_EXIT = 20                     # seconds: a game that ends sooner, its window not closed, did not start
 
 
 def install_settings(root):
@@ -211,6 +216,69 @@ def status_reasons(path):
     return result, [ln[7:] for ln in lines if ln.startswith("REASON ")]
 
 
+def rebuild(root, run=subprocess.run):
+    """firstrun.py --bar in a console of its own: (exit code, the RESULT line, [REASON texts])."""
+    status = os.path.join(root, "work", "logs", "repair-status.txt")
+    os.makedirs(os.path.dirname(status), exist_ok=True)
+    if os.path.exists(status):
+        os.remove(status)
+    rc = run([console_python(root), os.path.join(HERE, "firstrun.py"), "--root", root, "--bar", "--status-file",
+              status], cwd=root, creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0)).returncode
+    result, reasons = status_reasons(status)
+    return rc, result, reasons
+
+
+def stale_build(root):
+    """Why the build in this release folder is not the one its files make, or None (see the docstring). Only a
+    folder that ships the patched ps3recomp is checked: a Git clone builds with tools/build.sh, which writes no
+    stamp."""
+    import firstrun
+    w = os.path.join(root, "work")
+    patchset = firstrun.read_patchset(w)
+    if patchset is None:
+        return None
+    stamp = firstrun.read_stamp(w)
+    if stamp is None:
+        return "the build has no stamp"
+    for key, want in (("version", firstrun.read_version(root)), ("patchset", patchset)):
+        if stamp.get(key) != want:
+            return f"the build is {key} {stamp.get(key)}, this install {want}"
+    choice = firstrun.read_dlss(w)
+    if choice and stamp.get("dlss") != (choice == "accept"):
+        return f"DLSS was {'built in' if stamp.get('dlss') else 'left out'}, the choice is now {choice}"
+    return None
+
+
+def update_build(root, run=subprocess.run):
+    """--build-if-needed with a stale build: rebuild it; True when the game may start."""
+    if not os.path.isfile(os.path.join(root, "work", "paths.env")):
+        return first_run(root) == 0
+    rc, result, reasons = rebuild(root, run)
+    if rc == 0 and "ok=1" in result:
+        return True
+    why = "\n".join(reasons) or (result or f"exit {rc}")
+    notify(f"Project Vekta was updated, and the build for the new version did not finish:\n\n{why}\n\n"
+           f"The log is in {os.path.join(root, 'work', 'logs')}. Start Project Vekta again after a fix: the build "
+           "resumes where it stopped.")
+    return False
+
+
+def log_tail(log, lines=12, chars=1500):
+    try:
+        with open(log, encoding="utf-8", errors="replace") as f:
+            text = [ln.rstrip() for ln in f.read().splitlines() if ln.strip()]
+    except OSError:
+        return ""
+    return "\n".join(text[-lines:])[-chars:]
+
+
+def early_exit_text(rc, log):
+    tail = log_tail(log)
+    return (f"The game stopped right after it started (exit code {rc}).\n\n" +
+            (f"The end of its log:\n{tail}\n\n" if tail else "It wrote no log.\n\n") +
+            f"The whole log: {log}\nFor a bug report: the Start menu's \"Make a support package\".")
+
+
 def repair(root, run=subprocess.run):
     """--repair: verify the install, then check the game files again and rebuild what changed (docstring)."""
     checked, bad = verify_install(root)
@@ -223,13 +291,7 @@ def repair(root, run=subprocess.run):
                "changed? Steps whose inputs did not change are kept, so this takes from a minute to a full build; a "
                "console window shows the progress."):
         return 0
-    status = os.path.join(root, "work", "logs", "repair-status.txt")
-    os.makedirs(os.path.dirname(status), exist_ok=True)
-    if os.path.exists(status):
-        os.remove(status)
-    rc = run([console_python(root), os.path.join(HERE, "firstrun.py"), "--root", root, "--bar", "--status-file",
-              status], cwd=root, creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0)).returncode
-    result, reasons = status_reasons(status)
+    rc, result, reasons = rebuild(root, run)
     if rc == 0 and "ok=1" in result:
         notify("Verified: the install's files are intact, your game files pass the check and the port is up to "
                "date.", error=False)
@@ -330,6 +392,13 @@ def main(argv=None):
             argv_, cwd, env, log = plan(root, fullscreen=a.fullscreen)
         except ValueError:
             return 1
+    else:
+        why = stale_build(root) if a.build_if_needed and not a.dry_run else None
+        if why:
+            if sys.stdout is not None:
+                print(f"launch: rebuilding first: {why}")
+            if not update_build(root):
+                return 1
     if a.dry_run:
         print("run:", " ".join(f'"{x}"' if " " in x else x for x in argv_))
         print("in:", cwd, "(saves and settings)")
@@ -347,7 +416,10 @@ def main(argv=None):
         return 1
     if moved and sys.stdout is not None:
         print(f"launch: moved {', '.join(moved)} to {cwd}")
+    t0 = time.monotonic()
     rc = run(argv_, cwd, env, log)
+    if time.monotonic() - t0 < EARLY_EXIT and not window_closed(log):
+        notify(early_exit_text(rc, log))
     if sys.stdout is not None:
         print(f"log: {log}")
     return rc

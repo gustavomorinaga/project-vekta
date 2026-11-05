@@ -38,7 +38,9 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
             nvngx_dlss.dll beside KZ1HD.exe, on the player's machine only. Run again with --dlss accept or
             --dlss decline to change the choice (the Windows setup passes its checkbox's answer)
   compile   work/build/KZ1HD, on Windows work/build-win/KZ1HD.exe (kzbuild.py build; every run: Ninja itself
-            skips what is up to date)
+            skips what is up to date). When the build stamp names another version or patch set than this tree (an
+            install over an earlier release), the build folder's CMakeCache.txt is removed first, so CMake
+            configures it afresh
   stamp     work/build-stamp.json: the version, the patch set and the inputs this build was made from
 
 After a build, --desktop (or a yes to --interactive's question) writes the applications-menu entry
@@ -215,6 +217,7 @@ class Step:
     always: bool = False                        # run even when its marker says done
     ninja: bool = False                         # "[x/y]" lines are its progress
     after: object = None                        # Ctx -> None, in-process work after the commands
+    before: object = None                       # Ctx -> str or None, in-process work before them (what it did)
 
 
 def kzbuild(*args):
@@ -271,14 +274,49 @@ def write_dlss(work, choice):
         f.write(choice + "\n")
 
 
+def read_patchset(work):
+    try:
+        with open(os.path.join(work, "ps3recomp-patched", ".patchset")) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def read_stamp(work):
+    try:
+        with open(os.path.join(work, "build-stamp.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def build_dir(c):
+    """The compile step's CMake folder, as kzbuild.py picks it (KZ_BUILD wins)."""
+    return os.environ.get("KZ_BUILD") or c.w("build-win" if os.name == "nt" else "build")
+
+
+def before_compile(c):
+    """A CMake folder left by another version or patch set (an install over an earlier release, the stamp of the
+    build it holds says which) loses its cache, so nothing that version configured or cached carries over; Ninja
+    then rebuilds what the new configuration changes. A folder without a stamp is treated the same."""
+    cache = os.path.join(build_dir(c), "CMakeCache.txt")
+    if not os.path.isfile(cache):
+        return None
+    stamp = read_stamp(c.work) or {}
+    want = {"version": read_version(c.root), "patchset": read_patchset(c.work)}
+    old = {k: stamp.get(k) for k in want}
+    if old == want:
+        return None
+    os.remove(cache)
+    return f"a fresh CMake configuration: the build folder was made from {old}, this tree is {want}"
+
+
 def after_stamp(c):
     stamp = {"version": read_version(c.root), "built": datetime.datetime.now().isoformat(timespec="seconds"),
              "inputs": {k: c.part(k) for k in ("files", "patch", "lift", "vfs")}, "dlss": c.dlss_on()}
-    try:
-        with open(c.w("ps3recomp-patched", ".patchset")) as f:
-            stamp["patchset"] = f.read().strip()
-    except OSError:
-        pass
+    patchset = read_patchset(c.work)
+    if patchset is not None:
+        stamp["patchset"] = patchset
     with open(c.w("build-stamp.json"), "w", encoding="utf-8") as f:
         json.dump(stamp, f, indent=2)
         f.write("\n")
@@ -293,7 +331,7 @@ STEPS = [
     Step("lift", "Translating the game's code", 20, kzbuild("lift"), keys=("files", "patch", "lift")),
     Step("vfs", "Preparing the game folder", 15, kzbuild("vfs"), keys=("files", "vfs")),
     Step("dlss", "Downloading NVIDIA DLSS", 3, cmd_dlss, keys=("dlss",), always=True),
-    Step("compile", "Compiling", 51, kzbuild("build"), always=True, ninja=True),
+    Step("compile", "Compiling", 51, kzbuild("build"), always=True, ninja=True, before=before_compile),
     Step("stamp", "Finishing", 1, lambda c: [], always=True, after=after_stamp),
 ]
 
@@ -569,6 +607,9 @@ class Runner:
                     continue
                 self.log.write(f"## step {i + 1}/{n} {step.name}: {step.label}")
                 t = time.monotonic()
+                did = step.before(c) if step.before else None
+                if did:
+                    self.emit(did)
                 cmds = step.commands(c)
                 self.progress(i, 0, len(cmds) or 1)
                 for k, argv in enumerate(cmds):

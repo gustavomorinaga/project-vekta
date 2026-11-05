@@ -316,6 +316,9 @@ def cmd_lift(e, a):
          "--seed-json", j(k, "analysis", "seeds.json"), "--output", j(k, "analysis", "functions.json")], e, "null")
     # Functions port/kz1hd/native_ppu/ reimplements: the lifter emits them as <name>_lifted.
     e["PPU_LIFT_NATIVE"] = native_names(j(p, "native_ppu"), ".cpp", r"^void (func_[0-9A-F]*)\(ppu_context\* ctx\)$")
+    # The build globs the folder's sources: a chunk an earlier lift left there (another version's chunk count) would be
+    # compiled in, so each lift starts from an empty folder, as the SPU one does.
+    shutil.rmtree(j(k, "gen"), ignore_errors=True)
     # 0x3B5CB0/0x3B5DD4: its libc setjmp/longjmp, which Lua 4.0 raises its errors with.
     run([py, j(t, "ppu_lifter.py"), eboot, "--functions", j(k, "analysis", "functions.json"), "--hle-stubs",
          j(k, "analysis", "EBOOT.imports.json"), "--setjmp", "0x3B5CB0", "--longjmp", "0x3B5DD4", "--code-end",
@@ -361,6 +364,7 @@ def cmd_lift(e, a):
     # The firmware's libsre runs for the two SPURS LFQueue calls the runtime does not reimplement (stubs.cpp): its
     # image, function list and imports from lift_prx.py, the imports in the lifter's --hle-stubs form, then the lift.
     fw = j(e["KZ_WORK"], "fw")
+    shutil.rmtree(j(fw, "gen"), ignore_errors=True)   # globbed by the build, as work/lift/gen
     need_file(e["KZ_LIBSRE"], "libsre.prx (KZ_LIBSRE; docs/GETTING-FILES.md)")
     os.makedirs(j(fw, "out"), exist_ok=True)
     run([py, j(t, "lift_prx.py"), e["KZ_LIBSRE"], "--base", "0x02000000", "--output", j(fw, "out") + os.sep], e,

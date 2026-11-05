@@ -250,6 +250,49 @@ with tempfile.TemporaryDirectory() as tmp:
         sys.stdout = so
     check(rc == 0 and "GCM_PARK_SKIP=1" in dry and "run:" in dry, f"--dry-run prints the plan: {dry}")
 
+    # an install over an earlier release: the build its files did not make is rebuilt before the game starts
+    import firstrun
+    check(launch.stale_build(str(root)) is None, "a tree without the shipped patched ps3recomp is never stale")
+    (w / "ps3recomp-patched").mkdir()
+    (w / "ps3recomp-patched" / ".patchset").write_text("new\n")
+    check("no stamp" in (launch.stale_build(str(root)) or ""), "a build without a stamp is stale")
+    version = firstrun.read_version(str(root))
+    stamp = {"version": version, "patchset": "old", "dlss": False}
+    (w / "build-stamp.json").write_text(json.dumps(stamp))
+    check("patchset old" in (launch.stale_build(str(root)) or ""), "a build of another patch set is stale")
+    (w / "build-stamp.json").write_text(json.dumps(dict(stamp, patchset="new")))
+    check(launch.stale_build(str(root)) is None, "the build of this install is not stale")
+    firstrun.write_dlss(str(w), "accept")
+    check("DLSS" in (launch.stale_build(str(root)) or ""), "a build without DLSS after DLSS was accepted is stale")
+    (w / "build-stamp.json").write_text(json.dumps(dict(stamp, version="0.0.1", patchset="new", dlss=True)))
+    check("version 0.0.1" in (launch.stale_build(str(root)) or ""), "a build of another version is stale")
+    ran, said = [], []
+    real_notify, real_first = launch.notify, launch.first_run
+    launch.notify = lambda text, error=True: said.append(text)
+    launch.first_run = lambda r: ran.append("run.cmd") or 0
+
+    def fake_firstrun(argv, **kw):
+        ran.append(argv[1:])
+        st = argv[argv.index("--status-file") + 1]
+        pathlib.Path(st).write_text("RESULT ok=0 step=compile\nREASON the compile broke\n")
+        return subprocess.CompletedProcess(argv, 1)
+    try:
+        check(launch.update_build(str(root), run=fake_firstrun) and ran == ["run.cmd"],
+              f"without saved paths the stale build is rebuilt by run.cmd, which asks for them: {ran}")
+        (w / "paths.env").write_text("")
+        ran.clear()
+        check(not launch.update_build(str(root), run=fake_firstrun) and "--bar" in ran[0] and
+              "the compile broke" in said[-1], f"a failed rebuild says why and starts no game: {ran} {said}")
+        exe.write_text('#!/bin/sh\necho "ERROR: could not load the EBOOT"\nexit 1\n')
+        argv, cwd, e, log = launch.plan(str(root), env)
+        t0 = time.monotonic()
+        rc = launch.run(argv, cwd, e, log, poll=0.05)
+        text = launch.early_exit_text(rc, log)
+        check(time.monotonic() - t0 < launch.EARLY_EXIT and "exit code 1" in text and "could not load the EBOOT" in
+              text, f"a game that stops at once is reported with the end of its log: {text}")
+    finally:
+        launch.notify, launch.first_run = real_notify, real_first
+
 r = subprocess.run([sys.executable, str(ROOT / "tools" / "release" / "assemble_payload.py"), "--dry-run", "--cache",
                     "/nonexistent"], capture_output=True, text=True)
 check(r.returncode == 1 and "not fetched from its pin" in r.stderr, f"an empty cache is refused: {r.stderr}")
