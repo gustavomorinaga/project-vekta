@@ -7,6 +7,8 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-05 (pre-release)
+
 ### Added
 - Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super
   Resolution and DLAA, chosen on the PC page ("Temporal Upscaler (on restart)") or with `PS3RECOMP_TEMPORAL`, with the

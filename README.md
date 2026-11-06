@@ -46,7 +46,7 @@ As of 2026-10-30, on Linux x64 with an NVIDIA RTX 3070 Ti, the maintainer's mach
 | Frame rate | a steady 60 frames per second by default (the game logic runs at 60 Hz instead of the PS3's 30); an optional 144 Hz mode reaches about 131 to 134 frames per second in Level 1 and Level 7 |
 | Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music through the firmware's MP3 decoder |
 | Windows | the Windows exe is cross-built on Linux and runs under Wine, Proton and on a real Windows; the full campaign on Windows is not checked yet, and speed under Wine and Proton is lower (about 100 frames per second in Level 7) |
-| Distribution | you build the port from your own files: on Windows the setup program or folder builds it on your PC (since 0.2.0); on Linux from source, and from the next release a Linux folder with its own toolchain (no compiler or packages needed) |
+| Distribution | you build the port from your own files: on Windows the setup program or folder builds it on your PC (since 0.2.0); on Linux from source, or (since 0.3.0) a Linux folder with its own toolchain (no compiler or packages needed) |
 
 What works and what does not, item by item: [docs/FEATURES.md](docs/FEATURES.md). Open problems:
 [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
@@ -88,7 +88,7 @@ exception: unless you pick its "Portable" option, the settings and saves go to `
 
 ## Getting it
 
-Latest release: <!-- release -->[v0.2.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.2.0), a source pre-release<!-- /release -->. Releases are source archives (this tree with ps3recomp at
+Latest release: <!-- release -->[v0.3.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.3.0), a source pre-release<!-- /release -->. Releases are source archives (this tree with ps3recomp at
 its pinned commit, checked by SHA-256); either way the port is built on your machine from your own game
 ([docs/BUILDING.md](docs/BUILDING.md)). You need:
 
