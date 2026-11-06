@@ -82,6 +82,44 @@ if(KZ_MARCH AND NOT MSVC)
     add_compile_options(-march=${KZ_MARCH})
 endif()
 
+# ENHANCEMENT: AMD FSR 3.1 as a temporal upscaler (docs/dev/upscalers.md). The FidelityFX SDK's FSR 3 upscaler and
+# Vulkan backend are built here from third_party/fidelityfx-fsr3 (its shaders compiled ahead by
+# tools/ffx/build_fsr3.sh; README.md there), and ps3recomp links the target (patch 2051). PS3RECOMP_FFX_DIR=<another
+# build> takes its place; KZ_FSR3=OFF builds without FSR 3.1. The Linux build and the Windows exe (llvm-mingw) alike.
+option(KZ_FSR3 "Build AMD FSR 3.1 from third_party/fidelityfx-fsr3" ON)
+if(KZ_FSR3 AND NOT PS3RECOMP_FFX_DIR AND PS3RECOMP_RSX_VULKAN)
+    set(_ffx "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/fidelityfx-fsr3")
+    add_library(kz_ffx_fsr3 STATIC
+        "${_ffx}/src/backends/vk/ffx_vk.cpp"
+        "${_ffx}/src/components/fsr3upscaler/ffx_fsr3upscaler.cpp"
+        "${_ffx}/src/backends/shared/ffx_shader_blobs.cpp"
+        "${_ffx}/src/backends/shared/blob_accessors/ffx_fsr3upscaler_shaderblobs.cpp"
+        "${_ffx}/src/shared/ffx_assert.cpp"
+        "${_ffx}/src/shared/ffx_message.cpp"
+        "${_ffx}/src/shared/ffx_object_management.cpp"
+        "${_ffx}/src/shared/ffx_breadcrumbs_list.cpp")
+    target_include_directories(kz_ffx_fsr3 PUBLIC "${_ffx}/include"
+        PRIVATE "${_ffx}/include/FidelityFX/host" "${_ffx}/src/shared" "${_ffx}/src/backends/shared"
+                "${_ffx}/src/backends/vk" "${_ffx}/src/components" "${_ffx}/perm")
+    if(PS3RECOMP_VULKAN_INCLUDE_DIR)
+        target_include_directories(kz_ffx_fsr3 PRIVATE "${PS3RECOMP_VULKAN_INCLUDE_DIR}")
+    endif()
+    target_compile_definitions(kz_ffx_fsr3 PRIVATE FFX_FSR3UPSCALER FFX_GCC)
+    # the SDK is written for MSVC: ffx_linux_compat.h stands in for the calls it uses on Linux, ffx_mingw_compat.h
+    # for the headers MSVC's bring in by themselves on Windows. Its warnings are not ours.
+    if(WIN32)
+        set(_ffx_compat ffx_mingw_compat.h)
+    else()
+        set(_ffx_compat ffx_linux_compat.h)
+    endif()
+    target_compile_options(kz_ffx_fsr3 PRIVATE -O2 -w
+        "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/../../tools/ffx/${_ffx_compat}")
+    set_target_properties(kz_ffx_fsr3 PROPERTIES CXX_STANDARD 17 POSITION_INDEPENDENT_CODE ON)
+    set(PS3RECOMP_FFX_TARGET kz_ffx_fsr3 CACHE STRING "CMake target of the FidelityFX FSR 3 library" FORCE)
+elseif(PS3RECOMP_FFX_TARGET STREQUAL "kz_ffx_fsr3")
+    set(PS3RECOMP_FFX_TARGET "" CACHE STRING "CMake target of the FidelityFX FSR 3 library" FORCE)
+endif()
+
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 # Line tables for the runtime too (KZ_PROF reports and gdb), and -O2: the
@@ -186,14 +224,18 @@ endif()
 # full optimization instead of the target-wide -O1 the lifted TUs need.
 file(GLOB KZ_NATIVE_PPU CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/native_ppu/*.cpp")
 set_source_files_properties(${KZ_NATIVE_PPU} PROPERTIES COMPILE_OPTIONS "-O2")
+# glyphs.cpp embeds the Controls screen's pad pictures (pads/, #embed).
+set_source_files_properties(glyphs.cpp PROPERTIES COMPILE_OPTIONS "-Wno-c23-extensions")
 
 add_executable(${PROJECT_NAME}
     main.cpp
     stubs.cpp
     pcoptions.cpp
+    route.cpp
     glyphs.cpp
     sail.cpp
     prof.cpp
+    perf.cpp
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
     ${RECOMP_SOURCES}
@@ -336,8 +378,10 @@ set(KZ_PGO_USE "" CACHE FILEPATH "Merged .profdata to optimize the lifted PPU co
 # The runtime's RSX/video code runs on the one FIFO thread, so it is profiled too.
 # PPU_STORE_SNAP: the lifted stores take the store diagnostics and the SPU
 # reservation bitmap once per function (ppu_recomp.h) instead of after every
-# store.
-set(KZ_PPU_FLAGS "${KZ_PPU_OPT}" -DPPU_STORE_SNAP)
+# store. PPU_CTX_RESTRICT: each lifted function's ctx is __restrict, so a guest
+# store no longer makes it reload ctx->fpr/vr/lr (Level 7 route as timedemo,
+# alternated runs: see docs/dev/performance.md).
+set(KZ_PPU_FLAGS "${KZ_PPU_OPT}" -DPPU_STORE_SNAP -DPPU_CTX_RESTRICT=__restrict)
 set(KZ_PGO_FLAGS "")
 if(KZ_PGO_GEN)
     set(KZ_PGO_FLAGS -fprofile-instr-generate -mllvm -disable-vp=true)
@@ -371,6 +415,40 @@ endif()
 if(LIBSRE_SOURCES)
     set_property(SOURCE ${LIBSRE_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${LIBSRE_DIR}")
     set_source_files_properties(stubs.cpp PROPERTIES COMPILE_DEFINITIONS KZ_LIBSRE)
+endif()
+
+# ---------------------------------------------------------------------------
+# Tracy (docs/medicao.md): KZ_TRACY_DIR=<a checkout of github.com/wolfpld/tracy,
+# the same version as the profiler that connects> builds its client in. Every
+# PS3_TRACE span of the runtime becomes a zone (ps3_trace.h), the presents and
+# the game's frames are frame marks. On demand: nothing is collected until a
+# profiler (tracy-profiler, tracy-capture) connects. The lifted code is not
+# touched, so switching it on or off rebuilds only the runtime and the port.
+# ---------------------------------------------------------------------------
+set(KZ_TRACY_DIR "" CACHE PATH "Tracy checkout to build its client from (empty = no Tracy)")
+if(KZ_TRACY_DIR)
+    set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+    add_subdirectory("${KZ_TRACY_DIR}" "${CMAKE_BINARY_DIR}/tracy" EXCLUDE_FROM_ALL)
+    target_link_libraries(ps3recomp_runtime PUBLIC TracyClient)
+    target_compile_definitions(ps3recomp_runtime PRIVATE PS3RECOMP_TRACY)
+    set_property(SOURCE main.cpp native_ppu/clock.cpp APPEND PROPERTY COMPILE_DEFINITIONS KZ_TRACY)
+    message(STATUS "Tracy:           ${KZ_TRACY_DIR} (on demand)")
+endif()
+
+# KZ_ASAN=ON: AddressSanitizer (and LeakSanitizer at exit) on the runtime and
+# the port's own sources; the lifted code stays as it is (its guest memory is
+# one mapping ASan does not see into). For soak tests of host leaks and
+# overruns: tools/perf/asan.supp, docs/medicao.md.
+option(KZ_ASAN "AddressSanitizer on the runtime and the port's own sources" OFF)
+if(KZ_ASAN)
+    set(_kz_asan -fsanitize=address -fno-omit-frame-pointer)
+    target_compile_options(ps3recomp_runtime PRIVATE ${_kz_asan})
+    get_target_property(_kz_srcs ${PROJECT_NAME} SOURCES)
+    list(FILTER _kz_srcs INCLUDE REGEX "^[^/]+\\.cpp$|/native_ppu/")
+    set_property(SOURCE ${_kz_srcs} APPEND PROPERTY COMPILE_OPTIONS ${_kz_asan})
+    target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address)
+    message(STATUS "ASan:            runtime and port sources")
 endif()
 
 # ---------------------------------------------------------------------------

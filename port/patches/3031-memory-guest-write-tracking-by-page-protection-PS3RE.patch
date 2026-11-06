@@ -1,0 +1,374 @@
+From 134d6de877456d1335adbf279ea3f7980d152b13 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 04:35:55 -0300
+Subject: [PATCH] memory: guest write tracking by page protection
+ (PS3RECOMP_WTRACK=1)
+
+vm_wtrack protects guest pages read-only and records the first write to
+each (SIGSEGV/SIGBUS handler chained to the previous one; a vectored
+handler on Windows). The draw engine protects a cached texture's pages
+before hashing it, and while none of them was written since, its
+per-frame check is a look at their state instead of a hash. cellFs and
+sys_fs release the range before fread, since a kernel write into a
+protected page fails instead of faulting.
+
+Off by default: on the level 7 route it skips almost every texture check
+but the frame rate does not move (RSX thread is not the bottleneck), and
+level loads take millions of faults.
+
+---
+ libs/filesystem/cellFs.c     |   2 +
+ libs/video/rsx_draw_engine.c |  40 ++++++++-
+ runtime/memory/vm_wtrack.c   | 158 +++++++++++++++++++++++++++++++++++
+ runtime/memory/vm_wtrack.h   |  43 ++++++++++
+ runtime/syscalls/sys_fs.c    |   2 +
+ 5 files changed, 243 insertions(+), 2 deletions(-)
+ create mode 100644 runtime/memory/vm_wtrack.c
+ create mode 100644 runtime/memory/vm_wtrack.h
+
+diff --git a/libs/filesystem/cellFs.c b/libs/filesystem/cellFs.c
+index 4d916ac7..a5ff5d2b 100644
+--- a/libs/filesystem/cellFs.c
++++ b/libs/filesystem/cellFs.c
+@@ -5,6 +5,7 @@
+  * to host filesystem paths and performs real I/O.
+  */
+ 
++#include "../../runtime/memory/vm_wtrack.h"
+ #include "cellFs.h"
+ #include "../../runtime/platform/win32_backtrace.h"   /* RtlCaptureStackBackTrace / GetModuleHandleA on POSIX */
+ #include "ps3emu/endian.h"
+@@ -527,6 +528,7 @@ s32 cellFsRead(CellFsFd fd, void* buf, u64 nbytes, u64* nread)
+          * which made this look handled -- but the file contents were being read
+          * to a raw guest address interpreted as a host one, so nothing the
+          * title loaded ever landed in guest memory. */
++        vm_wtrack_release((u32)(uintptr_t)buf, nbytes);   /* the kernel's write would not fault: EFAULT */
+         bytes_read = (u64)fread(gptr(buf), 1, (size_t)nbytes, s_files[fd].host_fp);
+     }
+ 
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index b1967422..1a28532e 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -12,6 +12,7 @@
+  */
+ #include "../../runtime/ps3_trace.h"
+ #include "rsx_draw_engine.h"
++#include "../../runtime/memory/vm_wtrack.h"
+ 
+ #include "rsx_fp_decompiler.h"
+ #include "rsx_primitives.h"
+@@ -156,6 +157,7 @@ typedef struct {
+     u32 depth;                  /* slices of a 3D texture, else 1 */
+     u32 levels;                 /* SET_TEXTURE_FORMAT mipmap count it was built with */
+     int rewritten;              /* guest bytes rewritten by the engine itself */
++    int tracked;                /* its pages are write-tracked (vm_wtrack.h) */
+ 
+ } eng_texture;
+ 
+@@ -1428,6 +1430,30 @@ static int eng_texture_full_rehash(u32 span, u32 last_full_frame)
+            (u32)(g.frames - last_full_frame) >= ENG_TEXHASH_FULL_EVERY;
+ }
+ 
++/* PS3RECOMP_WTRACK=1: a cached texture's pages are protected once its bytes
++ * are read, and while none was written since, its per-frame check is a look
++ * at their state instead of a hash (vm_wtrack.h). The guest address, or 0
++ * when the bytes are not plain guest memory (a port's own reader). */
++static u32 eng_wtrack_ea(u32 location, u32 offset)
++{
++    if (s_guest_reader || !vm_base || !vm_wtrack_on()) return 0;
++    return cellGcmResolveLocated(location == RSX_LOCATION_LOCAL, offset);
++}
++
++/* RSX_WTRACK_STATS=1: every 600 frames, how the texture checks went. */
++static struct { u64 skipped, hashed, changed; u32 frame; } s_wt;
++static void eng_wtrack_stats(void)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("RSX_WTRACK_STATS"); on = e && *e && *e != '0'; }
++    if (!on || g.frames - s_wt.frame < 600u) return;
++    fprintf(stderr, "[wtrack] %u frames: %llu checks skipped, %llu hashed, %llu changed, %llu faults so far\n",
++            g.frames - s_wt.frame, (unsigned long long)s_wt.skipped, (unsigned long long)s_wt.hashed,
++            (unsigned long long)s_wt.changed, (unsigned long long)vm_wtrack_faults());
++    memset(&s_wt, 0, sizeof s_wt);
++    s_wt.frame = g.frames;
++}
++
+ static int eng_staging_reserve(u32 bytes)
+ {
+     if (g.tex_staging_cap >= bytes) return 1;
+@@ -1575,7 +1601,14 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+ #undef ENG_TEXTURE_KEY_MATCHES
+     if (hit) {
+         eng_texture* e = hit;
+-        if (e->handle && e->last_hash_frame != g.frames) {
++        const u32 wt_ea = e->handle && e->last_hash_frame != g.frames ? eng_wtrack_ea(location, offset) : 0;
++        if (wt_ea) eng_wtrack_stats();
++        if (wt_ea && e->tracked && !e->rewritten && vm_wtrack_clean(wt_ea, span)) {
++            e->last_hash_frame = g.frames;   /* not one byte written since the last check */
++            s_wt.skipped++;
++        } else if (e->handle && e->last_hash_frame != g.frames) {
++            /* protected before the hash reads them: a write from now on is seen */
++            if (wt_ea) { vm_wtrack_protect(wt_ea, span); e->tracked = 1; s_wt.hashed++; }
+             /* Every cached texture used to be hashed in full every frame;
+              * in a big scene that is hundreds of MB a second for the few
+              * that change. Now the sparse check every frame, and the full
+@@ -1592,7 +1625,7 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+             if (e->rewritten && readable) {
+                 hash = ~e->content_hash;
+                 e->rewritten = 0;
+-            } else if (readable && (sparse != e->sparse_hash ||
++            } else if (readable && (sparse != e->sparse_hash || e->tracked ||
+                              eng_texture_full_rehash(span, e->last_full_frame))) {
+                 hash = eng_texture_content_hash(location, offset, span, &readable);
+                 e->last_full_frame = g.frames;
+@@ -1600,6 +1633,7 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+             if (readable) e->sparse_hash = sparse;
+             e->last_hash_frame = g.frames;
+             if (readable && hash != e->content_hash) {
++                s_wt.changed += e->tracked;
+                 /* In place when the backend orders the upload after the draws
+                  * that sampled the old bytes; a volume keeps create-and-swap,
+                  * and so does a different mip count (the key does not hold it,
+@@ -1647,6 +1681,8 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+     e.last_hash_frame = g.frames;
+     e.last_full_frame = g.frames - (index & (ENG_TEXHASH_FULL_EVERY - 1u));
+     e.last_use_serial = ++g.texture_use_serial;
++    { const u32 wt_ea = eng_wtrack_ea(location, offset);
++      if (wt_ea) { vm_wtrack_protect(wt_ea, span); e.tracked = 1; } }
+     { int readable = 0;
+       e.content_hash = eng_texture_content_hash(location, offset, span, &readable);
+       e.sparse_hash = eng_texture_sparse_hash(location, offset, span, &readable); }
+diff --git a/runtime/memory/vm_wtrack.c b/runtime/memory/vm_wtrack.c
+new file mode 100644
+index 00000000..5a995a18
+--- /dev/null
++++ b/runtime/memory/vm_wtrack.c
+@@ -0,0 +1,158 @@
++/*
++ * Write tracking of guest memory by page protection. See vm_wtrack.h.
++ *
++ * One byte of state per 4 KB guest page (1 MB for the 4 GB space):
++ * 0 untracked, 1 protected and clean, 2 written since. Protecting sets the
++ * state first and then mprotects; the fault handler makes the page writable
++ * first and then stores "written". In either order of the two against each
++ * other a page ends read-only only with state 1 or 2, and writable only with
++ * state 2, so a write is never lost: at worst a page reads as written when it
++ * was not.
++ */
++#include "vm_wtrack.h"
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#ifdef _WIN32
++#include <windows.h>
++#else
++#include <signal.h>
++#include <sys/mman.h>
++#endif
++
++extern uint8_t* vm_base;
++
++#define WT_PAGE_SHIFT 12u
++#define WT_PAGE       (1u << WT_PAGE_SHIFT)
++#define WT_PAGES      (1u << (32u - WT_PAGE_SHIFT))
++
++static uint8_t* s_state;
++static uint64_t s_faults;
++static int s_on = -1;
++
++static int wt_set_prot(uint32_t first, uint32_t count, int writable)
++{
++    void* at = vm_base + ((uint64_t)first << WT_PAGE_SHIFT);
++    const size_t len = (size_t)count << WT_PAGE_SHIFT;
++#ifdef _WIN32
++    DWORD old;
++    return VirtualProtect(at, len, writable ? PAGE_READWRITE : PAGE_READONLY, &old) ? 0 : -1;
++#else
++    return mprotect(at, len, writable ? PROT_READ | PROT_WRITE : PROT_READ);
++#endif
++}
++
++/* 1: a tracked page, now writable again; 0: not ours. */
++static int wt_fault_at(uintptr_t a)
++{
++    if (!vm_base || a < (uintptr_t)vm_base || a - (uintptr_t)vm_base >= ((uint64_t)1 << 32)) return 0;
++    const uint32_t pg = (uint32_t)((a - (uintptr_t)vm_base) >> WT_PAGE_SHIFT);
++    if (!__atomic_load_n(&s_state[pg], __ATOMIC_ACQUIRE)) return 0;
++    if (wt_set_prot(pg, 1, 1)) return 0;
++    __atomic_store_n(&s_state[pg], 2, __ATOMIC_RELEASE);
++    __atomic_add_fetch(&s_faults, 1, __ATOMIC_RELAXED);
++    return 1;
++}
++
++#ifdef _WIN32
++static LONG CALLBACK wt_veh(EXCEPTION_POINTERS* ep)
++{
++    const EXCEPTION_RECORD* er = ep->ExceptionRecord;
++    if (er->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || er->NumberParameters < 2 ||
++        er->ExceptionInformation[0] != 1)   /* writes only */
++        return EXCEPTION_CONTINUE_SEARCH;
++    return wt_fault_at((uintptr_t)er->ExceptionInformation[1]) ? EXCEPTION_CONTINUE_EXECUTION
++                                                               : EXCEPTION_CONTINUE_SEARCH;
++}
++static void wt_install(void) { AddVectoredExceptionHandler(1, wt_veh); }
++#else
++static struct sigaction s_prev[2];
++
++static void wt_signal(int sig, siginfo_t* si, void* uc)
++{
++    if (si && wt_fault_at((uintptr_t)si->si_addr)) return;
++    /* not a tracked page: whoever was there before (the runtime's guest
++     * pointer report), or the default, which ends the process as it would have */
++    const struct sigaction* p = &s_prev[sig == SIGBUS];
++    if ((p->sa_flags & SA_SIGINFO) && p->sa_sigaction) { p->sa_sigaction(sig, si, uc); return; }
++    if (p->sa_handler && p->sa_handler != SIG_DFL && p->sa_handler != SIG_IGN) { p->sa_handler(sig); return; }
++    struct sigaction dfl;
++    memset(&dfl, 0, sizeof dfl);
++    dfl.sa_handler = SIG_DFL;
++    sigemptyset(&dfl.sa_mask);
++    sigaction(sig, &dfl, NULL);
++}
++
++static void wt_install(void)
++{
++    struct sigaction sa;
++    memset(&sa, 0, sizeof sa);
++    sa.sa_sigaction = wt_signal;
++    sa.sa_flags = SA_SIGINFO | SA_NODEFER;
++    sigemptyset(&sa.sa_mask);
++    sigaction(SIGSEGV, &sa, &s_prev[0]);
++    sigaction(SIGBUS, &sa, &s_prev[1]);
++}
++#endif
++
++int vm_wtrack_on(void)
++{
++    if (s_on >= 0) return s_on;
++    const char* e = getenv("PS3RECOMP_WTRACK");
++    s_on = e && *e && *e != '0' && vm_base;
++    if (s_on) {
++        s_state = (uint8_t*)calloc(WT_PAGES, 1);
++        if (!s_state) s_on = 0;
++        else {
++            wt_install();
++            fprintf(stderr, "[wtrack] guest writes tracked by page protection\n");
++        }
++    }
++    return s_on;
++}
++
++void vm_wtrack_protect(uint32_t ea, uint32_t size)
++{
++    if (!size || !vm_wtrack_on()) return;
++    const uint32_t first = ea >> WT_PAGE_SHIFT;
++    const uint32_t last = (uint32_t)(((uint64_t)ea + size - 1u) >> WT_PAGE_SHIFT);
++    int any = 0;
++    for (uint32_t p = first; p <= last; p++)
++        if (__atomic_load_n(&s_state[p], __ATOMIC_ACQUIRE) != 1) {
++            __atomic_store_n(&s_state[p], 1, __ATOMIC_RELEASE);
++            any = 1;
++        }
++    if (any) wt_set_prot(first, last - first + 1u, 0);
++}
++
++int vm_wtrack_clean(uint32_t ea, uint32_t size)
++{
++    if (!size || !vm_wtrack_on()) return 0;
++    const uint32_t first = ea >> WT_PAGE_SHIFT;
++    const uint32_t last = (uint32_t)(((uint64_t)ea + size - 1u) >> WT_PAGE_SHIFT);
++    for (uint32_t p = first; p <= last; p++)
++        if (__atomic_load_n(&s_state[p], __ATOMIC_ACQUIRE) != 1) return 0;
++    return 1;
++}
++
++void vm_wtrack_release(uint32_t ea, uint64_t size)
++{
++    if (!size || s_on <= 0) return;
++    const uint32_t first = ea >> WT_PAGE_SHIFT;
++    const uint64_t end = (uint64_t)ea + size - 1u;
++    const uint32_t last = (uint32_t)((end > 0xFFFFFFFFull ? 0xFFFFFFFFull : end) >> WT_PAGE_SHIFT);
++    uint32_t run = 0;
++    for (uint32_t p = first; ; p++) {
++        const int tracked = p <= last && __atomic_load_n(&s_state[p], __ATOMIC_ACQUIRE);
++        if (tracked) { run++; continue; }
++        if (run) {
++            wt_set_prot(p - run, run, 1);
++            for (uint32_t q = p - run; q < p; q++) __atomic_store_n(&s_state[q], 2, __ATOMIC_RELEASE);
++            run = 0;
++        }
++        if (p >= last) break;
++    }
++}
++
++uint64_t vm_wtrack_faults(void) { return __atomic_load_n(&s_faults, __ATOMIC_RELAXED); }
+diff --git a/runtime/memory/vm_wtrack.h b/runtime/memory/vm_wtrack.h
+new file mode 100644
+index 00000000..0a96b61c
+--- /dev/null
++++ b/runtime/memory/vm_wtrack.h
+@@ -0,0 +1,43 @@
++/*
++ * Write tracking of guest memory by page protection (PS3RECOMP_WTRACK=1).
++ *
++ * A consumer that caches something built from guest bytes (the draw engine's
++ * decoded textures) protects their pages read-only once it has read them; the
++ * first write to such a page, from any thread, faults, marks the page dirty
++ * and makes it writable again. While every page of a range is still clean the
++ * bytes are the ones read, with no need to hash them. This is what RPCS3 has
++ * done for its texture cache since 2018.
++ *
++ * The kernel does not fault a write it makes itself (read() into a protected
++ * page fails with EFAULT instead), so a host call that writes guest memory
++ * through the kernel calls vm_wtrack_release over the range first.
++ */
++#ifndef VM_WTRACK_H
++#define VM_WTRACK_H
++#include <stdint.h>
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* PS3RECOMP_WTRACK=1 (read once). Off: every call below does nothing and
++ * vm_wtrack_clean answers 0. */
++int vm_wtrack_on(void);
++
++/* Pages covering [ea, ea + size): clean and read-only from now on. Call
++ * BEFORE reading the bytes, so a write that lands while they are read is a
++ * fault, not a lost change. */
++void vm_wtrack_protect(uint32_t ea, uint32_t size);
++
++/* 1 when every page of [ea, ea + size) was protected and nothing wrote it since. */
++int vm_wtrack_clean(uint32_t ea, uint32_t size);
++
++/* The kernel is about to write [ea, ea + size): dirty and writable. */
++void vm_wtrack_release(uint32_t ea, uint64_t size);
++
++/* Faults taken (pages a write made dirty) since the start. */
++uint64_t vm_wtrack_faults(void);
++
++#ifdef __cplusplus
++}
++#endif
++#endif
+diff --git a/runtime/syscalls/sys_fs.c b/runtime/syscalls/sys_fs.c
+index f076ef89..592839f5 100644
+--- a/runtime/syscalls/sys_fs.c
++++ b/runtime/syscalls/sys_fs.c
+@@ -2,6 +2,7 @@
+  * ps3recomp - Filesystem syscalls (implementation)
+  */
+ 
++#include "../memory/vm_wtrack.h"
+ #include "sys_fs.h"
+ #include "../../libs/filesystem/edat.h"
+ #include "../memory/vm.h"
+@@ -512,6 +513,7 @@ int64_t sys_fs_read(ppu_context* ctx)
+      * as a read error on every movie and never decoded a frame -- solid green
+      * video. ppu_fs.cpp fs_prefault is the same fix for cellFs. */
+     if (size) vm_commit(buf_addr, (uint32_t)size);
++    vm_wtrack_release(buf_addr, size);   /* nor would a protected one (vm_wtrack.h) */
+     size_t nread = fread(buf, 1, (size_t)size, f->fp);
+ 
+     /* PS3_FSTRACE=<n>: every nth read, the fd and the file offset it came from.

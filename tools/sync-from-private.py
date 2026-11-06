@@ -55,10 +55,18 @@ REWRITES = [
     ('"O MLAA em C"', '"The MLAA in C"'), ('"O MLAA fora do jogo"', '"The MLAA outside the game"'),
     ('"O MLAA fora do\n * jogo"', '"The MLAA outside\n * the game"'),
     ('"O MLAA medido no pr\u00f3prio m\u00f3dulo"', '"The MLAA measured on the game\'s own module"'),
+    ('"O motion blur fora do jogo"', '"The motion blur outside the game"'),
+    ('"O motion\n * blur fora do jogo"', '"The motion blur\n * outside the game"'),
+    ('"O motion blur em C"', '"The motion blur outside the game and in C"'),
+    ('"O motion\n * blur em C"', '"The motion blur outside\n * the game and in C"'),
     # The MLAA tools' defaults: work/ of this tree instead of the maintainer's folders; the private test kit by name.
     ("'{W}/recomp/kz1hd/mlaa_cap'",
      "os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'work', 'mlaa_cap')"),
     ("{W}/recomp/kz1hd/mlaa_cap", "$H/../../work/mlaa_cap"),
+    ("'{W}/recomp/kz1hd/mb_cap/hb'",
+     "os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'work', 'mb_cap', 'hb')"),
+    ("{W}/recomp/kz1hd/mb_cap", "$H/../../work/mb_cap"),
+    ("docs/upscalers.md", "docs/dev/upscalers.md"),
     ("{W}/recomp/ps3recomp-v018", "$H/../../work/ps3recomp-patched"),
     ("{W}/recomp-v018/kz1hd/spu", "$H/../../work/lift/spu"),
     ("T={W}/recomp/kz1hd/testkit",
@@ -188,13 +196,13 @@ def sync_patches(args, report):
     tmp = tempfile.mkdtemp(prefix="sync-patches-")
     try:
         git(args.ps3recomp, "format-patch", "-q", "--no-signature", "-o", tmp, f"{args.base}..{args.ps3recomp_ref}")
-        incoming = [open(os.path.join(tmp, f), encoding="utf-8", errors="surrogateescape").read() for f in sorted(os.listdir(tmp))]
+        incoming = [open(os.path.join(tmp, f), encoding="utf-8", errors="surrogateescape", newline="").read() for f in sorted(os.listdir(tmp))]
     finally:
         shutil.rmtree(tmp)
     series = [l.strip() for l in open(SERIES) if l.strip() and not l.startswith("#")]
     by_subject = {}
     for name in series:
-        text = open(os.path.join(PATCHES, name), encoding="utf-8", errors="surrogateescape").read()
+        text = open(os.path.join(PATCHES, name), encoding="utf-8", errors="surrogateescape", newline="").read()
         by_subject[subject_of(text)] = (name, text)
     used = {int(n[:4]) for n in series}
     seen = set()
@@ -208,7 +216,7 @@ def sync_patches(args, report):
             if body_of(old) != body_of(text):
                 report.append(f"changed patch: {name}")
                 if not args.dry_run:
-                    open(os.path.join(PATCHES, name), "w", encoding="utf-8", errors="surrogateescape").write(text)
+                    open(os.path.join(PATCHES, name), "w", encoding="utf-8", errors="surrogateescape", newline="").write(text)
             continue
         b = area(text)
         num = next(n for n in range(b * 1000 + 1, b * 1000 + 1000) if n not in used)
@@ -217,7 +225,7 @@ def sync_patches(args, report):
         new_names.append(name)
         report.append(f"new patch: {name} (block {b}xxx: check the area)")
         if not args.dry_run:
-            open(os.path.join(PATCHES, name), "w", encoding="utf-8", errors="surrogateescape").write(text)
+            open(os.path.join(PATCHES, name), "w", encoding="utf-8", errors="surrogateescape", newline="").write(text)
     for name in series:
         if name not in seen:
             report.append(f"patch not in the private branch any more (kept): {name}")

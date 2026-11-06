@@ -13,7 +13,11 @@ tools/ps3recomp-patched.sh, tools/lift.sh, tools/setup-vfs.sh, tools/build.sh an
 The paths are tools/env.sh's: each KZ_* variable from the environment, else work/paths.env (written by
 tools/install.sh), else its default under Game/ and work/. KZ_JOBS: parallel jobs (default: every core).
 KZ_PY: the Python that runs ps3recomp's lifters (default work/venv's, else this one: they need only the standard
-library). Exit 0 = done, 1 = a step failed (its reason on stderr). Standard library only, Python 3.8+.
+library). KZ_DLSS_SDK (default unset: no DLSS): the NVIDIA DLSS SDK folder, as tools/release/firstrun.py's dlss step
+fetches it into work/toolchain-cache/dlss-sdk after the player accepted NVIDIA's licence; the build then has DLSS and
+its runtime library goes beside the program (libnvidia-ngx-dlss.so.* beside KZ1HD, nvngx_dlss.dll beside KZ1HD.exe).
+Unset, the build has no DLSS and no NVIDIA file is left beside it. Exit 0 = done, 1 = a step failed (its reason on
+stderr). Standard library only, Python 3.8+.
 
 The patch step is adapted from Project Helghast's tools/ps3recomp-patched.sh (undecuple, MIT): the line-ending check
 and the content-only sync are theirs; the series file is ours.
@@ -312,6 +316,9 @@ def cmd_lift(e, a):
          "--seed-json", j(k, "analysis", "seeds.json"), "--output", j(k, "analysis", "functions.json")], e, "null")
     # Functions port/kz1hd/native_ppu/ reimplements: the lifter emits them as <name>_lifted.
     e["PPU_LIFT_NATIVE"] = native_names(j(p, "native_ppu"), ".cpp", r"^void (func_[0-9A-F]*)\(ppu_context\* ctx\)$")
+    # The build globs the folder's sources: a chunk an earlier lift left there (another version's chunk count) would be
+    # compiled in, so each lift starts from an empty folder, as the SPU one does.
+    shutil.rmtree(j(k, "gen"), ignore_errors=True)
     # 0x3B5CB0/0x3B5DD4: its libc setjmp/longjmp, which Lua 4.0 raises its errors with.
     run([py, j(t, "ppu_lifter.py"), eboot, "--functions", j(k, "analysis", "functions.json"), "--hle-stubs",
          j(k, "analysis", "EBOOT.imports.json"), "--setjmp", "0x3B5CB0", "--longjmp", "0x3B5DD4", "--code-end",
@@ -357,6 +364,7 @@ def cmd_lift(e, a):
     # The firmware's libsre runs for the two SPURS LFQueue calls the runtime does not reimplement (stubs.cpp): its
     # image, function list and imports from lift_prx.py, the imports in the lifter's --hle-stubs form, then the lift.
     fw = j(e["KZ_WORK"], "fw")
+    shutil.rmtree(j(fw, "gen"), ignore_errors=True)   # globbed by the build, as work/lift/gen
     need_file(e["KZ_LIBSRE"], "libsre.prx (KZ_LIBSRE; docs/GETTING-FILES.md)")
     os.makedirs(j(fw, "out"), exist_ok=True)
     run([py, j(t, "lift_prx.py"), e["KZ_LIBSRE"], "--base", "0x02000000", "--output", j(fw, "out") + os.sep], e,
@@ -437,9 +445,44 @@ def build_linux(e):
     # -O1 for the base flags, as in the maintainer's build; the lifted PPU code gets KZ_PPU_OPT (-O2) on its own.
     run(["cmake", "-G", "Ninja", "-S", os.path.join(e["KZ_ROOT"], "port", "kz1hd"), "-B", b,
          "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++", "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1",
-         f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}", "-DPS3RECOMP_RSX_VULKAN=ON", *defs], e, "null")
+         f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}", "-DPS3RECOMP_RSX_VULKAN=ON", *dlss_defs(e), *defs], e, "null")
     ninja(e, b)
+    place_dlss(e, b)
     print(f"build: {os.path.join(b, 'KZ1HD')}", flush=True)
+
+
+# The NGX library each build links and the DLSS runtime library it puts beside the program (the SDK's own paths; NGX
+# looks in the program's folder).
+DLSS_FILES = {
+    "linux": (("lib", "Linux_x86_64", "libnvsdk_ngx.a"), ("lib", "Linux_x86_64", "rel"),
+              re.compile(r"^libnvidia-ngx-dlss\.so(\.[0-9.]+)?$")),
+    "windows": (("lib", "Windows_x86_64", "x64", "nvsdk_ngx_s.lib"), ("lib", "Windows_x86_64", "rel"),
+                re.compile(r"^nvngx_dlss\.dll$", re.I)),
+}
+
+
+def dlss_defs(e, target="linux"):
+    """-DPS3RECOMP_DLSS_SDK from KZ_DLSS_SDK; empty when unset, so a build reconfigured after a decline drops it."""
+    sdk = e.get("KZ_DLSS_SDK") or ""
+    lib = os.path.join(*DLSS_FILES[target][0])
+    if sdk and not os.path.isfile(os.path.join(sdk, lib)):
+        raise Fail(f"KZ_DLSS_SDK={sdk} is not the DLSS SDK (no {lib.replace(os.sep, '/')})")
+    return [f"-DPS3RECOMP_DLSS_SDK={sdk}"]
+
+
+def place_dlss(e, b, target="linux"):
+    """The DLSS runtime library beside the program when the build has DLSS; otherwise none is left there."""
+    _, runtime, rx = DLSS_FILES[target]
+    sdk = e.get("KZ_DLSS_SDK") or ""
+    src = os.path.join(sdk, *runtime) if sdk else ""
+    want = {n for n in os.listdir(src) if rx.match(n)} if src and os.path.isdir(src) else set()
+    if not os.path.isdir(b):
+        return
+    for n in os.listdir(b):
+        if rx.match(n) and n not in want:
+            os.remove(os.path.join(b, n))
+    for n in sorted(want):
+        copy_newer(os.path.join(src, n), os.path.join(b, n))
 
 
 LINUX_PINNED = ("zig", "cmake-linux", "ninja-linux", "sdl2-src", "ffmpeg-linux", "zlib", "glslang", "vulkan-headers")
@@ -465,8 +508,9 @@ def build_linux_pinned(e):
          "-DPS3RECOMP_RSX_VULKAN=ON", f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}",
          f"-DKZ_FFMPEG_INCLUDE_DIR={j(deps, 'include')}", f"-DPython3_EXECUTABLE={sys.executable}",
          # the link-only SDL2 in linux-deps must never be found at run time: no build RPATH
-         "-DCMAKE_SKIP_BUILD_RPATH=ON", *lift_defs(e)], e, "null")
+         "-DCMAKE_SKIP_BUILD_RPATH=ON", *dlss_defs(e), *lift_defs(e)], e, "null")
     ninja(e, b)
+    place_dlss(e, b)
     lib = j(b, "lib")
     os.makedirs(lib, exist_ok=True)
     for f in sorted(os.listdir(j(deps, "ffmpeg"))):
@@ -526,8 +570,9 @@ def build_windows(e):
          f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}", f"-DKZ_FFMPEG_INCLUDE_DIR={ff}",
          # the build's generators (gen_hle_nids.py and ps3recomp's): this Python, the bundled one on Windows,
          # which is neither registered nor on PATH
-         f"-DPython3_EXECUTABLE={sys.executable}"], e, "null")
+         f"-DPython3_EXECUTABLE={sys.executable}", *dlss_defs(e, "windows")], e, "null")
     ninja(e, b)
+    place_dlss(e, b, "windows")
     # SDL2 and the FFmpeg libraries the movie loader opens (not avdevice or avfilter).
     dll_dir = j(deps, "bin")
     for d in sorted(os.listdir(dll_dir)) if os.path.isdir(dll_dir) else []:

@@ -121,7 +121,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check("name=compile done=2 total=2" in out, "Ninja's [x/y] lines are the compile's progress")
     check("RESULT ok=1" in pathlib.Path(status).read_text(), "the status file holds the result")
     check((root / "work/build-stamp.json").is_file(), "the build stamp is written")
-    check(len(list((root / "work/.firstrun").iterdir())) == 7, "each step leaves a marker")
+    check(len(list((root / "work/.firstrun").iterdir())) == len(firstrun.STEPS), "each step leaves a marker")
     check(firstrun.read_paths(str(root / "work"))["eboot"] == str(game / "EBOOT.elf"), "paths.env keeps the paths")
 
     rc, out, calls, _, _ = run(root, game)
@@ -148,6 +148,32 @@ with tempfile.TemporaryDirectory() as tmp:
     check(r.fail_inputs == {"eboot"}, f"a failed check names the inputs: {r.fail_inputs}")
     check("REASON MISSING" in pathlib.Path(status).read_text(), "the status file has the reasons")
 
+    # an install over an earlier release: a CMake cache from another version or patch set is dropped before the
+    # compile, one from this tree is kept
+    bdir = pathlib.Path(firstrun.build_dir(ctx(root, game)))
+    bdir.mkdir(parents=True, exist_ok=True)
+    (bdir / "CMakeCache.txt").write_text("PS3RECOMP_FFX_DIR:PATH=/old\n")
+    rc, out, calls, _, _ = run(root, game)
+    check(rc == 0 and (bdir / "CMakeCache.txt").is_file() and "fresh CMake" not in out,
+          "a cache from this tree's own build is kept")
+    (root / "work/ps3recomp-patched").mkdir(parents=True, exist_ok=True)
+    (root / "work/ps3recomp-patched/.patchset").write_text("new-series\n")
+    rc, out, calls, _, _ = run(root, game)
+    check(rc == 0 and not (bdir / "CMakeCache.txt").exists() and "a fresh CMake configuration" in out,
+          f"another patch set drops the cache before the compile: {out[-300:]}")
+    stamp = firstrun.read_stamp(str(root / "work"))
+    check(stamp.get("patchset") == "new-series", f"the stamp then names the new patch set: {stamp}")
+    (bdir / "CMakeCache.txt").write_text("x\n")
+    stamp["version"] = "0.1.0"
+    (root / "work/build-stamp.json").write_text(firstrun.json.dumps(stamp))
+    rc, out, calls, _, _ = run(root, game)
+    check(not (bdir / "CMakeCache.txt").exists(), "another version drops the cache before the compile")
+    (bdir / "CMakeCache.txt").write_text("x\n")
+    (root / "work/build-stamp.json").unlink()
+    check(firstrun.before_compile(ctx(root, game)) and not (bdir / "CMakeCache.txt").exists(),
+          "a build folder without a stamp is configured afresh")
+    run(root, game)
+
     # tools/env.sh reads paths.env; a variable already set wins; odd characters survive
     odd = str(tmp / 'a "b" $c `d` \\e')
     firstrun.write_paths(str(root / "work"), {"eboot": odd, "game": str(game)})
@@ -168,8 +194,11 @@ with tempfile.TemporaryDirectory() as tmp:
     check(sorted(p.name for p in (root / "work").iterdir()) == before and "kzbuild.py" in out.getvalue(),
           "--dry-run prints the plan and writes nothing")
 
-    # --interactive: a failed check asks for the failing file only, then builds
-    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", str(game / "EBOOT.elf")])
+    # --interactive: a failed check asks for the failing file only, then asks once about DLSS (Linux), then builds
+    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", str(game / "EBOOT.elf")] +
+                   (["n"] if os.name != "nt" else []))
+    real_license = firstrun.fetch_license
+    firstrun.fetch_license = lambda c: str(tmp / "LICENSE.txt")   # no network in a test
     asked = []
 
     def ask(q):
@@ -195,11 +224,16 @@ with tempfile.TemporaryDirectory() as tmp:
     console = io.StringIO()
     rc = firstrun.interactive(c, A(), ask=ask, say=said.append, out=console)
     firstrun.Runner.run = real
+    firstrun.fetch_license = real_license
     os.environ.pop("FAIL_STEP", None)
     check(rc == 0, f"--interactive builds once the check passes: {said[-2:]}")
+    if os.name != "nt":
+        check(any(firstrun.DLSS_LICENSE_URL in s and str(tmp / "LICENSE.txt") in s for s in said) and
+              c.dlss == "decline" and firstrun.read_dlss(c.work) == "decline" and firstrun.cmd_dlss(c) == [],
+              "--interactive asks about DLSS once, with the licence's link and text; no is kept and fetches nothing")
     check("PROGRESS " not in console.getvalue() and "RESULT " not in console.getvalue() and "100.0%" in console.getvalue(),
           "the console shows the bar, not the protocol lines")
-    check(sum("EBOOT" in q for q in asked) == 2 and len(asked) == 7,
+    check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 7,
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
 
 # the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again

@@ -39,6 +39,12 @@
  * names over pthreads and mmap, so the call sites below are written once. */
 #include "win32_compat.h"
 #include "../ps3_trace.h"   /* runtime/, via the runtime/ppu include directory */
+#include "ps3emu/thread_name.h"
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#include <sanitizer/lsan_interface.h>
+#endif
+#endif
 
 #include <chrono>
 #include <string>
@@ -52,7 +58,6 @@ extern "C" int vm_inline_ok;
 #include <string.h>
 #ifndef _WIN32
 #include <sys/mman.h>
-#include <dlfcn.h>
 #include <malloc.h>
 #include <sys/prctl.h>
 #include <unistd.h>
@@ -63,26 +68,14 @@ extern "C" int vm_inline_ok;
 #endif
 
 /* The heap in use, for the stats line: glibc's allocator count, or the
- * process's private bytes on Windows (no mallinfo2 there). mallinfo2 came in
- * glibc 2.33 and the Linux release folder targets 2.31, so it is looked up at
- * run time; without it, mallinfo's int count (it wraps above 2 GB). */
-#ifndef _WIN32
-struct kz_mallinfo2 { size_t arena, ordblks, smblks, hblks, hblkhd, usmblks, fsmblks, uordblks, fordblks, keepcost; };
-#endif
+ * process's private bytes on Windows (no mallinfo2 there). */
 static size_t kz_heap_bytes(void)
 {
 #ifdef _WIN32
     PROCESS_MEMORY_COUNTERS_EX pmc;
     return GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof pmc) ? pmc.PrivateUsage : 0;
 #else
-    typedef struct kz_mallinfo2 (*mallinfo2_fn)(void);
-    static mallinfo2_fn mi2 = (mallinfo2_fn)dlsym(RTLD_DEFAULT, "mallinfo2");
-    if (mi2)
-        return mi2().uordblks;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    return (unsigned)mallinfo().uordblks;
-#pragma GCC diagnostic pop
+    return mallinfo2().uordblks;
 #endif
 }
 
@@ -224,6 +217,11 @@ extern "C" unsigned ppu_boot_frames_presented(void)
 /* KZ_STATS: presents in the last window, and the longest gap between two. */
 static unsigned s_present_n, s_present_gap_max_us;
 
+extern "C" void kz_perf_present(void);
+#ifdef KZ_TRACY
+#include "tracy/TracyC.h"
+#endif
+
 static void present_guest_frame(void)
 {
     if (g_ps3_trace_on) { const uint64_t t = ps3_trace_now(); ps3_trace_span("flip", t, t + 1000, 0); }
@@ -233,6 +231,10 @@ static void present_guest_frame(void)
       if (last && now - last > s_present_gap_max_us) s_present_gap_max_us = (unsigned)(now - last);
       last = now; s_present_n++; }
     rsx_backend_present();
+    kz_perf_present();   /* perf.cpp: the interval between presents */
+#ifdef KZ_TRACY
+    TracyCFrameMark;     /* Tracy's frames: one per present */
+#endif
     /* This thread increments and guest threads read, so interlocked rather
      * than a volatile ++, which on arm64 is neither atomic nor a fence. */
     InterlockedIncrement(&g_frames_presented);
@@ -298,6 +300,12 @@ extern "C" void kz_quit(const char* why)
     if (__atomic_exchange_n(&once, 1, __ATOMIC_ACQ_REL)) return;
     fprintf(stderr, "[kz] quitting (%s)\n", why);
     if (!cellSaveData_quiesce(5000)) fprintf(stderr, "[kz] a save was still being written after 5 s\n");
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+    /* KZ_ASAN builds: _exit skips LeakSanitizer's check at exit, so run it here */
+    __lsan_do_recoverable_leak_check();
+#endif
+#endif
     fflush(NULL);
     _exit(0);
 }
@@ -309,6 +317,7 @@ static void on_quit_signal(int) { s_quit_signal = 1; }
 
 static DWORD WINAPI frame_clock(LPVOID)
 {
+    ps3_thread_name("frame clock");   /* vblanks, flips, the FIFO drain and the presents */
     const char* title = getenv("PS3_TITLE");
     if (!title || !*title) title = "ps3recomp";
 
@@ -565,6 +574,7 @@ static void harness_guest_caller(uint32_t opd, uint64_t a0, uint64_t a1,
 }
 
 extern "C" void kz_prof_start(void);
+extern "C" void kz_perf_init(void);
 
 /* KZ_PGO_DUMP=<seconds>: an instrumented build (KZ_PGO_GEN) writes its profile
  * then (LLVM_PROFILE_FILE names it); the run is killed, never exits cleanly. */
@@ -634,6 +644,7 @@ int main(int argc, char** argv)
     if (getenv("KZ_PTRACER")) prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
 #endif
     kz_prof_start();   /* KZ_PROF, prof.cpp */
+    kz_perf_init();    /* KZ_PERF_EVERY, perf.cpp */
 
 #ifdef _WIN32
 #pragma comment(lib, "winmm.lib")

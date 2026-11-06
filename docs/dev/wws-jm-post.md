@@ -401,3 +401,98 @@ skipped until it is ready (the log shows `not run ... still being built` once, t
 (144 mode), the first on the freshly built executable and two with the driver cache disabled: GPU 139.7 / 140.0 / 139.6
 (no cache) / 143.3 / 143.3 (no cache) / 143.3 fps, off 141.1 / 142.6 / 143.5, SPU path 43.7; the level load took about
 4 s in every run.
+
+## Where the other effects show (2026-10-31)
+
+Question: besides the MLAA, when does the chain change the image? Measured on the faithful path (`KZ_MLAA=spu`) with
+`NV0039_STATS=<dir>` (`cellGcmSys.c`, patch 2041): the raw frame that goes to the SPUs is kept per buffer and compared
+with what comes back. The MLAA changes pixels along edges and hardly moves the mean of a 16x16 block; glow, grading or
+blur do move it. Every 10 s the log gives the largest change of a block mean and how many pixels of the motion field
+(640x360 at IO `0xF1000`) are off neutral (127,127).
+
+- **Normal play:** Level 1 (start, standing and shooting, grenades) and Level 8 from the `user_1023` save (zoom,
+  shoulder buttons, L3/R3 standing): block means move by at most about 5 (the MLAA's strong edges) and the motion
+  field stays neutral. The chain's glow, grading and motion blur stay at zero.
+- **Cutscenes:** they are movies (`USRDIR/Movies/Level N/Intro.avi`, `Mid.avi`, `Outro.avi`) and do not go through
+  the chain, and the chain has no depth-of-field module (the `ab05`/`6b71` blurs belong to the glow, "Glow texture" /
+  `GlowCopy`). The roadmap's "likely depth blur in cutscenes" does not exist in the game.
+- **Sprinting (L3 with the stick forward):** the motion field leaves neutral in all of its 228 thousand pixels, block
+  means change by up to 52, and the image that comes back has a radial blur from the centre (checked on the `out`/`in`
+  dump, Level 8). This is the sprint motion blur.
+
+The trigger, in the EBOOT:
+
+- `0x1FADE8`/`0x1FB718` (the player update, `r31` = the player): with bit `0x4` of `+0x30` set (sprinting),
+  `+0x30C -= rate(+0x30 of the character resource) * dt` (stamina) and `+0x310 += dt`; with it clear,
+  `+0x30C += rate(+0x34) * dt` and `+0x310 -= dt`; both are then clamped between 0 and a maximum (`0x1FAE0C`). The
+  resource is the one `FUN_001F5BD8(player)` returns.
+- `0x20148C` (building the player's screen effects): the type 5 channel of the effects object gets the factor
+  `player+0x310` at `+0x7C` and the resource `FUN_001F5BD8(player)+0x38` at `+0x78`. The other channels set there:
+  type 4 (`+0x5C`, damage), type 6 (`+0xA4`, the weapon resource's `+0x170` while the player is zoomed in, byte
+  `+0x6D4`: the `PostProcessPreset`s H_Sniper/ISA_Sniper) and type 8 (`+0xE4`, the weapon resource's `+0x178` when the
+  controller's `+0x438` is 2).
+- `FUN_0029BDC8` passes `+0x78`/`+0x7C` to `FUN_001106C4`, which draws the radial field (`FUN_0004DD18`,
+  `motionFactor` = the factor) into the 640x360 target; `14e0` (`Gfx.Post.MotionBlur`) blurs the half-resolution
+  image along the field and `f601` blends the result into the full image (steps 7 to 9 of the chain).
+
+On the default path (`KZ_MLAA=gpu`) this blur did not exist: it was the next effect to take to the GPU (a C reference
+of `de0b`, `14e0` and `f601`'s blend from the lifted code, as for the MLAA). The glow (steps 3 to 6) is missing on the
+GPU too, but on every stretch measured its share is small (about 3000 pixels differing by up to 26 on Level 7; see
+"The MLAA outside the game").
+
+## The motion blur outside the game and in C (2026-10-31)
+
+A capture while sprinting (Level 8, `user_1023` save, `KZ_MLAA=spu KZ_JM_HLE=0`, `KZ_JM_CAPTURE` with
+`KZ_JM_CAPTURE_MODULES=200..211`, started by `NV0039_STATS_GO` when the field moves) and `tools/mb_harness` (the MLAA
+harness made general: any job of the chain; modules that do no DMA of their own get their input through the
+descriptor's list, which the policy module preloads during the previous job, and the harness rebuilds it from
+memory). The rerun jobs make the same PUTs as in the game.
+
+One frame's chain, by buffer (IO base `0x11300000` on v0.18): `8197` (Modulate) copies the field from the RSX (IO
+`0xF1000`) to IO `0x637000` with factor 1.0 (the other Modulate, factor 1.5, belongs to the glow); `ab05`/`6b71` blur
+the field (horizontal, vertical, twice, between IO `0x637000` and `0x556000`); after the MLAA and the glow, `de0b`
+halves the full image into IO `0x556000`, `14e0` blurs along the field and writes the result over the field, and
+`f601` scales the result up and blends it into the full image.
+
+The rules, measured on the lifted code with random inputs and read from the code (`port/kz1hd/native/mb_ref.c`):
+
+- **Field:** bytes `[strength, x+128, y+128, 0]`. A 7-tap binomial blur `(1,6,15,20,15,6,1)/64`, truncated to a byte
+  on every pass, edge pixels repeated; in the strength byte the outer taps (6 and 1) count twice, saturated at 255.
+- **Downsample:** byte averages rounded up, vertical first: `avg(avg(p00,p10), avg(p01,p11))`.
+- **MotionBlur (14 taps):** for k = 0..6, an offset of `dy = (±(y-128) * KD[k]) >> 16` rows and
+  `dx = ((±(x-128)*16 * KA[k]) >> 16) >> 4` pixels (the SPU's `mpys`), with `KD = 157, 472, 787, 1102, 1417, 1722,
+  2222` and `KA = 280, 840, ..., 4020` (= KD x 16/9, the screen's aspect); taps outside the image take the edge pixel.
+  Each tap weighs `1 + alpha/16` (`fma(c/256, a/16, c/256)`); channel 0 sums the weight with c = 255. The sum is exact
+  in floating point; the result is `trunc(256 * (sum_c * fi(frest(sum_0))) * strength/256)` with the SPU's
+  multiplications (truncating), and alpha comes out at about the strength.
+- **Blend (`f601`):** the result is scaled up 2x with weights 9:3:3:1 (edges repeated) and goes in premultiplied:
+  `out = min(255, up + image * (256 - up.a) >> 8)`.
+- **Checked** (`tools/mb_harness/check_mb.py`, three seeds): 0 pixels differ between the C and the lifted code at
+  every stage.
+- **Glow:** the glow's composite (`f601` x108) changed no pixel in the captured frames (Level 8, sprinting); it was
+  not taken to the GPU.
+
+## The motion blur on the GPU (2026-10-31)
+
+Patch 2043 (`libs/video/vulkan/rsx_vk_mb.comp`), turned on
+by `PS3RECOMP_MB_GPU=<IO offset of the field>`, which `jm.c` sets (`0xF1000`) on the default `KZ_MLAA=gpu` path;
+`KZ_MOTION_BLUR=0` turns it off. It runs right after the MLAA, on the same buffer, before it goes back to the display
+target: four blur passes over the field (copied from the RSX's 640x360 target), the downsample, the gather and the
+blend. The last blur pass notes whether any strength is left; with none (normal play) the image stages are dispatched
+indirectly with size 0 and the image stays as it was.
+
+- **Checked:** `mb_vk_test` (the same SPIR-V, without the game) equals the C on random images and fields, and a field
+  with no strength returns the image untouched (`regress_mb.sh`); in the game, 8 frames dumped while sprinting with
+  `PS3RECOMP_MLAA_DUMP` and `PS3RECOMP_MLAA_DUMP_MOVING=1`: `mlaa_ref` + `mb_ref` over the input give the GPU's output
+  on every pixel (about 913 thousand pixels changed by the blur per frame).
+- **A fix in the GPU MLAA (patch 2042):** the renderer dispatched REC2 with H-1 groups, while the shader computes the
+  operations of each job's first row pair from the rows in groups H-1..H+2; in the game the four seams (rows 143/144,
+  287/288, ...) were left unblended, about 200 pixels per frame different from the C. `mlaa_vk_test` already
+  dispatched H-1+4, which is why the test outside the game did not catch it.
+- **Cost** (Level 7, `user_1023` save, 144 mode, the maintainer's test kit, 90 s, not sprinting): on 136.9 / off
+  137.1 fps; a second round with another compile loading the CPU gave 101.7 / 98.9. With no strength in the field
+  what remains is the field copy and four 640x360 passes (about 0.03 ms of GPU).
+- **On the PC page (2026-10-31):** a Motion Blur row (On/Off) after FSR Sharpness, `motion_blur = on | off` in
+  `kz1hd_pc.ini` (default on, as in the original; the Original preset includes on), applied at once
+  (`rsx_vulkan_set_motion_blur`; at start `PS3RECOMP_MB_ON`). Checked: the row shows and writes the ini; with `off`,
+  4 frames dumped while sprinting (field strength up to 255) come out equal to the MLAA alone.

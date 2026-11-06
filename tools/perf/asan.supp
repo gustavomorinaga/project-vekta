@@ -1,0 +1,16 @@
+# LeakSanitizer suppressions for a KZ_ASAN=ON build (docs/medicao.md):
+#   LSAN_OPTIONS=suppressions=tools/perf/asan.supp
+# Only libraries outside the port: their allocations live until exit by design.
+leak:libnvidia
+leak:libGLX_nvidia
+leak:libvulkan
+leak:libSDL2
+leak:libdbus
+leak:libX11
+leak:libwayland
+leak:libpulse
+leak:libasound
+leak:libpipewire
+leak:libfontconfig
+leak:libglslang
+leak:libSPIRV

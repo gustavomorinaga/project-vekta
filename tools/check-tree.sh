@@ -16,6 +16,10 @@ for f in $FILES; do
         *.elf|*.self|*.sprx|*.prx|*.pic|*.pkg|*.PKG|*.edat|*.sdat|*.rap|*.psarc|*.core|*.snz|*.avi|*.at3|*.TRP|*.SFO|*EBOOT.BIN)
             note "$f: a game file type" ;;
     esac
+    # NVIDIA's DLSS SDK: fetched on the player's machine after they accept its licence, never published here
+    case "${f##*/}" in
+        nvngx*|nvsdk_ngx*|libnvidia-ngx*) note "$f: an NVIDIA DLSS SDK file" ;;
+    esac
     magic=$(head -c 4 "$f" | od -An -tx1 | tr -d ' \n')
     case "$magic" in
         7f454c46) note "$f: an ELF binary" ;;

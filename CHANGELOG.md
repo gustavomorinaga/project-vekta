@@ -8,6 +8,20 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super
+  Resolution and DLAA, chosen on the PC page ("Temporal Upscaler (on restart)") or with `PS3RECOMP_TEMPORAL`, with the
+  camera jittered and per-object motion vectors; the HUD is drawn at the output resolution (patches 2045 to 2052,
+  [docs/dev/upscalers.md](docs/dev/upscalers.md)). FSR 3.1 is in every build, from the FidelityFX SDK's files
+  vendored in `third_party/fidelityfx-fsr3/`. DLSS is downloaded from NVIDIA on your machine only if you accept
+  NVIDIA's DLSS SDK licence: when `tools/install.sh` or `run.cmd` asks (`--dlss accept|decline`), or with the Windows
+  setup's "Download NVIDIA DLSS" box, unticked by default; no release carries NVIDIA's files.
+- The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).
+- Button prompts: Kenney's Input Prompts (CC0) in the game's own finish, and pad pictures of our own for Xbox,
+  Switch Pro and keyboard on the Controls screen, by the pad last touched (patch 4013).
+- The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).
+- Developer tools: Tracy zones (patch 3029), frame-time and per-thread CPU measurement (`perf.cpp`, `tools/perf/`),
+  recorded input routes replayed with the sound on the route's clock (`route.cpp`, patch 3028), opt-in guest write
+  tracking (patch 3031), and the motion blur harness (`tools/mb_harness/`).
 - The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive
   and libsre, and `dev_flash` for the music), checks their kind and size before copying anything, and builds the port
   in the wizard with a progress bar and a Stop button; when the build stops it says why and opens the log. Silent
@@ -33,11 +47,22 @@ program and folder that build it. Until a release that calls itself playable
   builds it and checks it in a Debian 11 container with no compiler (`tools/release/check_linux_folder.sh`).
 
 ### Changed
+- The lifted PPU functions take their context as `__restrict` (patch 3030).
 - A copy the setup program installed keeps its saves and settings in `%APPDATA%\Project Vekta`, so a new install or
   an uninstall leaves them alone; the setup's "Portable" option keeps them in the install folder instead. Saves an
   earlier version left in the install folder move there on the next start.
 
 ### Fixed
+- Windows: the launcher stopped the game the moment it started whenever the last session's log (`work\play.log`)
+  ended with its window being closed: it read that old log before the new game had emptied it. An install over an
+  earlier version kept that log, so the game never opened until the old version was uninstalled; any start after a
+  session closed by its window could hit it too. The launcher now empties the log before it starts the game.
+- Installing over an earlier version: on a tester's Windows machine the game started and closed again at once, with
+  nothing on screen, until the old version was uninstalled (its log went with the uninstall). The lift now starts
+  from empty output folders, so no source an earlier version lifted is compiled in; the build now configures CMake afresh when the build folder was made from another
+  version or patch set (`firstrun.py`); the launcher rebuilds before playing when the build there is not the one the
+  installed files make (another version, patch set or DLSS choice, as when the setup's build was skipped or stopped);
+  and a game that stops within 20 seconds of starting gets a message with the end of its log instead of silence.
 - The Linux folder's build no longer stops at the compile step with "unknown CPU: 'x86'": its Zig wrappers spell
   the port's `-march=x86-64-v3` the way Zig names CPUs (`x86_64_v3`).
 - The Linux folder's link no longer fails on `mallinfo2` (glibc 2.33; the folder targets 2.31): the stats line's

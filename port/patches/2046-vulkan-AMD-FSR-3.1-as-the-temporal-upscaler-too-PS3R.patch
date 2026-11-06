@@ -1,0 +1,882 @@
+From 8cdb506a9244387f775c725cd097061fd2c1b76b Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 16:47:40 -0300
+Subject: [PATCH] vulkan: AMD FSR 3.1 as the temporal upscaler too
+ (PS3RECOMP_TEMPORAL=fsr3)
+
+rsx_vk_fsr3.cpp drives the FidelityFX SDK's FSR 3 upscaler through its
+VK backend, built into a static library outside the repository
+(PS3RECOMP_FFX_DIR; a stub without it). The backend's device functions
+reach it through a lookup that gives core functions for *2KHR names and
+stand-ins for the debug-label and marker extensions it calls unchecked;
+the instance functions it calls directly go through the runtime's
+loader. The caller keeps FSR 3.1's three shared images.
+
+The motion pass also writes the depth as an R32F image (the first-person
+model's where it was drawn, the world's elsewhere), which both
+upscalers now take. The device gets the 16-bit and format-less storage
+features FSR's shaders declare. PS3RECOMP_UPSCALE_MODE=quality |
+balanced | performance | ultra | native picks the mode for either; the
+temporal record carries the camera's near, far and vertical FOV.
+
+---
+ CMakeLists.txt                             |  19 ++
+ libs/video/rsx_temporal.c                  |   6 +-
+ libs/video/rsx_temporal.h                  |  10 +-
+ libs/video/rsx_vk_dlss.h                   |   6 +-
+ libs/video/rsx_vk_fsr3.cpp                 | 200 +++++++++++++++++++++
+ libs/video/rsx_vk_fsr3.h                   |  32 ++++
+ libs/video/rsx_vulkan_backend.c            | 110 +++++++++---
+ libs/video/vulkan/rsx_vk_motion.comp       |   9 +-
+ libs/video/vulkan/rsx_vk_motion_comp.spv.h | 191 ++++++++++----------
+ 9 files changed, 460 insertions(+), 123 deletions(-)
+ create mode 100644 libs/video/rsx_vk_fsr3.cpp
+ create mode 100644 libs/video/rsx_vk_fsr3.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 22aafc88..7091cdd2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -64,6 +64,8 @@ if(PS3RECOMP_RSX_VULKAN)
+     list(APPEND HLE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_shader_spirv.cpp")
+     # DLSS through NGX: a stub unless PS3RECOMP_DLSS_SDK (below) names the SDK.
+     list(APPEND HLE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_vk_dlss.cpp")
++    # FSR 3 through the FidelityFX SDK: a stub unless PS3RECOMP_FFX_DIR (below).
++    list(APPEND HLE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_vk_fsr3.cpp")
+ endif()
+ 
+ # The Metal backend is Objective-C and Apple-only, so it is added explicitly
+@@ -217,6 +219,23 @@ if(PS3RECOMP_RSX_VULKAN)
+         target_link_libraries(ps3recomp_runtime PUBLIC "${_ngx_lib}" ${CMAKE_DL_LIBS})
+         message(STATUS "  DLSS:         NGX from ${PS3RECOMP_DLSS_SDK}")
+     endif()
++    # AMD FSR 3.1: the FidelityFX SDK's FSR 3 upscaler and VK backend, built
++    # into one static library with its shaders (the SDK's shader compiler is a
++    # Windows program), next to the SDK's include/ folder:
++    # PS3RECOMP_FFX_DIR/include, PS3RECOMP_FFX_DIR/lib/libffx_fsr3_vk.a.
++    set(PS3RECOMP_FFX_DIR "" CACHE PATH "FidelityFX FSR 3 build (include/, lib/libffx_fsr3_vk.a)")
++    if(PS3RECOMP_FFX_DIR)
++        if(NOT EXISTS "${PS3RECOMP_FFX_DIR}/lib/libffx_fsr3_vk.a")
++            message(FATAL_ERROR "PS3RECOMP_FFX_DIR: ${PS3RECOMP_FFX_DIR}/lib/libffx_fsr3_vk.a not found")
++        endif()
++        target_include_directories(ps3recomp_runtime PRIVATE "${PS3RECOMP_FFX_DIR}/include")
++        target_compile_definitions(ps3recomp_runtime PRIVATE PS3RECOMP_FSR3 FFX_GCC)
++        target_link_libraries(ps3recomp_runtime PUBLIC "${PS3RECOMP_FFX_DIR}/lib/libffx_fsr3_vk.a")
++        # the SDK's headers use C++20 (std::popcount)
++        set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_vk_fsr3.cpp"
++                                    TARGET_DIRECTORY ps3recomp_runtime PROPERTIES COMPILE_OPTIONS "-std=c++20")
++        message(STATUS "  FSR 3:        FidelityFX from ${PS3RECOMP_FFX_DIR}")
++    endif()
+ endif()
+ 
+ # cellVdec decodes H.264 / MPEG-2 through FFmpeg when this is on. libavcodec
+diff --git a/libs/video/rsx_temporal.c b/libs/video/rsx_temporal.c
+index 634a3c95..c2601e94 100644
+--- a/libs/video/rsx_temporal.c
++++ b/libs/video/rsx_temporal.c
+@@ -40,7 +40,8 @@ int rsx_temporal_next_jitter(float* jitter_x, float* jitter_y)
+     return 1;
+ }
+ 
+-void rsx_temporal_set_view(const float vp[16], float jitter_x, float jitter_y)
++void rsx_temporal_set_view(const float vp[16], float jitter_x, float jitter_y,
++                           float near_z, float far_z, float fov_y)
+ {
+     const uint32_t frame = cellGcm_frame_queued();
+     __typeof__(s_ring[0])* s = &s_ring[frame % TV_RING];
+@@ -50,6 +51,9 @@ void rsx_temporal_set_view(const float vp[16], float jitter_x, float jitter_y)
+     memcpy(s->v.vp, vp, sizeof s->v.vp);
+     s->v.jitter[0] = jitter_x;
+     s->v.jitter[1] = jitter_y;
++    s->v.near_z = near_z;
++    s->v.far_z = far_z;
++    s->v.fov_y = fov_y;
+     __atomic_store_n(&s->seq, s->seq + 1u, __ATOMIC_RELEASE);
+ }
+ 
+diff --git a/libs/video/rsx_temporal.h b/libs/video/rsx_temporal.h
+index 88ccd104..f9b91e0e 100644
+--- a/libs/video/rsx_temporal.h
++++ b/libs/video/rsx_temporal.h
+@@ -20,9 +20,12 @@ typedef struct rsx_temporal_view {
+     /* world -> clip, column vectors (clip = vp * (x, y, z, 1)), x right and
+      * y up in NDC [-1, 1], z the depth the title's viewport maps */
+     float vp[16];
+-    /* where the frame's samples sat, relative to the pixel centres, in pixels
+-     * of the guest frame, x right and y down */
++    /* how far the jitter moved the picture, in pixels of the guest frame,
++     * x right and y down (the convention DLSS and FSR take) */
+     float jitter[2];
++    /* the camera: near and far plane distances, vertical field of view in
++     * radians (FSR 3 wants them) */
++    float near_z, far_z, fov_y;
+ } rsx_temporal_view;
+ 
+ /* Guest thread: the frame being built now. */
+@@ -39,7 +42,8 @@ void rsx_temporal_config(int on, float render_per_guest);
+  * offset when no temporal upscaler is on. */
+ int rsx_temporal_next_jitter(float* jitter_x, float* jitter_y);
+ /* Guest thread, once per frame the world view is built (the last call wins). */
+-void rsx_temporal_set_view(const float vp[16], float jitter_x, float jitter_y);
++void rsx_temporal_set_view(const float vp[16], float jitter_x, float jitter_y,
++                           float near_z, float far_z, float fov_y);
+ /* RSX thread: the record of `frame`, 1 when there is one. */
+ int rsx_temporal_get_view(uint32_t frame, rsx_temporal_view* out);
+ 
+diff --git a/libs/video/rsx_vk_dlss.h b/libs/video/rsx_vk_dlss.h
+index 2f761199..eac2f84d 100644
+--- a/libs/video/rsx_vk_dlss.h
++++ b/libs/video/rsx_vk_dlss.h
+@@ -38,10 +38,14 @@ typedef struct rsx_dlss_image {
+ 
+ typedef struct rsx_dlss_frame {
+     rsx_dlss_image color, depth, motion, output;
+-    float jitter_x, jitter_y;   /* render pixels, as the samples sat */
++    float jitter_x, jitter_y;   /* render pixels: how far the jitter moved the picture, x right, y down */
+     float mv_scale_x, mv_scale_y;
+     int reset;                  /* history is not this picture's (a cut) */
+     float sharpness;
++    /* FSR 3 also wants the camera and the frame time */
++    float near_z, far_z, fov_y, frame_ms;
++    /* and three images of its own the caller keeps (rsx_vk_fsr3.h) */
++    rsx_dlss_image shared[3];
+ } rsx_dlss_frame;
+ 
+ /* Recorded into cmd. The feature is made on the first call and again when the
+diff --git a/libs/video/rsx_vk_fsr3.cpp b/libs/video/rsx_vk_fsr3.cpp
+new file mode 100644
+index 00000000..672373be
+--- /dev/null
++++ b/libs/video/rsx_vk_fsr3.cpp
+@@ -0,0 +1,200 @@
++/* AMD FSR 3.1 through the FidelityFX SDK. See rsx_vk_fsr3.h. */
++#include "rsx_vk_fsr3.h"
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#ifndef PS3RECOMP_FSR3
++
++extern "C" {
++int rsx_fsr3_init(VkInstance, VkPhysicalDevice, VkDevice, PFN_vkGetInstanceProcAddr, PFN_vkGetDeviceProcAddr) { return -1; }
++int rsx_fsr3_render_size(int, uint32_t, uint32_t, uint32_t*, uint32_t*) { return -1; }
++int rsx_fsr3_evaluate(VkCommandBuffer, const rsx_dlss_frame*) { return -1; }
++void rsx_fsr3_shutdown(void) {}
++}
++
++#else
++
++#include <bit>   /* the SDK's headers use std::popcount without it */
++#include <FidelityFX/host/ffx_fsr3upscaler.h>
++#include <FidelityFX/host/backends/vk/ffx_vk.h>
++
++#define FSR3_LOG(...) fprintf(stderr, "[RSX vulkan] FSR 3: " __VA_ARGS__)
++
++namespace {
++
++struct {
++    VkInstance instance = VK_NULL_HANDLE;
++    PFN_vkGetInstanceProcAddr gipa = nullptr;
++    PFN_vkGetDeviceProcAddr gdpa = nullptr;
++    VkDevice device = VK_NULL_HANDLE;
++    VkPhysicalDevice phys = VK_NULL_HANDLE;
++    void* scratch = nullptr;
++    FfxInterface iface = {};
++    /* the SDK casts these to structures of its own with 16-byte members */
++    alignas(64) FfxFsr3UpscalerContext ctx;
++    bool have_ctx = false, ok = false;
++    uint32_t ow = 0, oh = 0;
++} s;
++
++PFN_vkVoidFunction inst_fn(const char* name) { return s.gipa ? s.gipa(s.instance, name) : nullptr; }
++
++FfxResource resource(const rsx_dlss_image& im, VkImageUsageFlags usage, bool depth, bool uav)
++{
++    VkImageCreateInfo ci = {};
++    ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
++    ci.imageType = VK_IMAGE_TYPE_2D;
++    ci.format = im.format;
++    ci.extent = { im.w, im.h, 1 };
++    ci.mipLevels = 1; ci.arrayLayers = 1;
++    ci.samples = VK_SAMPLE_COUNT_1_BIT;
++    ci.usage = usage | (depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : 0);
++    FfxResourceDescription d = ffxGetImageResourceDescriptionVK(im.image, ci, uav ? FFX_RESOURCE_USAGE_UAV : FFX_RESOURCE_USAGE_READ_ONLY);
++    /* our images live in GENERAL, which is what FFX calls an unordered-access state */
++    return ffxGetResourceVK((void*)im.image, d, nullptr, FFX_RESOURCE_STATE_UNORDERED_ACCESS);
++}
++
++/* The device functions the SDK's VK backend asks for. It calls some without
++ * checking that the device has them: debug names and labels, AMD's buffer
++ * markers (stand-ins that do nothing), and *2KHR functions that Vulkan 1.1
++ * made core (the core ones). */
++VKAPI_ATTR VkResult VKAPI_CALL no_object_name(VkDevice, const VkDebugUtilsObjectNameInfoEXT*) { return VK_SUCCESS; }
++VKAPI_ATTR void VKAPI_CALL no_label(VkCommandBuffer, const VkDebugUtilsLabelEXT*) {}
++VKAPI_ATTR void VKAPI_CALL no_label_end(VkCommandBuffer) {}
++VKAPI_ATTR void VKAPI_CALL no_marker(VkCommandBuffer, VkPipelineStageFlagBits, VkBuffer, VkDeviceSize, uint32_t) {}
++VKAPI_ATTR void VKAPI_CALL no_marker2(VkCommandBuffer, VkPipelineStageFlags2, VkBuffer, VkDeviceSize, uint32_t) {}
++
++VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL device_fn(VkDevice d, const char* name)
++{
++    PFN_vkVoidFunction f = s.gdpa(d, name);
++    if (f) return f;
++    const size_t n = strlen(name);
++    if (n > 3 && !strcmp(name + n - 3, "KHR")) {
++        char core[128];
++        if (n - 3 < sizeof core) { memcpy(core, name, n - 3); core[n - 3] = 0; if ((f = s.gdpa(d, core))) return f; }
++    }
++    if (!strcmp(name, "vkSetDebugUtilsObjectNameEXT")) return (PFN_vkVoidFunction)no_object_name;
++    if (!strcmp(name, "vkCmdBeginDebugUtilsLabelEXT")) return (PFN_vkVoidFunction)no_label;
++    if (!strcmp(name, "vkCmdEndDebugUtilsLabelEXT")) return (PFN_vkVoidFunction)no_label_end;
++    if (!strcmp(name, "vkCmdWriteBufferMarkerAMD")) return (PFN_vkVoidFunction)no_marker;
++    if (!strcmp(name, "vkCmdWriteBufferMarker2AMD")) return (PFN_vkVoidFunction)no_marker2;
++    static int warned;
++    if (warned++ < 8) FSR3_LOG("the device has no %s\n", name);
++    return nullptr;
++}
++
++}  // namespace
++
++/* The SDK's VK backend calls these instance-level functions directly; the
++ * runtime loads Vulkan itself, so they go through its loader. */
++extern "C" {
++#define FSR3_FWD(ret, name, params, args) \
++    ret VKAPI_CALL name params { static PFN_##name f; if (!f) f = (PFN_##name)inst_fn(#name); return f args; }
++FSR3_FWD(void, vkGetPhysicalDeviceProperties, (VkPhysicalDevice p, VkPhysicalDeviceProperties* o), (p, o))
++FSR3_FWD(void, vkGetPhysicalDeviceProperties2, (VkPhysicalDevice p, VkPhysicalDeviceProperties2* o), (p, o))
++FSR3_FWD(void, vkGetPhysicalDeviceFeatures, (VkPhysicalDevice p, VkPhysicalDeviceFeatures* o), (p, o))
++FSR3_FWD(void, vkGetPhysicalDeviceFeatures2, (VkPhysicalDevice p, VkPhysicalDeviceFeatures2* o), (p, o))
++FSR3_FWD(void, vkGetPhysicalDeviceMemoryProperties, (VkPhysicalDevice p, VkPhysicalDeviceMemoryProperties* o), (p, o))
++FSR3_FWD(VkResult, vkEnumerateDeviceExtensionProperties, (VkPhysicalDevice p, const char* l, uint32_t* n, VkExtensionProperties* o), (p, l, n, o))
++#undef FSR3_FWD
++PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice d, const char* name) { return device_fn(d, name); }
++VkResult VKAPI_CALL vkCreateBuffer(VkDevice d, const VkBufferCreateInfo* ci, const VkAllocationCallbacks* a, VkBuffer* b)
++{
++    static PFN_vkCreateBuffer f;
++    if (!f) f = (PFN_vkCreateBuffer)s.gdpa(d, "vkCreateBuffer");
++    return f(d, ci, a, b);
++}
++/* frame generation is not used: its swapchain is not built in */
++FfxErrorCode ffxSetFrameGenerationConfigToSwapchainVK(FfxFrameGenerationConfig const*) { return FFX_ERROR_INVALID_ARGUMENT; }
++
++int rsx_fsr3_init(VkInstance instance, VkPhysicalDevice phys, VkDevice device,
++                  PFN_vkGetInstanceProcAddr gipa, PFN_vkGetDeviceProcAddr gdpa)
++{
++    s.instance = instance; s.phys = phys; s.device = device; s.gipa = gipa; s.gdpa = gdpa;
++    const size_t size = ffxGetScratchMemorySizeVK(phys, 1);
++    s.scratch = aligned_alloc(64, (size + 63) & ~(size_t)63);
++    if (s.scratch) memset(s.scratch, 0, size);
++    VkDeviceContext dc = { device, phys, device_fn };
++    if (!s.scratch || ffxGetInterfaceVK(&s.iface, ffxGetDeviceVK(&dc), s.scratch, size, 1) != FFX_OK) {
++        FSR3_LOG("no FidelityFX VK interface\n");
++        free(s.scratch); s.scratch = nullptr;
++        return -1;
++    }
++    s.ok = true;
++    FSR3_LOG("available\n");
++    return 0;
++}
++
++int rsx_fsr3_render_size(int mode, uint32_t out_w, uint32_t out_h, uint32_t* w, uint32_t* h)
++{
++    if (!s.ok) return -1;
++    if (mode == RSX_FSR3_NATIVE_AA) { *w = out_w; *h = out_h; return 0; }
++    return ffxFsr3UpscalerGetRenderResolutionFromQualityMode(w, h, out_w, out_h, (FfxFsr3UpscalerQualityMode)mode) == FFX_OK ? 0 : -1;
++}
++
++static void fsr3_message(FfxMsgType type, const wchar_t* msg)
++{
++    static int n;
++    if (n++ < 16) FSR3_LOG("%s: %ls\n", type == FFX_MESSAGE_TYPE_ERROR ? "error" : "warning", msg);
++}
++
++int rsx_fsr3_evaluate(VkCommandBuffer cmd, const rsx_dlss_frame* f)
++{
++    if (!s.ok) return -1;
++    if (!s.have_ctx || s.ow != f->output.w || s.oh != f->output.h) {
++        if (s.have_ctx) { ffxFsr3UpscalerContextDestroy(&s.ctx); s.have_ctx = false; }
++        FfxFsr3UpscalerContextDescription d = {};
++        d.flags = 0;   /* LDR colour, render-size motion vectors without jitter, depth 0 near to 1 far */
++        if (getenv("PS3RECOMP_FSR3_DEBUG")) d.flags |= FFX_FSR3UPSCALER_ENABLE_DEBUG_CHECKING;
++        d.maxRenderSize = { f->output.w, f->output.h };
++        d.maxUpscaleSize = { f->output.w, f->output.h };
++        d.fpMessage = fsr3_message;
++        d.backendInterface = s.iface;
++        const FfxErrorCode r = ffxFsr3UpscalerContextCreate(&s.ctx, &d);
++        if (r != FFX_OK) { FSR3_LOG("context for %ux%u failed (%d)\n", f->output.w, f->output.h, (int)r); s.ok = false; return -1; }
++        s.have_ctx = true; s.ow = f->output.w; s.oh = f->output.h;
++        FSR3_LOG("context for %ux%u\n", s.ow, s.oh);
++    }
++    FfxFsr3UpscalerDispatchDescription e = {};
++    e.commandList = ffxGetCommandListVK(cmd);
++    e.color = resource(f->color, VK_IMAGE_USAGE_SAMPLED_BIT, false, false);
++    e.depth = resource(f->depth, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, false, false);
++    e.motionVectors = resource(f->motion, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, false, false);
++    e.output = resource(f->output, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, false, true);
++    /* FSR 3.1's dilated depth and motion and previous nearest depth live with
++     * the caller (frame generation would share them) */
++    e.dilatedDepth = resource(f->shared[0], VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, false, true);
++    e.dilatedMotionVectors = resource(f->shared[1], VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, false, true);
++    e.reconstructedPrevNearestDepth = resource(f->shared[2], VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, false, true);
++    /* the same convention as DLSS: the projection moved by (2 x / w, -2 y / h) */
++    e.jitterOffset = { f->jitter_x, f->jitter_y };
++    e.motionVectorScale = { f->mv_scale_x, f->mv_scale_y };
++    e.renderSize = { f->color.w, f->color.h };
++    e.upscaleSize = { f->output.w, f->output.h };
++    e.enableSharpening = f->sharpness > 0.0f;
++    e.sharpness = f->sharpness;
++    e.frameTimeDelta = f->frame_ms > 0.0f ? f->frame_ms : 16.7f;
++    e.preExposure = 1.0f;
++    e.reset = f->reset != 0;
++    e.cameraNear = f->near_z > 0.0f ? f->near_z : 1.0f;
++    e.cameraFar = f->far_z > e.cameraNear ? f->far_z : 2000.0f;
++    e.cameraFovAngleVertical = f->fov_y > 0.0f ? f->fov_y : 1.0f;
++    e.viewSpaceToMetersFactor = 1.0f;
++    const FfxErrorCode r = ffxFsr3UpscalerContextDispatch(&s.ctx, &e);
++    if (r != FFX_OK) {
++        static int n;
++        if (n++ < 4) FSR3_LOG("dispatch failed (%d)\n", (int)r);
++        return -1;
++    }
++    return 0;
++}
++
++void rsx_fsr3_shutdown(void)
++{
++    if (s.have_ctx) ffxFsr3UpscalerContextDestroy(&s.ctx);
++    free(s.scratch);
++    s = {};
++}
++
++}  // extern "C"
++#endif
+diff --git a/libs/video/rsx_vk_fsr3.h b/libs/video/rsx_vk_fsr3.h
+new file mode 100644
+index 00000000..9187b704
+--- /dev/null
++++ b/libs/video/rsx_vk_fsr3.h
+@@ -0,0 +1,32 @@
++/*
++ * AMD FSR 3.1 upscaling (and native AA) for the Vulkan backend, through the
++ * FidelityFX SDK's FSR 3 upscaler and VK backend. Built only when CMake is
++ * given PS3RECOMP_FFX_LIB (a static library of those, built from the SDK with
++ * its shaders; the SDK is not part of this repository); otherwise every call
++ * says FSR 3 is not there. Frames are described as for DLSS (rsx_vk_dlss.h).
++ */
++#ifndef RSX_VK_FSR3_H
++#define RSX_VK_FSR3_H
++#include "rsx_vk_dlss.h"
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* FSR's quality modes. */
++enum { RSX_FSR3_NATIVE_AA = 0, RSX_FSR3_QUALITY = 1, RSX_FSR3_BALANCED = 2,
++       RSX_FSR3_PERFORMANCE = 3, RSX_FSR3_ULTRA_PERFORMANCE = 4 };
++
++/* After the device. 0 when FSR 3 can run on it. */
++int rsx_fsr3_init(VkInstance instance, VkPhysicalDevice phys, VkDevice device,
++                  PFN_vkGetInstanceProcAddr gipa, PFN_vkGetDeviceProcAddr gdpa);
++int rsx_fsr3_render_size(int mode, uint32_t out_w, uint32_t out_h, uint32_t* w, uint32_t* h);
++/* Recorded into cmd; the context is made again (the caller has the device
++ * idle) when the output size changes. Every image is in VK_IMAGE_LAYOUT_GENERAL
++ * and is left there. 0 on success. */
++int rsx_fsr3_evaluate(VkCommandBuffer cmd, const rsx_dlss_frame* f);
++void rsx_fsr3_shutdown(void);
++
++#ifdef __cplusplus
++}
++#endif
++#endif
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 8516d87b..fa7de5b7 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -52,6 +52,7 @@
+ #include "rsx_draw_engine.h"
+ #include "rsx_temporal.h"
+ #include "rsx_vk_dlss.h"
++#include "rsx_vk_fsr3.h"
+ #include "vulkan/rsx_vk_motion_comp.spv.h"
+ #include "vulkan/rsx_vk_fallback_vert.spv.h"
+ #include "vulkan/rsx_vk_fallback_frag.spv.h"
+@@ -3950,8 +3951,9 @@ static struct {
+     VkPipeline pipe;
+     VkDescriptorPool pool;
+     VkDescriptorSet set;
+-    VkImage set_for[3];               /* the images the set was written for */
+-    vk_image mv; u32 mv_w, mv_h;
++    VkImage set_for[4];               /* the images the set was written for */
++    vk_image mv, zc; u32 mv_w, mv_h;  /* motion vectors and the depth copy, render size */
++    vk_image fsr[3]; u32 fsr_w, fsr_h; /* FSR 3's dilated depth and motion, previous nearest depth */
+     VkImageView zview[2]; VkImage zview_of[2];   /* depth-only views: world, final */
+     u32 fz;                           /* the final depth's copy (engine object) */
+     struct { u32 surface; vk_image out; u32 w, h; int swapped; vk_image keep; u32 kw, kh; } sw[VK_TM_SWAPS];
+@@ -3974,14 +3976,18 @@ static void vk_tm_init(void)
+ #else
+     { ssize_t n = readlink("/proc/self/exe", dir, sizeof dir - 1); if (n > 0) { dir[n] = 0; char* s = strrchr(dir, '/'); if (s) *s = 0; } else strcpy(dir, "."); }
+ #endif
+-    if (rsx_dlss_init(s_vk.instance, s_vk.phys, s_vk.device, pvkGetInstanceProcAddr, pvkGetDeviceProcAddr, dir)) return;
++    if (s_tm.want == 2 ? rsx_fsr3_init(s_vk.instance, s_vk.phys, s_vk.device, pvkGetInstanceProcAddr, pvkGetDeviceProcAddr)
++                       : rsx_dlss_init(s_vk.instance, s_vk.phys, s_vk.device, pvkGetInstanceProcAddr, pvkGetDeviceProcAddr, dir))
++        return;
+     s_tm.out_w = s_vk.width; s_tm.out_h = s_vk.height;
+     u32 rw, rh;
+-    if (rsx_dlss_render_size(s_tm.mode, s_tm.out_w, s_tm.out_h, &rw, &rh)) { VK_LOG("temporal: no DLSS render size, off\n"); return; }
++    if ((s_tm.want == 2 ? rsx_fsr3_render_size : rsx_dlss_render_size)(s_tm.mode, s_tm.out_w, s_tm.out_h, &rw, &rh)) {
++        VK_LOG("temporal: no render size, off\n"); return;
++    }
+     s_rscale_x = (float)rw / (float)s_guest_w; s_rscale_y = (float)rh / (float)s_guest_h;
+     s_tm.ok = 1;
+     rsx_temporal_config(1, s_rscale_x);
+-    VK_LOG("temporal: DLSS mode %d, scene drawn at %ux%u for %ux%u\n", s_tm.mode, rw, rh, s_tm.out_w, s_tm.out_h);
++    VK_LOG("temporal: %s mode %d, scene drawn at %ux%u for %ux%u\n", s_tm.want == 2 ? "FSR 3" : "DLSS", s_tm.mode, rw, rh, s_tm.out_w, s_tm.out_h);
+ }
+ 
+ static int vk_tm_pipeline(void)
+@@ -3993,13 +3999,14 @@ static int vk_tm_pipeline(void)
+                                 .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                                 .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE };
+     if (pvkCreateSampler(s_vk.device, &sci, NULL, &s_tm.samp) != VK_SUCCESS) return -1;
+-    VkDescriptorSetLayoutBinding b[3] = {
++    VkDescriptorSetLayoutBinding b[4] = {
+         { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
+         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
+         { 2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
++        { 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
+     };
+     VkDescriptorSetLayoutCreateInfo dci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+-                                            .bindingCount = 3, .pBindings = b };
++                                            .bindingCount = 4, .pBindings = b };
+     if (pvkCreateDescriptorSetLayout(s_vk.device, &dci, NULL, &s_tm.dsl) != VK_SUCCESS) return -1;
+     VkPushConstantRange pr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, 84 };
+     VkPipelineLayoutCreateInfo lci = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+@@ -4020,7 +4027,7 @@ static int vk_tm_pipeline(void)
+     pvkDestroyShaderModule(s_vk.device, mod, NULL);
+     if (r != VK_SUCCESS) { s_tm.pipe = VK_NULL_HANDLE; return -1; }
+     VkDescriptorPoolSize ps[2] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 },
+-                                   { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 } };
++                                   { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 } };
+     VkDescriptorPoolCreateInfo pi = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                                       .maxSets = 1, .poolSizeCount = 2, .pPoolSizes = ps };
+     if (pvkCreateDescriptorPool(s_vk.device, &pi, NULL, &s_tm.pool) != VK_SUCCESS) return -1;
+@@ -4148,6 +4155,7 @@ static void vk_tm_unswap(u32 surface)
+     o->w = s_tm.sw[i].kw; o->h = s_tm.sw[i].kh; o->tm_out = 0;
+ }
+ 
++static u64 vk_now_ns(void);
+ static int vk_tm_scene_end(void* user, u32 surface)
+ {
+     const u32 frame = cellGcm_frame_reached();
+@@ -4179,13 +4187,31 @@ static int vk_tm_scene_end(void* user, u32 surface)
+     /* the images this needs, made (with the device idle) when their size changes */
+     if (s_tm.mv_w != rw || s_tm.mv_h != rh) {
+         if (s_tm.mv.img) vk_destroy_image(&s_tm.mv);
++        if (s_tm.zc.img) vk_destroy_image(&s_tm.zc);
+         if (vk_create_image(&s_tm.mv, VK_FORMAT_R16G16_SFLOAT, rw, rh,
++                            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT) ||
++            vk_create_image(&s_tm.zc, VK_FORMAT_R32_SFLOAT, rw, rh,
+                             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT)) {
+-            vk_destroy_image(&s_tm.mv); s_tm.mv_w = s_tm.mv_h = 0; s_tm.ok = 0; return 0;
++            vk_destroy_image(&s_tm.mv); vk_destroy_image(&s_tm.zc); s_tm.mv_w = s_tm.mv_h = 0; s_tm.ok = 0; return 0;
+         }
+         s_tm.mv_w = rw; s_tm.mv_h = rh;
+         if (vk_begin()) return 0;
+         vk_barrier_image(s_tm.mv.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED);
++        vk_barrier_image(s_tm.zc.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED);
++        if (vk_submit_and_wait()) return 0;
++    }
++    if (s_tm.want == 2 && (s_tm.fsr_w != ow || s_tm.fsr_h != oh)) {   /* FSR 3's shared images, at its largest render size */
++        static const VkFormat ff[3] = { VK_FORMAT_R32_SFLOAT, VK_FORMAT_R16G16_SFLOAT, VK_FORMAT_R32_UINT };
++        int bad = 0;
++        for (int i = 0; i < 3; i++) {
++            if (s_tm.fsr[i].img) vk_destroy_image(&s_tm.fsr[i]);
++            bad |= vk_create_image(&s_tm.fsr[i], ff[i], ow, oh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
++                                   VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT);   /* FSR clears them */
++        }
++        if (bad) { for (int i = 0; i < 3; i++) vk_destroy_image(&s_tm.fsr[i]); s_tm.fsr_w = 0; s_tm.ok = 0; return 0; }
++        s_tm.fsr_w = ow; s_tm.fsr_h = oh;
++        if (vk_begin()) return 0;
++        for (int i = 0; i < 3; i++) vk_barrier_image(s_tm.fsr[i].img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED);
+         if (vk_submit_and_wait()) return 0;
+     }
+     if (s_tm.sw[slot].w != ow || s_tm.sw[slot].h != oh) {
+@@ -4205,20 +4231,22 @@ static int vk_tm_scene_end(void* user, u32 surface)
+     fo = vk_eng_get(s_tm.fz, VK_ENG_DEPTH);
+     const VkImageView wv = vk_tm_zview(0, wo->im.img), fv = vk_tm_zview(1, fo->im.img);
+     if (!wv || !fv) { s_tm.have_prev = 0; s_tm.skipped++; return 0; }
+-    if (s_tm.set_for[0] != wo->im.img || s_tm.set_for[1] != fo->im.img || s_tm.set_for[2] != s_tm.mv.img) {
++    if (s_tm.set_for[0] != wo->im.img || s_tm.set_for[1] != fo->im.img || s_tm.set_for[2] != s_tm.mv.img ||
++        s_tm.set_for[3] != s_tm.zc.img) {
+         vk_flush();   /* the set may be in use by the last submission */
+-        VkDescriptorImageInfo ii[3] = { { s_tm.samp, wv, VK_IMAGE_LAYOUT_GENERAL },
++        VkDescriptorImageInfo ii[4] = { { s_tm.samp, wv, VK_IMAGE_LAYOUT_GENERAL },
+                                         { s_tm.samp, fv, VK_IMAGE_LAYOUT_GENERAL },
+-                                        { VK_NULL_HANDLE, s_tm.mv.view, VK_IMAGE_LAYOUT_GENERAL } };
+-        VkWriteDescriptorSet wr[3];
+-        for (int i = 0; i < 3; i++)
++                                        { VK_NULL_HANDLE, s_tm.mv.view, VK_IMAGE_LAYOUT_GENERAL },
++                                        { VK_NULL_HANDLE, s_tm.zc.view, VK_IMAGE_LAYOUT_GENERAL } };
++        VkWriteDescriptorSet wr[4];
++        for (int i = 0; i < 4; i++)
+             wr[i] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = s_tm.set,
+                                             .dstBinding = (u32)i, .descriptorCount = 1,
+                                             .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+                                                                     : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                                             .pImageInfo = &ii[i] };
+-        pvkUpdateDescriptorSets(s_vk.device, 3, wr, 0, NULL);
+-        s_tm.set_for[0] = wo->im.img; s_tm.set_for[1] = fo->im.img; s_tm.set_for[2] = s_tm.mv.img;
++        pvkUpdateDescriptorSets(s_vk.device, 4, wr, 0, NULL);
++        s_tm.set_for[0] = wo->im.img; s_tm.set_for[1] = fo->im.img; s_tm.set_for[2] = s_tm.mv.img; s_tm.set_for[3] = s_tm.zc.img;
+     }
+ 
+     /* last frame's clip from this frame's NDC; a cut (no record for the frame
+@@ -4249,20 +4277,28 @@ static int vk_tm_scene_end(void* user, u32 surface)
+     pvkCmdPushConstants(s_vk.cmd, s_tm.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, &pc);
+     pvkCmdDispatch(s_vk.cmd, (rw + 15u) / 16u, (rh + 15u) / 16u, 1);
+     vk_barrier_image(s_tm.mv.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
++    vk_barrier_image(s_tm.zc.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     vk_barrier_image(s_tm.sw[slot].out.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+ 
+     rsx_dlss_frame f;
+     memset(&f, 0, sizeof f);
+     f.color = (rsx_dlss_image){ o->im.img, o->im.view, VK_FORMAT_R8G8B8A8_UNORM, rw, rh };
+-    f.depth = (rsx_dlss_image){ wo->im.img, wv, s_vk.depth_format, rw, rh };
++    f.depth = (rsx_dlss_image){ s_tm.zc.img, s_tm.zc.view, VK_FORMAT_R32_SFLOAT, rw, rh };
+     f.motion = (rsx_dlss_image){ s_tm.mv.img, s_tm.mv.view, VK_FORMAT_R16G16_SFLOAT, rw, rh };
+     f.output = (rsx_dlss_image){ s_tm.sw[slot].out.img, s_tm.sw[slot].out.view, VK_FORMAT_R8G8B8A8_UNORM, ow, oh };
+     f.jitter_x = s_tm.jsign_x * v.jitter[0] * (float)rw / (float)o->lw;
+     f.jitter_y = s_tm.jsign_y * v.jitter[1] * (float)rh / (float)o->lh;
+     f.mv_scale_x = f.mv_scale_y = 1.0f;
+     f.reset = reset;
+-    const int r = rsx_dlss_evaluate(s_vk.cmd, s_tm.mode, &f);
++    f.near_z = v.near_z; f.far_z = v.far_z; f.fov_y = v.fov_y;
++    if (s_tm.want == 2)
++        for (int i = 0; i < 3; i++)
++            f.shared[i] = (rsx_dlss_image){ s_tm.fsr[i].img, s_tm.fsr[i].view,
++                                            i == 0 ? VK_FORMAT_R32_SFLOAT : i == 1 ? VK_FORMAT_R16G16_SFLOAT : VK_FORMAT_R32_UINT, ow, oh };
++    { static double last; const double now = (double)vk_now_ns() / 1e6;
++      f.frame_ms = last > 0.0 && now - last < 1000.0 ? (float)(now - last) : 16.7f; last = now; }
++    const int r = s_tm.want == 2 ? rsx_fsr3_evaluate(s_vk.cmd, &f) : rsx_dlss_evaluate(s_vk.cmd, s_tm.mode, &f);
+     s_tm.prev = v; s_tm.have_prev = 1;
+     if (r) { s_tm.skipped++; return 0; }
+     vk_barrier_image(s_tm.sw[slot].out.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+@@ -4274,7 +4310,8 @@ static int vk_tm_scene_end(void* user, u32 surface)
+     memset(&s_tm.sw[slot].out, 0, sizeof s_tm.sw[slot].out);
+     s_tm.sw[slot].swapped = 1;
+     if (++s_tm.frames == 1 || s_tm.frames % 3600u == 0)
+-        VK_LOG("temporal: DLSS %ux%u -> %ux%u, %u frames (%u not upscaled)\n", rw, rh, ow, oh, s_tm.frames, s_tm.skipped);
++        VK_LOG("temporal: %s %ux%u -> %ux%u, %u frames (%u not upscaled)\n", s_tm.want == 2 ? "FSR 3" : "DLSS",
++               rw, rh, ow, oh, s_tm.frames, s_tm.skipped);
+     return 1;
+ }
+ 
+@@ -5754,11 +5791,14 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     vk_reflex_wanted();
+     /* PS3RECOMP_TEMPORAL=dlss: NGX's instance and device extensions too */
+     { const char* e = getenv("PS3RECOMP_TEMPORAL");
+-      s_tm.want = e && !strcmp(e, "dlss");
+-      const char* m = getenv("PS3RECOMP_DLSS_MODE");
+-      s_tm.mode = !m || !strcmp(m, "quality") ? RSX_DLSS_QUALITY : !strcmp(m, "balanced") ? RSX_DLSS_BALANCED :
+-                  !strcmp(m, "performance") ? RSX_DLSS_PERFORMANCE : !strcmp(m, "ultra") ? RSX_DLSS_ULTRA_PERFORMANCE :
+-                  !strcmp(m, "dlaa") ? RSX_DLSS_DLAA : RSX_DLSS_QUALITY;
++      s_tm.want = !e ? 0 : !strcmp(e, "dlss") ? 1 : !strcmp(e, "fsr3") ? 2 : 0;
++      const char* m = getenv("PS3RECOMP_UPSCALE_MODE");
++      if (!m) m = getenv("PS3RECOMP_DLSS_MODE");
++      const int q = !m || !strcmp(m, "quality") ? 0 : !strcmp(m, "balanced") ? 1 : !strcmp(m, "performance") ? 2 :
++                    !strcmp(m, "ultra") ? 3 : !strcmp(m, "native") || !strcmp(m, "dlaa") ? 4 : 0;
++      static const int dlss[5] = { RSX_DLSS_QUALITY, RSX_DLSS_BALANCED, RSX_DLSS_PERFORMANCE, RSX_DLSS_ULTRA_PERFORMANCE, RSX_DLSS_DLAA };
++      static const int fsr[5] = { RSX_FSR3_QUALITY, RSX_FSR3_BALANCED, RSX_FSR3_PERFORMANCE, RSX_FSR3_ULTRA_PERFORMANCE, RSX_FSR3_NATIVE_AA };
++      s_tm.mode = s_tm.want == 2 ? fsr[q] : dlss[q];
+       const char* js = getenv("PS3RECOMP_DLSS_JITTER_SIGN");
+       s_tm.jsign_x = s_tm.jsign_y = 1.0f;
+       if (js) sscanf(js, "%f,%f", &s_tm.jsign_x, &s_tm.jsign_y); }
+@@ -5766,7 +5806,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     u32 ni = 0;
+     if (s_vk.windowed) for (u32 i = 0; i < s_vk.inst_ext_count && ni < 32; i++) iext[ni++] = s_vk.inst_exts[i];
+     const u32 ni_window = ni;
+-    if (s_tm.want) {
++    if (s_tm.want == 1) {
+         u32 a, b; const char* const* ia; const char* const* da;
+         rsx_dlss_required_extensions(&a, &ia, &b, &da);
+         if (!b) { VK_LOG("temporal: this build has no DLSS (PS3RECOMP_DLSS_SDK), off\n"); s_tm.want = 0; }
+@@ -5833,6 +5873,12 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     want.shaderInt64 = have.shaderInt64;         /* the MLAA pass's float emulation */
+     s_vk.int64_ok = have.shaderInt64 ? 1 : 0;
+     s_vk.aniso_ok = have.samplerAnisotropy ? 1 : 0;
++    /* FSR 3's shaders use 16-bit types and storage images written without a format */
++    if (s_tm.want == 2) {
++        want.shaderInt16 = have.shaderInt16;
++        want.shaderStorageImageWriteWithoutFormat = have.shaderStorageImageWriteWithoutFormat;
++        want.shaderStorageImageReadWithoutFormat = have.shaderStorageImageReadWithoutFormat;
++    }
+     { VkPhysicalDeviceProperties dp; pvkGetPhysicalDeviceProperties(s_vk.phys, &dp);
+       s_vk.aniso_max = dp.limits.maxSamplerAnisotropy >= 16.0f ? 16u : (u32)dp.limits.maxSamplerAnisotropy; }
+     VkDeviceCreateInfo dci = { .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+@@ -5860,8 +5906,20 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     const char* dext[24];
+     VkPhysicalDeviceBufferDeviceAddressFeaturesEXT bda = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_EXT,
+                                                            .bufferDeviceAddress = VK_TRUE };
++    /* FSR 3: half floats in shaders (Vulkan 1.2) */
++    VkPhysicalDeviceShaderFloat16Int8Features f16 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES };
++    PFN_vkGetPhysicalDeviceFeatures2 gf2 = s_tm.want == 2
++        ? (PFN_vkGetPhysicalDeviceFeatures2)pvkGetInstanceProcAddr(s_vk.instance, "vkGetPhysicalDeviceFeatures2") : NULL;
++    if (gf2) {
++        VkPhysicalDeviceShaderFloat16Int8Features q = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES };
++        VkPhysicalDeviceFeatures2 f2 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &q };
++        gf2(s_vk.phys, &f2);
++        f16.shaderFloat16 = q.shaderFloat16;
++        if (dci.pNext == &v12) v12.shaderFloat16 = q.shaderFloat16;   /* Reflex's 1.2 features carry it then */
++        else { f16.pNext = (void*)dci.pNext; dci.pNext = &f16; }
++    }
+     const VkDeviceCreateInfo dci_plain = dci;
+-    if (s_tm.want) {
++    if (s_tm.want == 1) {
+         u32 a, b; const char* const* ia; const char* const* da;
+         rsx_dlss_required_extensions(&a, &ia, &b, &da);
+         u32 nd = 0;
+diff --git a/libs/video/vulkan/rsx_vk_motion.comp b/libs/video/vulkan/rsx_vk_motion.comp
+index e7f0af59..6777fa35 100644
+--- a/libs/video/vulkan/rsx_vk_motion.comp
++++ b/libs/video/vulkan/rsx_vk_motion.comp
+@@ -8,6 +8,10 @@ layout(local_size_x = 16, local_size_y = 16) in;
+ layout(set = 0, binding = 0) uniform sampler2D world_z;
+ layout(set = 0, binding = 1) uniform sampler2D final_z;
+ layout(set = 0, binding = 2, rg16f) uniform writeonly image2D motion;
++// the depth as a colour image too, for the upscaler: the world's, and the
++// first-person model's where it was drawn (FSR 3's barriers would name only
++// the depth aspect of a depth-stencil image)
++layout(set = 0, binding = 3, r32f) uniform writeonly image2D depth_copy;
+ layout(push_constant) uniform Params {
+     mat4 reproject;   // last frame's clip from this frame's NDC
+     vec4 size_z;      // width, height, NDC z = depth * z + w
+@@ -20,8 +24,9 @@ void main()
+     vec2 size = pc.size_z.xy;
+     if (p.x >= int(size.x) || p.y >= int(size.y)) return;
+     vec2 mv = vec2(0.0);
+-    if (texelFetch(final_z, p, 0).r >= 1.0) {
+-        float z = texelFetch(world_z, p, 0).r;
++    float z = texelFetch(world_z, p, 0).r, fz = texelFetch(final_z, p, 0).r;
++    imageStore(depth_copy, p, vec4(fz < 1.0 ? fz : z));   // the model in front where it was drawn
++    if (fz >= 1.0) {
+         vec2 uv = (vec2(p) + 0.5) / size;
+         vec4 ndc = vec4(uv.x * 2.0 - 1.0, pc.y_sign * (1.0 - uv.y * 2.0), z * pc.size_z.z + pc.size_z.w, 1.0);
+         vec4 q = pc.reproject * ndc;
+diff --git a/libs/video/vulkan/rsx_vk_motion_comp.spv.h b/libs/video/vulkan/rsx_vk_motion_comp.spv.h
+index 7d27b414..ba418e4b 100644
+--- a/libs/video/vulkan/rsx_vk_motion_comp.spv.h
++++ b/libs/video/vulkan/rsx_vk_motion_comp.spv.h
+@@ -1,7 +1,7 @@
+ 	// 1116.6.0
+ 	 #pragma once
+ const uint32_t rsx_vk_motion_comp_spv[] = {
+-	0x07230203,0x00010000,0x0008000b,0x000000a4,0x00000000,0x00020011,0x00000001,0x00020011,
++	0x07230203,0x00010000,0x0008000b,0x000000b1,0x00000000,0x00020011,0x00000001,0x00020011,
+ 	0x00000031,0x0006000b,0x00000001,0x4c534c47,0x6474732e,0x3035342e,0x00000000,0x0003000e,
+ 	0x00000000,0x00000001,0x0006000f,0x00000005,0x00000004,0x6e69616d,0x00000000,0x0000000d,
+ 	0x00060010,0x00000004,0x00000011,0x00000010,0x00000010,0x00000001,0x00030003,0x00000002,
+@@ -10,48 +10,53 @@ const uint32_t rsx_vk_motion_comp_spv[] = {
+ 	0x00040005,0x00000015,0x657a6973,0x00000000,0x00040005,0x00000018,0x61726150,0x0000736d,
+ 	0x00060006,0x00000018,0x00000000,0x72706572,0x63656a6f,0x00000074,0x00050006,0x00000018,
+ 	0x00000001,0x657a6973,0x00007a5f,0x00050006,0x00000018,0x00000002,0x69735f79,0x00006e67,
+-	0x00030005,0x0000001a,0x00006370,0x00030005,0x00000038,0x0000766d,0x00040005,0x0000003e,
+-	0x616e6966,0x007a5f6c,0x00030005,0x00000049,0x0000007a,0x00040005,0x0000004a,0x6c726f77,
+-	0x007a5f64,0x00030005,0x00000050,0x00007675,0x00030005,0x00000059,0x0063646e,0x00030005,
+-	0x00000072,0x00000071,0x00040005,0x0000007e,0x76657270,0x00000000,0x00040005,0x0000009b,
++	0x00030005,0x0000001a,0x00006370,0x00030005,0x00000038,0x0000766d,0x00030005,0x0000003b,
++	0x0000007a,0x00040005,0x0000003f,0x6c726f77,0x007a5f64,0x00030005,0x00000046,0x00007a66,
++	0x00040005,0x00000047,0x616e6966,0x007a5f6c,0x00050005,0x0000004f,0x74706564,0x6f635f68,
++	0x00007970,0x00030005,0x0000005d,0x00007675,0x00030005,0x00000066,0x0063646e,0x00030005,
++	0x0000007f,0x00000071,0x00040005,0x0000008b,0x76657270,0x00000000,0x00040005,0x000000a8,
+ 	0x69746f6d,0x00006e6f,0x00040047,0x0000000d,0x0000000b,0x0000001c,0x00030047,0x00000018,
+ 	0x00000002,0x00040048,0x00000018,0x00000000,0x00000005,0x00050048,0x00000018,0x00000000,
+ 	0x00000007,0x00000010,0x00050048,0x00000018,0x00000000,0x00000023,0x00000000,0x00050048,
+ 	0x00000018,0x00000001,0x00000023,0x00000040,0x00050048,0x00000018,0x00000002,0x00000023,
+-	0x00000050,0x00040047,0x0000003e,0x00000021,0x00000001,0x00040047,0x0000003e,0x00000022,
+-	0x00000000,0x00040047,0x0000004a,0x00000021,0x00000000,0x00040047,0x0000004a,0x00000022,
+-	0x00000000,0x00030047,0x0000009b,0x00000019,0x00040047,0x0000009b,0x00000021,0x00000002,
+-	0x00040047,0x0000009b,0x00000022,0x00000000,0x00040047,0x000000a3,0x0000000b,0x00000019,
+-	0x00020013,0x00000002,0x00030021,0x00000003,0x00000002,0x00040015,0x00000006,0x00000020,
+-	0x00000001,0x00040017,0x00000007,0x00000006,0x00000002,0x00040020,0x00000008,0x00000007,
+-	0x00000007,0x00040015,0x0000000a,0x00000020,0x00000000,0x00040017,0x0000000b,0x0000000a,
+-	0x00000003,0x00040020,0x0000000c,0x00000001,0x0000000b,0x0004003b,0x0000000c,0x0000000d,
+-	0x00000001,0x00040017,0x0000000e,0x0000000a,0x00000002,0x00030016,0x00000012,0x00000020,
+-	0x00040017,0x00000013,0x00000012,0x00000002,0x00040020,0x00000014,0x00000007,0x00000013,
+-	0x00040017,0x00000016,0x00000012,0x00000004,0x00040018,0x00000017,0x00000016,0x00000004,
+-	0x0005001e,0x00000018,0x00000017,0x00000016,0x00000012,0x00040020,0x00000019,0x00000009,
+-	0x00000018,0x0004003b,0x00000019,0x0000001a,0x00000009,0x0004002b,0x00000006,0x0000001b,
+-	0x00000001,0x00040020,0x0000001c,0x00000009,0x00000016,0x00020014,0x00000020,0x0004002b,
+-	0x0000000a,0x00000021,0x00000000,0x00040020,0x00000022,0x00000007,0x00000006,0x00040020,
+-	0x00000025,0x00000007,0x00000012,0x0004002b,0x0000000a,0x0000002d,0x00000001,0x0004002b,
+-	0x00000012,0x00000039,0x00000000,0x0005002c,0x00000013,0x0000003a,0x00000039,0x00000039,
+-	0x00090019,0x0000003b,0x00000012,0x00000001,0x00000000,0x00000000,0x00000000,0x00000001,
+-	0x00000000,0x0003001b,0x0000003c,0x0000003b,0x00040020,0x0000003d,0x00000000,0x0000003c,
+-	0x0004003b,0x0000003d,0x0000003e,0x00000000,0x0004002b,0x00000006,0x00000041,0x00000000,
+-	0x0004002b,0x00000012,0x00000045,0x3f800000,0x0004003b,0x0000003d,0x0000004a,0x00000000,
+-	0x0004002b,0x00000012,0x00000053,0x3f000000,0x00040020,0x00000058,0x00000007,0x00000016,
+-	0x0004002b,0x00000012,0x0000005c,0x40000000,0x0004002b,0x00000006,0x0000005f,0x00000002,
+-	0x00040020,0x00000060,0x00000009,0x00000012,0x0004002b,0x0000000a,0x00000069,0x00000002,
+-	0x0004002b,0x0000000a,0x0000006d,0x00000003,0x00040020,0x00000073,0x00000009,0x00000017,
+-	0x0004002b,0x00000012,0x0000007a,0x358637bd,0x00090019,0x00000099,0x00000012,0x00000001,
+-	0x00000000,0x00000000,0x00000000,0x00000002,0x00000007,0x00040020,0x0000009a,0x00000000,
+-	0x00000099,0x0004003b,0x0000009a,0x0000009b,0x00000000,0x0004002b,0x0000000a,0x000000a2,
+-	0x00000010,0x0006002c,0x0000000b,0x000000a3,0x000000a2,0x000000a2,0x0000002d,0x00050036,
+-	0x00000002,0x00000004,0x00000000,0x00000003,0x000200f8,0x00000005,0x0004003b,0x00000008,
+-	0x00000009,0x00000007,0x0004003b,0x00000014,0x00000015,0x00000007,0x0004003b,0x00000014,
+-	0x00000038,0x00000007,0x0004003b,0x00000025,0x00000049,0x00000007,0x0004003b,0x00000014,
+-	0x00000050,0x00000007,0x0004003b,0x00000058,0x00000059,0x00000007,0x0004003b,0x00000058,
+-	0x00000072,0x00000007,0x0004003b,0x00000014,0x0000007e,0x00000007,0x0004003d,0x0000000b,
++	0x00000050,0x00040047,0x0000003f,0x00000021,0x00000000,0x00040047,0x0000003f,0x00000022,
++	0x00000000,0x00040047,0x00000047,0x00000021,0x00000001,0x00040047,0x00000047,0x00000022,
++	0x00000000,0x00030047,0x0000004f,0x00000019,0x00040047,0x0000004f,0x00000021,0x00000003,
++	0x00040047,0x0000004f,0x00000022,0x00000000,0x00030047,0x000000a8,0x00000019,0x00040047,
++	0x000000a8,0x00000021,0x00000002,0x00040047,0x000000a8,0x00000022,0x00000000,0x00040047,
++	0x000000b0,0x0000000b,0x00000019,0x00020013,0x00000002,0x00030021,0x00000003,0x00000002,
++	0x00040015,0x00000006,0x00000020,0x00000001,0x00040017,0x00000007,0x00000006,0x00000002,
++	0x00040020,0x00000008,0x00000007,0x00000007,0x00040015,0x0000000a,0x00000020,0x00000000,
++	0x00040017,0x0000000b,0x0000000a,0x00000003,0x00040020,0x0000000c,0x00000001,0x0000000b,
++	0x0004003b,0x0000000c,0x0000000d,0x00000001,0x00040017,0x0000000e,0x0000000a,0x00000002,
++	0x00030016,0x00000012,0x00000020,0x00040017,0x00000013,0x00000012,0x00000002,0x00040020,
++	0x00000014,0x00000007,0x00000013,0x00040017,0x00000016,0x00000012,0x00000004,0x00040018,
++	0x00000017,0x00000016,0x00000004,0x0005001e,0x00000018,0x00000017,0x00000016,0x00000012,
++	0x00040020,0x00000019,0x00000009,0x00000018,0x0004003b,0x00000019,0x0000001a,0x00000009,
++	0x0004002b,0x00000006,0x0000001b,0x00000001,0x00040020,0x0000001c,0x00000009,0x00000016,
++	0x00020014,0x00000020,0x0004002b,0x0000000a,0x00000021,0x00000000,0x00040020,0x00000022,
++	0x00000007,0x00000006,0x00040020,0x00000025,0x00000007,0x00000012,0x0004002b,0x0000000a,
++	0x0000002d,0x00000001,0x0004002b,0x00000012,0x00000039,0x00000000,0x0005002c,0x00000013,
++	0x0000003a,0x00000039,0x00000039,0x00090019,0x0000003c,0x00000012,0x00000001,0x00000000,
++	0x00000000,0x00000000,0x00000001,0x00000000,0x0003001b,0x0000003d,0x0000003c,0x00040020,
++	0x0000003e,0x00000000,0x0000003d,0x0004003b,0x0000003e,0x0000003f,0x00000000,0x0004002b,
++	0x00000006,0x00000042,0x00000000,0x0004003b,0x0000003e,0x00000047,0x00000000,0x00090019,
++	0x0000004d,0x00000012,0x00000001,0x00000000,0x00000000,0x00000000,0x00000002,0x00000003,
++	0x00040020,0x0000004e,0x00000000,0x0000004d,0x0004003b,0x0000004e,0x0000004f,0x00000000,
++	0x0004002b,0x00000012,0x00000053,0x3f800000,0x0004002b,0x00000012,0x00000060,0x3f000000,
++	0x00040020,0x00000065,0x00000007,0x00000016,0x0004002b,0x00000012,0x00000069,0x40000000,
++	0x0004002b,0x00000006,0x0000006c,0x00000002,0x00040020,0x0000006d,0x00000009,0x00000012,
++	0x0004002b,0x0000000a,0x00000076,0x00000002,0x0004002b,0x0000000a,0x0000007a,0x00000003,
++	0x00040020,0x00000080,0x00000009,0x00000017,0x0004002b,0x00000012,0x00000087,0x358637bd,
++	0x00090019,0x000000a6,0x00000012,0x00000001,0x00000000,0x00000000,0x00000000,0x00000002,
++	0x00000007,0x00040020,0x000000a7,0x00000000,0x000000a6,0x0004003b,0x000000a7,0x000000a8,
++	0x00000000,0x0004002b,0x0000000a,0x000000af,0x00000010,0x0006002c,0x0000000b,0x000000b0,
++	0x000000af,0x000000af,0x0000002d,0x00050036,0x00000002,0x00000004,0x00000000,0x00000003,
++	0x000200f8,0x00000005,0x0004003b,0x00000008,0x00000009,0x00000007,0x0004003b,0x00000014,
++	0x00000015,0x00000007,0x0004003b,0x00000014,0x00000038,0x00000007,0x0004003b,0x00000025,
++	0x0000003b,0x00000007,0x0004003b,0x00000025,0x00000046,0x00000007,0x0004003b,0x00000014,
++	0x0000005d,0x00000007,0x0004003b,0x00000065,0x00000066,0x00000007,0x0004003b,0x00000065,
++	0x0000007f,0x00000007,0x0004003b,0x00000014,0x0000008b,0x00000007,0x0004003d,0x0000000b,
+ 	0x0000000f,0x0000000d,0x0007004f,0x0000000e,0x00000010,0x0000000f,0x0000000f,0x00000000,
+ 	0x00000001,0x0004007c,0x00000007,0x00000011,0x00000010,0x0003003e,0x00000009,0x00000011,
+ 	0x00050041,0x0000001c,0x0000001d,0x0000001a,0x0000001b,0x0004003d,0x00000016,0x0000001e,
+@@ -68,55 +73,61 @@ const uint32_t rsx_vk_motion_comp_spv[] = {
+ 	0x000200f8,0x0000002c,0x000700f5,0x00000020,0x00000034,0x00000029,0x00000005,0x00000033,
+ 	0x0000002b,0x000300f7,0x00000036,0x00000000,0x000400fa,0x00000034,0x00000035,0x00000036,
+ 	0x000200f8,0x00000035,0x000100fd,0x000200f8,0x00000036,0x0003003e,0x00000038,0x0000003a,
+-	0x0004003d,0x0000003c,0x0000003f,0x0000003e,0x0004003d,0x00000007,0x00000040,0x00000009,
+-	0x00040064,0x0000003b,0x00000042,0x0000003f,0x0007005f,0x00000016,0x00000043,0x00000042,
+-	0x00000040,0x00000002,0x00000041,0x00050051,0x00000012,0x00000044,0x00000043,0x00000000,
+-	0x000500be,0x00000020,0x00000046,0x00000044,0x00000045,0x000300f7,0x00000048,0x00000000,
+-	0x000400fa,0x00000046,0x00000047,0x00000048,0x000200f8,0x00000047,0x0004003d,0x0000003c,
+-	0x0000004b,0x0000004a,0x0004003d,0x00000007,0x0000004c,0x00000009,0x00040064,0x0000003b,
+-	0x0000004d,0x0000004b,0x0007005f,0x00000016,0x0000004e,0x0000004d,0x0000004c,0x00000002,
+-	0x00000041,0x00050051,0x00000012,0x0000004f,0x0000004e,0x00000000,0x0003003e,0x00000049,
+-	0x0000004f,0x0004003d,0x00000007,0x00000051,0x00000009,0x0004006f,0x00000013,0x00000052,
+-	0x00000051,0x00050050,0x00000013,0x00000054,0x00000053,0x00000053,0x00050081,0x00000013,
+-	0x00000055,0x00000052,0x00000054,0x0004003d,0x00000013,0x00000056,0x00000015,0x00050088,
+-	0x00000013,0x00000057,0x00000055,0x00000056,0x0003003e,0x00000050,0x00000057,0x00050041,
+-	0x00000025,0x0000005a,0x00000050,0x00000021,0x0004003d,0x00000012,0x0000005b,0x0000005a,
+-	0x00050085,0x00000012,0x0000005d,0x0000005b,0x0000005c,0x00050083,0x00000012,0x0000005e,
+-	0x0000005d,0x00000045,0x00050041,0x00000060,0x00000061,0x0000001a,0x0000005f,0x0004003d,
+-	0x00000012,0x00000062,0x00000061,0x00050041,0x00000025,0x00000063,0x00000050,0x0000002d,
+-	0x0004003d,0x00000012,0x00000064,0x00000063,0x00050085,0x00000012,0x00000065,0x00000064,
+-	0x0000005c,0x00050083,0x00000012,0x00000066,0x00000045,0x00000065,0x00050085,0x00000012,
+-	0x00000067,0x00000062,0x00000066,0x0004003d,0x00000012,0x00000068,0x00000049,0x00060041,
+-	0x00000060,0x0000006a,0x0000001a,0x0000001b,0x00000069,0x0004003d,0x00000012,0x0000006b,
+-	0x0000006a,0x00050085,0x00000012,0x0000006c,0x00000068,0x0000006b,0x00060041,0x00000060,
+-	0x0000006e,0x0000001a,0x0000001b,0x0000006d,0x0004003d,0x00000012,0x0000006f,0x0000006e,
+-	0x00050081,0x00000012,0x00000070,0x0000006c,0x0000006f,0x00070050,0x00000016,0x00000071,
+-	0x0000005e,0x00000067,0x00000070,0x00000045,0x0003003e,0x00000059,0x00000071,0x00050041,
+-	0x00000073,0x00000074,0x0000001a,0x00000041,0x0004003d,0x00000017,0x00000075,0x00000074,
+-	0x0004003d,0x00000016,0x00000076,0x00000059,0x00050091,0x00000016,0x00000077,0x00000075,
+-	0x00000076,0x0003003e,0x00000072,0x00000077,0x00050041,0x00000025,0x00000078,0x00000072,
+-	0x0000006d,0x0004003d,0x00000012,0x00000079,0x00000078,0x000500ba,0x00000020,0x0000007b,
+-	0x00000079,0x0000007a,0x000300f7,0x0000007d,0x00000000,0x000400fa,0x0000007b,0x0000007c,
+-	0x0000007d,0x000200f8,0x0000007c,0x00050041,0x00000025,0x0000007f,0x00000072,0x00000021,
+-	0x0004003d,0x00000012,0x00000080,0x0000007f,0x00050041,0x00000025,0x00000081,0x00000072,
+-	0x0000006d,0x0004003d,0x00000012,0x00000082,0x00000081,0x00050088,0x00000012,0x00000083,
+-	0x00000080,0x00000082,0x00050085,0x00000012,0x00000084,0x00000083,0x00000053,0x00050081,
+-	0x00000012,0x00000085,0x00000084,0x00000053,0x00050041,0x00000060,0x00000086,0x0000001a,
+-	0x0000005f,0x0004003d,0x00000012,0x00000087,0x00000086,0x00050041,0x00000025,0x00000088,
+-	0x00000072,0x0000002d,0x0004003d,0x00000012,0x00000089,0x00000088,0x00050085,0x00000012,
+-	0x0000008a,0x00000087,0x00000089,0x00050041,0x00000025,0x0000008b,0x00000072,0x0000006d,
+-	0x0004003d,0x00000012,0x0000008c,0x0000008b,0x00050088,0x00000012,0x0000008d,0x0000008a,
+-	0x0000008c,0x00050085,0x00000012,0x0000008e,0x0000008d,0x00000053,0x00050083,0x00000012,
+-	0x0000008f,0x00000053,0x0000008e,0x00050050,0x00000013,0x00000090,0x00000085,0x0000008f,
+-	0x0004003d,0x00000013,0x00000091,0x00000015,0x00050085,0x00000013,0x00000092,0x00000090,
+-	0x00000091,0x0003003e,0x0000007e,0x00000092,0x0004003d,0x00000013,0x00000093,0x0000007e,
+-	0x0004003d,0x00000007,0x00000094,0x00000009,0x0004006f,0x00000013,0x00000095,0x00000094,
+-	0x00050050,0x00000013,0x00000096,0x00000053,0x00000053,0x00050081,0x00000013,0x00000097,
+-	0x00000095,0x00000096,0x00050083,0x00000013,0x00000098,0x00000093,0x00000097,0x0003003e,
+-	0x00000038,0x00000098,0x000200f9,0x0000007d,0x000200f8,0x0000007d,0x000200f9,0x00000048,
+-	0x000200f8,0x00000048,0x0004003d,0x00000099,0x0000009c,0x0000009b,0x0004003d,0x00000007,
+-	0x0000009d,0x00000009,0x0004003d,0x00000013,0x0000009e,0x00000038,0x00050051,0x00000012,
+-	0x0000009f,0x0000009e,0x00000000,0x00050051,0x00000012,0x000000a0,0x0000009e,0x00000001,
+-	0x00070050,0x00000016,0x000000a1,0x0000009f,0x000000a0,0x00000039,0x00000039,0x00040063,
+-	0x0000009c,0x0000009d,0x000000a1,0x000100fd,0x00010038
++	0x0004003d,0x0000003d,0x00000040,0x0000003f,0x0004003d,0x00000007,0x00000041,0x00000009,
++	0x00040064,0x0000003c,0x00000043,0x00000040,0x0007005f,0x00000016,0x00000044,0x00000043,
++	0x00000041,0x00000002,0x00000042,0x00050051,0x00000012,0x00000045,0x00000044,0x00000000,
++	0x0003003e,0x0000003b,0x00000045,0x0004003d,0x0000003d,0x00000048,0x00000047,0x0004003d,
++	0x00000007,0x00000049,0x00000009,0x00040064,0x0000003c,0x0000004a,0x00000048,0x0007005f,
++	0x00000016,0x0000004b,0x0000004a,0x00000049,0x00000002,0x00000042,0x00050051,0x00000012,
++	0x0000004c,0x0000004b,0x00000000,0x0003003e,0x00000046,0x0000004c,0x0004003d,0x0000004d,
++	0x00000050,0x0000004f,0x0004003d,0x00000007,0x00000051,0x00000009,0x0004003d,0x00000012,
++	0x00000052,0x00000046,0x000500b8,0x00000020,0x00000054,0x00000052,0x00000053,0x0004003d,
++	0x00000012,0x00000055,0x00000046,0x0004003d,0x00000012,0x00000056,0x0000003b,0x000600a9,
++	0x00000012,0x00000057,0x00000054,0x00000055,0x00000056,0x00070050,0x00000016,0x00000058,
++	0x00000057,0x00000057,0x00000057,0x00000057,0x00040063,0x00000050,0x00000051,0x00000058,
++	0x0004003d,0x00000012,0x00000059,0x00000046,0x000500be,0x00000020,0x0000005a,0x00000059,
++	0x00000053,0x000300f7,0x0000005c,0x00000000,0x000400fa,0x0000005a,0x0000005b,0x0000005c,
++	0x000200f8,0x0000005b,0x0004003d,0x00000007,0x0000005e,0x00000009,0x0004006f,0x00000013,
++	0x0000005f,0x0000005e,0x00050050,0x00000013,0x00000061,0x00000060,0x00000060,0x00050081,
++	0x00000013,0x00000062,0x0000005f,0x00000061,0x0004003d,0x00000013,0x00000063,0x00000015,
++	0x00050088,0x00000013,0x00000064,0x00000062,0x00000063,0x0003003e,0x0000005d,0x00000064,
++	0x00050041,0x00000025,0x00000067,0x0000005d,0x00000021,0x0004003d,0x00000012,0x00000068,
++	0x00000067,0x00050085,0x00000012,0x0000006a,0x00000068,0x00000069,0x00050083,0x00000012,
++	0x0000006b,0x0000006a,0x00000053,0x00050041,0x0000006d,0x0000006e,0x0000001a,0x0000006c,
++	0x0004003d,0x00000012,0x0000006f,0x0000006e,0x00050041,0x00000025,0x00000070,0x0000005d,
++	0x0000002d,0x0004003d,0x00000012,0x00000071,0x00000070,0x00050085,0x00000012,0x00000072,
++	0x00000071,0x00000069,0x00050083,0x00000012,0x00000073,0x00000053,0x00000072,0x00050085,
++	0x00000012,0x00000074,0x0000006f,0x00000073,0x0004003d,0x00000012,0x00000075,0x0000003b,
++	0x00060041,0x0000006d,0x00000077,0x0000001a,0x0000001b,0x00000076,0x0004003d,0x00000012,
++	0x00000078,0x00000077,0x00050085,0x00000012,0x00000079,0x00000075,0x00000078,0x00060041,
++	0x0000006d,0x0000007b,0x0000001a,0x0000001b,0x0000007a,0x0004003d,0x00000012,0x0000007c,
++	0x0000007b,0x00050081,0x00000012,0x0000007d,0x00000079,0x0000007c,0x00070050,0x00000016,
++	0x0000007e,0x0000006b,0x00000074,0x0000007d,0x00000053,0x0003003e,0x00000066,0x0000007e,
++	0x00050041,0x00000080,0x00000081,0x0000001a,0x00000042,0x0004003d,0x00000017,0x00000082,
++	0x00000081,0x0004003d,0x00000016,0x00000083,0x00000066,0x00050091,0x00000016,0x00000084,
++	0x00000082,0x00000083,0x0003003e,0x0000007f,0x00000084,0x00050041,0x00000025,0x00000085,
++	0x0000007f,0x0000007a,0x0004003d,0x00000012,0x00000086,0x00000085,0x000500ba,0x00000020,
++	0x00000088,0x00000086,0x00000087,0x000300f7,0x0000008a,0x00000000,0x000400fa,0x00000088,
++	0x00000089,0x0000008a,0x000200f8,0x00000089,0x00050041,0x00000025,0x0000008c,0x0000007f,
++	0x00000021,0x0004003d,0x00000012,0x0000008d,0x0000008c,0x00050041,0x00000025,0x0000008e,
++	0x0000007f,0x0000007a,0x0004003d,0x00000012,0x0000008f,0x0000008e,0x00050088,0x00000012,
++	0x00000090,0x0000008d,0x0000008f,0x00050085,0x00000012,0x00000091,0x00000090,0x00000060,
++	0x00050081,0x00000012,0x00000092,0x00000091,0x00000060,0x00050041,0x0000006d,0x00000093,
++	0x0000001a,0x0000006c,0x0004003d,0x00000012,0x00000094,0x00000093,0x00050041,0x00000025,
++	0x00000095,0x0000007f,0x0000002d,0x0004003d,0x00000012,0x00000096,0x00000095,0x00050085,
++	0x00000012,0x00000097,0x00000094,0x00000096,0x00050041,0x00000025,0x00000098,0x0000007f,
++	0x0000007a,0x0004003d,0x00000012,0x00000099,0x00000098,0x00050088,0x00000012,0x0000009a,
++	0x00000097,0x00000099,0x00050085,0x00000012,0x0000009b,0x0000009a,0x00000060,0x00050083,
++	0x00000012,0x0000009c,0x00000060,0x0000009b,0x00050050,0x00000013,0x0000009d,0x00000092,
++	0x0000009c,0x0004003d,0x00000013,0x0000009e,0x00000015,0x00050085,0x00000013,0x0000009f,
++	0x0000009d,0x0000009e,0x0003003e,0x0000008b,0x0000009f,0x0004003d,0x00000013,0x000000a0,
++	0x0000008b,0x0004003d,0x00000007,0x000000a1,0x00000009,0x0004006f,0x00000013,0x000000a2,
++	0x000000a1,0x00050050,0x00000013,0x000000a3,0x00000060,0x00000060,0x00050081,0x00000013,
++	0x000000a4,0x000000a2,0x000000a3,0x00050083,0x00000013,0x000000a5,0x000000a0,0x000000a4,
++	0x0003003e,0x00000038,0x000000a5,0x000200f9,0x0000008a,0x000200f8,0x0000008a,0x000200f9,
++	0x0000005c,0x000200f8,0x0000005c,0x0004003d,0x000000a6,0x000000a9,0x000000a8,0x0004003d,
++	0x00000007,0x000000aa,0x00000009,0x0004003d,0x00000013,0x000000ab,0x00000038,0x00050051,
++	0x00000012,0x000000ac,0x000000ab,0x00000000,0x00050051,0x00000012,0x000000ad,0x000000ab,
++	0x00000001,0x00070050,0x00000016,0x000000ae,0x000000ac,0x000000ad,0x00000039,0x00000039,
++	0x00040063,0x000000a9,0x000000aa,0x000000ae,0x000100fd,0x00010038
+ };

@@ -1,0 +1,214 @@
+From 48a6312be2de3a2ec11b7f1727a9256a7726d3ed Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 20:52:04 -0300
+Subject: [PATCH] vulkan: per-object motion pairs by the rows a program
+ reads, and is on by default
+
+A draw with several instances of its key last frame took the one whose
+first 64 constant rows were closest, which picked the wrong instance
+(~600 px off): now only the rows its vertex program reads count, and
+those draws agree with the camera to ~1 px where nothing moves. The
+velocity target is RGBA16F; B and A carry the pairing (candidates,
+second-best / best distance) for the temporal dump, whose images now
+carry their texel size.
+
+On level 7 the motion lowers the warp error of the last frame onto this
+one from 7.76 to 7.24 (whole picture) and from 10.42 to 8.93 where
+object and camera motion differ, for ~2% of the frame rate: on by
+default under a temporal upscaler, PS3RECOMP_TEMPORAL_OBJECT_MOTION=0
+for the camera's alone.
+
+---
+ libs/video/rsx_vulkan_backend.c | 76 ++++++++++++++++++++++-----------
+ 1 file changed, 52 insertions(+), 24 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 79c9f87d..e74bcdc4 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -4054,16 +4054,19 @@ static struct {
+     int vel_cleared;           /* the velocity target cleared this frame */
+     const u8* prev;            /* the current draw's last-frame constants, or NULL */
+     int use_prev;              /* the current draw is a velocity draw */
++    float ncand, ratio;        /* its pairing: last frame's draws of its key, second-best / best distance */
+     u32 matched, unmatched, moved, frames;
+ } s_tv;
+ 
+ static void vk_tv_frame_end(u32 surface, u32 depth);
+-/* PS3RECOMP_TEMPORAL_OBJECT_MOTION=1 (off for now): pairing draws across
+- * frames by key and order still mismatches some (vk_tv_draw_begin) */
++/* Per-object motion under a temporal upscaler; PS3RECOMP_TEMPORAL_OBJECT_MOTION=0:
++ * the camera's alone. On Killzone HD's level 7 it lowers the warp error of
++ * the last frame onto this one by 7% over the whole picture, 14% where the
++ * two motions differ, for ~2% of the frame rate. */
+ static int vk_tv_on(void)
+ {
+     static int on = -1;
+-    if (on < 0) { const char* e = getenv("PS3RECOMP_TEMPORAL_OBJECT_MOTION"); on = e && atoi(e) != 0; }
++    if (on < 0) { const char* e = getenv("PS3RECOMP_TEMPORAL_OBJECT_MOTION"); on = !e || atoi(e) != 0; }
+     return on;
+ }
+ #define VK_TM_SWAPS 4
+@@ -4202,23 +4205,31 @@ static char s_tm_dump_base[1024];   /* <dir>/f<frame> while this frame is dumped
+ 
+ /* A 4-byte-per-texel image of the temporal pass to <s_tm_dump_base><ext>
+  * (raw, w x h). Ends the batch. */
+-static void vk_tm_dump_image(VkImage img, u32 w, u32 h, const char* ext)
++static void vk_tm_dump_image(VkImage img, u32 w, u32 h, u32 bpp, const char* ext)
+ {
+-    if (!s_tm_dump_base[0] || (VkDeviceSize)w * h * 4u > s_vk.readback.size || vk_batch_reserve(0)) return;
++    static vk_buffer rb;   /* a dump's own: the frame's readback buffer may be smaller */
++    const VkDeviceSize need = (VkDeviceSize)w * h * bpp;
++    if (!s_tm_dump_base[0] || vk_batch_reserve(0)) return;
++    if (rb.size < need) {
++        vk_flush();
++        vk_destroy_buffer(&rb);
++        if (vk_create_host_buffer(&rb, need, VK_BUFFER_USAGE_TRANSFER_DST_BIT)) { memset(&rb, 0, sizeof rb); return; }
++        if (vk_batch_reserve(0)) return;
++    }
+     vk_barrier_image(img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     VkBufferImageCopy region = { .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, .imageExtent = { w, h, 1 } };
+-    pvkCmdCopyImageToBuffer(s_vk.cmd, img, VK_IMAGE_LAYOUT_GENERAL, s_vk.readback.buf, 1, &region);
++    pvkCmdCopyImageToBuffer(s_vk.cmd, img, VK_IMAGE_LAYOUT_GENERAL, rb.buf, 1, &region);
+     VkBufferMemoryBarrier host = { .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+         .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT,
+         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+-        .buffer = s_vk.readback.buf, .offset = 0, .size = VK_WHOLE_SIZE };
++        .buffer = rb.buf, .offset = 0, .size = VK_WHOLE_SIZE };
+     pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1, &host, 0, NULL);
+     vk_flush();
+-    vk_invalidate(&s_vk.readback);
++    vk_invalidate(&rb);
+     char path[1100];
+     snprintf(path, sizeof path, "%s%s", s_tm_dump_base, ext);
+     FILE* f = fopen(path, "wb");
+-    if (f) { const u32 hdr[2] = { w, h }; fwrite(hdr, sizeof hdr, 1, f); fwrite(s_vk.readback.ptr, (size_t)w * h * 4u, 1, f); fclose(f); }
++    if (f) { const u32 hdr[3] = { w, h, bpp }; fwrite(hdr, sizeof hdr, 1, f); fwrite(rb.ptr, (size_t)need, 1, f); fclose(f); }
+ }
+ 
+ static void vk_tm_dump(void* user, u32 surface, u32 frame, const rsx_temporal_view* v, int have, u32 wz)
+@@ -4448,8 +4459,8 @@ static int vk_tm_scene_end(void* user, u32 surface, u32 field)
+     pvkCmdPushConstants(s_vk.cmd, s_tm.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, &pc);
+     pvkCmdDispatch(s_vk.cmd, (rw + 15u) / 16u, (rh + 15u) / 16u, 1);
+     if (s_tm_dump_base[0]) {   /* the motion and the draws' velocity of a dumped frame */
+-        vk_tm_dump_image(s_tm.mv.img, rw, rh, ".mv");
+-        if (has_vel) vk_tm_dump_image(s_tv.vel.img, rw, rh, ".vel");
++        vk_tm_dump_image(s_tm.mv.img, rw, rh, 4u, ".mv");
++        if (has_vel) vk_tm_dump_image(s_tv.vel.img, rw, rh, 8u, ".vel");
+         if (vk_batch_reserve(0)) { s_tm.have_prev = 0; return 0; }
+         o = vk_eng_get(surface, VK_ENG_COLOR);
+     }
+@@ -4655,6 +4666,7 @@ typedef struct vk_eng_pipe {
+      * last frame's position, and the motion into one more target */
+     VkShaderModule      vsv, fsv;
+     u64                 vsv_h, psv_h;
++    u32                 vrows[RSX_MAX_VERTEX_CONSTANTS / 32];   /* the constant rows its program names (pairing) */
+     VkPipeline          variantv[VK_ENG_TOPOLOGIES];
+ } vk_eng_pipe;
+ 
+@@ -4714,7 +4726,7 @@ static VkRenderPass vk_eng_render_pass(VkFormat cf, u32 n, int vel)
+     VkAttachmentReference   cref[RSX_BE_MAX_COLOR_TARGETS + 1];
+     for (u32 i = 0; i <= nc; i++) {
+         att[i] = (VkAttachmentDescription){
+-            .format = (i < n) ? cf : i < nc ? VK_FORMAT_R16G16_SFLOAT : s_vk.depth_format,
++            .format = (i < n) ? cf : i < nc ? VK_FORMAT_R16G16B16A16_SFLOAT : s_vk.depth_format,
+             .samples = VK_SAMPLE_COUNT_1_BIT,
+             .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+             /* Stencil lives across draws like depth does (a title writes it in
+@@ -5080,7 +5092,8 @@ static char* vk_tm_vel_vs(const char* vs)
+     o += sprintf(o, "    Out._vcur = Out.pos;\n"
+                     "    { float4 _q = _rsx_prev_hpos(input);\n"
+                     "      Out._vprev = vp_pvalid.x != 0.0 ? float4(_q.xyz * vp_posscale.xyz + _q.w * vp_posoffset.xyz, _q.w)"
+-                    " : (float4)0; }\n");
++                    " : (float4)0;\n"
++                    "      Out._vcur.z = vp_pvalid.y; Out._vprev.z = vp_pvalid.z; }\n");
+     VK_TM_COPY(r, vs + len + 1);
+ #undef VK_TM_COPY
+     free(prev);
+@@ -5110,8 +5123,8 @@ static char* vk_tm_vel_ps(const char* ps, u32 rt_count)
+     memcpy(o, nm, nl); o += nl;
+     strcpy(o, e + old); o += strlen(o);
+     o += sprintf(o, "\nfloat4 _rsx_velocity(PSInput i) {\n"
+-                    "    if (i._vprev.w <= 0.0 || i._vcur.w <= 0.0) return float4(65504.0, 65504.0, 0, 0);\n"
+-                    "    return float4(i._vprev.xy / i._vprev.w - i._vcur.xy / i._vcur.w, 0, 0);\n}\n"
++                    "    if (i._vprev.w <= 0.0 || i._vcur.w <= 0.0) return float4(65504.0, 65504.0, i._vcur.z, i._vprev.z);\n"
++                    "    return float4(i._vprev.xy / i._vprev.w - i._vcur.xy / i._vcur.w, i._vcur.z, i._vprev.z);\n}\n"
+                     "struct _RsxVelOut {\n");
+     for (u32 k = 0; k < rt_count; k++) o += sprintf(o, "    float4 t%u : SV_TARGET%u;\n", k, k);
+     o += sprintf(o, "    float4 vel : SV_TARGET%u;\n};\n_RsxVelOut main(PSInput input) {\n    _RsxVelOut _v;\n", rt_count);
+@@ -5180,6 +5193,12 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
+     P->rt_fmt = cf;
+     P->cube_mask = vk_eng_cube_units(ps_hlsl);
+     if (s_tm.want && vk_tv_on()) {   /* the velocity variant, when its programs translate */
++        /* the rows the program reads: by number, and every one when it indexes them */
++        for (const char* q = vs_hlsl; (q = strstr(q, "vp_c[")); q += 5) {
++            if (q[5] == '(') { memset(P->vrows, 0xFF, sizeof P->vrows); break; }
++            const u32 r = (u32)atoi(q + 5) & (RSX_MAX_VERTEX_CONSTANTS - 1u);
++            P->vrows[r >> 5] |= 1u << (r & 31u);
++        }
+         char* vv = vk_tm_vel_vs(vs_hlsl);
+         char* pv = vv ? vk_tm_vel_ps(ps_hlsl, rt_count) : NULL;
+         if (pv && !vk_eng_translate(vv, RSX_SHADER_STAGE_VERTEX, &P->vsv, &P->vsv_h) &&
+@@ -5316,7 +5335,8 @@ static VkResult vk_eng_build(const vk_plist_rec* R, VkShaderModule vs, VkShaderM
+     if (vel)
+         cba[R->rt_count] = (VkPipelineColorBlendAttachmentState){
+             .colorWriteMask = (rs->depth_test && rs->depth_write && !rs->blend_enable)
+-                            ? (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT) : 0 };
++                            ? (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
++                               VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT) : 0 };
+     VkPipelineColorBlendStateCreateInfo cb = {
+         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+         .attachmentCount = R->rt_count + (vel ? 1u : 0u), .pAttachments = cba };
+@@ -5925,7 +5945,7 @@ static VkImageView vk_tv_draw_begin(const vk_eng_pipe* P, const vk_eng_obj* rt0,
+     if (s_tv.vel_w != w || s_tv.vel_h != h) {
+         if (s_tv.vel.img) { vk_eng_drop_framebuffers(); vk_destroy_image(&s_tv.vel); }
+         s_tv.vel_w = s_tv.vel_h = 0;
+-        if (vk_create_image(&s_tv.vel, VK_FORMAT_R16G16_SFLOAT, w, h,
++        if (vk_create_image(&s_tv.vel, VK_FORMAT_R16G16B16A16_SFLOAT, w, h,
+                             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                             VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT)) {
+             vk_destroy_image(&s_tv.vel); return VK_NULL_HANDLE;
+@@ -5951,21 +5971,28 @@ static VkImageView vk_tv_draw_begin(const vk_eng_pipe* P, const vk_eng_obj* rt0,
+     u64 sk = 0;
+     if (!vk_tv_record(mkey, s_e2_vsc, &sk)) return VK_NULL_HANDLE;
+     /* Among last frame's draws of this key, the one whose constants are
+-     * closest: identical meshes are not always drawn in the same order. The
+-     * transforms come first in the constants; 64 rows decide. */
++     * closest, over the rows its program reads: identical meshes are not
++     * always drawn in the same order, and rows it does not read (another
++     * draw's leftovers) would pick the wrong one hundreds of pixels away. */
+     s_tv.prev = NULL;
+     {
+         vk_tv_frame* pf = &s_tv.f[s_tv.cur ^ 1];
+-        double best = 0.0;
+-        for (u32 occ = 0; occ < 16; occ++) {
++        double best = 0.0, second = 1e30;
++        u32 occ = 0;
++        for (; occ < 16; occ++) {
+             const u32* off = vk_tv_find(pf, vk_tv_slot_key(mkey, occ));
+             if (!off) break;
+             const float* a = (const float*)(pf->arena + (size_t)*off * VK_TV_PREV_BYTES);
+             const float* b = (const float*)s_e2_vsc;
+-            double d = 0.0;
+-            for (u32 i = 0; i < 64u * 4u; i++) d += fabs((double)a[i] - (double)b[i]);
+-            if (!s_tv.prev || d < best) { best = d; s_tv.prev = (const u8*)a; }
++            double d = 0.0;   /* over the rows the program reads */
++            for (u32 r = 0; r < RSX_MAX_VERTEX_CONSTANTS; r++)
++                if ((P->vrows[r >> 5] >> (r & 31u)) & 1u)
++                    for (u32 k = 0; k < 4; k++) d += fabs((double)a[4 * r + k] - (double)b[4 * r + k]);
++            if (!s_tv.prev || d < best) { second = s_tv.prev ? best : second; best = d; s_tv.prev = (const u8*)a; }
++            else if (d < second) second = d;
+         }
++        s_tv.ncand = (float)occ;
++        s_tv.ratio = occ > 1 ? (float)(best > 0.0 ? fmin(second / best, 1000.0) : 1000.0) : 0.0f;
+     }
+     if (s_tv.prev) s_tv.matched++; else s_tv.unmatched++;
+     if (s_tv.prev && memcmp(s_tv.prev, s_e2_vsc, VK_TV_PREV_BYTES)) s_tv.moved++;
+@@ -6008,6 +6035,7 @@ static VkDescriptorSet vk_eng_write_descriptors(const vk_eng_pipe* P)
+         if (s_tv.use_prev) {
+             memcpy(pp, s_tv.prev ? s_tv.prev : s_e2_vsc, VK_TV_PREV_BYTES);
+             valid[0] = s_tv.prev ? 1.0f : 0.0f;
++            valid[1] = s_tv.ncand; valid[2] = s_tv.ratio;
+             pp += VK_TV_PREV_BYTES;
+         }
+         memcpy(pp, valid, sizeof valid);

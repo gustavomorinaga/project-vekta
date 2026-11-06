@@ -1,0 +1,6 @@
+# Findings gitleaks reports that are not secrets, by fingerprint (commit:file:rule:line). The scan reads the whole
+# history, so a line reworded later still needs its old commit listed here.
+# tools/glyphs/controller_art.py: the comment naming the keyboard drawing's columns, reworded since.
+0918ea52360d529e962f2cf75b537087b9cebe3b:tools/glyphs/controller_art.py:generic-api-key:243
+# This file's first version quoted that comment.
+20b258095dd9cf0ed6177ec0ccb87856b92c71a6:.gitleaksignore:generic-api-key:3

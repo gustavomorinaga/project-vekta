@@ -1,0 +1,1291 @@
+From 30879fd327f2abdb073a7a4e93102a6a5f939e1c Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 19:39:35 -0300
+Subject: [PATCH] vulkan: the frame's jitter is the last record's;
+ per-object motion (opt-in)
+
+The draws of a frame carry the jitter the camera made a frame earlier
+(their own motion on still scenes agrees with the camera's to 0.01 px
+only so), while the view-projection is the frame's own: DLSS and FSR now
+get that jitter, and the motion pass corrects for it.
+
+PS3RECOMP_TEMPORAL_OBJECT_MOTION=1: draws into the scene use a velocity
+variant of their pipeline. Its vertex program runs again on the
+constants the same draw had last frame (VPPrev, binding 2), found by the
+engine's draw key (program, count, topology; set_draw_key), the
+material, and the closest constants among draws of that key, and its
+pixel program writes the difference into one more target. The motion
+pass takes it, less the jitter change, where it is within 6% of the
+frame of the camera's motion. Off by default: some draws still pair
+with the wrong instance.
+
+PS3RECOMP_VK_DUMP_PRESENTS=<first>,<count> dumps a run of presents, and
+the temporal dump writes the motion and velocity images too.
+
+---
+ libs/video/rsx_draw_engine.c               |   7 +
+ libs/video/rsx_draw_engine.h               |   5 +
+ libs/video/rsx_vulkan_backend.c            | 529 ++++++++++++++++++---
+ libs/video/vulkan/rsx_vk_motion.comp       |  29 +-
+ libs/video/vulkan/rsx_vk_motion_comp.spv.h | 264 +++++-----
+ 5 files changed, 654 insertions(+), 180 deletions(-)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 1a28532e..22be2be0 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -3650,6 +3650,13 @@ static void sink_end(void* user, const rsx_dispatch* r)
+     }
+ 
+     const u32 uploaded = indexed ? dc.n_verts : n_draw;
++    if (g.be->set_draw_key) {
++        /* program, count and topology: the array addresses move from frame to
++         * frame (Killzone HD streams its vertex and index data through rings),
++         * so draws of one program and count are told apart by their order */
++        u32 k[4] = { pipeline, n_draw, (u32)topology, layout.count ? layout.attrs[0] : 0u };
++        g.be->set_draw_key(g.be->user, eng_fnv1a(k, sizeof k, 1469598103934665603ull));
++    }
+     g.be->draw(g.be->user, topology, dc.verts, uploaded, layout.stride,
+                indexed ? g.indices : NULL, indexed ? n_draw : 0);
+     /* Counted only when the draw ran the guest's OWN programs, which is what
+diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
+index b45cef45..fe990605 100644
+--- a/libs/video/rsx_draw_engine.h
++++ b/libs/video/rsx_draw_engine.h
+@@ -306,6 +306,11 @@ typedef struct rsx_draw_backend {
+      * with one, its motion blur follows the MLAA (vulkan/rsx_vk_mb.comp). */
+     int  (*mlaa)(void* user, u32 surface, u32 field);
+ 
++    /* Optional. Before each draw: what the draw is (its program, vertex count
++     * and topology), so a backend can find the same draw's constants of the
++     * frame before by key and order (temporal upscaling: per-object motion). */
++    void (*set_draw_key)(void* user, u64 key);
++
+ } rsx_draw_backend;
+ 
+ /* ---- the engine --------------------------------------------------------- */
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index fa7de5b7..28cddf47 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -1415,6 +1415,7 @@ static int vk_ensure_vertex_buffer(VkDeviceSize bytes)
+ #define VK_HLSL_BYTES    (256u * 1024u)
+ #define VK_SPV_WORDS     (256u * 1024u)
+ #define VK_VPCONST_BYTES ((RSX_MAX_VERTEX_CONSTANTS + 2u) * 16u)
++#define VK_TM_PREV_BINDING 2u   /* register(b2): a velocity variant's last-frame constants */
+ #define VK_GUEST_ATTRS   16u
+ #define VK_GUEST_FLOATS  (VK_GUEST_ATTRS * 4u)   /* per vertex */
+ 
+@@ -1690,21 +1691,23 @@ static int vk_guest_init(void)
+     }
+ 
+     const VkShaderStageFlags both = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+-    VkDescriptorSetLayoutBinding b[4] = {
++    VkDescriptorSetLayoutBinding b[5] = {
+         { RSX_SPIRV_VPCONST_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, both, NULL },
+         { RSX_SPIRV_PSCONST_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, both, NULL },
+         { RSX_SPIRV_TEXTURE_BINDING, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, RSX_MAX_TEXTURES,
+           VK_SHADER_STAGE_FRAGMENT_BIT, NULL },
+         { RSX_SPIRV_SAMPLER_BINDING, VK_DESCRIPTOR_TYPE_SAMPLER, RSX_MAX_TEXTURES,
+           VK_SHADER_STAGE_FRAGMENT_BIT, NULL },
++        /* the velocity variants' last-frame constants (register b2) */
++        { VK_TM_PREV_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, NULL },
+     };
+     VkDescriptorSetLayoutCreateInfo lci = {
+         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+-        .bindingCount = 4, .pBindings = b };
++        .bindingCount = 5, .pBindings = b };
+     VK_CHECK(pvkCreateDescriptorSetLayout(s_vk.device, &lci, NULL, &s_g.set_layout),
+              "vkCreateDescriptorSetLayout(guest)");
+     VkDescriptorPoolSize ps[3] = {
+-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2 },
++        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+         { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, RSX_MAX_TEXTURES },
+         { VK_DESCRIPTOR_TYPE_SAMPLER, RSX_MAX_TEXTURES },
+     };
+@@ -2639,6 +2642,15 @@ static void vk_dump_ppm(const unsigned char* rgba)
+ static int vk_dump_decide(void)
+ {
+     if (!s_vk.dump_path) return 0;
++    /* PS3RECOMP_VK_DUMP_PRESENTS=<first>,<count>: every frame of that run of
++     * presents (the same moment of a replayed route, whatever the wall time) */
++    { static long long first = -2, count;
++      if (first == -2) { const char* e = getenv("PS3RECOMP_VK_DUMP_PRESENTS");
++                         first = e ? atoll(e) : -1; count = e && strchr(e, ',') ? atoll(strchr(e, ',') + 1) : 60; }
++      if (first >= 0) {
++          s_dump_tag = s_vk.presented + 1;
++          return (long long)s_dump_tag >= first && (long long)s_dump_tag < first + count;
++      } }
+     /* PS3RECOMP_VK_DUMP_BURST=<from ms>,<for ms>: every frame in that window
+      * of wall time after the first present, named by the present count (an
+      * animation that changes from one frame to the next). */
+@@ -3940,6 +3952,34 @@ static int vk_eng_mlaa(void* user, u32 surface, u32 field)
+  * world depth and camera record are written there (with
+  * PS3RECOMP_TEMPORAL_DUMP_EVERY=<n>, three frames in a row out of n), to
+  * check the camera data against the pictures. */
++#define VK_TV_PREV_BYTES (RSX_MAX_VERTEX_CONSTANTS * 16u)   /* vp_c, which vp_p mirrors */
++typedef struct {
++    u64* keys; u32* offs;      /* open addressing, VK_TV_SLOTS, key 0 = empty */
++    u8*  arena; size_t used, cap;
++    u32  n;
++} vk_tv_frame;
++#define VK_TV_SLOTS 8192u
++static struct {
++    u64 key;                   /* the next draw's (set_draw_key); 0 = none */
++    vk_tv_frame f[2];
++    int cur;
++    u32 scene_surface[2], scene_depth[2];   /* the last two, with their depth (display buffers take turns) */
++    vk_image vel; u32 vel_w, vel_h;
++    int vel_cleared;           /* the velocity target cleared this frame */
++    const u8* prev;            /* the current draw's last-frame constants, or NULL */
++    int use_prev;              /* the current draw is a velocity draw */
++    u32 matched, unmatched, moved, frames;
++} s_tv;
++
++static void vk_tv_frame_end(u32 surface, u32 depth);
++/* PS3RECOMP_TEMPORAL_OBJECT_MOTION=1 (off for now): pairing draws across
++ * frames by key and order still mismatches some (vk_tv_draw_begin) */
++static int vk_tv_on(void)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("PS3RECOMP_TEMPORAL_OBJECT_MOTION"); on = e && atoi(e) != 0; }
++    return on;
++}
+ #define VK_TM_SWAPS 4
+ static struct {
+     int want, ok, mode;
+@@ -3951,7 +3991,7 @@ static struct {
+     VkPipeline pipe;
+     VkDescriptorPool pool;
+     VkDescriptorSet set;
+-    VkImage set_for[4];               /* the images the set was written for */
++    VkImage set_for[5];               /* the images the set was written for */
+     vk_image mv, zc; u32 mv_w, mv_h;  /* motion vectors and the depth copy, render size */
+     vk_image fsr[3]; u32 fsr_w, fsr_h; /* FSR 3's dilated depth and motion, previous nearest depth */
+     VkImageView zview[2]; VkImage zview_of[2];   /* depth-only views: world, final */
+@@ -3999,16 +4039,17 @@ static int vk_tm_pipeline(void)
+                                 .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                                 .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE };
+     if (pvkCreateSampler(s_vk.device, &sci, NULL, &s_tm.samp) != VK_SUCCESS) return -1;
+-    VkDescriptorSetLayoutBinding b[4] = {
++    VkDescriptorSetLayoutBinding b[5] = {
+         { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
+         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
+         { 2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
+         { 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
++        { 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
+     };
+     VkDescriptorSetLayoutCreateInfo dci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+-                                            .bindingCount = 4, .pBindings = b };
++                                            .bindingCount = 5, .pBindings = b };
+     if (pvkCreateDescriptorSetLayout(s_vk.device, &dci, NULL, &s_tm.dsl) != VK_SUCCESS) return -1;
+-    VkPushConstantRange pr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, 84 };
++    VkPushConstantRange pr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, 96 };
+     VkPipelineLayoutCreateInfo lci = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                        .setLayoutCount = 1, .pSetLayouts = &s_tm.dsl,
+                                        .pushConstantRangeCount = 1, .pPushConstantRanges = &pr };
+@@ -4026,7 +4067,7 @@ static int vk_tm_pipeline(void)
+     const VkResult r = pvkCreateComputePipelines(s_vk.device, VK_NULL_HANDLE, 1, &pci, NULL, &s_tm.pipe);
+     pvkDestroyShaderModule(s_vk.device, mod, NULL);
+     if (r != VK_SUCCESS) { s_tm.pipe = VK_NULL_HANDLE; return -1; }
+-    VkDescriptorPoolSize ps[2] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 },
++    VkDescriptorPoolSize ps[2] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
+                                    { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 } };
+     VkDescriptorPoolCreateInfo pi = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                                       .maxSets = 1, .poolSizeCount = 2, .pPoolSizes = ps };
+@@ -4071,8 +4112,32 @@ static int vk_tm_copy_depth(void* user, u32 from, u32* to)
+     return 0;
+ }
+ 
++static char s_tm_dump_base[1024];   /* <dir>/f<frame> while this frame is dumped, else "" */
++
++/* A 4-byte-per-texel image of the temporal pass to <s_tm_dump_base><ext>
++ * (raw, w x h). Ends the batch. */
++static void vk_tm_dump_image(VkImage img, u32 w, u32 h, const char* ext)
++{
++    if (!s_tm_dump_base[0] || (VkDeviceSize)w * h * 4u > s_vk.readback.size || vk_batch_reserve(0)) return;
++    vk_barrier_image(img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
++    VkBufferImageCopy region = { .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, .imageExtent = { w, h, 1 } };
++    pvkCmdCopyImageToBuffer(s_vk.cmd, img, VK_IMAGE_LAYOUT_GENERAL, s_vk.readback.buf, 1, &region);
++    VkBufferMemoryBarrier host = { .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
++        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT,
++        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
++        .buffer = s_vk.readback.buf, .offset = 0, .size = VK_WHOLE_SIZE };
++    pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1, &host, 0, NULL);
++    vk_flush();
++    vk_invalidate(&s_vk.readback);
++    char path[1100];
++    snprintf(path, sizeof path, "%s%s", s_tm_dump_base, ext);
++    FILE* f = fopen(path, "wb");
++    if (f) { const u32 hdr[2] = { w, h }; fwrite(hdr, sizeof hdr, 1, f); fwrite(s_vk.readback.ptr, (size_t)w * h * 4u, 1, f); fclose(f); }
++}
++
+ static void vk_tm_dump(void* user, u32 surface, u32 frame, const rsx_temporal_view* v, int have, u32 wz)
+ {
++    s_tm_dump_base[0] = 0;
+     static const char* dump = (const char*)-1;
+     if (dump == (const char*)-1) { dump = getenv("PS3RECOMP_TEMPORAL_DUMP"); if (dump && !*dump) dump = NULL; }
+     if (!dump) return;
+@@ -4094,6 +4159,7 @@ static void vk_tm_dump(void* user, u32 surface, u32 frame, const rsx_temporal_vi
+         vk_eng_readback(user, surface, 0, 0, W, H, rgba, W * 4u);
+         const int dz = vk_eng_depth_readback(user, wz, 0, 0, ZW, ZH, d, ZW * 4u);
+         snprintf(path, sizeof path, "%s/f%06u.bin", dump, frame);
++        snprintf(s_tm_dump_base, sizeof s_tm_dump_base, "%s/f%06u", dump, frame);
+         FILE* f = fopen(path, "wb");
+         if (f) {
+             const u32 hdr[6] = { 0x314D5454u /* "TTM1" */, W, H, dz ? 0u : ZW, dz ? 0u : ZH, (u32)have };
+@@ -4167,6 +4233,9 @@ static int vk_tm_scene_end(void* user, u32 surface)
+     if (!have) memset(&v, 0, sizeof v);
+     vk_tm_dump(user, surface, frame, &v, have, wz);
+     if (!s_tm.ok) return 0;
++    /* this frame's draws were matched against the last; the next frame's go against these */
++    const int vel_drawn = s_tv.vel_cleared;
++    vk_tv_frame_end(surface, surface < VK_ENG_MAX_OBJ ? s_tm_depth_of[surface] : 0);
+ 
+     vk_tm_unswap(surface);   /* never presented since the last time: start over */
+     vk_eng_obj* o = vk_eng_get(surface, VK_ENG_COLOR);
+@@ -4231,27 +4300,32 @@ static int vk_tm_scene_end(void* user, u32 surface)
+     fo = vk_eng_get(s_tm.fz, VK_ENG_DEPTH);
+     const VkImageView wv = vk_tm_zview(0, wo->im.img), fv = vk_tm_zview(1, fo->im.img);
+     if (!wv || !fv) { s_tm.have_prev = 0; s_tm.skipped++; return 0; }
++    /* per-object motion when this frame's draws wrote it, at this size */
++    const int has_vel = s_tv.vel.img && vel_drawn && s_tv.vel_w == rw && s_tv.vel_h == rh;
++    const VkImage vel_img = s_tv.vel.img ? s_tv.vel.img : wo->im.img;
+     if (s_tm.set_for[0] != wo->im.img || s_tm.set_for[1] != fo->im.img || s_tm.set_for[2] != s_tm.mv.img ||
+-        s_tm.set_for[3] != s_tm.zc.img) {
++        s_tm.set_for[3] != s_tm.zc.img || s_tm.set_for[4] != vel_img) {
+         vk_flush();   /* the set may be in use by the last submission */
+-        VkDescriptorImageInfo ii[4] = { { s_tm.samp, wv, VK_IMAGE_LAYOUT_GENERAL },
++        VkDescriptorImageInfo ii[5] = { { s_tm.samp, wv, VK_IMAGE_LAYOUT_GENERAL },
+                                         { s_tm.samp, fv, VK_IMAGE_LAYOUT_GENERAL },
+                                         { VK_NULL_HANDLE, s_tm.mv.view, VK_IMAGE_LAYOUT_GENERAL },
+-                                        { VK_NULL_HANDLE, s_tm.zc.view, VK_IMAGE_LAYOUT_GENERAL } };
+-        VkWriteDescriptorSet wr[4];
+-        for (int i = 0; i < 4; i++)
++                                        { VK_NULL_HANDLE, s_tm.zc.view, VK_IMAGE_LAYOUT_GENERAL },
++                                        { s_tm.samp, s_tv.vel.img ? s_tv.vel.view : wv, VK_IMAGE_LAYOUT_GENERAL } };
++        VkWriteDescriptorSet wr[5];
++        for (int i = 0; i < 5; i++)
+             wr[i] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = s_tm.set,
+                                             .dstBinding = (u32)i, .descriptorCount = 1,
+-                                            .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+-                                                                    : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
++                                            .descriptorType = (i < 2 || i == 4) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
++                                                                                : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                                             .pImageInfo = &ii[i] };
+-        pvkUpdateDescriptorSets(s_vk.device, 4, wr, 0, NULL);
++        pvkUpdateDescriptorSets(s_vk.device, 5, wr, 0, NULL);
+         s_tm.set_for[0] = wo->im.img; s_tm.set_for[1] = fo->im.img; s_tm.set_for[2] = s_tm.mv.img; s_tm.set_for[3] = s_tm.zc.img;
++        s_tm.set_for[4] = vel_img;
+     }
+ 
+     /* last frame's clip from this frame's NDC; a cut (no record for the frame
+      * before) starts the history over */
+-    struct { float m[16]; float size_z[4]; float y_sign; } pc;
++    struct { float m[16]; float size_z[4]; float y_sign, has_vel; float jdelta[2]; } pc;
+     const int reset = !s_tm.have_prev || s_tm.prev.frame + 1u != frame;
+     float inv[16];
+     if (reset || !vk_tm_inverse(v.vp, inv)) {
+@@ -4268,14 +4342,31 @@ static int vk_tm_scene_end(void* user, u32 surface)
+     }
+     pc.size_z[0] = (float)rw; pc.size_z[1] = (float)rh; pc.size_z[2] = 2.0f; pc.size_z[3] = -1.0f;
+     pc.y_sign = 1.0f;
++    pc.has_vel = has_vel && !reset ? 1.0f : 0.0f;
++    /* The jitter a frame's draws carry is the one the camera made a frame
++     * earlier (the view-projection is the frame's own: checked against the
++     * draws' own motion on still scenes, where they agree to 0.01 px): the
++     * frame's jitter is the last record's, the last frame's the one before. */
++    rsx_temporal_view v1, v2;
++    const int have1 = rsx_temporal_get_view(frame - 1u, &v1), have2 = rsx_temporal_get_view(frame - 2u, &v2);
++    const float jx = have1 ? v1.jitter[0] : 0.0f, jy = have1 ? v1.jitter[1] : 0.0f;
++    pc.jdelta[0] = reset || !have2 ? 0.0f : (v2.jitter[0] - jx) * (float)rw / (float)o->lw;
++    pc.jdelta[1] = reset || !have2 ? 0.0f : (v2.jitter[1] - jy) * (float)rh / (float)o->lh;
+ 
+     if (vk_batch_reserve(0)) { s_tm.have_prev = 0; return 0; }
+     o = vk_eng_get(surface, VK_ENG_COLOR);
+     vk_barrier_image(s_tm.mv.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
++    if (s_tv.vel.img) vk_barrier_image(s_tv.vel.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     pvkCmdBindPipeline(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_tm.pipe);
+     pvkCmdBindDescriptorSets(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_tm.layout, 0, 1, &s_tm.set, 0, NULL);
+     pvkCmdPushConstants(s_vk.cmd, s_tm.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, &pc);
+     pvkCmdDispatch(s_vk.cmd, (rw + 15u) / 16u, (rh + 15u) / 16u, 1);
++    if (s_tm_dump_base[0]) {   /* the motion and the draws' velocity of a dumped frame */
++        vk_tm_dump_image(s_tm.mv.img, rw, rh, ".mv");
++        if (has_vel) vk_tm_dump_image(s_tv.vel.img, rw, rh, ".vel");
++        if (vk_batch_reserve(0)) { s_tm.have_prev = 0; return 0; }
++        o = vk_eng_get(surface, VK_ENG_COLOR);
++    }
+     vk_barrier_image(s_tm.mv.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     vk_barrier_image(s_tm.zc.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+@@ -4287,8 +4378,8 @@ static int vk_tm_scene_end(void* user, u32 surface)
+     f.depth = (rsx_dlss_image){ s_tm.zc.img, s_tm.zc.view, VK_FORMAT_R32_SFLOAT, rw, rh };
+     f.motion = (rsx_dlss_image){ s_tm.mv.img, s_tm.mv.view, VK_FORMAT_R16G16_SFLOAT, rw, rh };
+     f.output = (rsx_dlss_image){ s_tm.sw[slot].out.img, s_tm.sw[slot].out.view, VK_FORMAT_R8G8B8A8_UNORM, ow, oh };
+-    f.jitter_x = s_tm.jsign_x * v.jitter[0] * (float)rw / (float)o->lw;
+-    f.jitter_y = s_tm.jsign_y * v.jitter[1] * (float)rh / (float)o->lh;
++    f.jitter_x = s_tm.jsign_x * jx * (float)rw / (float)o->lw;
++    f.jitter_y = s_tm.jsign_y * jy * (float)rh / (float)o->lh;
+     f.mv_scale_x = f.mv_scale_y = 1.0f;
+     f.reset = reset;
+     f.near_z = v.near_z; f.far_z = v.far_z; f.fov_y = v.fov_y;
+@@ -4466,13 +4557,19 @@ typedef struct vk_eng_pipe {
+     u32                 cube_mask;       /* TextureCube units: the split set layout */
+     u64                 vs_h, ps_h;      /* their SPIR-V files (vk_eng_translate), 0 = none */
+     VkPipeline          variant[VK_ENG_TOPOLOGIES];
++    /* the velocity variant (temporal upscaling, vk_tm_vel_vs/_ps): also the
++     * last frame's position, and the motion into one more target */
++    VkShaderModule      vsv, fsv;
++    u64                 vsv_h, psv_h;
++    VkPipeline          variantv[VK_ENG_TOPOLOGIES];
+ } vk_eng_pipe;
+ 
+ static vk_eng_pipe s_epipe[VK_ENG_MAX_PIPE];
+ 
+ static struct {
+     VkRenderPass rp[VK_ENG_RT_FORMATS][RSX_BE_MAX_COLOR_TARGETS + 1]; /* by format, colour count */
+-    struct { u32 key[RSX_BE_MAX_COLOR_TARGETS + 1]; VkFramebuffer fb; } fb[VK_ENG_FB_CACHE];
++    VkRenderPass rpv[VK_ENG_RT_FORMATS][RSX_BE_MAX_COLOR_TARGETS + 1]; /* and a velocity target after them */
++    struct { u32 key[RSX_BE_MAX_COLOR_TARGETS + 2]; VkFramebuffer fb; } fb[VK_ENG_FB_CACHE];
+     u32          fb_count;
+     vk_image     scratch_depth;                          /* when no zeta is bound */
+     u32          scratch_w, scratch_h;
+@@ -4512,16 +4609,18 @@ static void vk_eng_drop_framebuffers(void)
+ /* The render pass for `n` colour attachments of format `cf` plus depth,
+  * LOAD/STORE in GENERAL like the vtable path's: clears are separate
+  * operations. An MRT set shares target A's format (engine contract). */
+-static VkRenderPass vk_eng_render_pass(VkFormat cf, u32 n)
++static VkRenderPass vk_eng_render_pass(VkFormat cf, u32 n, int vel)
+ {
+     const int fi = vk_eng_rt_index(cf);
+     if (fi < 0 || n < 1 || n > RSX_BE_MAX_COLOR_TARGETS) return VK_NULL_HANDLE;
+-    if (s_e2.rp[fi][n]) return s_e2.rp[fi][n];
+-    VkAttachmentDescription att[RSX_BE_MAX_COLOR_TARGETS + 1];
+-    VkAttachmentReference   cref[RSX_BE_MAX_COLOR_TARGETS];
+-    for (u32 i = 0; i <= n; i++) {
++    VkRenderPass* slot = vel ? &s_e2.rpv[fi][n] : &s_e2.rp[fi][n];
++    if (*slot) return *slot;
++    const u32 nc = n + (vel ? 1u : 0u);   /* the velocity target follows the title's */
++    VkAttachmentDescription att[RSX_BE_MAX_COLOR_TARGETS + 2];
++    VkAttachmentReference   cref[RSX_BE_MAX_COLOR_TARGETS + 1];
++    for (u32 i = 0; i <= nc; i++) {
+         att[i] = (VkAttachmentDescription){
+-            .format = (i < n) ? cf : s_vk.depth_format,
++            .format = (i < n) ? cf : i < nc ? VK_FORMAT_R16G16_SFLOAT : s_vk.depth_format,
+             .samples = VK_SAMPLE_COUNT_1_BIT,
+             .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+             /* Stencil lives across draws like depth does (a title writes it in
+@@ -4530,18 +4629,17 @@ static VkRenderPass vk_eng_render_pass(VkFormat cf, u32 n)
+             .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE,
+             .initialLayout = VK_IMAGE_LAYOUT_GENERAL, .finalLayout = VK_IMAGE_LAYOUT_GENERAL };
+-        if (i < n) cref[i] = (VkAttachmentReference){ i, VK_IMAGE_LAYOUT_GENERAL };
++        if (i < nc) cref[i] = (VkAttachmentReference){ i, VK_IMAGE_LAYOUT_GENERAL };
+     }
+-    VkAttachmentReference dref = { n, VK_IMAGE_LAYOUT_GENERAL };
++    VkAttachmentReference dref = { nc, VK_IMAGE_LAYOUT_GENERAL };
+     VkSubpassDescription sub = { .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+-                                 .colorAttachmentCount = n, .pColorAttachments = cref,
++                                 .colorAttachmentCount = nc, .pColorAttachments = cref,
+                                  .pDepthStencilAttachment = &dref };
+     VkRenderPassCreateInfo rci = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+-                                   .attachmentCount = n + 1, .pAttachments = att,
++                                   .attachmentCount = nc + 1, .pAttachments = att,
+                                    .subpassCount = 1, .pSubpasses = &sub };
+-    if (pvkCreateRenderPass(s_vk.device, &rci, NULL, &s_e2.rp[fi][n]) != VK_SUCCESS)
+-        s_e2.rp[fi][n] = VK_NULL_HANDLE;
+-    return s_e2.rp[fi][n];
++    if (pvkCreateRenderPass(s_vk.device, &rci, NULL, slot) != VK_SUCCESS) *slot = VK_NULL_HANDLE;
++    return *slot;
+ }
+ 
+ /* Tables carried from the Metal backend, itself copied from the D3D12 live
+@@ -4777,7 +4875,9 @@ static VkPipelineLayout vk_eng_split_layout(void)
+ {
+     if (s_e2.split_pipe_layout) return s_e2.split_pipe_layout;
+     const VkShaderStageFlags both = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+-    VkDescriptorSetLayoutBinding b[3 + RSX_MAX_TEXTURES];
++    VkDescriptorSetLayoutBinding b[4 + RSX_MAX_TEXTURES];
++    b[3 + RSX_MAX_TEXTURES] = (VkDescriptorSetLayoutBinding){ VK_TM_PREV_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
++                                                              VK_SHADER_STAGE_VERTEX_BIT, NULL };
+     b[0] = (VkDescriptorSetLayoutBinding){ RSX_SPIRV_VPCONST_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, both, NULL };
+     b[1] = (VkDescriptorSetLayoutBinding){ RSX_SPIRV_PSCONST_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, both, NULL };
+     b[2] = (VkDescriptorSetLayoutBinding){ RSX_SPIRV_SAMPLER_BINDING, VK_DESCRIPTOR_TYPE_SAMPLER,
+@@ -4787,9 +4887,9 @@ static VkPipelineLayout vk_eng_split_layout(void)
+                                                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1,
+                                                    VK_SHADER_STAGE_FRAGMENT_BIT, NULL };
+     VkDescriptorSetLayoutCreateInfo lci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+-                                            .bindingCount = 3 + RSX_MAX_TEXTURES, .pBindings = b };
++                                            .bindingCount = 4 + RSX_MAX_TEXTURES, .pBindings = b };
+     VkDescriptorPoolSize ps[3] = {
+-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2 },
++        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+         { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, RSX_MAX_TEXTURES },
+         { VK_DESCRIPTOR_TYPE_SAMPLER, RSX_MAX_TEXTURES },
+     };
+@@ -4823,6 +4923,118 @@ static u32 vk_eng_cube_units(const char* ps_hlsl)
+     return mask;
+ }
+ 
++/* ---- velocity variants (temporal upscaling) ---------------------------------
++ * A temporal upscaler needs each pixel's motion. The camera's alone leaves
++ * whatever moves on its own (characters, doors, the first-person arms) with a
++ * trail, so a draw into the scene also runs its vertex program a second time
++ * with the constants the same draw had the frame before (VPPrev, register b2,
++ * written by vk_eng_write_descriptors), and its pixel program writes the
++ * difference of the two positions into one more target, in NDC (y up). A
++ * draw with no match last frame writes "unknown" (65504) and gets the
++ * camera's motion. The text transforms below work on the decompilers' HLSL;
++ * NULL when a program does not have the shape they expect (that pipeline
++ * then draws without velocity). */
++static char* vk_tm_insert(const char* s, const char* at, const char* what)
++{
++    const size_t a = (size_t)(at - s), w = strlen(what), n = strlen(s);
++    char* r = (char*)malloc(n + w + 1);
++    if (!r) return NULL;
++    memcpy(r, s, a); memcpy(r + a, what, w); memcpy(r + a + w, s + a, n - a + 1);
++    return r;
++}
++
++static char* vk_tm_vel_vs(const char* vs)
++{
++    static const char vout[] = "struct VSOutput {", cbuf[] = "cbuffer VPConst : register(b0) {",
++                      entry[] = "VSOutput main(VSInput input) {\n", tail[] = "    VSOutput Out;\n",
++                      ret[] = "    return Out;\n}";
++    const char* so = strstr(vs, vout);
++    const char* se = so ? strstr(so, "\n};\n") : NULL;
++    const char* cb = strstr(vs, cbuf);
++    const char* cbe = cb ? strstr(cb, "\n};\n") : NULL;
++    const char* m = strstr(vs, entry);
++    const char* body = m ? m + strlen(entry) : NULL;
++    const char* be = body ? strstr(body, tail) : NULL;
++    const char* r = NULL;
++    for (const char* q = vs; (q = strstr(q, ret)); q++) r = q;
++    if (!se || !cbe || !be || !r || r < be || strstr(vs, "vp_p[") || cbe > m || se > m) return NULL;
++    /* the last frame's position: the body again, on the last frame's constants */
++    size_t blen = (size_t)(be - body), extra = 0;
++    for (const char* q = body; (q = strstr(q, "vp_c[")) && q < be; q++) extra++;
++    char* prev = (char*)malloc(blen + extra + 256);
++    if (!prev) return NULL;
++    char* d = prev + sprintf(prev, "float4 _rsx_prev_hpos(VSInput input) {\n");
++    for (const char* q = body; q < be; ) {
++        if (!strncmp(q, "vp_c[", 5)) { memcpy(d, "vp_p[", 5); d += 5; q += 5; } else *d++ = *q++;
++    }
++    d += sprintf(d, "    return o[0];\n}\n");
++    *d = 0;
++    /* assembled back to front, so the earlier offsets stay good */
++    const size_t len = strlen(vs);
++    char* out = (char*)malloc(len + strlen(prev) + 1024);
++    if (!out) { free(prev); return NULL; }
++    char* o = out;
++#define VK_TM_COPY(from, to) do { memcpy(o, (from), (size_t)((to) - (from))); o += (to) - (from); } while (0)
++    VK_TM_COPY(vs, se);
++    o += sprintf(o, "\n    [[vk::location(13)]] float4 _vcur:TEXCOORD10;"
++                    " [[vk::location(14)]] float4 _vprev:TEXCOORD11;");
++    VK_TM_COPY(se, cbe + 4);
++    o += sprintf(o, "cbuffer VPPrev : register(b2) {\n    float4 vp_p[512];\n    float4 vp_pvalid;\n};\n");
++    VK_TM_COPY(cbe + 4, m);
++    o += sprintf(o, "%s", prev);
++    VK_TM_COPY(m, r);
++    o += sprintf(o, "    Out._vcur = Out.pos;\n"
++                    "    { float4 _q = _rsx_prev_hpos(input);\n"
++                    "      Out._vprev = vp_pvalid.x != 0.0 ? float4(_q.xyz * vp_posscale.xyz + _q.w * vp_posoffset.xyz, _q.w)"
++                    " : (float4)0; }\n");
++    VK_TM_COPY(r, vs + len + 1);
++#undef VK_TM_COPY
++    free(prev);
++    return out;
++}
++
++static char* vk_tm_vel_ps(const char* ps, u32 rt_count)
++{
++    static const char pin[] = "struct PSInput {", single[] = "float4 main(PSInput input) : SV_TARGET {",
++                      mrt[] = "PSOutput main(PSInput input) {";
++    const char* si = strstr(ps, pin);
++    const char* se = si ? strstr(si, "\n};\n") : NULL;
++    const char* m1 = strstr(ps, single);
++    const char* m2 = strstr(ps, mrt);
++    if (!se || (!m1 == !m2) || strstr(ps, "_rsx_color_main") || rt_count > RSX_BE_MAX_COLOR_TARGETS) return NULL;
++    if (m1 && rt_count != 1) return NULL;
++    char* a = vk_tm_insert(ps, se, "\n    [[vk::location(13)]] float4 _vcur:TEXCOORD10;"
++                                   " [[vk::location(14)]] float4 _vprev:TEXCOORD11;");
++    if (!a) return NULL;
++    char* e = strstr(a, m1 ? single : mrt);
++    const char* nm = m1 ? "float4 _rsx_color_main(PSInput input) {" : "PSOutput _rsx_color_main(PSInput input) {";
++    const size_t old = strlen(m1 ? single : mrt), nl = strlen(nm), len = strlen(a);
++    char* out = (char*)malloc(len + nl + 2048);
++    if (!out) { free(a); return NULL; }
++    char* o = out;
++    memcpy(o, a, (size_t)(e - a)); o += e - a;
++    memcpy(o, nm, nl); o += nl;
++    strcpy(o, e + old); o += strlen(o);
++    o += sprintf(o, "\nfloat4 _rsx_velocity(PSInput i) {\n"
++                    "    if (i._vprev.w <= 0.0 || i._vcur.w <= 0.0) return float4(65504.0, 65504.0, 0, 0);\n"
++                    "    return float4(i._vprev.xy / i._vprev.w - i._vcur.xy / i._vcur.w, 0, 0);\n}\n"
++                    "struct _RsxVelOut {\n");
++    for (u32 k = 0; k < rt_count; k++) o += sprintf(o, "    float4 t%u : SV_TARGET%u;\n", k, k);
++    o += sprintf(o, "    float4 vel : SV_TARGET%u;\n};\n_RsxVelOut main(PSInput input) {\n    _RsxVelOut _v;\n", rt_count);
++    if (m1) o += sprintf(o, "    _v.t0 = _rsx_color_main(input);\n");
++    else {
++        o += sprintf(o, "    PSOutput _c = _rsx_color_main(input);\n");
++        for (u32 k = 0; k < rt_count; k++) {
++            char field[64];
++            snprintf(field, sizeof field, "float4 t%u : SV_TARGET%u;", k, k);
++            o += sprintf(o, strstr(a, field) ? "    _v.t%u = _c.t%u;\n" : "    _v.t%u = (float4)0;\n", k, k);
++        }
++    }
++    o += sprintf(o, "    _v.vel = _rsx_velocity(input);\n    return _v;\n}\n");
++    free(a);
++    return out;
++}
++
+ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_hlsl,
+                                   const rsx_be_render_state* rs, const rsx_vertex_layout_plan* layout,
+                                   u32 vertex_stride, rsx_be_format rt_fmt, u32 rt_count)
+@@ -4873,6 +5085,21 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
+     P->rt_count = rt_count;
+     P->rt_fmt = cf;
+     P->cube_mask = vk_eng_cube_units(ps_hlsl);
++    if (s_tm.want && vk_tv_on()) {   /* the velocity variant, when its programs translate */
++        char* vv = vk_tm_vel_vs(vs_hlsl);
++        char* pv = vv ? vk_tm_vel_ps(ps_hlsl, rt_count) : NULL;
++        if (pv && !vk_eng_translate(vv, RSX_SHADER_STAGE_VERTEX, &P->vsv, &P->vsv_h) &&
++            vk_eng_translate(pv, RSX_SHADER_STAGE_FRAGMENT, &P->fsv, &P->psv_h)) {
++            pvkDestroyShaderModule(s_vk.device, P->vsv, NULL); P->vsv = VK_NULL_HANDLE;
++        }
++        static u32 failed;
++        if (!P->vsv || !P->fsv) {
++            P->vsv = P->fsv = VK_NULL_HANDLE;
++            if (failed++ < 4) VK_LOG("temporal: pipeline %u has no velocity variant (%s)\n", slot + 1u,
++                                     !vv ? "vertex program" : !pv ? "pixel program" : "translation");
++        }
++        free(vv); free(pv);
++    }
+     free(scaled_ps);
+     P->used = 1;
+     return slot + 1u;
+@@ -4883,10 +5110,14 @@ static void vk_eng_pipeline_release(void* user, u32 pipeline)
+     (void)user;
+     if (!pipeline || pipeline > VK_ENG_MAX_PIPE || !s_epipe[pipeline - 1].used) return;
+     vk_eng_pipe* P = &s_epipe[pipeline - 1];
+-    for (u32 t = 0; t < VK_ENG_TOPOLOGIES; t++)
++    for (u32 t = 0; t < VK_ENG_TOPOLOGIES; t++) {
+         if (P->variant[t]) { vk_flush(); pvkDestroyPipeline(s_vk.device, P->variant[t], NULL); }
++        if (P->variantv[t]) { vk_flush(); pvkDestroyPipeline(s_vk.device, P->variantv[t], NULL); }
++    }
+     if (P->vs) pvkDestroyShaderModule(s_vk.device, P->vs, NULL);
+     if (P->fs) pvkDestroyShaderModule(s_vk.device, P->fs, NULL);
++    if (P->vsv) pvkDestroyShaderModule(s_vk.device, P->vsv, NULL);
++    if (P->fsv) pvkDestroyShaderModule(s_vk.device, P->fsv, NULL);
+     memset(P, 0, sizeof *P);
+     if (s_e2.pipeline == pipeline) s_e2.pipeline = 0;
+ }
+@@ -4911,8 +5142,9 @@ static VkResult vk_eng_build(const vk_plist_rec* R, VkShaderModule vs, VkShaderM
+         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP };
+     *out = VK_NULL_HANDLE;
+     const int fi = vk_eng_rt_index((VkFormat)R->rt_fmt);
++    const int vel = (R->pad & 1u) != 0;   /* the velocity variant: one more target */
+     VkRenderPass rp = (fi >= 0 && R->rt_count >= 1 && R->rt_count <= RSX_BE_MAX_COLOR_TARGETS)
+-                    ? s_e2.rp[fi][R->rt_count] : VK_NULL_HANDLE;
++                    ? (vel ? s_e2.rpv : s_e2.rp)[fi][R->rt_count] : VK_NULL_HANDLE;
+     if (!rp || R->nslots > VK_GUEST_ATTRS || R->topo >= VK_ENG_TOPOLOGIES) return VK_ERROR_INITIALIZATION_FAILED;
+     const VkPipelineLayout layout = R->cube_mask ? s_e2.split_pipe_layout : s_g.pipe_layout;
+     if (!layout) return VK_ERROR_INITIALIZATION_FAILED;
+@@ -4974,7 +5206,7 @@ static VkResult vk_eng_build(const vk_plist_rec* R, VkShaderModule vs, VkShaderM
+     if ((rs->color_mask >>  8) & 0xFFu) wm |= VK_COLOR_COMPONENT_G_BIT;
+     if ((rs->color_mask >>  0) & 0xFFu) wm |= VK_COLOR_COMPONENT_B_BIT;
+     if ((rs->color_mask >> 24) & 0xFFu) wm |= VK_COLOR_COMPONENT_A_BIT;
+-    VkPipelineColorBlendAttachmentState cba[RSX_BE_MAX_COLOR_TARGETS];
++    VkPipelineColorBlendAttachmentState cba[RSX_BE_MAX_COLOR_TARGETS + 1];
+     for (u32 r = 0; r < R->rt_count; r++)
+         cba[r] = (VkPipelineColorBlendAttachmentState){
+             .blendEnable = rs->blend_enable ? VK_TRUE : VK_FALSE,
+@@ -4985,9 +5217,15 @@ static VkResult vk_eng_build(const vk_plist_rec* R, VkShaderModule vs, VkShaderM
+             .dstAlphaBlendFactor = vk_gcm_blend_factor(rs->df_a),
+             .alphaBlendOp = vk_gcm_blend_op(rs->eq_a),
+             .colorWriteMask = wm };
++    /* velocity: only what lands in the depth buffer moves the picture there;
++     * blended and depth-less draws (smoke, glow) leave it to what is behind */
++    if (vel)
++        cba[R->rt_count] = (VkPipelineColorBlendAttachmentState){
++            .colorWriteMask = (rs->depth_test && rs->depth_write && !rs->blend_enable)
++                            ? (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT) : 0 };
+     VkPipelineColorBlendStateCreateInfo cb = {
+         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+-        .attachmentCount = R->rt_count, .pAttachments = cba };
++        .attachmentCount = R->rt_count + (vel ? 1u : 0u), .pAttachments = cba };
+     VkDynamicState dyn[3] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR,
+                               VK_DYNAMIC_STATE_STENCIL_REFERENCE };
+     VkPipelineDynamicStateCreateInfo dy = {
+@@ -5147,7 +5385,7 @@ static void vk_plist_start(void)
+             const u64 key = vk_plist_key(&r);
+             if (vk_plist_find(key)) continue;
+             /* everything it needs that only the RSX thread may create */
+-            if (!vk_eng_render_pass((VkFormat)r.rt_fmt, r.rt_count)) continue;
++            if (!vk_eng_render_pass((VkFormat)r.rt_fmt, r.rt_count, r.pad & 1u)) continue;
+             if (r.cube_mask && !vk_eng_split_layout()) continue;
+             vk_plist_entry* E = &s_pl.e[s_pl.n++];
+             E->key = key; E->rec = r;
+@@ -5196,17 +5434,20 @@ static void vk_plist_add(const vk_plist_rec* r, u64 key)
+     fflush(s_pl.out);
+ }
+ 
+-static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
++static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx, int vel)
+ {
+-    if (P->variant[topo_idx]) return P->variant[topo_idx];
+-    if (!vk_eng_render_pass(P->rt_fmt, P->rt_count)) return VK_NULL_HANDLE;
++    VkPipeline* vp = vel ? P->variantv : P->variant;
++    if (vp[topo_idx]) return vp[topo_idx];
++    if (vel && (!P->vsv || !P->fsv)) return VK_NULL_HANDLE;
++    if (!vk_eng_render_pass(P->rt_fmt, P->rt_count, vel)) return VK_NULL_HANDLE;
+     if (P->cube_mask && !vk_eng_split_layout()) return VK_NULL_HANDLE;
+     vk_plist_start();
+     vk_plist_rec R;
+     memset(&R, 0, sizeof R);
+     R.version = VK_PLIST_VERSION; R.topo = topo_idx; R.nslots = P->nslots; R.stride = P->stride;
+     R.rt_count = P->rt_count; R.cube_mask = P->cube_mask; R.rt_fmt = (u32)P->rt_fmt;
+-    R.vs_h = P->vs_h; R.ps_h = P->ps_h; R.rs = P->rs;
++    R.vs_h = vel ? P->vsv_h : P->vs_h; R.ps_h = vel ? P->psv_h : P->ps_h; R.rs = P->rs;
++    R.pad = vel ? 1u : 0u;
+     const u64 key = vk_plist_key(&R);
+ 
+     PS3_TRACE_BEGIN(_tr);
+@@ -5229,17 +5470,17 @@ static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
+ #endif
+             }
+             if (__atomic_load_n(&E->state, __ATOMIC_ACQUIRE) == VK_PL_BUILT && E->pipe) {
+-                P->variant[topo_idx] = E->pipe;
++                vp[topo_idx] = E->pipe;
+                 E->pipe = VK_NULL_HANDLE;
+                 __atomic_store_n(&E->state, VK_PL_TAKEN, __ATOMIC_RELEASE);
+                 if (q != VK_PL_BUILDING) how = "listed, built ahead";
+             }
+         }
+     }
+-    if (!P->variant[topo_idx]) {
+-        if (vk_eng_build(&R, P->vs, P->fs, &P->variant[topo_idx]) != VK_SUCCESS) {
++    if (!vp[topo_idx]) {
++        if (vk_eng_build(&R, vel ? P->vsv : P->vs, vel ? P->fsv : P->fs, &vp[topo_idx]) != VK_SUCCESS) {
+             VK_LOG("engine: vkCreateGraphicsPipelines failed\n");
+-            P->variant[topo_idx] = VK_NULL_HANDLE;
++            vp[topo_idx] = VK_NULL_HANDLE;
+         } else {
+             s_vk_pcache_dirty = 1;
+             if (!E) vk_plist_add(&R, key);
+@@ -5247,11 +5488,11 @@ static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
+     }
+     if (stats) {
+         const u64 t1 = vk_now_ns();
+-        fprintf(stderr, "[rsx pipe] %.3f s: variant %u/%u %.2f ms (%s)\n",
+-                t1 / 1e9, (u32)(P - s_epipe) + 1u, topo_idx, (t1 - t0) / 1e6, how);
++        fprintf(stderr, "[rsx pipe] %.3f s: variant %u/%u%s %.2f ms (%s)\n",
++                t1 / 1e9, (u32)(P - s_epipe) + 1u, topo_idx, vel ? " velocity" : "", (t1 - t0) / 1e6, how);
+     }
+     PS3_TRACE_END(_tr, "pipeline", 0);
+-    return P->variant[topo_idx];
++    return vp[topo_idx];
+ }
+ 
+ static void vk_eng_bind_pipeline(void* user, u32 pipeline) { (void)user; s_e2.pipeline = pipeline; }
+@@ -5338,20 +5579,23 @@ static void vk_eng_set_scissor(void* user, u32 x, u32 y, u32 w, u32 h)
+ static void vk_eng_set_stencil_ref(void* user, u32 ref) { (void)user; s_e2.stencil_ref = ref; }
+ 
+ static VkFramebuffer vk_eng_framebuffer(VkRenderPass rp, const u32* rt, u32 n, VkImageView dview,
+-                                        u32 dkey, u32 w, u32 h)
++                                        u32 dkey, u32 w, u32 h, VkImageView vel)
+ {
+-    u32 key[RSX_BE_MAX_COLOR_TARGETS + 1] = { 0 };
++    u32 key[RSX_BE_MAX_COLOR_TARGETS + 2] = { 0 };
+     /* a display buffer holding the temporal output is another image: its own framebuffer */
+     for (u32 i = 0; i < n; i++) key[i] = rt[i] ^ (s_eobj[rt[i]].tm_out ? 0x80000000u : 0u);
+     key[RSX_BE_MAX_COLOR_TARGETS] = dkey;
++    key[RSX_BE_MAX_COLOR_TARGETS + 1] = vel ? 1u : 0u;   /* with the velocity target (one image, made once per size) */
+     for (u32 i = 0; i < s_e2.fb_count; i++)
+         if (!memcmp(s_e2.fb[i].key, key, sizeof key)) return s_e2.fb[i].fb;
+     if (s_e2.fb_count >= VK_ENG_FB_CACHE) vk_eng_drop_framebuffers();
+-    VkImageView views[RSX_BE_MAX_COLOR_TARGETS + 1];
++    VkImageView views[RSX_BE_MAX_COLOR_TARGETS + 2];
+     for (u32 i = 0; i < n; i++) views[i] = s_eobj[rt[i]].im.view;
+-    views[n] = dview;
++    const u32 nc = n + (vel ? 1u : 0u);
++    if (vel) views[n] = vel;
++    views[nc] = dview;
+     VkFramebufferCreateInfo fci = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+-                                    .renderPass = rp, .attachmentCount = n + 1, .pAttachments = views,
++                                    .renderPass = rp, .attachmentCount = nc + 1, .pAttachments = views,
+                                     .width = w, .height = h, .layers = 1 };
+     VkFramebuffer fb = VK_NULL_HANDLE;
+     if (pvkCreateFramebuffer(s_vk.device, &fci, NULL, &fb) != VK_SUCCESS) return VK_NULL_HANDLE;
+@@ -5471,7 +5715,7 @@ static int vk_batch_reserve_keep(VkDeviceSize bytes)
+     if (s_bat.open) return 0;
+     if (!s_bat.pool) {
+         VkDescriptorPoolSize ps[3] = {
+-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2u * VK_BATCH_SETS },
++            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3u * VK_BATCH_SETS },
+             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, RSX_MAX_TEXTURES * VK_BATCH_SETS },
+             { VK_DESCRIPTOR_TYPE_SAMPLER, RSX_MAX_TEXTURES * VK_BATCH_SETS },
+         };
+@@ -5502,6 +5746,139 @@ static VkDeviceSize vk_batch_alloc(VkDeviceSize bytes, VkDeviceSize align)
+     return o;
+ }
+ 
++/* ---- per-object motion (temporal upscaling) --------------------------------
++ * The draws of one frame's scene, by the key the engine gives each
++ * (set_draw_key) and its order among draws of the same key, keep a copy of
++ * their vertex constants; a draw of the next frame with the same key finds
++ * them, and its velocity variant runs its program on them too (see
++ * vk_tm_vel_vs). Frames turn over at the end of the scene (vk_tv_frame_end). */
++
++static void vk_eng_set_draw_key(void* user, u64 key) { (void)user; s_tv.key = key ? key : 1; }
++
++static u64 vk_tv_slot_key(u64 key, u32 occ) { u64 k = (key ^ (occ * 0x9E3779B97F4A7C15ull)) * 0xFF51AFD7ED558CCDull; return k ? k : 1; }
++
++static u32* vk_tv_find(vk_tv_frame* f, u64 k)
++{
++    if (!f->keys) return NULL;
++    for (u32 i = (u32)(k >> 40) & (VK_TV_SLOTS - 1u), n = 0; n < VK_TV_SLOTS; i = (i + 1u) & (VK_TV_SLOTS - 1u), n++) {
++        if (f->keys[i] == k) return &f->offs[i];
++        if (!f->keys[i]) return NULL;
++    }
++    return NULL;
++}
++
++/* this frame: keep the draw's constants under its key and next order */
++static const u8* vk_tv_record(u64 key, const u8* constants, u64* slot_key)
++{
++    vk_tv_frame* f = &s_tv.f[s_tv.cur];
++    if (!f->keys) {
++        f->keys = (u64*)calloc(VK_TV_SLOTS, sizeof *f->keys);
++        f->offs = (u32*)calloc(VK_TV_SLOTS, sizeof *f->offs);
++        if (!f->keys || !f->offs) return NULL;
++    }
++    if (f->n >= VK_TV_SLOTS * 3u / 4u) return NULL;
++    u32 occ = 0;
++    u64 k;
++    while (vk_tv_find(f, k = vk_tv_slot_key(key, occ))) occ++;
++    if (f->used + VK_TV_PREV_BYTES > f->cap) {
++        const size_t cap = f->cap ? f->cap * 2u : (size_t)VK_TV_PREV_BYTES * 512u;
++        u8* a = (u8*)realloc(f->arena, cap);
++        if (!a) return NULL;
++        f->arena = a; f->cap = cap;
++    }
++    memcpy(f->arena + f->used, constants, VK_TV_PREV_BYTES);
++    u32 i = (u32)(k >> 40) & (VK_TV_SLOTS - 1u);
++    while (f->keys[i]) i = (i + 1u) & (VK_TV_SLOTS - 1u);
++    f->keys[i] = k; f->offs[i] = (u32)(f->used / VK_TV_PREV_BYTES);
++    f->used += VK_TV_PREV_BYTES; f->n++;
++    *slot_key = k;
++    return f->arena + f->used - VK_TV_PREV_BYTES;
++}
++
++/* the scene ended: this frame's draws become the last frame's */
++static void vk_tv_frame_end(u32 surface, u32 depth)
++{
++    s_tv.cur ^= 1;
++    vk_tv_frame* f = &s_tv.f[s_tv.cur];
++    if (f->keys) memset(f->keys, 0, VK_TV_SLOTS * sizeof *f->keys);
++    f->used = 0; f->n = 0;
++    if (s_tv.scene_surface[0] != surface) {
++        s_tv.scene_surface[1] = s_tv.scene_surface[0]; s_tv.scene_depth[1] = s_tv.scene_depth[0];
++        s_tv.scene_surface[0] = surface;
++    }
++    s_tv.scene_depth[0] = depth;
++    s_tv.vel_cleared = 0;
++    if (getenv("RSX_TEMPORAL_STATS") && ++s_tv.frames % 600u == 0) {
++        VK_LOG("temporal: per-object motion for %u draws (%u with other constants), %u without a last frame (600 frames)\n",
++               s_tv.matched, s_tv.moved, s_tv.unmatched);
++        s_tv.matched = s_tv.unmatched = s_tv.moved = 0;
++    }
++}
++
++/* Before a draw is recorded: the velocity target's view when this draw writes
++ * motion (and s_tv.prev then holds its last-frame constants or NULL), else
++ * VK_NULL_HANDLE. */
++static VkImageView vk_tv_draw_begin(const vk_eng_pipe* P, const vk_eng_obj* rt0, u32 rt_handle, u32 depth, u32 w, u32 h)
++{
++    s_tv.use_prev = 0; s_tv.prev = NULL;
++    const u64 key = s_tv.key;
++    s_tv.key = 0;
++    if (!vk_tv_on()) return VK_NULL_HANDLE;
++    const int si = rt_handle && rt_handle == s_tv.scene_surface[0] ? 0 : rt_handle && rt_handle == s_tv.scene_surface[1] ? 1 : -1;
++    if (!s_tm.ok || !P->vsv || !P->fsv || !key || si < 0 || rt0->tm_out ||
++        !depth || depth != s_tv.scene_depth[si] || !s_e2.vs_bytes)
++        return VK_NULL_HANDLE;
++    if (s_tv.vel_w != w || s_tv.vel_h != h) {
++        if (s_tv.vel.img) { vk_eng_drop_framebuffers(); vk_destroy_image(&s_tv.vel); }
++        s_tv.vel_w = s_tv.vel_h = 0;
++        if (vk_create_image(&s_tv.vel, VK_FORMAT_R16G16_SFLOAT, w, h,
++                            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
++                            VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT)) {
++            vk_destroy_image(&s_tv.vel); return VK_NULL_HANDLE;
++        }
++        s_tv.vel_w = w; s_tv.vel_h = h; s_tv.vel_cleared = 0;
++        if (vk_begin()) return VK_NULL_HANDLE;
++        vk_barrier_image(s_tv.vel.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED);
++        if (vk_submit_and_wait()) return VK_NULL_HANDLE;
++    }
++    if (!s_tv.vel_cleared) {   /* "unknown" wherever no draw writes: the camera's motion there */
++        if (vk_batch_reserve(0)) return VK_NULL_HANDLE;
++        vk_barrier_image(s_tv.vel.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
++        VkClearColorValue c = { .float32 = { 65504.0f, 65504.0f, 0.0f, 0.0f } };
++        VkImageSubresourceRange r = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
++        pvkCmdClearColorImage(s_vk.cmd, s_tv.vel.img, VK_IMAGE_LAYOUT_GENERAL, &c, 1, &r);
++        vk_barrier_image(s_tv.vel.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
++        s_tv.vel_cleared = 1;
++    }
++    /* the material too: draws of one program and count that differ in it never pair */
++    u64 mkey = key;
++    for (u32 u = 0; u < RSX_MAX_TEXTURES && u < 2; u++)
++        if ((s_e2.tex_mask >> u) & 1u) mkey = (mkey ^ s_e2.tex[u]) * 0x100000001B3ull;
++    u64 sk = 0;
++    if (!vk_tv_record(mkey, s_e2_vsc, &sk)) return VK_NULL_HANDLE;
++    /* Among last frame's draws of this key, the one whose constants are
++     * closest: identical meshes are not always drawn in the same order. The
++     * transforms come first in the constants; 64 rows decide. */
++    s_tv.prev = NULL;
++    {
++        vk_tv_frame* pf = &s_tv.f[s_tv.cur ^ 1];
++        double best = 0.0;
++        for (u32 occ = 0; occ < 16; occ++) {
++            const u32* off = vk_tv_find(pf, vk_tv_slot_key(mkey, occ));
++            if (!off) break;
++            const float* a = (const float*)(pf->arena + (size_t)*off * VK_TV_PREV_BYTES);
++            const float* b = (const float*)s_e2_vsc;
++            double d = 0.0;
++            for (u32 i = 0; i < 64u * 4u; i++) d += fabs((double)a[i] - (double)b[i]);
++            if (!s_tv.prev || d < best) { best = d; s_tv.prev = (const u8*)a; }
++        }
++    }
++    if (s_tv.prev) s_tv.matched++; else s_tv.unmatched++;
++    if (s_tv.prev && memcmp(s_tv.prev, s_e2_vsc, VK_TV_PREV_BYTES)) s_tv.moved++;
++    s_tv.use_prev = 1;
++    return s_tv.vel.view;
++}
++
+ static VkDescriptorSet vk_eng_write_descriptors(const vk_eng_pipe* P)
+ {
+     const int split = P->cube_mask != 0;
+@@ -5524,18 +5901,32 @@ static VkDescriptorSet vk_eng_write_descriptors(const vk_eng_pipe* P)
+     const VkDeviceSize vsb = s_e2.vs_bytes ? s_e2.vs_bytes : 16u, psb = s_e2.ps_bytes ? s_e2.ps_bytes : 16u;
+     const VkDeviceSize vso = vk_batch_alloc(vsb, s_bat.ubo_align);
+     const VkDeviceSize pso = vk_batch_alloc(psb, s_bat.ubo_align);
+-    if (vso == ~0ull || pso == ~0ull) return VK_NULL_HANDLE;
++    /* the last frame's constants and "valid" for a velocity draw; a 16-byte stand-in otherwise */
++    const VkDeviceSize ppb = s_tv.use_prev ? VK_TV_PREV_BYTES + 16u : 16u;
++    const VkDeviceSize ppo = vk_batch_alloc(ppb, s_bat.ubo_align);
++    if (vso == ~0ull || pso == ~0ull || ppo == ~0ull) return VK_NULL_HANDLE;
+     if (vk_eng_const_stage()) return VK_NULL_HANDLE;
+     memcpy((u8*)s_bat.ring.ptr + vso, s_e2_vsc, (size_t)vsb);
+     memcpy((u8*)s_bat.ring.ptr + pso, s_e2_psc, (size_t)psb);
+-    VkDescriptorBufferInfo bi[2] = { { s_bat.ring.buf, vso, vsb }, { s_bat.ring.buf, pso, psb } };
++    {
++        u8* pp = (u8*)s_bat.ring.ptr + ppo;
++        float valid[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
++        if (s_tv.use_prev) {
++            memcpy(pp, s_tv.prev ? s_tv.prev : s_e2_vsc, VK_TV_PREV_BYTES);
++            valid[0] = s_tv.prev ? 1.0f : 0.0f;
++            pp += VK_TV_PREV_BYTES;
++        }
++        memcpy(pp, valid, sizeof valid);
++    }
++    VkDescriptorBufferInfo bi[3] = { { s_bat.ring.buf, vso, vsb }, { s_bat.ring.buf, pso, psb },
++                                     { s_bat.ring.buf, ppo, ppb } };
+     VkDescriptorSet set;
+     VkDescriptorSetAllocateInfo dai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                         .descriptorPool = s_bat.pool, .descriptorSetCount = 1,
+                                         .pSetLayouts = split ? &s_e2.split_layout : &s_g.set_layout };
+     if (pvkAllocateDescriptorSets(s_vk.device, &dai, &set) != VK_SUCCESS) return VK_NULL_HANDLE;
+     s_bat.sets++;
+-    VkWriteDescriptorSet w[3 + RSX_MAX_TEXTURES];
++    VkWriteDescriptorSet w[4 + RSX_MAX_TEXTURES];
+     u32 n = 0;
+     w[n++] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set,
+           .dstBinding = RSX_SPIRV_VPCONST_BINDING, .descriptorCount = 1,
+@@ -5543,6 +5934,9 @@ static VkDescriptorSet vk_eng_write_descriptors(const vk_eng_pipe* P)
+     w[n++] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set,
+           .dstBinding = RSX_SPIRV_PSCONST_BINDING, .descriptorCount = 1,
+           .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .pBufferInfo = &bi[1] };
++    w[n++] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set,
++          .dstBinding = VK_TM_PREV_BINDING, .descriptorCount = 1,
++          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .pBufferInfo = &bi[2] };
+     w[n++] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set,
+           .dstBinding = RSX_SPIRV_SAMPLER_BINDING, .descriptorCount = RSX_MAX_TEXTURES,
+           .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER, .pImageInfo = si };
+@@ -5613,9 +6007,15 @@ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vert
+     if (!dview) { vk_draw_why(8); return; }
+     const u32 dkey = (zo && dview == zo->im.view) ? s_eng_bound.depth : 0xFFFFFFFFu;
+ 
+-    VkPipeline pipe = vk_eng_variant(P, (u32)topology - 1u);
+-    VkRenderPass rp = vk_eng_render_pass(P->rt_fmt, n);
+-    VkFramebuffer fb = vk_eng_framebuffer(rp, s_eng_bound.rt, n, dview, dkey, w, h);
++    /* a draw into the scene (temporal upscaling) also writes its motion */
++    VkImageView velv = vk_tv_draw_begin(P, rt0, s_eng_bound.rt[0], s_eng_bound.depth, w, h);
++    VkPipeline pipe = vk_eng_variant(P, (u32)topology - 1u, velv != VK_NULL_HANDLE);
++    if (!pipe && velv) {   /* the velocity variant did not build: the draw as it was */
++        velv = VK_NULL_HANDLE; s_tv.use_prev = 0;
++        pipe = vk_eng_variant(P, (u32)topology - 1u, 0);
++    }
++    VkRenderPass rp = vk_eng_render_pass(P->rt_fmt, n, velv != VK_NULL_HANDLE);
++    VkFramebuffer fb = vk_eng_framebuffer(rp, s_eng_bound.rt, n, dview, dkey, w, h, velv);
+     if (!pipe || !rp || !fb) { vk_draw_why(9); return; }
+ 
+     const VkDeviceSize vbytes = (VkDeviceSize)vertex_count * stride;
+@@ -5744,6 +6144,7 @@ static const rsx_draw_backend s_vk_engine_backend = {
+     .depth_readback       = vk_eng_depth_readback,
+     .depth_as_color       = vk_eng_depth_as_color,
+     .mlaa                 = vk_eng_mlaa,
++    .set_draw_key         = vk_eng_set_draw_key,
+     .color_target_write   = vk_eng_color_target_write,
+     /* Uploads are recorded into the open batch behind a barrier, after the
+      * draws that sampled the old bytes. */
+diff --git a/libs/video/vulkan/rsx_vk_motion.comp b/libs/video/vulkan/rsx_vk_motion.comp
+index 6777fa35..d8f1b275 100644
+--- a/libs/video/vulkan/rsx_vk_motion.comp
++++ b/libs/video/vulkan/rsx_vk_motion.comp
+@@ -1,9 +1,12 @@
+ #version 450
+-// Motion vectors for a temporal upscaler, from the camera alone: each pixel's
+-// world depth, taken back through this frame's view-projection and forward
+-// through the last frame's, gives where it was. Pixels the first-person model
+-// covers (it was drawn after the world's depth was cleared) move with the
+-// camera: no motion. Written in render pixels, last position minus this one.
++// Motion vectors for a temporal upscaler. Where a draw wrote its own motion
++// (velocity, NDC y up, from its program run on this and the last frame's
++// constants) that is taken, less the change of jitter. Elsewhere the camera's:
++// each pixel's world depth, taken back through this frame's view-projection
++// and forward through the last frame's, gives where it was; pixels the
++// first-person model covers (drawn after the world's depth was cleared) and
++// that wrote no motion move with the camera. Written in render pixels, last
++// position minus this one.
+ layout(local_size_x = 16, local_size_y = 16) in;
+ layout(set = 0, binding = 0) uniform sampler2D world_z;
+ layout(set = 0, binding = 1) uniform sampler2D final_z;
+@@ -12,10 +15,13 @@ layout(set = 0, binding = 2, rg16f) uniform writeonly image2D motion;
+ // first-person model's where it was drawn (FSR 3's barriers would name only
+ // the depth aspect of a depth-stencil image)
+ layout(set = 0, binding = 3, r32f) uniform writeonly image2D depth_copy;
++layout(set = 0, binding = 4) uniform sampler2D velocity;
+ layout(push_constant) uniform Params {
+     mat4 reproject;   // last frame's clip from this frame's NDC
+     vec4 size_z;      // width, height, NDC z = depth * z + w
+     float y_sign;     // NDC y of the top row
++    float has_velocity;
++    vec2 jitter_delta; // last frame's jitter less this one's, render pixels, y down
+ } pc;
+ 
+ void main()
+@@ -26,14 +32,25 @@ void main()
+     vec2 mv = vec2(0.0);
+     float z = texelFetch(world_z, p, 0).r, fz = texelFetch(final_z, p, 0).r;
+     imageStore(depth_copy, p, vec4(fz < 1.0 ? fz : z));   // the model in front where it was drawn
++    // the camera's motion of this pixel (where it has world depth)
++    vec2 cam = vec2(0.0);
+     if (fz >= 1.0) {
+         vec2 uv = (vec2(p) + 0.5) / size;
+         vec4 ndc = vec4(uv.x * 2.0 - 1.0, pc.y_sign * (1.0 - uv.y * 2.0), z * pc.size_z.z + pc.size_z.w, 1.0);
+         vec4 q = pc.reproject * ndc;
+         if (q.w > 1e-6) {
+             vec2 prev = vec2(q.x / q.w * 0.5 + 0.5, 0.5 - pc.y_sign * q.y / q.w * 0.5) * size;
+-            mv = prev - (vec2(p) + 0.5);
++            cam = prev - (vec2(p) + 0.5);
+         }
+     }
++    mv = cam;
++    vec2 v = pc.has_velocity > 0.0 ? texelFetch(velocity, p, 0).xy : vec2(65504.0);
++    if (v.x < 60000.0) {
++        vec2 obj = vec2(v.x, -v.y) * 0.5 * size - pc.jitter_delta;
++        // a draw paired with the wrong one of last frame's (an instance of the
++        // same mesh) moves by the distance between the two: past 6% of the
++        // frame from the camera's motion it is taken for that, not for motion
++        if (fz < 1.0 || length(obj - cam) < 0.06 * size.x) mv = obj;
++    }
+     imageStore(motion, p, vec4(mv, 0.0, 0.0));
+ }
+diff --git a/libs/video/vulkan/rsx_vk_motion_comp.spv.h b/libs/video/vulkan/rsx_vk_motion_comp.spv.h
+index ba418e4b..05ecffd7 100644
+--- a/libs/video/vulkan/rsx_vk_motion_comp.spv.h
++++ b/libs/video/vulkan/rsx_vk_motion_comp.spv.h
+@@ -1,7 +1,7 @@
+ 	// 1116.6.0
+ 	 #pragma once
+ const uint32_t rsx_vk_motion_comp_spv[] = {
+-	0x07230203,0x00010000,0x0008000b,0x000000b1,0x00000000,0x00020011,0x00000001,0x00020011,
++	0x07230203,0x00010000,0x0008000b,0x000000ec,0x00000000,0x00020011,0x00000001,0x00020011,
+ 	0x00000031,0x0006000b,0x00000001,0x4c534c47,0x6474732e,0x3035342e,0x00000000,0x0003000e,
+ 	0x00000000,0x00000001,0x0006000f,0x00000005,0x00000004,0x6e69616d,0x00000000,0x0000000d,
+ 	0x00060010,0x00000004,0x00000011,0x00000010,0x00000010,0x00000001,0x00030003,0x00000002,
+@@ -10,28 +10,34 @@ const uint32_t rsx_vk_motion_comp_spv[] = {
+ 	0x00040005,0x00000015,0x657a6973,0x00000000,0x00040005,0x00000018,0x61726150,0x0000736d,
+ 	0x00060006,0x00000018,0x00000000,0x72706572,0x63656a6f,0x00000074,0x00050006,0x00000018,
+ 	0x00000001,0x657a6973,0x00007a5f,0x00050006,0x00000018,0x00000002,0x69735f79,0x00006e67,
+-	0x00030005,0x0000001a,0x00006370,0x00030005,0x00000038,0x0000766d,0x00030005,0x0000003b,
+-	0x0000007a,0x00040005,0x0000003f,0x6c726f77,0x007a5f64,0x00030005,0x00000046,0x00007a66,
+-	0x00040005,0x00000047,0x616e6966,0x007a5f6c,0x00050005,0x0000004f,0x74706564,0x6f635f68,
+-	0x00007970,0x00030005,0x0000005d,0x00007675,0x00030005,0x00000066,0x0063646e,0x00030005,
+-	0x0000007f,0x00000071,0x00040005,0x0000008b,0x76657270,0x00000000,0x00040005,0x000000a8,
+-	0x69746f6d,0x00006e6f,0x00040047,0x0000000d,0x0000000b,0x0000001c,0x00030047,0x00000018,
+-	0x00000002,0x00040048,0x00000018,0x00000000,0x00000005,0x00050048,0x00000018,0x00000000,
+-	0x00000007,0x00000010,0x00050048,0x00000018,0x00000000,0x00000023,0x00000000,0x00050048,
+-	0x00000018,0x00000001,0x00000023,0x00000040,0x00050048,0x00000018,0x00000002,0x00000023,
+-	0x00000050,0x00040047,0x0000003f,0x00000021,0x00000000,0x00040047,0x0000003f,0x00000022,
+-	0x00000000,0x00040047,0x00000047,0x00000021,0x00000001,0x00040047,0x00000047,0x00000022,
+-	0x00000000,0x00030047,0x0000004f,0x00000019,0x00040047,0x0000004f,0x00000021,0x00000003,
+-	0x00040047,0x0000004f,0x00000022,0x00000000,0x00030047,0x000000a8,0x00000019,0x00040047,
+-	0x000000a8,0x00000021,0x00000002,0x00040047,0x000000a8,0x00000022,0x00000000,0x00040047,
+-	0x000000b0,0x0000000b,0x00000019,0x00020013,0x00000002,0x00030021,0x00000003,0x00000002,
+-	0x00040015,0x00000006,0x00000020,0x00000001,0x00040017,0x00000007,0x00000006,0x00000002,
+-	0x00040020,0x00000008,0x00000007,0x00000007,0x00040015,0x0000000a,0x00000020,0x00000000,
+-	0x00040017,0x0000000b,0x0000000a,0x00000003,0x00040020,0x0000000c,0x00000001,0x0000000b,
+-	0x0004003b,0x0000000c,0x0000000d,0x00000001,0x00040017,0x0000000e,0x0000000a,0x00000002,
+-	0x00030016,0x00000012,0x00000020,0x00040017,0x00000013,0x00000012,0x00000002,0x00040020,
+-	0x00000014,0x00000007,0x00000013,0x00040017,0x00000016,0x00000012,0x00000004,0x00040018,
+-	0x00000017,0x00000016,0x00000004,0x0005001e,0x00000018,0x00000017,0x00000016,0x00000012,
++	0x00070006,0x00000018,0x00000003,0x5f736168,0x6f6c6576,0x79746963,0x00000000,0x00070006,
++	0x00000018,0x00000004,0x7474696a,0x645f7265,0x61746c65,0x00000000,0x00030005,0x0000001a,
++	0x00006370,0x00030005,0x00000038,0x0000766d,0x00030005,0x0000003b,0x0000007a,0x00040005,
++	0x0000003f,0x6c726f77,0x007a5f64,0x00030005,0x00000046,0x00007a66,0x00040005,0x00000047,
++	0x616e6966,0x007a5f6c,0x00050005,0x0000004f,0x74706564,0x6f635f68,0x00007970,0x00030005,
++	0x00000059,0x006d6163,0x00030005,0x0000005e,0x00007675,0x00030005,0x00000067,0x0063646e,
++	0x00030005,0x00000080,0x00000071,0x00040005,0x0000008c,0x76657270,0x00000000,0x00030005,
++	0x000000a8,0x00000076,0x00050005,0x000000b0,0x6f6c6576,0x79746963,0x00000000,0x00030005,
++	0x000000c0,0x006a626f,0x00040005,0x000000e3,0x69746f6d,0x00006e6f,0x00040047,0x0000000d,
++	0x0000000b,0x0000001c,0x00030047,0x00000018,0x00000002,0x00040048,0x00000018,0x00000000,
++	0x00000005,0x00050048,0x00000018,0x00000000,0x00000007,0x00000010,0x00050048,0x00000018,
++	0x00000000,0x00000023,0x00000000,0x00050048,0x00000018,0x00000001,0x00000023,0x00000040,
++	0x00050048,0x00000018,0x00000002,0x00000023,0x00000050,0x00050048,0x00000018,0x00000003,
++	0x00000023,0x00000054,0x00050048,0x00000018,0x00000004,0x00000023,0x00000058,0x00040047,
++	0x0000003f,0x00000021,0x00000000,0x00040047,0x0000003f,0x00000022,0x00000000,0x00040047,
++	0x00000047,0x00000021,0x00000001,0x00040047,0x00000047,0x00000022,0x00000000,0x00030047,
++	0x0000004f,0x00000019,0x00040047,0x0000004f,0x00000021,0x00000003,0x00040047,0x0000004f,
++	0x00000022,0x00000000,0x00040047,0x000000b0,0x00000021,0x00000004,0x00040047,0x000000b0,
++	0x00000022,0x00000000,0x00030047,0x000000e3,0x00000019,0x00040047,0x000000e3,0x00000021,
++	0x00000002,0x00040047,0x000000e3,0x00000022,0x00000000,0x00040047,0x000000eb,0x0000000b,
++	0x00000019,0x00020013,0x00000002,0x00030021,0x00000003,0x00000002,0x00040015,0x00000006,
++	0x00000020,0x00000001,0x00040017,0x00000007,0x00000006,0x00000002,0x00040020,0x00000008,
++	0x00000007,0x00000007,0x00040015,0x0000000a,0x00000020,0x00000000,0x00040017,0x0000000b,
++	0x0000000a,0x00000003,0x00040020,0x0000000c,0x00000001,0x0000000b,0x0004003b,0x0000000c,
++	0x0000000d,0x00000001,0x00040017,0x0000000e,0x0000000a,0x00000002,0x00030016,0x00000012,
++	0x00000020,0x00040017,0x00000013,0x00000012,0x00000002,0x00040020,0x00000014,0x00000007,
++	0x00000013,0x00040017,0x00000016,0x00000012,0x00000004,0x00040018,0x00000017,0x00000016,
++	0x00000004,0x0007001e,0x00000018,0x00000017,0x00000016,0x00000012,0x00000012,0x00000013,
+ 	0x00040020,0x00000019,0x00000009,0x00000018,0x0004003b,0x00000019,0x0000001a,0x00000009,
+ 	0x0004002b,0x00000006,0x0000001b,0x00000001,0x00040020,0x0000001c,0x00000009,0x00000016,
+ 	0x00020014,0x00000020,0x0004002b,0x0000000a,0x00000021,0x00000000,0x00040020,0x00000022,
+@@ -43,91 +49,129 @@ const uint32_t rsx_vk_motion_comp_spv[] = {
+ 	0x00000006,0x00000042,0x00000000,0x0004003b,0x0000003e,0x00000047,0x00000000,0x00090019,
+ 	0x0000004d,0x00000012,0x00000001,0x00000000,0x00000000,0x00000000,0x00000002,0x00000003,
+ 	0x00040020,0x0000004e,0x00000000,0x0000004d,0x0004003b,0x0000004e,0x0000004f,0x00000000,
+-	0x0004002b,0x00000012,0x00000053,0x3f800000,0x0004002b,0x00000012,0x00000060,0x3f000000,
+-	0x00040020,0x00000065,0x00000007,0x00000016,0x0004002b,0x00000012,0x00000069,0x40000000,
+-	0x0004002b,0x00000006,0x0000006c,0x00000002,0x00040020,0x0000006d,0x00000009,0x00000012,
+-	0x0004002b,0x0000000a,0x00000076,0x00000002,0x0004002b,0x0000000a,0x0000007a,0x00000003,
+-	0x00040020,0x00000080,0x00000009,0x00000017,0x0004002b,0x00000012,0x00000087,0x358637bd,
+-	0x00090019,0x000000a6,0x00000012,0x00000001,0x00000000,0x00000000,0x00000000,0x00000002,
+-	0x00000007,0x00040020,0x000000a7,0x00000000,0x000000a6,0x0004003b,0x000000a7,0x000000a8,
+-	0x00000000,0x0004002b,0x0000000a,0x000000af,0x00000010,0x0006002c,0x0000000b,0x000000b0,
+-	0x000000af,0x000000af,0x0000002d,0x00050036,0x00000002,0x00000004,0x00000000,0x00000003,
+-	0x000200f8,0x00000005,0x0004003b,0x00000008,0x00000009,0x00000007,0x0004003b,0x00000014,
+-	0x00000015,0x00000007,0x0004003b,0x00000014,0x00000038,0x00000007,0x0004003b,0x00000025,
+-	0x0000003b,0x00000007,0x0004003b,0x00000025,0x00000046,0x00000007,0x0004003b,0x00000014,
+-	0x0000005d,0x00000007,0x0004003b,0x00000065,0x00000066,0x00000007,0x0004003b,0x00000065,
+-	0x0000007f,0x00000007,0x0004003b,0x00000014,0x0000008b,0x00000007,0x0004003d,0x0000000b,
+-	0x0000000f,0x0000000d,0x0007004f,0x0000000e,0x00000010,0x0000000f,0x0000000f,0x00000000,
+-	0x00000001,0x0004007c,0x00000007,0x00000011,0x00000010,0x0003003e,0x00000009,0x00000011,
+-	0x00050041,0x0000001c,0x0000001d,0x0000001a,0x0000001b,0x0004003d,0x00000016,0x0000001e,
+-	0x0000001d,0x0007004f,0x00000013,0x0000001f,0x0000001e,0x0000001e,0x00000000,0x00000001,
+-	0x0003003e,0x00000015,0x0000001f,0x00050041,0x00000022,0x00000023,0x00000009,0x00000021,
+-	0x0004003d,0x00000006,0x00000024,0x00000023,0x00050041,0x00000025,0x00000026,0x00000015,
+-	0x00000021,0x0004003d,0x00000012,0x00000027,0x00000026,0x0004006e,0x00000006,0x00000028,
+-	0x00000027,0x000500af,0x00000020,0x00000029,0x00000024,0x00000028,0x000400a8,0x00000020,
+-	0x0000002a,0x00000029,0x000300f7,0x0000002c,0x00000000,0x000400fa,0x0000002a,0x0000002b,
+-	0x0000002c,0x000200f8,0x0000002b,0x00050041,0x00000022,0x0000002e,0x00000009,0x0000002d,
+-	0x0004003d,0x00000006,0x0000002f,0x0000002e,0x00050041,0x00000025,0x00000030,0x00000015,
+-	0x0000002d,0x0004003d,0x00000012,0x00000031,0x00000030,0x0004006e,0x00000006,0x00000032,
+-	0x00000031,0x000500af,0x00000020,0x00000033,0x0000002f,0x00000032,0x000200f9,0x0000002c,
+-	0x000200f8,0x0000002c,0x000700f5,0x00000020,0x00000034,0x00000029,0x00000005,0x00000033,
+-	0x0000002b,0x000300f7,0x00000036,0x00000000,0x000400fa,0x00000034,0x00000035,0x00000036,
+-	0x000200f8,0x00000035,0x000100fd,0x000200f8,0x00000036,0x0003003e,0x00000038,0x0000003a,
+-	0x0004003d,0x0000003d,0x00000040,0x0000003f,0x0004003d,0x00000007,0x00000041,0x00000009,
+-	0x00040064,0x0000003c,0x00000043,0x00000040,0x0007005f,0x00000016,0x00000044,0x00000043,
+-	0x00000041,0x00000002,0x00000042,0x00050051,0x00000012,0x00000045,0x00000044,0x00000000,
+-	0x0003003e,0x0000003b,0x00000045,0x0004003d,0x0000003d,0x00000048,0x00000047,0x0004003d,
+-	0x00000007,0x00000049,0x00000009,0x00040064,0x0000003c,0x0000004a,0x00000048,0x0007005f,
+-	0x00000016,0x0000004b,0x0000004a,0x00000049,0x00000002,0x00000042,0x00050051,0x00000012,
+-	0x0000004c,0x0000004b,0x00000000,0x0003003e,0x00000046,0x0000004c,0x0004003d,0x0000004d,
+-	0x00000050,0x0000004f,0x0004003d,0x00000007,0x00000051,0x00000009,0x0004003d,0x00000012,
+-	0x00000052,0x00000046,0x000500b8,0x00000020,0x00000054,0x00000052,0x00000053,0x0004003d,
+-	0x00000012,0x00000055,0x00000046,0x0004003d,0x00000012,0x00000056,0x0000003b,0x000600a9,
+-	0x00000012,0x00000057,0x00000054,0x00000055,0x00000056,0x00070050,0x00000016,0x00000058,
+-	0x00000057,0x00000057,0x00000057,0x00000057,0x00040063,0x00000050,0x00000051,0x00000058,
+-	0x0004003d,0x00000012,0x00000059,0x00000046,0x000500be,0x00000020,0x0000005a,0x00000059,
+-	0x00000053,0x000300f7,0x0000005c,0x00000000,0x000400fa,0x0000005a,0x0000005b,0x0000005c,
+-	0x000200f8,0x0000005b,0x0004003d,0x00000007,0x0000005e,0x00000009,0x0004006f,0x00000013,
+-	0x0000005f,0x0000005e,0x00050050,0x00000013,0x00000061,0x00000060,0x00000060,0x00050081,
+-	0x00000013,0x00000062,0x0000005f,0x00000061,0x0004003d,0x00000013,0x00000063,0x00000015,
+-	0x00050088,0x00000013,0x00000064,0x00000062,0x00000063,0x0003003e,0x0000005d,0x00000064,
+-	0x00050041,0x00000025,0x00000067,0x0000005d,0x00000021,0x0004003d,0x00000012,0x00000068,
+-	0x00000067,0x00050085,0x00000012,0x0000006a,0x00000068,0x00000069,0x00050083,0x00000012,
+-	0x0000006b,0x0000006a,0x00000053,0x00050041,0x0000006d,0x0000006e,0x0000001a,0x0000006c,
+-	0x0004003d,0x00000012,0x0000006f,0x0000006e,0x00050041,0x00000025,0x00000070,0x0000005d,
+-	0x0000002d,0x0004003d,0x00000012,0x00000071,0x00000070,0x00050085,0x00000012,0x00000072,
+-	0x00000071,0x00000069,0x00050083,0x00000012,0x00000073,0x00000053,0x00000072,0x00050085,
+-	0x00000012,0x00000074,0x0000006f,0x00000073,0x0004003d,0x00000012,0x00000075,0x0000003b,
+-	0x00060041,0x0000006d,0x00000077,0x0000001a,0x0000001b,0x00000076,0x0004003d,0x00000012,
+-	0x00000078,0x00000077,0x00050085,0x00000012,0x00000079,0x00000075,0x00000078,0x00060041,
+-	0x0000006d,0x0000007b,0x0000001a,0x0000001b,0x0000007a,0x0004003d,0x00000012,0x0000007c,
+-	0x0000007b,0x00050081,0x00000012,0x0000007d,0x00000079,0x0000007c,0x00070050,0x00000016,
+-	0x0000007e,0x0000006b,0x00000074,0x0000007d,0x00000053,0x0003003e,0x00000066,0x0000007e,
+-	0x00050041,0x00000080,0x00000081,0x0000001a,0x00000042,0x0004003d,0x00000017,0x00000082,
+-	0x00000081,0x0004003d,0x00000016,0x00000083,0x00000066,0x00050091,0x00000016,0x00000084,
+-	0x00000082,0x00000083,0x0003003e,0x0000007f,0x00000084,0x00050041,0x00000025,0x00000085,
+-	0x0000007f,0x0000007a,0x0004003d,0x00000012,0x00000086,0x00000085,0x000500ba,0x00000020,
+-	0x00000088,0x00000086,0x00000087,0x000300f7,0x0000008a,0x00000000,0x000400fa,0x00000088,
+-	0x00000089,0x0000008a,0x000200f8,0x00000089,0x00050041,0x00000025,0x0000008c,0x0000007f,
+-	0x00000021,0x0004003d,0x00000012,0x0000008d,0x0000008c,0x00050041,0x00000025,0x0000008e,
+-	0x0000007f,0x0000007a,0x0004003d,0x00000012,0x0000008f,0x0000008e,0x00050088,0x00000012,
+-	0x00000090,0x0000008d,0x0000008f,0x00050085,0x00000012,0x00000091,0x00000090,0x00000060,
+-	0x00050081,0x00000012,0x00000092,0x00000091,0x00000060,0x00050041,0x0000006d,0x00000093,
+-	0x0000001a,0x0000006c,0x0004003d,0x00000012,0x00000094,0x00000093,0x00050041,0x00000025,
+-	0x00000095,0x0000007f,0x0000002d,0x0004003d,0x00000012,0x00000096,0x00000095,0x00050085,
+-	0x00000012,0x00000097,0x00000094,0x00000096,0x00050041,0x00000025,0x00000098,0x0000007f,
+-	0x0000007a,0x0004003d,0x00000012,0x00000099,0x00000098,0x00050088,0x00000012,0x0000009a,
+-	0x00000097,0x00000099,0x00050085,0x00000012,0x0000009b,0x0000009a,0x00000060,0x00050083,
+-	0x00000012,0x0000009c,0x00000060,0x0000009b,0x00050050,0x00000013,0x0000009d,0x00000092,
+-	0x0000009c,0x0004003d,0x00000013,0x0000009e,0x00000015,0x00050085,0x00000013,0x0000009f,
+-	0x0000009d,0x0000009e,0x0003003e,0x0000008b,0x0000009f,0x0004003d,0x00000013,0x000000a0,
+-	0x0000008b,0x0004003d,0x00000007,0x000000a1,0x00000009,0x0004006f,0x00000013,0x000000a2,
+-	0x000000a1,0x00050050,0x00000013,0x000000a3,0x00000060,0x00000060,0x00050081,0x00000013,
+-	0x000000a4,0x000000a2,0x000000a3,0x00050083,0x00000013,0x000000a5,0x000000a0,0x000000a4,
+-	0x0003003e,0x00000038,0x000000a5,0x000200f9,0x0000008a,0x000200f8,0x0000008a,0x000200f9,
+-	0x0000005c,0x000200f8,0x0000005c,0x0004003d,0x000000a6,0x000000a9,0x000000a8,0x0004003d,
+-	0x00000007,0x000000aa,0x00000009,0x0004003d,0x00000013,0x000000ab,0x00000038,0x00050051,
+-	0x00000012,0x000000ac,0x000000ab,0x00000000,0x00050051,0x00000012,0x000000ad,0x000000ab,
+-	0x00000001,0x00070050,0x00000016,0x000000ae,0x000000ac,0x000000ad,0x00000039,0x00000039,
+-	0x00040063,0x000000a9,0x000000aa,0x000000ae,0x000100fd,0x00010038
++	0x0004002b,0x00000012,0x00000053,0x3f800000,0x0004002b,0x00000012,0x00000061,0x3f000000,
++	0x00040020,0x00000066,0x00000007,0x00000016,0x0004002b,0x00000012,0x0000006a,0x40000000,
++	0x0004002b,0x00000006,0x0000006d,0x00000002,0x00040020,0x0000006e,0x00000009,0x00000012,
++	0x0004002b,0x0000000a,0x00000077,0x00000002,0x0004002b,0x0000000a,0x0000007b,0x00000003,
++	0x00040020,0x00000081,0x00000009,0x00000017,0x0004002b,0x00000012,0x00000088,0x358637bd,
++	0x0004002b,0x00000006,0x000000a9,0x00000003,0x0004003b,0x0000003e,0x000000b0,0x00000000,
++	0x0004002b,0x00000012,0x000000b7,0x477fe000,0x0005002c,0x00000013,0x000000b8,0x000000b7,
++	0x000000b7,0x0004002b,0x00000012,0x000000bc,0x476a6000,0x0004002b,0x00000006,0x000000ca,
++	0x00000004,0x00040020,0x000000cb,0x00000009,0x00000013,0x0004002b,0x00000012,0x000000d8,
++	0x3d75c28f,0x00090019,0x000000e1,0x00000012,0x00000001,0x00000000,0x00000000,0x00000000,
++	0x00000002,0x00000007,0x00040020,0x000000e2,0x00000000,0x000000e1,0x0004003b,0x000000e2,
++	0x000000e3,0x00000000,0x0004002b,0x0000000a,0x000000ea,0x00000010,0x0006002c,0x0000000b,
++	0x000000eb,0x000000ea,0x000000ea,0x0000002d,0x00050036,0x00000002,0x00000004,0x00000000,
++	0x00000003,0x000200f8,0x00000005,0x0004003b,0x00000008,0x00000009,0x00000007,0x0004003b,
++	0x00000014,0x00000015,0x00000007,0x0004003b,0x00000014,0x00000038,0x00000007,0x0004003b,
++	0x00000025,0x0000003b,0x00000007,0x0004003b,0x00000025,0x00000046,0x00000007,0x0004003b,
++	0x00000014,0x00000059,0x00000007,0x0004003b,0x00000014,0x0000005e,0x00000007,0x0004003b,
++	0x00000066,0x00000067,0x00000007,0x0004003b,0x00000066,0x00000080,0x00000007,0x0004003b,
++	0x00000014,0x0000008c,0x00000007,0x0004003b,0x00000014,0x000000a8,0x00000007,0x0004003b,
++	0x00000014,0x000000ad,0x00000007,0x0004003b,0x00000014,0x000000c0,0x00000007,0x0004003d,
++	0x0000000b,0x0000000f,0x0000000d,0x0007004f,0x0000000e,0x00000010,0x0000000f,0x0000000f,
++	0x00000000,0x00000001,0x0004007c,0x00000007,0x00000011,0x00000010,0x0003003e,0x00000009,
++	0x00000011,0x00050041,0x0000001c,0x0000001d,0x0000001a,0x0000001b,0x0004003d,0x00000016,
++	0x0000001e,0x0000001d,0x0007004f,0x00000013,0x0000001f,0x0000001e,0x0000001e,0x00000000,
++	0x00000001,0x0003003e,0x00000015,0x0000001f,0x00050041,0x00000022,0x00000023,0x00000009,
++	0x00000021,0x0004003d,0x00000006,0x00000024,0x00000023,0x00050041,0x00000025,0x00000026,
++	0x00000015,0x00000021,0x0004003d,0x00000012,0x00000027,0x00000026,0x0004006e,0x00000006,
++	0x00000028,0x00000027,0x000500af,0x00000020,0x00000029,0x00000024,0x00000028,0x000400a8,
++	0x00000020,0x0000002a,0x00000029,0x000300f7,0x0000002c,0x00000000,0x000400fa,0x0000002a,
++	0x0000002b,0x0000002c,0x000200f8,0x0000002b,0x00050041,0x00000022,0x0000002e,0x00000009,
++	0x0000002d,0x0004003d,0x00000006,0x0000002f,0x0000002e,0x00050041,0x00000025,0x00000030,
++	0x00000015,0x0000002d,0x0004003d,0x00000012,0x00000031,0x00000030,0x0004006e,0x00000006,
++	0x00000032,0x00000031,0x000500af,0x00000020,0x00000033,0x0000002f,0x00000032,0x000200f9,
++	0x0000002c,0x000200f8,0x0000002c,0x000700f5,0x00000020,0x00000034,0x00000029,0x00000005,
++	0x00000033,0x0000002b,0x000300f7,0x00000036,0x00000000,0x000400fa,0x00000034,0x00000035,
++	0x00000036,0x000200f8,0x00000035,0x000100fd,0x000200f8,0x00000036,0x0003003e,0x00000038,
++	0x0000003a,0x0004003d,0x0000003d,0x00000040,0x0000003f,0x0004003d,0x00000007,0x00000041,
++	0x00000009,0x00040064,0x0000003c,0x00000043,0x00000040,0x0007005f,0x00000016,0x00000044,
++	0x00000043,0x00000041,0x00000002,0x00000042,0x00050051,0x00000012,0x00000045,0x00000044,
++	0x00000000,0x0003003e,0x0000003b,0x00000045,0x0004003d,0x0000003d,0x00000048,0x00000047,
++	0x0004003d,0x00000007,0x00000049,0x00000009,0x00040064,0x0000003c,0x0000004a,0x00000048,
++	0x0007005f,0x00000016,0x0000004b,0x0000004a,0x00000049,0x00000002,0x00000042,0x00050051,
++	0x00000012,0x0000004c,0x0000004b,0x00000000,0x0003003e,0x00000046,0x0000004c,0x0004003d,
++	0x0000004d,0x00000050,0x0000004f,0x0004003d,0x00000007,0x00000051,0x00000009,0x0004003d,
++	0x00000012,0x00000052,0x00000046,0x000500b8,0x00000020,0x00000054,0x00000052,0x00000053,
++	0x0004003d,0x00000012,0x00000055,0x00000046,0x0004003d,0x00000012,0x00000056,0x0000003b,
++	0x000600a9,0x00000012,0x00000057,0x00000054,0x00000055,0x00000056,0x00070050,0x00000016,
++	0x00000058,0x00000057,0x00000057,0x00000057,0x00000057,0x00040063,0x00000050,0x00000051,
++	0x00000058,0x0003003e,0x00000059,0x0000003a,0x0004003d,0x00000012,0x0000005a,0x00000046,
++	0x000500be,0x00000020,0x0000005b,0x0000005a,0x00000053,0x000300f7,0x0000005d,0x00000000,
++	0x000400fa,0x0000005b,0x0000005c,0x0000005d,0x000200f8,0x0000005c,0x0004003d,0x00000007,
++	0x0000005f,0x00000009,0x0004006f,0x00000013,0x00000060,0x0000005f,0x00050050,0x00000013,
++	0x00000062,0x00000061,0x00000061,0x00050081,0x00000013,0x00000063,0x00000060,0x00000062,
++	0x0004003d,0x00000013,0x00000064,0x00000015,0x00050088,0x00000013,0x00000065,0x00000063,
++	0x00000064,0x0003003e,0x0000005e,0x00000065,0x00050041,0x00000025,0x00000068,0x0000005e,
++	0x00000021,0x0004003d,0x00000012,0x00000069,0x00000068,0x00050085,0x00000012,0x0000006b,
++	0x00000069,0x0000006a,0x00050083,0x00000012,0x0000006c,0x0000006b,0x00000053,0x00050041,
++	0x0000006e,0x0000006f,0x0000001a,0x0000006d,0x0004003d,0x00000012,0x00000070,0x0000006f,
++	0x00050041,0x00000025,0x00000071,0x0000005e,0x0000002d,0x0004003d,0x00000012,0x00000072,
++	0x00000071,0x00050085,0x00000012,0x00000073,0x00000072,0x0000006a,0x00050083,0x00000012,
++	0x00000074,0x00000053,0x00000073,0x00050085,0x00000012,0x00000075,0x00000070,0x00000074,
++	0x0004003d,0x00000012,0x00000076,0x0000003b,0x00060041,0x0000006e,0x00000078,0x0000001a,
++	0x0000001b,0x00000077,0x0004003d,0x00000012,0x00000079,0x00000078,0x00050085,0x00000012,
++	0x0000007a,0x00000076,0x00000079,0x00060041,0x0000006e,0x0000007c,0x0000001a,0x0000001b,
++	0x0000007b,0x0004003d,0x00000012,0x0000007d,0x0000007c,0x00050081,0x00000012,0x0000007e,
++	0x0000007a,0x0000007d,0x00070050,0x00000016,0x0000007f,0x0000006c,0x00000075,0x0000007e,
++	0x00000053,0x0003003e,0x00000067,0x0000007f,0x00050041,0x00000081,0x00000082,0x0000001a,
++	0x00000042,0x0004003d,0x00000017,0x00000083,0x00000082,0x0004003d,0x00000016,0x00000084,
++	0x00000067,0x00050091,0x00000016,0x00000085,0x00000083,0x00000084,0x0003003e,0x00000080,
++	0x00000085,0x00050041,0x00000025,0x00000086,0x00000080,0x0000007b,0x0004003d,0x00000012,
++	0x00000087,0x00000086,0x000500ba,0x00000020,0x00000089,0x00000087,0x00000088,0x000300f7,
++	0x0000008b,0x00000000,0x000400fa,0x00000089,0x0000008a,0x0000008b,0x000200f8,0x0000008a,
++	0x00050041,0x00000025,0x0000008d,0x00000080,0x00000021,0x0004003d,0x00000012,0x0000008e,
++	0x0000008d,0x00050041,0x00000025,0x0000008f,0x00000080,0x0000007b,0x0004003d,0x00000012,
++	0x00000090,0x0000008f,0x00050088,0x00000012,0x00000091,0x0000008e,0x00000090,0x00050085,
++	0x00000012,0x00000092,0x00000091,0x00000061,0x00050081,0x00000012,0x00000093,0x00000092,
++	0x00000061,0x00050041,0x0000006e,0x00000094,0x0000001a,0x0000006d,0x0004003d,0x00000012,
++	0x00000095,0x00000094,0x00050041,0x00000025,0x00000096,0x00000080,0x0000002d,0x0004003d,
++	0x00000012,0x00000097,0x00000096,0x00050085,0x00000012,0x00000098,0x00000095,0x00000097,
++	0x00050041,0x00000025,0x00000099,0x00000080,0x0000007b,0x0004003d,0x00000012,0x0000009a,
++	0x00000099,0x00050088,0x00000012,0x0000009b,0x00000098,0x0000009a,0x00050085,0x00000012,
++	0x0000009c,0x0000009b,0x00000061,0x00050083,0x00000012,0x0000009d,0x00000061,0x0000009c,
++	0x00050050,0x00000013,0x0000009e,0x00000093,0x0000009d,0x0004003d,0x00000013,0x0000009f,
++	0x00000015,0x00050085,0x00000013,0x000000a0,0x0000009e,0x0000009f,0x0003003e,0x0000008c,
++	0x000000a0,0x0004003d,0x00000013,0x000000a1,0x0000008c,0x0004003d,0x00000007,0x000000a2,
++	0x00000009,0x0004006f,0x00000013,0x000000a3,0x000000a2,0x00050050,0x00000013,0x000000a4,
++	0x00000061,0x00000061,0x00050081,0x00000013,0x000000a5,0x000000a3,0x000000a4,0x00050083,
++	0x00000013,0x000000a6,0x000000a1,0x000000a5,0x0003003e,0x00000059,0x000000a6,0x000200f9,
++	0x0000008b,0x000200f8,0x0000008b,0x000200f9,0x0000005d,0x000200f8,0x0000005d,0x0004003d,
++	0x00000013,0x000000a7,0x00000059,0x0003003e,0x00000038,0x000000a7,0x00050041,0x0000006e,
++	0x000000aa,0x0000001a,0x000000a9,0x0004003d,0x00000012,0x000000ab,0x000000aa,0x000500ba,
++	0x00000020,0x000000ac,0x000000ab,0x00000039,0x000300f7,0x000000af,0x00000000,0x000400fa,
++	0x000000ac,0x000000ae,0x000000b6,0x000200f8,0x000000ae,0x0004003d,0x0000003d,0x000000b1,
++	0x000000b0,0x0004003d,0x00000007,0x000000b2,0x00000009,0x00040064,0x0000003c,0x000000b3,
++	0x000000b1,0x0007005f,0x00000016,0x000000b4,0x000000b3,0x000000b2,0x00000002,0x00000042,
++	0x0007004f,0x00000013,0x000000b5,0x000000b4,0x000000b4,0x00000000,0x00000001,0x0003003e,
++	0x000000ad,0x000000b5,0x000200f9,0x000000af,0x000200f8,0x000000b6,0x0003003e,0x000000ad,
++	0x000000b8,0x000200f9,0x000000af,0x000200f8,0x000000af,0x0004003d,0x00000013,0x000000b9,
++	0x000000ad,0x0003003e,0x000000a8,0x000000b9,0x00050041,0x00000025,0x000000ba,0x000000a8,
++	0x00000021,0x0004003d,0x00000012,0x000000bb,0x000000ba,0x000500b8,0x00000020,0x000000bd,
++	0x000000bb,0x000000bc,0x000300f7,0x000000bf,0x00000000,0x000400fa,0x000000bd,0x000000be,
++	0x000000bf,0x000200f8,0x000000be,0x00050041,0x00000025,0x000000c1,0x000000a8,0x00000021,
++	0x0004003d,0x00000012,0x000000c2,0x000000c1,0x00050041,0x00000025,0x000000c3,0x000000a8,
++	0x0000002d,0x0004003d,0x00000012,0x000000c4,0x000000c3,0x0004007f,0x00000012,0x000000c5,
++	0x000000c4,0x00050050,0x00000013,0x000000c6,0x000000c2,0x000000c5,0x0005008e,0x00000013,
++	0x000000c7,0x000000c6,0x00000061,0x0004003d,0x00000013,0x000000c8,0x00000015,0x00050085,
++	0x00000013,0x000000c9,0x000000c7,0x000000c8,0x00050041,0x000000cb,0x000000cc,0x0000001a,
++	0x000000ca,0x0004003d,0x00000013,0x000000cd,0x000000cc,0x00050083,0x00000013,0x000000ce,
++	0x000000c9,0x000000cd,0x0003003e,0x000000c0,0x000000ce,0x0004003d,0x00000012,0x000000cf,
++	0x00000046,0x000500b8,0x00000020,0x000000d0,0x000000cf,0x00000053,0x000400a8,0x00000020,
++	0x000000d1,0x000000d0,0x000300f7,0x000000d3,0x00000000,0x000400fa,0x000000d1,0x000000d2,
++	0x000000d3,0x000200f8,0x000000d2,0x0004003d,0x00000013,0x000000d4,0x000000c0,0x0004003d,
++	0x00000013,0x000000d5,0x00000059,0x00050083,0x00000013,0x000000d6,0x000000d4,0x000000d5,
++	0x0006000c,0x00000012,0x000000d7,0x00000001,0x00000042,0x000000d6,0x00050041,0x00000025,
++	0x000000d9,0x00000015,0x00000021,0x0004003d,0x00000012,0x000000da,0x000000d9,0x00050085,
++	0x00000012,0x000000db,0x000000d8,0x000000da,0x000500b8,0x00000020,0x000000dc,0x000000d7,
++	0x000000db,0x000200f9,0x000000d3,0x000200f8,0x000000d3,0x000700f5,0x00000020,0x000000dd,
++	0x000000d0,0x000000be,0x000000dc,0x000000d2,0x000300f7,0x000000df,0x00000000,0x000400fa,
++	0x000000dd,0x000000de,0x000000df,0x000200f8,0x000000de,0x0004003d,0x00000013,0x000000e0,
++	0x000000c0,0x0003003e,0x00000038,0x000000e0,0x000200f9,0x000000df,0x000200f8,0x000000df,
++	0x000200f9,0x000000bf,0x000200f8,0x000000bf,0x0004003d,0x000000e1,0x000000e4,0x000000e3,
++	0x0004003d,0x00000007,0x000000e5,0x00000009,0x0004003d,0x00000013,0x000000e6,0x00000038,
++	0x00050051,0x00000012,0x000000e7,0x000000e6,0x00000000,0x00050051,0x00000012,0x000000e8,
++	0x000000e6,0x00000001,0x00070050,0x00000016,0x000000e9,0x000000e7,0x000000e8,0x00000039,
++	0x00000039,0x00040063,0x000000e4,0x000000e5,0x000000e9,0x000100fd,0x00010038
+ };

@@ -120,6 +120,7 @@ void     cellGcmHleSetIsrThread(int on);
 }
 
 void kz_pc_options_register(void);   /* pcoptions.cpp: mouse look, PC options */
+#include "route.h"
 extern "C" void spu_begin_image(int image_id);
 extern "C" void kzmp3_spu_recomp_register(void) __attribute__((weak));   /* <SPU_DIR>/flashmp3, lift.sh */
 
@@ -158,6 +159,7 @@ extern "C" void ps3_load_prx_modules(void)
      * returns 0), reached through its pointer at 0x00549BC0. */
     if (getenv("KZ_DEBUG_MENU")) ppu_register_function(0x002AE1C4, not_submission);
     kz_pc_options_register();
+    kz_route_register();   /* route.cpp: KZ_ROUTE_REC / KZ_ROUTE_PLAY */
     /* MultiStream (SPU image 3) decodes the music with the firmware's MP3
      * decoder, flashMP3.pic, which the game reads from dev_flash and loads at
      * LS 0x1A880 (its entry, 0x74A0 in the file, is called at LS 0x21D20).

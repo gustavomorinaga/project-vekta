@@ -22,6 +22,13 @@ step that was stopped or failed is where the next run starts. The log is in `wor
 as `~`). Without questions: `tools/release/firstrun.py --eboot PATH ...` (`--help`, `--dry-run` shows the plan).
 It is `tools/release/firstrun.py`, after Project Pyrrhus's and Project Helghast's first-run builder.
 
+It also asks once whether to download NVIDIA DLSS: yes means you accept NVIDIA's DLSS SDK licence
+(<https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt>; the question shows the text it downloaded), and the build
+then fetches the SDK's files from NVIDIA's repository, checks them against the pins in `tools/release/toolchain.json`,
+builds DLSS in and puts `libnvidia-ngx-dlss.so.310.9.16` beside `work/build/KZ1HD`. No means no download and no DLSS
+(the PC menu shows it as "(not built)"); AMD FSR 3.1 is built either way. The answer is kept in `work/dlss-choice`;
+to change it, run `tools/install.sh --dlss accept` or `--dlss decline`.
+
 ## 1. Get the code
 
 ```sh
@@ -94,6 +101,12 @@ tools/build.sh               # work/build/KZ1HD
 - These scripts run `tools/kzbuild.py patch`, `lift`, `vfs` and `build`: the steps are Python, so the same code will
   build on Windows (`tools/kzbuild.py env` prints the paths they use).
 - `KZ_MARCH` sets the CPU target (default `x86-64-v3`, AVX2; `x86-64-v4` for AVX-512 machines).
+- Temporal upscalers: AMD FSR 3.1 is built from `third_party/fidelityfx-fsr3` (`-DKZ_FSR3=OFF` leaves it out), in
+  the Linux build and the Windows exe. `KZ_DLSS_SDK=<the NVIDIA DLSS SDK folder>` builds DLSS in and copies its
+  runtime library beside the program (`tools/build.sh` and `tools/build-win.sh` alike);
+  `tools/release/fetch_toolchain.py --set dlss-sdk --accept-license [--os windows]` fetches that folder into
+  `work/toolchain-cache/dlss-sdk` (the option says you accept NVIDIA's licence). See
+  [dev/upscalers.md](dev/upscalers.md).
 - After changing `port/patches/`, run `tools/ps3recomp-patched.sh` and `tools/lift.sh` again (the lifters are
   patched too), then `tools/build.sh`.
 - Optional, about 15 minutes: `tools/pgo.sh` plays an instrumented build into Level 1 for ten minutes and rebuilds
@@ -135,6 +148,13 @@ maintainer tested; the movies need them); `vulkan-1.dll` comes with the GPU driv
 first run took two minutes, and the exe held 144 fps under Wine and Proton (`tools/wine-test.sh`). `KZ_WIN_TOOLCHAIN=system` builds the earlier way,
 with the system clang and the distribution's MinGW-w64 packages (`port/cmake/clang-mingw.cmake`). clang's native TLS
 avoids the cost of the thread-locals MinGW's GCC emulates.
+
+The exe has AMD FSR 3.1 (from `third_party/fidelityfx-fsr3`, built with the same compiler). With
+`KZ_DLSS_SDK=<the NVIDIA DLSS SDK folder>` it also has DLSS, and `nvngx_dlss.dll` goes beside it: NVIDIA ships the
+NGX loader (`lib/Windows_x86_64/x64/nvsdk_ngx_s.lib`) for MSVC only, and ps3recomp patch 2052 links it with MinGW.
+`tools/release/fetch_toolchain.py --set dlss-sdk --os windows --accept-license` fetches the Windows files into
+`work/toolchain-cache/dlss-sdk` (the option says you accept NVIDIA's licence). NVIDIA's files stay on your machine:
+no release carries them ([dev/upscalers.md](dev/upscalers.md), "Distribution").
 
 - **Movies on Windows:** the FFmpeg 9.x DLLs (`avcodec-63`, `avformat-63`, `avutil-61`, `swresample-7`,
   `swscale-10`) must be beside the exe; `tools/build-win.sh` copies the pinned ones there (with
@@ -185,6 +205,14 @@ button; the build's first step checks the files' SHA-256, and when it stops the 
 launcher (`Project Vekta.exe`) builds on its first start when that did not happen, then starts the game. A silent
 install takes the files as switches: `/GAME=<dir> /EBOOT=<file> /PSARC=<file> /LIBSRE=<file> [/DEVFLASH=<dir>]`.
 
+A page after those offers NVIDIA DLSS, with a box that is unticked by default: "Download NVIDIA DLSS (NVIDIA RTX
+GPUs). I accept the NVIDIA DLSS SDK license", and the licence's link
+(<https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt>). Ticked, the build downloads the SDK's files from
+NVIDIA's repository, checks them against their pins, builds DLSS in and puts `nvngx_dlss.dll` beside `KZ1HD.exe`;
+unticked, nothing of NVIDIA's is downloaded and the build has AMD FSR 3.1 only. The answer goes to `firstrun.py
+--dlss accept|decline` and `work\dlss-choice`, and an upgrade offers it again as it was. To change it, run the setup
+again (or `run.cmd --dlss accept` / `--dlss decline` in the folder); a silent install takes `/DLSS=accept`.
+
 Saves and settings (`kz1hd_pc.ini`, `kz1hd_keys.ini`, `gamedata/`) go to `%APPDATA%\Project Vekta`: the launcher runs
 the game from there. With the setup's "Portable" task (`/MERGETASKS=portable`) they stay in the install folder's
 `work\vfs`, as in the zip or a Git clone. `vekta-install.ini` in the install folder records the choice. Saves an
@@ -211,8 +239,8 @@ no longer matches the script).
 The folder keeps this repository's layout: the port's sources, the patched ps3recomp in `work/ps3recomp-patched` (so
 the player needs no Git) and the toolchain in `work/toolchain-cache` (llvm-mingw, CMake, Ninja, the embeddable
 Python, SDL2, zlib, glslang, the Vulkan headers and FFmpeg). On Windows, `run.cmd` asks where your files are, checks
-them and builds `work/build-win/KZ1HD.exe` there (`tools/release/firstrun.py`; glslang and zlib are compiled on the
-first run), and `play.cmd` starts the game (`tools/release/launch.py`). Without the right to make symbolic links,
+them, asks once about NVIDIA DLSS as `tools/install.sh` does, and builds `work/build-win/KZ1HD.exe` there
+(`tools/release/firstrun.py`; glslang and zlib are compiled on the first run), and `play.cmd` starts the game (`tools/release/launch.py`). Without the right to make symbolic links,
 the game folder gets copies of the EBOOT and the archive. The payload's scrub refuses game files, home paths and
 secrets; `manifest.json` lists every file with its SHA-256. macOS is not supported.
 

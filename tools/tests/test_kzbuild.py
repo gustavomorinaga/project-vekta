@@ -158,9 +158,15 @@ with tempfile.TemporaryDirectory() as tmp:
     (files / "dev" / "sys" / "external").mkdir(parents=True)
     (files / "dev" / "sys" / "external" / "flashMP3.pic").write_text("mp3")
     (root / "work" / "argv.log").unlink()
+    # chunks an earlier lift left (another version's chunk count): the build globs these folders, so they go
+    for d in ("lift", "fw"):
+        (root / "work" / d / "gen").mkdir(parents=True, exist_ok=True)
+        (root / "work" / d / "gen" / "old_recomp_099.cpp").write_text("int stale;\n")
     kzbuild.cmd_lift(e, None)
     names = [json.loads(line)[0] for line in (root / "work" / "argv.log").read_text().splitlines()]
     check("rebase_spu_elf.py" in names and "spu_lifter.py" in names, "with flashMP3.pic the MP3 decoder is lifted")
+    check(not any((root / "work" / d / "gen" / "old_recomp_099.cpp").exists() for d in ("lift", "fw")),
+          "a lift leaves no source of an earlier lift in work/lift/gen or work/fw/gen")
 
     # vfs
     game = files / "NPUA80856"

@@ -1,0 +1,143 @@
+From 647533c4fb72a2b41eca432d166f1e05a93c642e Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 31 Oct 2026 06:08:45 -0300
+Subject: [PATCH] NV0039_STATS: what a title's post chain did to each
+ frame copied through NV0039 (block-mean change, Killzone HD's motion field)
+
+---
+ libs/video/cellGcmSys.c | 105 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 105 insertions(+)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 22411b8b..7263d002 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -27,6 +27,7 @@ static u32 s_gcm_context_ea = 0;
+ #include <string.h>
+ #include <stdlib.h>
+ #include <stdint.h>
++#include <math.h>
+ #include "ps3emu/log_first.h"
+ 
+ #ifdef _WIN32
+@@ -1207,6 +1208,108 @@ static void nv0039_engine_sync(int to_guest, u32 loc, u32 off, u32 pitch, u32 le
+     else          rsx_draw_engine_guest_wrote(loc, off, sp, sp / 4u, rows);
+ }
+ 
++/* NV0039_STATS=<dir>: what the post chain did to each frame, told apart from
++ * edge antialiasing. The raw frame copied out to the SPUs is kept per buffer;
++ * when that buffer is copied back, it is compared with what the chain left in
++ * it: the mean signed change per channel and the largest change of a 16x16
++ * block's mean (MLAA moves pixels along edges and barely changes block means;
++ * glow, colour grading or blur do). A line goes to stderr when a block mean
++ * moves by more than 3, and both frames to <dir> (out_/in_ PPM, at most one
++ * pair per 2 s) when by more than 8. Called before the copy (the raw side is
++ * read after it, see nv0039_stats_out). */
++static struct { u32 ea[2]; u8* raw[2]; double last_dump, last_line; unsigned frames, dumps, motion, motion_px; double sum_max, peak; } s_nvst;
++
++static double nvst_now(void)
++{
++    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
++    return ts.tv_sec + ts.tv_nsec * 1e-9;
++}
++
++static void nvst_ppm(const char* path, const u8* p, int argb)
++{
++    FILE* f = fopen(path, "wb");
++    if (!f) return;
++    fprintf(f, "P6 1280 720 255\n");
++    for (u32 i = 0; i < 1280u * 720u; i++) fwrite(p + i * 4u + (argb ? 1 : 0), 1, 3, f);
++    fclose(f);
++}
++
++static const char* nvst_dir(void)
++{
++    static const char* d = (const char*)-1;
++    if (d == (const char*)-1) d = getenv("NV0039_STATS");
++    return d;
++}
++
++static void nv0039_stats_out(u32 ea)
++{
++    extern u8* vm_base;
++    if (!nvst_dir()) return;
++    int k = s_nvst.ea[0] == ea ? 0 : s_nvst.ea[1] == ea ? 1 : !s_nvst.ea[0] ? 0 : 1;
++    s_nvst.ea[k] = ea;
++    if (!s_nvst.raw[k]) s_nvst.raw[k] = (u8*)malloc(1280u * 720u * 4u);
++    if (s_nvst.raw[k]) memcpy(s_nvst.raw[k], vm_base + ea, 1280u * 720u * 4u);
++}
++
++static void nv0039_stats(u32 loc_in, u32 ea_in, u32 loc_out, u32 ea_out)
++{
++    extern u8* vm_base;
++    (void)ea_out;
++    const char* d = nvst_dir();
++    if (!d || loc_in != RSX_LOCATION_MAIN || loc_out == RSX_LOCATION_MAIN) return;
++    const int k = s_nvst.ea[0] == ea_in ? 0 : s_nvst.ea[1] == ea_in ? 1 : -1;
++    if (k < 0 || !s_nvst.raw[k]) return;
++    const u8* a = s_nvst.raw[k]; const u8* b = vm_base + ea_in;
++    double sum[3] = { 0, 0, 0 }, bmax = 0; unsigned big = 0;
++    for (u32 by = 0; by < 720u; by += 16u)
++        for (u32 bx = 0; bx < 1280u; bx += 16u) {
++            int s[3] = { 0, 0, 0 };
++            for (u32 y = by; y < by + 16u; y++)
++                for (u32 x = bx; x < bx + 16u; x++) {
++                    const u32 o = (y * 1280u + x) * 4u;
++                    for (int c = 0; c < 3; c++) s[c] += (int)b[o + 1 + c] - (int)a[o + 1 + c];
++                }
++            for (int c = 0; c < 3; c++) {
++                sum[c] += s[c];
++                const double m = fabs(s[c] / 256.0);
++                if (m > bmax) bmax = m;
++                if (m > 3.0) big++;
++            }
++        }
++    /* Killzone HD's motion field (640x360 at IO 0xF1000, neutral = 127,127):
++     * pixels away from neutral mean the radial motion blur is on. */
++    { const u32 mea = cellGcmResolveLocated(0, 0xF1000u);
++      unsigned moved = 0;
++      if (mea) for (u32 i = 0; i < 640u * 360u; i++) {
++          const u8* q = vm_base + mea + i * 4u;
++          if (abs((int)q[1] - 127) > 2 || abs((int)q[2] - 127) > 2) moved++; }
++      if (moved > s_nvst.motion) s_nvst.motion = moved;
++      /* NV0039_STATS_GO=<path>: created once the field moves over a third of
++       * its pixels (to start a capture, KZ_JM_CAPTURE's go file, mid-effect). */
++      { static const char* go = (const char*)-1; if (go == (const char*)-1) go = getenv("NV0039_STATS_GO");
++        static int done; if (go && !done && moved > 640u * 360u / 3u) { FILE* g = fopen(go, "wb"); if (g) fclose(g); done = 1;
++            fprintf(stderr, "[NV0039-stats] motion field moved (%u px): %s created\n", moved, go); } }
++      if (mea) s_nvst.motion_px = *(const u32*)(vm_base + mea + (180u * 640u + 320u) * 4u); }
++    const double t = nvst_now();
++    s_nvst.frames++; s_nvst.sum_max += bmax; if (bmax > s_nvst.peak) s_nvst.peak = bmax;
++    if (bmax > 3.0 && t - s_nvst.last_line > 0.5) {
++        s_nvst.last_line = t;
++        fprintf(stderr, "[NV0039-stats] t=%.1f block max %.1f, %u block channels > 3, mean change R %+.2f G %+.2f B %+.2f\n",
++                t, bmax, big, sum[0] / 921600.0, sum[1] / 921600.0, sum[2] / 921600.0);
++    }
++    if (bmax > 8.0 && t - s_nvst.last_dump > 2.0 && s_nvst.dumps < 300) {
++        char path[1024];
++        s_nvst.last_dump = t;
++        snprintf(path, sizeof path, "%s/%04u_out.ppm", d, s_nvst.dumps); nvst_ppm(path, a, 1);
++        snprintf(path, sizeof path, "%s/%04u_in.ppm", d, s_nvst.dumps); nvst_ppm(path, b, 1);
++        s_nvst.dumps++;
++    }
++    { static double last; if (t - last > 10.0) { last = t;
++        fprintf(stderr, "[NV0039-stats] summary t=%.1f frames %u, mean block max %.2f, peak %.1f, motion field moved px max %u (centre %08X)\n",
++                t, s_nvst.frames, s_nvst.frames ? s_nvst.sum_max / s_nvst.frames : 0.0, s_nvst.peak, s_nvst.motion, s_nvst.motion_px);
++        s_nvst.motion = 0; s_nvst.frames = 0; s_nvst.sum_max = 0; s_nvst.peak = 0; } }
++}
++
+ static void nv0039_copy(const u32* r)
+ {
+     const u32 off_in = r[0], off_out = r[1], len = r[4], lines = r[5], fmt = r[6];
+@@ -1235,9 +1338,11 @@ static void nv0039_copy(const u32* r)
+         fprintf(stderr, "[NV0039] %u:0x%08X -> %u:0x%08X, %u x %u bytes (pitch %u -> %u)\n",
+                 loc_in, off_in, loc_out, off_out, lines, len, pitch_in, pitch_out); }
+     nv0039_engine_sync(1, loc_in, off_in, pitch_in, len, lines);
++    if (len == 1280u * 720u * 4u && lines == 1u) nv0039_stats(loc_in, ea_in, loc_out, ea_out);
+     for (u32 i = 0; i < lines; i++)
+         gcm_row_copy(ea_out + i * pitch_out, ea_in + i * pitch_in, len);
+     nv0039_engine_sync(0, loc_out, off_out, pitch_out, len, lines);
++    if (len == 1280u * 720u * 4u && lines == 1u && loc_out == RSX_LOCATION_MAIN) nv0039_stats_out(ea_out);
+     /* NV0039_DUMP=<dir>: while <dir>/go exists, the main-memory side of the next
+      * 1280x720 copies as PPM (seq_dir_offset.ppm): the frame going to the SPUs
+      * ("out") and the one coming back ("in"), so the post chain's effect on one

@@ -49,7 +49,7 @@
 <main class="main">
 <article id="status" class="news">
 <h2>Status: Partly playable</h2>
-<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 23 PC features</p>
+<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 24 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><span class="st st-ok">Works</span></li>
@@ -151,8 +151,8 @@
 </tbody></table></div>
 </details>
 <h3>What the port adds</h3>
-<p>23 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
-<details><summary>All 23 PC features</summary>
+<p>24 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
+<details><summary>All 24 PC features</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>Default</th><th>Where it is set</th></tr></thead>
 <tbody>
@@ -164,6 +164,7 @@
 <tr><td>Frame-rate limit 30, 60, 144 (the game clock follows)</td><td>60</td><td><code>fps_limit</code>; 30 is the PS3&#x27;s</td></tr>
 <tr><td>AMD FSR 1 upscaling and RCAS sharpening</td><td>bilinear</td><td><code>upscaler</code>, <code>sharpness</code></td></tr>
 <tr><td>Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td>the game&#x27;s</td><td><code>anisotropic</code></td></tr>
+<tr><td>Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer&#x27;s private build) DLSS Quality 135.7 fps</td></tr>
 <tr><td>Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code></td></tr>
 <tr><td>Field of view, 40 to 90 degrees vertical (the game&#x27;s is 56.25)</td><td>the game&#x27;s</td><td><code>fov</code>; zoom and the first-person weapon keep the game&#x27;s framing</td></tr>
 <tr><td>HUD size and position</td><td>the game&#x27;s</td><td><code>hud_size</code>, <code>hud_position</code></td></tr>
@@ -198,13 +199,21 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Added</span>Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution and DLAA, chosen on the PC page (&quot;Temporal Upscaler (on restart)&quot;) or with <code>PS3RECOMP_TEMPORAL</code>, with the camera jittered and per-object motion vectors; the HUD is drawn at the output resolution (patches 2045 to 2052, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/upscalers.md">docs/dev/upscalers.md</a>). FSR 3.1 is in every build, from the FidelityFX SDK&#x27;s files vendored in <code>third_party/fidelityfx-fsr3/</code>. DLSS is downloaded from NVIDIA on your machine only if you accept NVIDIA&#x27;s DLSS SDK licence: when <code>tools/install.sh</code> or <code>run.cmd</code> asks (<code>--dlss accept|decline</code>), or with the Windows setup&#x27;s &quot;Download NVIDIA DLSS&quot; box, unticked by default; no release carries NVIDIA&#x27;s files.</li>
+<li><span class="sec">Added</span>The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</li>
+<li><span class="sec">Added</span>Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch Pro and keyboard on the Controls screen, by the pad last touched (patch 4013).</li>
+<li><span class="sec">Added</span>The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</li>
+<li><span class="sec">Added</span>Developer tools: Tracy zones (patch 3029), frame-time and per-thread CPU measurement (<code>perf.cpp</code>, <code>tools/perf/</code>), recorded input routes replayed with the sound on the route&#x27;s clock (<code>route.cpp</code>, patch 3028), opt-in guest write tracking (patch 3031), and the motion blur harness (<code>tools/mb_harness/</code>).</li>
 <li><span class="sec">Added</span>The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive and libsre, and <code>dev_flash</code> for the music), checks their kind and size before copying anything, and builds the port in the wizard with a progress bar and a Stop button; when the build stops it says why and opens the log. Silent installs take the files as switches (<code>/GAME=</code> and the others). After Project Helghast&#x27;s and Project Pyrrhus&#x27;s setup programs (MIT). <code>release.yml</code> installs it on the Windows runner with stand-ins for the files (<code>tools/release/fake_game_files.py</code>) and checks that the build runs and stops at the check.</li>
 <li><span class="sec">Added</span>Start menu entries &quot;Verify and rebuild&quot; (checks the installed files, then your game files, and rebuilds what changed), &quot;Open saves folder&quot; and &quot;Make a support package&quot; (a zip of the logs and settings for a bug report, without your user name, saves or game files). After Project Helghast&#x27;s (MIT).</li>
 <li><span class="sec">Added</span>The setup refuses install folders the build cannot use (<code>[ ] ;</code> in the path, OneDrive, system and profile folders), also for silent installs. Installing over an earlier version replaces the payload&#x27;s folders whole, so nothing stale is left, and keeps the build, the game folder and the saves. The uninstaller asks whether to delete the saves and settings (default No).</li>
 <li><span class="sec">Added</span>The setup program is dark, with side and header images for every screen scale and its own setup and uninstall icons (<code>tools/release/installer_art.py</code>).</li>
 <li><span class="sec">Added</span>The Linux release folder (<code>tools/release/assemble_payload.py --platform linux --tar</code>): the port&#x27;s sources, the patched ps3recomp and a pinned toolchain (Zig 0.17.0 as the C and C++ compiler, CMake, Ninja, SDL2, zlib, glslang, the Vulkan headers and FFmpeg 9&#x27;s libraries), so a player needs only the usual desktop libraries (Python 3.10 or newer, glibc 2.31 or newer, SDL2, a Vulkan driver). <code>run.sh</code> asks for your files and builds there, <code>play.sh</code> starts the game. The binaries target glibc 2.31 (<code>port/cmake/zig-linux.cmake</code>, <code>tools/release/zig/</code>, <code>tools/release/build_linux_deps.py</code>); <code>KZ_LINUX_TOOLCHAIN=pinned</code> selects that toolchain in a source checkout too.</li>
 <li><span class="sec">Added</span>Releases after 0.2.0 carry that folder as <code>project-vekta-X.Y.Z-linux.tar.gz</code>: <code>.github/workflows/release.yml</code> builds it and checks it in a Debian 11 container with no compiler (<code>tools/release/check_linux_folder.sh</code>).</li>
+<li><span class="sec">Changed</span>The lifted PPU functions take their context as <code>__restrict</code> (patch 3030).</li>
 <li><span class="sec">Changed</span>A copy the setup program installed keeps its saves and settings in <code>%APPDATA%\Project Vekta</code>, so a new install or an uninstall leaves them alone; the setup&#x27;s &quot;Portable&quot; option keeps them in the install folder instead. Saves an earlier version left in the install folder move there on the next start.</li>
+<li><span class="sec">Fixed</span>Windows: the launcher stopped the game the moment it started whenever the last session&#x27;s log (<code>work\play.log</code>) ended with its window being closed: it read that old log before the new game had emptied it. An install over an earlier version kept that log, so the game never opened until the old version was uninstalled; any start after a session closed by its window could hit it too. The launcher now empties the log before it starts the game.</li>
+<li><span class="sec">Fixed</span>Installing over an earlier version: on a tester&#x27;s Windows machine the game started and closed again at once, with nothing on screen, until the old version was uninstalled (its log went with the uninstall). The lift now starts from empty output folders, so no source an earlier version lifted is compiled in; the build now configures CMake afresh when the build folder was made from another version or patch set (<code>firstrun.py</code>); the launcher rebuilds before playing when the build there is not the one the installed files make (another version, patch set or DLSS choice, as when the setup&#x27;s build was skipped or stopped); and a game that stops within 20 seconds of starting gets a message with the end of its log instead of silence.</li>
 <li><span class="sec">Fixed</span>The Linux folder&#x27;s build no longer stops at the compile step with &quot;unknown CPU: &#x27;x86&#x27;&quot;: its Zig wrappers spell the port&#x27;s <code>-march=x86-64-v3</code> the way Zig names CPUs (<code>x86_64_v3</code>).</li>
 <li><span class="sec">Fixed</span>The Linux folder&#x27;s link no longer fails on <code>mallinfo2</code> (glibc 2.33; the folder targets 2.31): the stats line&#x27;s heap count looks it up at run time and falls back to <code>mallinfo</code>.</li>
 <li><span class="sec">Fixed</span>The limit of flips the game may queue ahead of the screen (<code>PS3_GCM_MAX_QUEUED_FLIPS</code>, default 2) no longer drifts: each flip done at once, instead of queued in the command buffer, loosened it by one for good (patch 2040). The <code>queued</code> value in the <code>[kz-stats]</code> lines stays at the real count.</li>
@@ -248,8 +257,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 104 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 104 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 122 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 122 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -258,14 +267,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</span></li>
+<li><time>next</time><span><b>Unreleased</b> Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</span></li>
+<li><time>next</time><span><b>Unreleased</b> Developer tools: Tracy zones (patch 3029), frame-time and per-thread CPU measurement (perf.cpp, tools/perf/), recorded...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive and...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Start menu entries &quot;Verify and rebuild&quot; (checks the installed files, then your game files, and rebuilds what changed)...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The setup refuses install folders the build cannot use ([ ] ; in the path, OneDrive, system and profile folders), also...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The setup program is dark, with side and header images for every screen scale and its own setup and uninstall icons...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The Linux release folder (tools/release/assemble_payload.py --platform linux --tar): the port&#x27;s sources, the patched...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Releases after 0.2.0 carry that folder as project-vekta-X.Y.Z-linux.tar.gz: .github/workflows/release.yml builds it...</span></li>
-<li><time>next</time><span><b>Unreleased</b> A copy the setup program installed keeps its saves and settings in %APPDATA%\Project Vekta, so a new install or an...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The Linux folder&#x27;s build no longer stops at the compile step with &quot;unknown CPU: &#x27;x86&#x27;&quot;: its Zig wrappers spell the...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -351,7 +360,7 @@ tools/play.sh</pre>
 </div>
 <div id="legal" class="legal">
 <p>Killzone and Killzone HD are trademarks of Sony Interactive Entertainment. This project is not affiliated with or endorsed by Sony Interactive Entertainment or Guerrilla Games; the names are used only to say which game the port runs. "Vekta" is the name of the game's own colony world. No game content is distributed: no disc or PSN files, no decrypted or translated game code, no assets, no firmware and no keys. Players supply their own copy of the game; the game's code is translated and compiled on the player's own machine from their own files.</p>
-<p>The port's own code, tools and documentation are <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/LICENSE">MIT</a>. Third-party components and credits: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/NOTICE.md">NOTICE.md</a>.</p>
+<p>The port's own code, tools and documentation are <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/LICENSE">MIT</a>. Third-party components and credits: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/NOTICE.md">NOTICE.md</a>. Temporal upscaling: AMD FidelityFX FSR 3.1 (MIT, built in) and NVIDIA DLSS (NVIDIA's, under its own licence; downloaded from NVIDIA on the player's machine only when they accept it, and never distributed here). AMD, FidelityFX, NVIDIA and DLSS are trademarks of their owners.</p>
 <ul class="marks" aria-label="Platform"><li><b>Linux</b>x64 native</li><li><b>Windows</b>x64</li><li><b>Vulkan</b>renderer</li><li><b>Proton</b>tested</li><li><b>MIT</b>licence</li><li><b>No game</b>files shipped</li></ul>
 <p class="credit">Project Vekta by gustavomorinaga</p></div></div></footer>
 </body>

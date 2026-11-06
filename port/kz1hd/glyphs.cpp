@@ -15,20 +15,25 @@
  *     (FUN_002399C0 resolves the function to a button name), so they follow too.
  * and Pause > Controls draws the pad itself from menu/pause/textures/controller_image
  * (512x512, seven levels): a DualShock 3 outline whose labels the screen places
- * around it (Move and Look under the sticks). For an Xbox or Nintendo pad its
- * face buttons, L and R are relettered in place; for the keyboard it becomes a
- * keyboard (W A S D where the left stick was) and a mouse under Look.
+ * around it (Move and Look under the sticks). Other pads get our own drawings
+ * in its style (pads/, made by tools/glyphs/controller_art.py): an Xbox pad
+ * (also the 360, generic pads and the Steam Deck), a Switch Pro Controller,
+ * and for the keyboard the left of a keyboard and a mouse, whose keys and
+ * buttons light up as kz1hd_keys.ini binds them (movement in orange).
  *
  * The draw engine hands every texture to rsx_texture_seen_hook as it comes
  * into use. The game's copies are recognised by a hash of their top level and
  * kept (in memory, never on disk), and from then on rewritten with the set for
- * the device the player last touched (pad_active_device): the original for a
- * PlayStation pad, Xbox letters and bumpers for an Xbox or generic pad (8BitDo
- * in X-input), Nintendo's by position for a Switch layout, and keycaps or a
+ * the pad the player last touched (pad_active_style): the original for every
+ * PlayStation pad, Xbox's for an Xbox or generic pad (8BitDo in X-input),
+ * Nintendo's by position for a Switch layout, Steam Deck's, and keys or a
  * mouse for the keyboard -- the first input kz1hd_keys.ini binds to that
- * button. Each replacement glyph is drawn here at four times the size into the
- * box the original glyph covers, filtered down, and DXT5-encoded; blocks no
- * glyph touches keep the game's bytes.
+ * button. The image-map font's replacements are Kenney's Input Prompts (CC0,
+ * glyphs_kenney.inc, made by tools/glyphs/kenney_prep.py) finished like the
+ * game's own buttons, measured from its Cross; the strip and the pad picture
+ * are drawn here. Each replacement glyph is drawn at four times the size into
+ * the box the original glyph covers, filtered down, and DXT5-encoded; blocks
+ * no glyph touches keep the game's bytes.
  *
  * KZ_GLYPHS=0 leaves the textures alone; KZ_GLYPHS_LOG=1 logs what is seen;
  * KZ_GLYPHS_DUMP=<dir> writes each set's top level (raw DXT5) when built.
@@ -46,15 +51,28 @@
 #include <thread>
 #include <vector>
 #include <strings.h>
+#include <zlib.h>
 
 extern "C" {
 extern void (*rsx_texture_seen_hook)(uint8_t* bytes, uint32_t fmt, uint32_t w, uint32_t h, uint32_t span);
 int pad_active_device(void);
+int pad_active_style(void);
 }
 
 namespace {
 
 enum { DEV_KEYBOARD, DEV_XBOX, DEV_PLAYSTATION, DEV_NINTENDO, DEV_COUNT };
+/* The pad itself (cellPad's PAD_STYLE_*): which set of prompts it gets. */
+enum { ST_KEYBOARD, ST_XBOX_ONE, ST_XBOX_360, ST_PS3, ST_PS4, ST_PS5, ST_SWITCH, ST_STEAM, ST_GENERIC, ST_COUNT };
+int family_of(int st)
+{
+    switch (st) {
+    case ST_KEYBOARD: return DEV_KEYBOARD;
+    case ST_PS3: case ST_PS4: case ST_PS5: return DEV_PLAYSTATION;
+    case ST_SWITCH: return DEV_NINTENDO;
+    default: return DEV_XBOX;
+    }
+}
 enum Btn { B_SQUARE, B_CROSS, B_CIRCLE, B_TRIANGLE, B_LEFT, B_RIGHT, B_UP, B_DOWN,
            B_L1, B_L2, B_L3, B_R1, B_R2, B_R3, B_UPDOWN, B_LEFTRIGHT };
 static const char* const kBtnName[] = {
@@ -393,11 +411,220 @@ std::string first_binding(const char* button)
     return out;
 }
 
-/* Draws button `btn` for `dev` into box `b`; false = keep the original. */
-bool draw_button(Canvas& cv, Box b, Btn btn, int dev, bool pale)
+
+/* ---- Kenney's prompts in the game's own finish ------------------------------- */
+
+#include "glyphs_kenney.inc"
+
+const KenneyShape* kenney(const std::string& name)
 {
+    for (const KenneyShape& k : kKenney) if (name == k.name) return &k;
+    return nullptr;
+}
+
+/* A field's distance at (u, v) in field texels, positive inside. */
+float field_at(const uint8_t* f, float u, float v)
+{
+    const int n = kKenneyN;
+    u = std::clamp(u, 0.0f, n - 1.001f); v = std::clamp(v, 0.0f, n - 1.001f);
+    const int x = (int)u, y = (int)v;
+    const float fx = u - x, fy = v - y;
+    auto at = [&](int xx, int yy) { return (float)f[yy * n + xx]; };
+    const float a = at(x, y) + (at(x + 1, y) - at(x, y)) * fx;
+    const float b = at(x, y + 1) + (at(x + 1, y + 1) - at(x, y + 1)) * fx;
+    return (a + (b - a) * fy - 128.0f) / kKenneyPerTexel;
+}
+
+/* How the game finishes its buttons, read from its own Cross (measure_look),
+ * and the colours of its symbols.
+ * Its buttons are a translucent dark body, a soft grey rim around it, a
+ * darker band along the inside of the bottom edge and a faint shadow that
+ * falls a little lower; the symbol is opaque on top. Widths in texels. */
+struct Look {
+    RGBA fill, ring, shade, halo;
+    float ring_t, shade_t, halo_w, halo_dy;
+    RGBA face[4];   /* the game's symbol colours: cross, triangle, square, circle */
+    RGBA letter;    /* its L1/R1 lettering */
+};
+
+/* The Kenney shape fitted into box b (its silhouette's extent, aspect kept)
+ * and finished like the game's buttons; `sym` colours the symbol, `hot` the
+ * highlighted part (a mouse button). */
+void kenney_button(Canvas& cv, Box b, const KenneyShape& k, const Look& lk, RGBA sym, RGBA hot)
+{
+    const int n = kKenneyN;
+    int fx0 = n, fy0 = n, fx1 = -1, fy1 = -1;   /* the silhouette's extent in the field */
+    for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+            if (k.body[y * n + x] >= 128) { fx0 = std::min(fx0, x); fy0 = std::min(fy0, y); fx1 = std::max(fx1, x); fy1 = std::max(fy1, y); }
+    if (fx1 < fx0) return;
+    const float fw = fx1 + 1.0f - fx0, fh = fy1 + 1.0f - fy0;
+    const float scale = std::min(b.w() / fw, b.h() / fh);   /* canvas pixels per field texel */
+    const float ox = b.cx() - (fx0 + fw / 2) * scale, oy = b.cy() - (fy0 + fh / 2) * scale;
+    const float ring = lk.ring_t * S, shade = lk.shade_t * S, halo = lk.halo_w * S, hdy = lk.halo_dy * S / scale;
+    auto cov = [](float d) { return std::clamp(d + 0.5f, 0.0f, 1.0f); };   /* d in canvas pixels */
+    auto mix = [](RGBA a, RGBA c, float t) {
+        return RGBA{ a.r + (c.r - a.r) * t, a.g + (c.g - a.g) * t, a.b + (c.b - a.b) * t, a.a + (c.a - a.a) * t }; };
+    for (int y = 0; y < cv.h; y++)
+        for (int x = 0; x < cv.w; x++) {
+            const float u = (x + 0.5f - ox) / scale - 0.5f, v = (y + 0.5f - oy) / scale - 0.5f;
+            const float db = field_at(k.body, u, v) * scale;
+            RGBA& d = cv.px[(size_t)y * cv.w + x];
+            auto over = [&](RGBA c) {
+                d.r = c.r * c.a + d.r * (1 - c.a); d.g = c.g * c.a + d.g * (1 - c.a);
+                d.b = c.b * c.a + d.b * (1 - c.a); d.a = c.a + d.a * (1 - c.a);
+            };
+            if (halo > 0) {   /* the shadow, from the body moved down */
+                const float dh = field_at(k.body, u, v - hdy) * scale;
+                if (dh > -halo) { RGBA h = lk.halo; h.a *= std::clamp(1 + dh / halo, 0.0f, 1.0f); over(h); }
+            }
+            const float in = cov(db);
+            if (in <= 0) continue;
+            RGBA c = lk.fill;
+            if (shade > 0 && field_at(k.body, u, v + shade / scale) < 0) c = lk.shade;   /* near the bottom edge */
+            if (ring > 0 && db < ring)   /* the rim: strongest halfway in */
+                c = mix(c, lk.ring, std::clamp(1 - std::fabs(db - ring / 2) / (ring / 2), 0.0f, 1.0f));
+            if (k.hot) c = mix(c, hot, cov(field_at(k.hot, u, v) * scale));
+            if (k.sym) c = mix(c, sym, cov(field_at(k.sym, u, v) * scale));
+            c.a *= in;
+            over(c);
+        }
+}
+
+RGBA rgba_of(Px p) { return RGBA{ p.r / 255.0f, p.g / 255.0f, p.b / 255.0f, p.a / 255.0f }; }
+
+/* The most saturated opaque texel in a box (a symbol's colour), or the
+ * brightest if none is coloured. */
+RGBA symbol_colour(const std::vector<Px>& img, int iw, int x0, int y0, int x1, int y1)
+{
+    Px best{0, 0, 0, 0}, bright{0, 0, 0, 0};
+    int bs = -1, bl = -1;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            const Px p = img[(size_t)y * iw + x];
+            if (p.a < 240) continue;
+            const int mx = std::max({p.r, p.g, p.b}), mn = std::min({p.r, p.g, p.b}), l = p.r * 3 + p.g * 6 + p.b;
+            if (mx - mn > bs) { bs = mx - mn; best = p; }
+            if (l > bl) { bl = l; bright = p; }
+        }
+    RGBA c = rgba_of(bs > 40 ? best : bright);
+    c.a = 1;
+    return c;
+}
+
+/* The finish of the game's button whose glyph covers (x0, y0)-(x1, y1):
+ * along its middle row from outside in, the shadow (faint), the rim (lighter
+ * than what follows it) and the body; up its middle column from below, the
+ * band darker than the body; and how far the shadow reaches above and below. */
+void measure_look(Look& lk, const std::vector<Px>& img, int iw, int ih, int x0, int y0, int x1, int y1)
+{
+    const int cy = (y0 + y1) / 2, cx = (x0 + x1) / 2;
+    auto at = [&](int x, int y) { return img[(size_t)std::clamp(y, 0, ih - 1) * iw + std::clamp(x, 0, iw - 1)]; };
+    auto lum = [](Px p) { return (p.r * 3 + p.g * 6 + p.b) / 10; };
+
+    int peak = x0;   /* the box starts where alpha passes 40: in the rim */
+    for (int i = x0; i < std::min(cx, x0 + 6); i++) if (lum(at(i, cy)) > lum(at(peak, cy))) peak = i;
+    int body = peak;   /* where it stops getting darker */
+    while (body + 1 < cx && lum(at(body + 1, cy)) < lum(at(body, cy))) body++;
+    const Px bp = at(body, cy);
+    lk.ring = rgba_of(at(peak, cy));
+    lk.fill = rgba_of(bp);
+    lk.ring_t = lum(at(peak, cy)) > lum(bp) + 8 ? (float)(body - x0) : 0;
+
+    /* the band along the bottom: up the middle, past the rim, what is darker */
+    int yb = y1 - 1;
+    while (yb > cy && (at(cx, yb).a < 160 || lum(at(cx, yb)) > lum(bp) + 6)) yb--;
+    int yt = yb;
+    while (yt > cy && lum(at(cx, yt)) + 6 < lum(bp)) yt--;
+    lk.shade_t = (float)(yb - yt);
+    lk.shade = lk.shade_t > 0 ? rgba_of(at(cx, yb)) : lk.fill;
+
+    /* the shadow: how far faint texels reach out, above and below */
+    auto reach = [&](int y, int dy) { int r = 0; while (r < 8 && at(cx, y + dy * (r + 1)).a > 6) r++; return r; };
+    const int up = reach(y0, -1), down = reach(y1 - 1, 1);
+    lk.halo_w = (up + down) / 2.0f + 0.5f;
+    lk.halo_dy = (down - up) / 2.0f;
+    float ha = 0;
+    for (int r = 1; r <= down; r++) ha = std::max(ha, at(cx, y1 - 1 + r).a / 255.0f);
+    lk.halo = RGBA{0, 0, 0, ha};
+}
+
+/* Kenney's name for a pad button on style `st` ("" = none: the d-pad keeps
+ * the game's arrows). Nintendo's letters go by position: the bottom one is B. */
+std::string kenney_pad(Btn btn, int st)
+{
+    const char* p = st == ST_SWITCH ? "switch_" : st == ST_STEAM ? "deck_" : "xbox_";
+    static const char* const xbox[]  = { "x", "a", "b", "y", "", "", "", "", "lb", "lt", "", "rb", "rt", "", "", "" };
+    static const char* const nin[]   = { "y", "b", "a", "x", "", "", "", "", "l", "zl", "", "r", "zr", "", "", "" };
+    static const char* const steam[] = { "x", "a", "b", "y", "", "", "", "", "l1", "l2", "", "r1", "r2", "", "", "" };
+    if (btn == B_L3) return "xbox_ls";   /* nobody else draws a stick press as letters */
+    if (btn == B_R3) return "xbox_rs";
+    const char* n = (st == ST_SWITCH ? nin : st == ST_STEAM ? steam : xbox)[btn];
+    return *n ? std::string(p) + n : "";
+}
+
+/* Kenney's name for a kz1hd_keys.ini input ("" = none). */
+std::string kenney_key(std::string k)
+{
+    for (auto& ch : k) ch = ch == ' ' ? '_' : (char)std::tolower((unsigned char)ch);
+    static const struct { const char* in; const char* k; } m[] = {
+        {"mouseleft","mouse_left"},{"mouseright","mouse_right"},{"mousemiddle","mouse_scroll"},
+        {"wheelup","mouse_scroll_up"},{"wheeldown","mouse_scroll_down"},{"mouse4","mouse_side"},{"mouse5","mouse_side"},
+        {"left_ctrl","key_ctrl"},{"right_ctrl","key_ctrl"},{"left_shift","key_shift"},{"right_shift","key_shift"},
+        {"left_alt","key_alt"},{"right_alt","key_alt"},{"up","key_arrow_up"},{"down","key_arrow_down"},
+        {"left","key_arrow_left"},{"right","key_arrow_right"},{"pageup","key_page_up"},{"pagedown","key_page_down"},
+        {"`","key_tilde"},{"-","key_minus"},{"=","key_equals"},{",","key_comma"},{".","key_period"},{";","key_semicolon"},
+        {"'","key_apostrophe"},{"/","key_slash_forward"},{"\\","key_slash_back"},{"[","key_bracket_open"},{"]","key_bracket_close"},
+    };
+    for (auto& e : m) if (k == e.in) return e.k;
+    return "key_" + k;
+}
+
+/* Draws button `btn` for pad style `st` into box `b`, in the game's look
+ * `lk`; false = keep the original. */
+bool draw_button(Canvas& cv, Box b, Btn btn, int st, bool pale, const Look* lk)
+{
+    const int dev = family_of(st);
     const RGBA green{0.40f, 0.85f, 0.30f, 1}, red{0.95f, 0.30f, 0.25f, 1},
                blue{0.30f, 0.60f, 1.00f, 1}, yellow{1.00f, 0.82f, 0.25f, 1};
+    if (lk && dev != DEV_KEYBOARD) {
+        if (const KenneyShape* k = kenney(kenney_pad(btn, st))) {
+            /* Xbox's colours, taken from the game's own symbols: A the
+             * triangle's green, B the circle's red, X the cross's blue, Y a
+             * yellow as bright as that green. Everyone else's in the letters'. */
+            RGBA sym = lk->letter;
+            if (dev == DEV_XBOX && st != ST_STEAM) {
+                const RGBA& g = lk->face[1];
+                if (btn == B_CROSS) sym = g;
+                if (btn == B_CIRCLE) sym = lk->face[3];
+                if (btn == B_SQUARE) sym = lk->face[0];
+                if (btn == B_TRIANGLE) { const float v = std::max({g.r, g.g, g.b}); sym = RGBA{v, v * 0.82f, v * 0.25f, 1}; }
+            }
+            kenney_button(cv, b, *k, *lk, sym, lk->letter);
+            return true;
+        }
+    } else if (lk && btn != B_UPDOWN && btn != B_LEFTRIGHT) {
+        static const char* const arrows[] = { "Left", "Right", "Up", "Down" };
+        std::string in = first_binding(kBtnName[btn]);   /* Zoom In is the wheel, not the arrow */
+        if (in.empty() && btn >= B_LEFT && btn <= B_DOWN) in = arrows[btn - B_LEFT];
+        if (const KenneyShape* k = in.empty() ? nullptr : kenney(kenney_key(in))) {
+            kenney_button(cv, b, *k, *lk, lk->letter, kHot);
+            return true;
+        }
+    } else if (lk) {   /* up-down and left-right: two arrow keys */
+        const KenneyShape *k0 = kenney(btn == B_UPDOWN ? "key_arrow_up" : "key_arrow_left"),
+                          *k1 = kenney(btn == B_UPDOWN ? "key_arrow_down" : "key_arrow_right");
+        if (k0 && k1) {
+            if (btn == B_UPDOWN) {
+                kenney_button(cv, Box{ b.x0, b.y0, b.x1, b.cy() }, *k0, *lk, lk->letter, kHot);
+                kenney_button(cv, Box{ b.x0, b.cy(), b.x1, b.y1 }, *k1, *lk, lk->letter, kHot);
+            } else {
+                kenney_button(cv, Box{ b.x0, b.y0, b.cx(), b.y1 }, *k0, *lk, lk->letter, kHot);
+                kenney_button(cv, Box{ b.cx(), b.y0, b.x1, b.y1 }, *k1, *lk, lk->letter, kHot);
+            }
+            return true;
+        }
+    }
     if (dev == DEV_XBOX || dev == DEV_NINTENDO) {
         const bool x = dev == DEV_XBOX;
         switch (btn) {   /* Nintendo by position: the bottom button is B */
@@ -444,113 +671,109 @@ bool draw_button(Canvas& cv, Box b, Btn btn, int dev, bool pale)
 
 /* ---- the pad picture ------------------------------------------------------- */
 
-/* Composites a canvas drawn at S times the texels into img at (ox, oy). */
-void put(std::vector<Px>& img, int iw, int ih, const Canvas& cv, int ox, int oy)
+/* Our drawings in the DualShock picture's style (tools/glyphs/controller_art.py
+ * makes them): 512x512 RGBA, zlib-compressed. The keyboard comes three ways,
+ * every key dim, lit and lit for movement, with a map of the input each
+ * texel belongs to (0 none, else 1 + its line in kbm_regions.txt). */
+const unsigned char kPadXbox[] = {
+#embed "pads/xbox.rgba.z"
+};
+const unsigned char kPadSwitch[] = {
+#embed "pads/switch.rgba.z"
+};
+const unsigned char kKbmDim[] = {
+#embed "pads/kbm_dim.rgba.z"
+};
+const unsigned char kKbmOn[] = {
+#embed "pads/kbm_on.rgba.z"
+};
+const unsigned char kKbmHot[] = {
+#embed "pads/kbm_hot.rgba.z"
+};
+const unsigned char kKbmRegions[] = {
+#embed "pads/kbm_regions.z"
+};
+const char kKbmRegionNames[] = {
+#embed "pads/kbm_regions.txt"
+    , 0
+};
+
+std::vector<uint8_t> inflate_pic(const unsigned char* z, size_t n, size_t size)
 {
-    for (int y = 0; y < cv.h / S; y++)
-        for (int x = 0; x < cv.w / S; x++) {
-            const int tx = ox + x, ty = oy + y;
-            if (tx < 0 || ty < 0 || tx >= iw || ty >= ih) continue;
-            RGBA s{0, 0, 0, 0};
-            for (int yy = 0; yy < S; yy++)
-                for (int xx = 0; xx < S; xx++) {
-                    const RGBA& q = cv.px[(size_t)(y * S + yy) * cv.w + x * S + xx];
-                    s.r += q.r; s.g += q.g; s.b += q.b; s.a += q.a;
-                }
-            const float n = (float)(S * S), a = s.a / n;
-            if (a <= 0) continue;
-            Px& d = img[(size_t)ty * iw + tx];
-            const float da = d.a / 255.0f, oa = a + da * (1 - a);
-            auto ch = [&](float src_pm, uint8_t dst) {
-                return (uint8_t)std::min(255.0f, std::lround((src_pm / n * 255 + dst * da * (1 - a)) / std::max(oa, 1e-4f)) * 1.0f); };
-            d.r = ch(s.r, d.r); d.g = ch(s.g, d.g); d.b = ch(s.b, d.b);
-            d.a = (uint8_t)std::lround(oa * 255);
+    std::vector<uint8_t> out(size);
+    uLongf len = (uLongf)size;
+    if (uncompress(out.data(), &len, z, (uLong)n) != Z_OK || len != size) out.assign(size, 0);
+    return out;
+}
+
+/* How the keyboard picture shows each input: by what kz1hd_keys.ini binds it
+ * to. Movement (the left stick) is lit orange, anything else lit. Names as
+ * kz1hd_keys.ini writes them, folded to the picture's: CTRL for Left Ctrl,
+ * WHEEL for the wheel and its button. */
+enum { K_DIM, K_ON, K_HOT };
+std::string fold_input(std::string k)
+{
+    for (auto& ch : k) ch = (char)std::toupper((unsigned char)ch);
+    for (const char* side : { "LEFT ", "RIGHT " })
+        if (k.rfind(side, 0) == 0 && k.size() > strlen(side) + 1) k = k.substr(strlen(side));
+    if (k == "ESC") k = "ESCAPE";
+    if (k == "CONTROL") k = "CTRL";
+    if (k == "CAPS") k = "CAPSLOCK";
+    if (k == "MOUSEMIDDLE" || k == "WHEELUP" || k == "WHEELDOWN") k = "WHEEL";
+    return k;
+}
+int input_state(const std::string& name)
+{
+    const char* path = getenv("PAD_KEYMAP");
+    FILE* f = fopen(path ? path : "kz1hd_keys.ini", "r");
+    if (!f) return K_DIM;
+    int state = K_DIM;
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        if (char* h = strchr(line, '#')) *h = 0;
+        char* eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = 0;
+        char t[64];
+        if (sscanf(line, " %63s", t) != 1) continue;
+        const bool move = !strncasecmp(t, "LS_", 3);
+        for (char* in = strtok(eq + 1, ","); in; in = strtok(nullptr, ",")) {
+            std::string v = in;
+            const size_t a = v.find_first_not_of(" \t\r\n"), z = v.find_last_not_of(" \t\r\n");
+            if (a == std::string::npos || fold_input(v.substr(a, z - a + 1)) != name) continue;
+            state = std::max(state, move ? (int)K_HOT : (int)K_ON);
         }
-}
-
-/* The picture's own style: light lines on a translucent dark body. */
-const RGBA kLine{0.80f, 0.80f, 0.80f, 1}, kBody{0.05f, 0.055f, 0.05f, 0.33f};
-
-void stroke_rrect(Canvas& cv, float x0, float y0, float x1, float y1, float r, float t, RGBA fill)
-{
-    cv.fill(fill, [&](float x, float y) { return in_rrect(x, y, x0, y0, x1, y1, r); });
-    cv.fill(kLine, [&](float x, float y) {
-        return in_rrect(x, y, x0, y0, x1, y1, r) && !in_rrect(x, y, x0 + t, y0 + t, x1 - t, y1 - t, std::max(r - t, 0.0f)); });
-}
-
-/* A key at (x, y, w, h) texels, with its label; `hot` marks the movement keys. */
-void pic_key(std::vector<Px>& img, int iw, int ih, int x, int y, int w, int h, const std::string& l, bool hot)
-{
-    Canvas cv(w * S, h * S);
-    const float t = 2.0f * S;
-    stroke_rrect(cv, 0, 0, (float)w * S, (float)h * S, 5.0f * S, t, kBody);
-    if (hot) cv.fill(RGBA{kHot.r, kHot.g, kHot.b, 0.35f}, [&](float px, float py) {
-        return in_rrect(px, py, t, t, w * S - t, h * S - t, 3.0f * S); });
-    const float th = std::min(h * S * 0.42f, (w * S * 0.8f) / (l.size() * 6.0f) * 7.0f);
-    text(cv, w * S / 2.0f, h * S / 2.0f, th, l, kLine, true);
-    put(img, iw, ih, cv, x, y);
-}
-
-/* The keyboard: a block of keys around W A S D (centred where the left stick
- * was, over Move) and a mouse at the right stick (over Look). */
-void pic_keyboard(std::vector<Px>& img, int iw, int ih)
-{
-    std::fill(img.begin(), img.end(), Px{0, 0, 0, 0});
-    const int k = 34, g = 4, x0 = 40, y0 = 124;
-    {   /* the keyboard's outline */
-        Canvas cv(168 * S, 176 * S);
-        stroke_rrect(cv, 0, 0, 168.0f * S, 176.0f * S, 14.0f * S, 2.5f * S, kBody);
-        put(img, iw, ih, cv, x0 - 14, y0 - 14);
     }
-    const char* rows[3][3] = { { "Q", "W", "E" }, { "A", "S", "D" }, { "Z", "X", "C" } };
-    for (int r = 0; r < 3; r++)
-        for (int c = 0; c < 3; c++) {
-            const std::string l = rows[r][c];
-            const bool hot = l == "W" || l == "A" || l == "S" || l == "D";
-            pic_key(img, iw, ih, x0 + 14 + c * (k + g) + r * 7, y0 + r * (k + g), k, k, l, hot);
-        }
-    pic_key(img, iw, ih, x0, y0 + 3 * (k + g), 2 * k, k, "SHIFT", false);
-    pic_key(img, iw, ih, x0 + 2 * k + g, y0 + 3 * (k + g), k + 22, k, "CTRL", false);
-    {   /* the mouse */
-        const int w = 86, h = 134;
-        Canvas cv(w * S, h * S);
-        const float t = 2.5f * S, W = (float)w * S, H = (float)h * S, r = W * 0.47f, split = H * 0.42f;
-        stroke_rrect(cv, 0, 0, W, H, r, t, kBody);
-        cv.fill(kLine, [&](float x, float y) { return std::fabs(x - W / 2) < t / 2 && y < split && in_rrect(x, y, 0, 0, W, H, r); });
-        cv.fill(kLine, [&](float x, float y) { return std::fabs(y - split) < t / 2 && in_rrect(x, y, 0, 0, W, H, r); });
-        cv.fill(kLine, [&](float x, float y) {
-            return in_rrect(x, y, W / 2 - W * 0.09f, H * 0.12f, W / 2 + W * 0.09f, H * 0.30f, W * 0.08f) &&
-                   !in_rrect(x, y, W / 2 - W * 0.09f + t, H * 0.12f + t, W / 2 + W * 0.09f - t, H * 0.30f - t, W * 0.04f); });
-        put(img, iw, ih, cv, 262 - w / 2, 212 - h / 2);
-    }
+    fclose(f);
+    return state;
 }
 
-/* An Xbox or Nintendo pad over the DualShock outline: the four face buttons
- * (rings at 11 texels around the centres below) and the L/R marks relettered. */
-void pic_pad(std::vector<Px>& img, int iw, int ih, int dev)
+/* The picture for pad style `st`: Switch's, the keyboard's composed from the
+ * bindings, or Xbox's for every other pad (the 360, generic pads, the Steam
+ * Deck, which plays as one). */
+void pic_for(std::vector<Px>& img, int st)
 {
-    const bool x = dev == DEV_XBOX;
-    const RGBA green{0.40f, 0.85f, 0.30f, 1}, red{0.95f, 0.30f, 0.25f, 1},
-               blue{0.30f, 0.60f, 1.00f, 1}, yellow{1.00f, 0.82f, 0.25f, 1};
-    const Px fill{13, 14, 13, 85};   /* the body's own texels */
-    struct { int cx, cy; const char* l; RGBA c; } faces[4] = {
-        { 298, 107, x ? "Y" : "X", x ? yellow : kLine }, { 325, 139, x ? "B" : "A", x ? red : kLine },
-        { 296, 172, x ? "A" : "B", x ? green : kLine },  { 269, 139, x ? "X" : "Y", x ? blue : kLine } };
-    for (auto& f : faces) {
-        for (int y = f.cy - 9; y <= f.cy + 9; y++)
-            for (int xx = f.cx - 9; xx <= f.cx + 9; xx++)
-                if (std::hypot(xx + 0.5f - f.cx, y + 0.5f - f.cy) <= 8.6f) img[(size_t)y * iw + xx] = fill;
-        Canvas cv(20 * S, 20 * S);
-        text(cv, 10.0f * S, 10.0f * S, 11.0f * S, f.l, f.c, true);
-        put(img, iw, ih, cv, f.cx - 10, f.cy - 10);
+    const size_t n = (size_t)512 * 512;
+    if (img.size() != n) return;
+    if (st != ST_KEYBOARD) {
+        const bool sw = st == ST_SWITCH;
+        const std::vector<uint8_t> p = sw ? inflate_pic(kPadSwitch, sizeof kPadSwitch, n * 4) : inflate_pic(kPadXbox, sizeof kPadXbox, n * 4);
+        memcpy(img.data(), p.data(), n * 4);
+        return;
     }
-    struct { int cx, cy; const char* l; } marks[2] = { { 83, 61, x ? "LB" : "L" }, { 300, 61, x ? "RB" : "R" } };
-    for (auto& m : marks) {
-        for (int y = m.cy - 6; y <= m.cy + 6; y++)
-            for (int xx = m.cx - 9; xx <= m.cx + 9; xx++) img[(size_t)y * iw + xx] = fill;
-        Canvas cv(24 * S, 14 * S);
-        text(cv, 12.0f * S, 7.0f * S, 9.0f * S, m.l, kLine, true);
-        put(img, iw, ih, cv, m.cx - 12, m.cy - 7);
+    const std::vector<uint8_t> v[3] = { inflate_pic(kKbmDim, sizeof kKbmDim, n * 4), inflate_pic(kKbmOn, sizeof kKbmOn, n * 4),
+                                        inflate_pic(kKbmHot, sizeof kKbmHot, n * 4) };
+    const std::vector<uint8_t> reg = inflate_pic(kKbmRegions, sizeof kKbmRegions, n);
+    std::vector<int> state(1, K_DIM);   /* by region id */
+    for (const char* l = kKbmRegionNames; *l;) {
+        const char* e = strchr(l, '\n');
+        const std::string name(l, e ? (size_t)(e - l) : strlen(l));
+        state.push_back(input_state(name));
+        l = e ? e + 1 : l + name.size();
+    }
+    for (size_t i = 0; i < n; i++) {
+        const int id = reg[i] < state.size() ? reg[i] : 0;
+        memcpy(&img[i], &v[state[id]][i * 4], 4);
     }
 }
 
@@ -559,14 +782,14 @@ void pic_pad(std::vector<Px>& img, int iw, int ih, int dev)
 /* The original's top level, decoded, with the replaced glyphs drawn over
  * their boxes, then every level re-encoded; level-0 blocks no glyph touches
  * keep the game's bytes. */
-std::vector<uint8_t> build_set(const Atlas& a, const std::vector<uint8_t>& orig, int dev)
+std::vector<uint8_t> build_set(const Atlas& a, const std::vector<uint8_t>& orig, int st)
 {
+    const int dev = family_of(st);
     std::vector<Px> img;
     dxt5_decode(orig.data(), a.w, a.h, img);
     std::vector<char> touched((size_t)(a.w / 4) * (a.h / 4), 0);
     if (a.cells.empty()) {   /* the pad picture: redrawn, every block re-encoded */
-        if (dev == DEV_KEYBOARD) pic_keyboard(img, a.w, a.h);
-        else pic_pad(img, a.w, a.h, dev);
+        pic_for(img, st);
         std::fill(touched.begin(), touched.end(), 1);
     }
 
@@ -586,6 +809,19 @@ std::vector<uint8_t> build_set(const Atlas& a, const std::vector<uint8_t>& orig,
         if (c.b == B_CROSS) { int x0, y0, x1, y1; if (bbox(c, x0, y0, x1, y1)) { std_h = (float)(y1 + 1 - y0); std_cy = (y0 + y1 + 1) / 2.0f - c.y; } }
     if (a.strip) { std_h = a.cells[0].h - 1.0f; std_cy = a.cells[0].h / 2.0f; }   /* its symbols are thin: use the row */
 
+    /* The game's own finish, from its Cross, and its symbols' colours. The
+     * strip's pale pills are another style: it keeps the drawn set. */
+    Look look{};
+    const bool have_look = !a.strip;
+    for (const Cell& c : a.cells) {
+        int x0, y0, x1, y1;
+        if (!have_look || !bbox(c, x0, y0, x1, y1)) continue;
+        RGBA* col = c.b == B_CROSS ? &look.face[0] : c.b == B_TRIANGLE ? &look.face[1] : c.b == B_SQUARE ? &look.face[2] :
+                    c.b == B_CIRCLE ? &look.face[3] : c.b == B_L1 ? &look.letter : nullptr;
+        if (col) *col = symbol_colour(img, a.w, x0, y0, x1 + 1, y1 + 1);
+        if (c.b == B_CROSS) measure_look(look, img, a.w, a.h, x0, y0, x1 + 1, y1 + 1);
+    }
+
     for (const Cell& c : a.cells) {
         int bx0, by0, bx1, by1;
         if (!bbox(c, bx0, by0, bx1, by1)) continue;
@@ -598,7 +834,7 @@ std::vector<uint8_t> build_set(const Atlas& a, const std::vector<uint8_t>& orig,
             if (b.x0 < 0) { b.x1 -= b.x0; b.x0 = 0; }
             if (b.x1 > c.w * S) { b.x0 -= b.x1 - c.w * S; b.x1 = (float)c.w * S; }
         }
-        if (!draw_button(cv, b, c.b, dev, a.strip)) continue;
+        if (!draw_button(cv, b, c.b, st, a.strip, have_look ? &look : nullptr)) continue;
         for (int y = 0; y < c.h; y++)
             for (int x = 0; x < c.w; x++) {
                 RGBA s{0, 0, 0, 0};
@@ -657,7 +893,7 @@ std::vector<uint8_t> build_set(const Atlas& a, const std::vector<uint8_t>& orig,
 
 struct State {
     std::vector<uint8_t> original;            /* the game's bytes, once seen */
-    std::vector<uint8_t> sets[DEV_COUNT];     /* built on first use */
+    std::vector<uint8_t> sets[ST_COUNT];      /* built on first use */
     std::vector<uint64_t> set_hash;           /* top levels of the sets built */
     std::vector<uint8_t*> copies;             /* where the game keeps it */
 };
@@ -667,20 +903,28 @@ int g_shown = -1;
 bool g_log;
 const char* g_dump;
 
-const std::vector<uint8_t>& set_for(int ai, int dev)
+const std::vector<uint8_t>& set_for(int ai, int style)
 {
     State& st = g_st[ai];
-    if (dev == DEV_PLAYSTATION) return st.original;
-    if (st.sets[dev].empty()) {
+    if (family_of(style) == DEV_PLAYSTATION) return st.original;   /* every PlayStation pad: the game's own */
+    if (st.sets[style].empty()) {
         const Atlas& a = kAtlases[ai];
-        st.sets[dev] = build_set(a, st.original, dev);
-        st.set_hash.push_back(fnv(st.sets[dev].data(), (size_t)a.w * a.h));
+        st.sets[style] = build_set(a, st.original, style);
+        st.set_hash.push_back(fnv(st.sets[style].data(), (size_t)a.w * a.h));
         if (g_dump) {
-            std::string p = std::string(g_dump) + "/" + a.name + "_" + std::to_string(dev) + ".dxt5";
-            if (FILE* f = fopen(p.c_str(), "wb")) { fwrite(st.sets[dev].data(), 1, (size_t)a.w * a.h, f); fclose(f); }
+            std::string p = std::string(g_dump) + "/" + a.name + "_" + std::to_string(style) + ".dxt5";
+            if (FILE* f = fopen(p.c_str(), "wb")) { fwrite(st.sets[style].data(), 1, (size_t)a.w * a.h, f); fclose(f); }
         }
     }
-    return st.sets[dev];
+    return st.sets[style];
+}
+
+/* The style shown: the pad's own, or for the keyboard the keyboard's. */
+int active_style()
+{
+    const int dev = pad_active_device(), st = pad_active_style();
+    if (dev == DEV_KEYBOARD) return ST_KEYBOARD;
+    return st > ST_KEYBOARD && st < ST_COUNT && family_of(st) == dev ? st : dev == DEV_PLAYSTATION ? ST_PS3 : dev == DEV_NINTENDO ? ST_SWITCH : ST_XBOX_ONE;
 }
 
 bool is_ours(int ai, const uint8_t* p)
@@ -692,9 +936,9 @@ bool is_ours(int ai, const uint8_t* p)
     return false;
 }
 
-void write_set(int ai, uint8_t* p, int dev)
+void write_set(int ai, uint8_t* p, int style)
 {
-    const std::vector<uint8_t>& s = set_for(ai, dev);
+    const std::vector<uint8_t>& s = set_for(ai, style);
     memcpy(p, s.data(), s.size());
 }
 
@@ -709,23 +953,23 @@ void seen(uint8_t* p, uint32_t fmt, uint32_t w, uint32_t h, uint32_t span)
         if (!is_ours(ai, p)) continue;
         if (st.original.empty()) {   /* first sight: the game's; KZ_GLYPHS_DUMP builds every set */
             st.original.assign(p, p + span_of(a));
-            if (g_dump) for (int d = 0; d < DEV_COUNT; d++) set_for(ai, d);
+            if (g_dump) for (int d = 0; d < ST_COUNT; d++) set_for(ai, d);
         }
         if (std::find(st.copies.begin(), st.copies.end(), p) == st.copies.end()) st.copies.push_back(p);
         if (g_log) fprintf(stderr, "[kz-glyphs] %s in use (%zu copies)\n", a.name, st.copies.size());
-        write_set(ai, p, pad_active_device());
+        write_set(ai, p, active_style());
         return;
     }
 }
 
-void apply(int dev)
+void apply(int style)
 {
     for (int ai = 0; ai < kNumAtlases; ai++) {
         State& st = g_st[ai];
         if (st.original.empty()) continue;
         for (size_t i = 0; i < st.copies.size();) {
             if (!is_ours(ai, st.copies[i])) { st.copies.erase(st.copies.begin() + (long)i); continue; }   /* memory reused */
-            write_set(ai, st.copies[i], dev);
+            write_set(ai, st.copies[i], style);
             i++;
         }
     }
@@ -743,12 +987,12 @@ void kz_glyphs_register(void)
     std::thread([] {
         for (;;) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            const int dev = pad_active_device();
+            const int style = active_style();
             std::lock_guard<std::mutex> lk(g_mu);
-            if (dev == g_shown) continue;
-            if (g_log) fprintf(stderr, "[kz-glyphs] device %d\n", dev);
-            apply(dev);
-            g_shown = dev;
+            if (style == g_shown) continue;
+            if (g_log) fprintf(stderr, "[kz-glyphs] pad style %d\n", style);
+            apply(style);
+            g_shown = style;
         }
     }).detach();
 }

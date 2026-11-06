@@ -1,0 +1,41 @@
+From 6c4d68a7668ae31edd88914671006fdad0a1bc24 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 21:51:52 -0300
+Subject: [PATCH] tests: upstream's host tests follow patches 3029 and 3031
+
+Patch 3029 (Tracy zones) makes cellSpurs.c, which test_spurs_scheduler
+compiles in, call the tracing spans, and patch 3031 (guest write tracking)
+makes rsx_draw_engine.c call vm_wtrack_*; both tests then fail to link.
+They now compile runtime/ps3_trace.c and runtime/memory/vm_wtrack.c with
+the rest, as patch 0004 does for the other fixtures: tracing stays off
+unless PS3_TRACE asks, and write tracking unless PS3RECOMP_WTRACK=1.
+---
+ tools/test_rsx_immediate_vertices.py | 3 ++-
+ tools/test_spurs_scheduler.py        | 1 +
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/tools/test_rsx_immediate_vertices.py b/tools/test_rsx_immediate_vertices.py
+index d6a2ff3..0e0c361 100644
+--- a/tools/test_rsx_immediate_vertices.py
++++ b/tools/test_rsx_immediate_vertices.py
+@@ -12,7 +12,8 @@ def main():
+     root = Path(__file__).resolve().parents[1]
+     sources = ["tests/test_rsx_draw_engine.c", "rsx_draw_engine.c",
+                "rsx_dispatch.c", "rsx_vertex_compact.c", "rsx_texture_layout.c",
+-               "rsx_vp_decompiler.c", "rsx_fp_decompiler.c", "../../runtime/ps3_trace.c"]
++               "rsx_vp_decompiler.c", "rsx_fp_decompiler.c", "../../runtime/ps3_trace.c",
++               "../../runtime/memory/vm_wtrack.c"]
+     with tempfile.TemporaryDirectory(prefix="rsx-immediate-") as directory:
+         binary = Path(directory) / "test_rsx_draw_engine"
+         subprocess.run([os.environ.get("CC", "cc"), "-std=gnu17",
+diff --git a/tools/test_spurs_scheduler.py b/tools/test_spurs_scheduler.py
+index 1f62588..3f9cf93 100644
+--- a/tools/test_spurs_scheduler.py
++++ b/tools/test_spurs_scheduler.py
+@@ -16,5 +16,6 @@ with tempfile.TemporaryDirectory(prefix='spurs-scheduler-') as tmp:
+         '-I'+str(r/'include'),'-I'+str(r/'runtime/spu'),'-I'+str(r/'runtime/platform'),
+         str(r/'tests/test_spurs_scheduler.c'),
+         *[str(r/'runtime/spu'/f'{u}.c') for u in units],
++        str(r/'runtime/ps3_trace.c'),
+         str(r/'runtime/platform/win32_compat.c'),'-pthread','-lm','-o',str(out)],check=True)
+     subprocess.run([str(out)],check=True,timeout=15)

@@ -1,0 +1,480 @@
+From e9acda1967215be2850e29e319f285912e55566b Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 4 Nov 2026 04:35:55 -0300
+Subject: [PATCH] vulkan: a pipeline list per title, built ahead on
+ worker threads
+
+Every pipeline variant the backend creates is appended to
+<cache>/pipelines.list (shader hashes, topology, render state, target
+formats). At the first draw of a run the list is read and
+PS3RECOMP_VK_PREWARM worker threads (default 2, 0 records only) build
+every entry at low priority. A draw that needs a listed pipeline takes
+it built, builds it itself when no worker got to it, or waits for the
+worker building it; nothing is skipped. VK_ENG_MAX_PIPE goes to 2048.
+
+RSX_PIPE_STATS=1 logs what each new pipeline and variant cost the RSX
+thread. Level 7 route with the driver cache and pipelines.bin deleted:
+147 of 149 variants built ahead in 0.7 s, 1 waited for (15 ms), against
+about 2.6 s of driver builds on the RSX thread without the list.
+
+---
+ libs/video/rsx_draw_engine.c    |  20 ++
+ libs/video/rsx_vulkan_backend.c | 313 +++++++++++++++++++++++++++++---
+ 2 files changed, 309 insertions(+), 24 deletions(-)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 360458b7..b1967422 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -331,6 +331,20 @@ static u64 eng_vp_hash(const u8* uc, u32 bytes, u64 seed)
+     return m->hash;
+ }
+ 
++/* RSX_PIPE_STATS=1: one line for each pipeline built mid-frame and what it
++ * cost the RSX thread (the hitch a first sight of a program is). */
++static int eng_pipe_stats_on(void)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("RSX_PIPE_STATS"); on = e && *e && *e != '0'; }
++    return on;
++}
++static u64 eng_now_ns(void)
++{
++    struct timespec a; clock_gettime(CLOCK_MONOTONIC, &a);
++    return (u64)a.tv_sec * 1000000000ull + (u64)a.tv_nsec;
++}
++
+ static u32 eng_pipeline_slot(u64 key)
+ {
+     return (u32)((key ^ (key >> 29)) * 0x9E3779B97F4A7C15ull >> 40) & (ENG_PIPELINE_INDEX - 1u);
+@@ -2253,6 +2267,7 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+     }
+     if (g.n_pipelines >= ENG_MAX_PIPELINES) return 0;
+ 
++    const u64 miss_t0 = eng_pipe_stats_on() ? eng_now_ns() : 0;
+     u32 handle = 0;
+     int vi = 1, fi = 1;
+     u32 nconst = 0;
+@@ -2352,6 +2367,11 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+                 vi, fi, nconst, (unsigned long long)fp_hash,
+                 handle ? "ok" : "FAILED (draw dropped)"); }
+ 
++    if (miss_t0) {
++        const u64 t1 = eng_now_ns();
++        fprintf(stderr, "[rsx pipe] %.3f s: new pipeline %u (%u so far) %.2f ms (decompile + backend create)\n",
++                t1 / 1e9, handle, g.n_pipelines + 1u, (t1 - miss_t0) / 1e6);
++    }
+     g.pipelines[g.n_pipelines].key = key;
+     g.pipelines[g.n_pipelines].fp_hash = fp_hash;
+     g.pipelines[g.n_pipelines].handle = handle;
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index fff0c355..70c1166f 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -97,6 +97,10 @@ static int dlclose(void* lib) { return FreeLibrary((HMODULE)lib) ? 0 : -1; }
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <pthread.h>   /* winpthreads on MinGW */
++#ifdef __linux__
++#include <sys/resource.h>
++#include <sys/syscall.h>
++#endif
+ #ifndef _WIN32
+ #include <unistd.h>
+ #endif
+@@ -4009,7 +4013,7 @@ static int vk_eng_depth_readback(void* user, u32 depth, u32 x, u32 y, u32 w, u32
+  * samplers s0..s3 would alias the pixel samplers' binding), colour targets
+  * other than RGBA8 and RGBA16F, depth-only passes, and stencil (the depth format
+  * has no stencil aspect yet, so the test is inert). */
+-#define VK_ENG_MAX_PIPE   512
++#define VK_ENG_MAX_PIPE   2048
+ #define VK_ENG_TOPOLOGIES 5
+ #define VK_ENG_FB_CACHE   64
+ 
+@@ -4020,6 +4024,7 @@ typedef struct vk_eng_pipe {
+     u32                 nslots, stride, rt_count;
+     VkFormat            rt_fmt;          /* picks the render pass it is built against */
+     u32                 cube_mask;       /* TextureCube units: the split set layout */
++    u64                 vs_h, ps_h;      /* their SPIR-V files (vk_eng_translate), 0 = none */
+     VkPipeline          variant[VK_ENG_TOPOLOGIES];
+ } vk_eng_pipe;
+ 
+@@ -4285,9 +4290,10 @@ static void vk_pipeline_cache_save(void)
+     free(data);
+ }
+ 
+-static int vk_eng_translate(const char* hlsl, int stage, VkShaderModule* out)
++static int vk_eng_translate(const char* hlsl, int stage, VkShaderModule* out, u64* file_hash)
+ {
+     u32 words = 0;
++    *file_hash = 0;
+     const char* dir = vk_cache_dir();
+     char path[600] = "";
+     if (dir) {
+@@ -4297,6 +4303,7 @@ static int vk_eng_translate(const char* hlsl, int stage, VkShaderModule* out)
+         u64 h = (1469598103934665603ull ^ (VK_CACHE_VERSION + (inv ? 0u : 0x100u))) + (u64)stage;
+         for (const unsigned char* c = (const unsigned char*)hlsl; *c; c++) { h ^= *c; h *= 1099511628211ull; }
+         snprintf(path, sizeof path, "%s/%016llx.spv", dir, (unsigned long long)h);
++        *file_hash = h;
+         FILE* f = fopen(path, "rb");
+         if (f) {
+             const size_t n = fread(s_g.spv, 4, VK_SPV_WORDS, f);
+@@ -4396,7 +4403,7 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
+     if (slot == VK_ENG_MAX_PIPE) return 0;
+     vk_eng_pipe* P = &s_epipe[slot];
+     memset(P, 0, sizeof *P);
+-    if (vk_eng_translate(vs_hlsl, RSX_SHADER_STAGE_VERTEX, &P->vs)) return 0;
++    if (vk_eng_translate(vs_hlsl, RSX_SHADER_STAGE_VERTEX, &P->vs, &P->vs_h)) return 0;
+     char* scaled_ps = NULL;
+     if (vk_scaled() && strstr(ps_hlsl, "input.position")) {
+         /* WPOS in the guest's pixels: the target is s_rscale_x by s_rscale_y times larger. */
+@@ -4415,7 +4422,7 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
+             ps_hlsl = scaled_ps;
+         }
+     }
+-    const int ps_bad = vk_eng_translate(ps_hlsl, RSX_SHADER_STAGE_FRAGMENT, &P->fs);
++    const int ps_bad = vk_eng_translate(ps_hlsl, RSX_SHADER_STAGE_FRAGMENT, &P->fs, &P->ps_h);
+     if (ps_bad) {
+         free(scaled_ps);
+         pvkDestroyShaderModule(s_vk.device, P->vs, NULL); memset(P, 0, sizeof *P); return 0;
+@@ -4444,32 +4451,47 @@ static void vk_eng_pipeline_release(void* user, u32 pipeline)
+     if (s_e2.pipeline == pipeline) s_e2.pipeline = 0;
+ }
+ 
+-static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
++/* One VkPipeline of an engine pipeline: everything it is built from, so the
++ * pipeline list (below) can rebuild it in another run without the guest's
++ * programs. Only u32s and u64s: written to disk as it is. */
++typedef struct vk_plist_rec {
++    u32 version, topo, nslots, stride, rt_count, cube_mask, rt_fmt, pad;
++    u64 vs_h, ps_h;
++    rsx_be_render_state rs;
++} vk_plist_rec;
++
++/* The render pass and layout must already exist (vk_eng_render_pass and
++ * vk_eng_split_layout create them on first use, on the RSX thread): this also
++ * runs on the pipeline list's workers. */
++static VkResult vk_eng_build(const vk_plist_rec* R, VkShaderModule vs, VkShaderModule fs, VkPipeline* out)
+ {
+     static const VkPrimitiveTopology topo[VK_ENG_TOPOLOGIES] = {
+         VK_PRIMITIVE_TOPOLOGY_POINT_LIST, VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
+         VK_PRIMITIVE_TOPOLOGY_LINE_STRIP, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP };
+-    if (P->variant[topo_idx]) return P->variant[topo_idx];
+-    VkRenderPass rp = vk_eng_render_pass(P->rt_fmt, P->rt_count);
+-    if (!rp || P->nslots > VK_GUEST_ATTRS) return VK_NULL_HANDLE;
+-    const VkPipelineLayout layout = P->cube_mask ? vk_eng_split_layout() : s_g.pipe_layout;
+-    if (!layout) return VK_NULL_HANDLE;
+-    const rsx_be_render_state* rs = &P->rs;
++    *out = VK_NULL_HANDLE;
++    const int fi = vk_eng_rt_index((VkFormat)R->rt_fmt);
++    VkRenderPass rp = (fi >= 0 && R->rt_count >= 1 && R->rt_count <= RSX_BE_MAX_COLOR_TARGETS)
++                    ? s_e2.rp[fi][R->rt_count] : VK_NULL_HANDLE;
++    if (!rp || R->nslots > VK_GUEST_ATTRS || R->topo >= VK_ENG_TOPOLOGIES) return VK_ERROR_INITIALIZATION_FAILED;
++    const VkPipelineLayout layout = R->cube_mask ? s_e2.split_pipe_layout : s_g.pipe_layout;
++    if (!layout) return VK_ERROR_INITIALIZATION_FAILED;
++    const rsx_be_render_state* rs = &R->rs;
++    const u32 topo_idx = R->topo;
+ 
+     VkPipelineShaderStageCreateInfo st[2] = {
+         { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+-          .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = P->vs, .pName = "main" },
++          .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = vs, .pName = "main" },
+         { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+-          .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = P->fs, .pName = "main" } };
+-    VkVertexInputBindingDescription vb = { 0, P->stride, VK_VERTEX_INPUT_RATE_VERTEX };
++          .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = fs, .pName = "main" } };
++    VkVertexInputBindingDescription vb = { 0, R->stride, VK_VERTEX_INPUT_RATE_VERTEX };
+     VkVertexInputAttributeDescription va[VK_GUEST_ATTRS];
+-    for (u32 s = 0; s < P->nslots; s++)
++    for (u32 s = 0; s < R->nslots; s++)
+         va[s] = (VkVertexInputAttributeDescription){ s, 0, VK_FORMAT_R32G32B32A32_SFLOAT, s * 16u };
+     VkPipelineVertexInputStateCreateInfo vi = {
+         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+         .vertexBindingDescriptionCount = 1, .pVertexBindingDescriptions = &vb,
+-        .vertexAttributeDescriptionCount = P->nslots, .pVertexAttributeDescriptions = va };
++        .vertexAttributeDescriptionCount = R->nslots, .pVertexAttributeDescriptions = va };
+     VkPipelineInputAssemblyStateCreateInfo ia = {
+         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+         .topology = topo[topo_idx] };
+@@ -4513,7 +4535,7 @@ static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
+     if ((rs->color_mask >>  0) & 0xFFu) wm |= VK_COLOR_COMPONENT_B_BIT;
+     if ((rs->color_mask >> 24) & 0xFFu) wm |= VK_COLOR_COMPONENT_A_BIT;
+     VkPipelineColorBlendAttachmentState cba[RSX_BE_MAX_COLOR_TARGETS];
+-    for (u32 r = 0; r < P->rt_count; r++)
++    for (u32 r = 0; r < R->rt_count; r++)
+         cba[r] = (VkPipelineColorBlendAttachmentState){
+             .blendEnable = rs->blend_enable ? VK_TRUE : VK_FALSE,
+             .srcColorBlendFactor = vk_gcm_blend_factor(rs->sf_rgb),
+@@ -4525,7 +4547,7 @@ static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
+             .colorWriteMask = wm };
+     VkPipelineColorBlendStateCreateInfo cb = {
+         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+-        .attachmentCount = P->rt_count, .pAttachments = cba };
++        .attachmentCount = R->rt_count, .pAttachments = cba };
+     VkDynamicState dyn[3] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR,
+                               VK_DYNAMIC_STATE_STENCIL_REFERENCE };
+     VkPipelineDynamicStateCreateInfo dy = {
+@@ -4537,13 +4559,256 @@ static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
+         .pViewportState = &vps, .pRasterizationState = &ras, .pMultisampleState = &ms,
+         .pDepthStencilState = &ds, .pColorBlendState = &cb, .pDynamicState = &dy,
+         .layout = layout, .renderPass = rp, .subpass = 0 };
++    return pvkCreateGraphicsPipelines(s_vk.device, vk_pipeline_cache(), 1, &gci, NULL, out);
++}
++
++/* ---- pipeline list ---------------------------------------------------------
++ * The disk caches above make a level's second run free of compiles, but only
++ * while the driver keeps its own cache: a driver update, another GPU or a
++ * cleared cache brings back every 10-400 ms compile (Killzone's Level 7: 151
++ * pipelines, ~5.8 s of RSX-thread stalls cold). So every VkPipeline the engine
++ * builds is also appended to <cache>/pipelines.list as the record it was built
++ * from, and the next run builds the whole list on worker threads from the
++ * first engine pipeline on (the title's boot and menus), at low priority.
++ * A pipeline the title asks for before its worker got to it is built on the
++ * spot; one a worker is building is waited for (never skipped: a skipped draw
++ * is a missing one). PS3RECOMP_VK_PREWARM=<threads> (default 2; 0 = record
++ * the list but build nothing ahead). */
++#define VK_PLIST_VERSION (0x504C0000u + VK_CACHE_VERSION)   /* "PL" + the SPIR-V version */
++
++typedef struct vk_plist_entry {
++    u64 key;
++    vk_plist_rec rec;
++    int state;                 /* VK_PL_*, atomic */
++    VkPipeline pipe;           /* built ahead, until the engine takes it */
++} vk_plist_entry;
++enum { VK_PL_QUEUED, VK_PL_BUILDING, VK_PL_BUILT, VK_PL_TAKEN };
++
++static struct {
++    int started;
++    vk_plist_entry* e;         /* the list read at start, in its order */
++    u32 n, next;               /* next: the workers' cursor, atomic */
++    u32* index; u32 index_mask;
++    u64* added; u32 added_n, added_mask;   /* keys this run appended */
++    FILE* out;
++    int running;               /* workers still building, atomic */
++    u64 t0;
++} s_pl;
++
++static u64 vk_now_ns(void)
++{
++    struct timespec a; clock_gettime(CLOCK_MONOTONIC, &a);
++    return (u64)a.tv_sec * 1000000000ull + (u64)a.tv_nsec;
++}
++
++static u64 vk_plist_key(const vk_plist_rec* r)
++{
++    u64 h = 1469598103934665603ull;
++    const unsigned char* b = (const unsigned char*)r;
++    for (size_t i = 0; i < sizeof *r; i++) { h ^= b[i]; h *= 1099511628211ull; }
++    return h ? h : 1;
++}
++
++static vk_plist_entry* vk_plist_find(u64 key)
++{
++    if (!s_pl.index) return NULL;
++    for (u32 i = (u32)key & s_pl.index_mask; s_pl.index[i]; i = (i + 1) & s_pl.index_mask)
++        if (s_pl.e[s_pl.index[i] - 1].key == key) return &s_pl.e[s_pl.index[i] - 1];
++    return NULL;
++}
++
++static int vk_plist_module(u64 h, VkShaderModule* out)
++{
++    char path[600];
++    snprintf(path, sizeof path, "%s/%016llx.spv", vk_cache_dir(), (unsigned long long)h);
++    FILE* f = fopen(path, "rb");
++    if (!f) return -1;
++    u32* w = (u32*)malloc(VK_SPV_WORDS * 4u);
++    const size_t n = w ? fread(w, 4, VK_SPV_WORDS, f) : 0;
++    fclose(f);
++    int r = -1;
++    if (n >= 5 && n < VK_SPV_WORDS && w[0] == 0x07230203u) {
++        VkShaderModuleCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
++                                        .codeSize = n * 4u, .pCode = w };
++        r = pvkCreateShaderModule(s_vk.device, &ci, NULL, out) == VK_SUCCESS ? 0 : -1;
++    }
++    free(w);
++    return r;
++}
++
++#ifdef _WIN32
++static DWORD WINAPI vk_plist_worker(LPVOID p)
++#else
++static void* vk_plist_worker(void* p)
++#endif
++{
++    (void)p;
++#ifdef _WIN32
++    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
++#elif defined(__linux__)
++    setpriority(PRIO_PROCESS, (id_t)syscall(SYS_gettid), 10);
++#endif
++    for (;;) {
++        const u32 i = __atomic_fetch_add(&s_pl.next, 1u, __ATOMIC_RELAXED);
++        if (i >= s_pl.n) break;
++        vk_plist_entry* E = &s_pl.e[i];
++        int q = VK_PL_QUEUED;
++        if (!__atomic_compare_exchange_n(&E->state, &q, VK_PL_BUILDING, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
++            continue;   /* the engine needed it first */
++        VkShaderModule vs = VK_NULL_HANDLE, fs = VK_NULL_HANDLE;
++        const int mv = vk_plist_module(E->rec.vs_h, &vs), mf = mv ? -1 : vk_plist_module(E->rec.ps_h, &fs);
++        const VkResult r = mv || mf ? VK_ERROR_INITIALIZATION_FAILED : vk_eng_build(&E->rec, vs, fs, &E->pipe);
++        if (r == VK_SUCCESS)
++            s_vk_pcache_dirty = 1;
++        else {
++            E->pipe = VK_NULL_HANDLE;
++            VK_LOG("pipeline list: entry %u not built (shaders %d %d, VkResult %d, format %u x%u, topology %u)\n",
++                   i, mv, mf, (int)r, E->rec.rt_fmt, E->rec.rt_count, E->rec.topo);
++        }
++        if (vs) pvkDestroyShaderModule(s_vk.device, vs, NULL);
++        if (fs) pvkDestroyShaderModule(s_vk.device, fs, NULL);
++        __atomic_store_n(&E->state, VK_PL_BUILT, __ATOMIC_RELEASE);
++    }
++    if (__atomic_sub_fetch(&s_pl.running, 1, __ATOMIC_ACQ_REL) == 0) {
++        u32 built = 0;
++        for (u32 i = 0; i < s_pl.n; i++) built += s_pl.e[i].pipe != VK_NULL_HANDLE;
++        VK_LOG("pipeline list: %u of %u pipelines built ahead in %.1f s\n",
++               built, s_pl.n, (vk_now_ns() - s_pl.t0) / 1e9);
++    }
++    return 0;
++}
++
++/* On the RSX thread, at the first engine pipeline: read the list, make the
++ * render passes and layouts its pipelines need (the workers only read them),
++ * open it for appending, start the workers. */
++static void vk_plist_start(void)
++{
++    if (s_pl.started) return;
++    s_pl.started = 1;
++    const char* dir = vk_cache_dir();
++    if (!dir) return;
++    char path[600];
++    snprintf(path, sizeof path, "%s/pipelines.list", dir);
++    u32 hdr[4] = { 0 };
++    const u32 want[4] = { 0x5453494Cu /* "LIST" */, VK_PLIST_VERSION, (u32)sizeof(vk_plist_rec), 0 };
++    FILE* f = fopen(path, "rb");
++    long size = 0;
++    if (f) { fseek(f, 0, SEEK_END); size = ftell(f); fseek(f, 0, SEEK_SET); }
++    const int ok = f && fread(hdr, 4, 4, f) == 4 && !memcmp(hdr, want, sizeof want);
++    if (ok && size > 16) {
++        const u32 cap = (u32)((size - 16) / (long)sizeof(vk_plist_rec));
++        s_pl.e = (vk_plist_entry*)calloc(cap ? cap : 1, sizeof *s_pl.e);
++        u32 m = 64; while (m < cap * 2u) m <<= 1;
++        s_pl.index = (u32*)calloc(m, sizeof(u32));
++        s_pl.index_mask = m - 1;
++        vk_plist_rec r;
++        while (s_pl.e && s_pl.index && s_pl.n < cap && fread(&r, sizeof r, 1, f) == 1) {
++            if (r.version != VK_PLIST_VERSION) continue;
++            const u64 key = vk_plist_key(&r);
++            if (vk_plist_find(key)) continue;
++            /* everything it needs that only the RSX thread may create */
++            if (!vk_eng_render_pass((VkFormat)r.rt_fmt, r.rt_count)) continue;
++            if (r.cube_mask && !vk_eng_split_layout()) continue;
++            vk_plist_entry* E = &s_pl.e[s_pl.n++];
++            E->key = key; E->rec = r;
++            u32 i = (u32)key & s_pl.index_mask;
++            while (s_pl.index[i]) i = (i + 1) & s_pl.index_mask;
++            s_pl.index[i] = s_pl.n;
++        }
++    }
++    if (f) fclose(f);
++    s_pl.added_mask = 8191;
++    s_pl.added = (u64*)calloc(s_pl.added_mask + 1u, sizeof(u64));
++    s_pl.out = fopen(path, ok ? "ab" : "wb");
++    if (s_pl.out && !ok) fwrite(want, 4, 4, s_pl.out);
++    if (s_pl.out) fflush(s_pl.out);
++
++    const char* e = getenv("PS3RECOMP_VK_PREWARM");
++    int threads = e && *e ? atoi(e) : 2;
++    if (threads > 8) threads = 8;
++    if (!s_pl.n || threads <= 0) return;
++    VK_LOG("pipeline list: building %u pipelines ahead on %d threads\n", s_pl.n, threads);
++    s_pl.t0 = vk_now_ns();
++    s_pl.running = threads;
++    for (int t = 0; t < threads; t++) {
++#ifdef _WIN32
++        HANDLE h = CreateThread(NULL, 0, vk_plist_worker, NULL, 0, NULL);
++        if (h) CloseHandle(h); else __atomic_sub_fetch(&s_pl.running, 1, __ATOMIC_ACQ_REL);
++#else
++        pthread_t th;
++        if (pthread_create(&th, NULL, vk_plist_worker, NULL) == 0) pthread_detach(th);
++        else __atomic_sub_fetch(&s_pl.running, 1, __ATOMIC_ACQ_REL);
++#endif
++    }
++}
++
++/* Appended once per run and key; a key already in the list read at start is
++ * not appended again. */
++static void vk_plist_add(const vk_plist_rec* r, u64 key)
++{
++    if (!s_pl.out || !s_pl.added || !r->vs_h || !r->ps_h) return;
++    if (s_pl.added_n * 2u > s_pl.added_mask) return;    /* full: stop recording */
++    u32 i = (u32)key & s_pl.added_mask;
++    for (; s_pl.added[i]; i = (i + 1) & s_pl.added_mask) if (s_pl.added[i] == key) return;
++    s_pl.added[i] = key;
++    s_pl.added_n++;
++    fwrite(r, sizeof *r, 1, s_pl.out);
++    fflush(s_pl.out);
++}
++
++static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
++{
++    if (P->variant[topo_idx]) return P->variant[topo_idx];
++    if (!vk_eng_render_pass(P->rt_fmt, P->rt_count)) return VK_NULL_HANDLE;
++    if (P->cube_mask && !vk_eng_split_layout()) return VK_NULL_HANDLE;
++    vk_plist_start();
++    vk_plist_rec R;
++    memset(&R, 0, sizeof R);
++    R.version = VK_PLIST_VERSION; R.topo = topo_idx; R.nslots = P->nslots; R.stride = P->stride;
++    R.rt_count = P->rt_count; R.cube_mask = P->cube_mask; R.rt_fmt = (u32)P->rt_fmt;
++    R.vs_h = P->vs_h; R.ps_h = P->ps_h; R.rs = P->rs;
++    const u64 key = vk_plist_key(&R);
++
+     PS3_TRACE_BEGIN(_tr);
+-    if (pvkCreateGraphicsPipelines(s_vk.device, vk_pipeline_cache(), 1, &gci, NULL,
+-                                   &P->variant[topo_idx]) != VK_SUCCESS) {
+-        VK_LOG("engine: vkCreateGraphicsPipelines failed\n");
+-        P->variant[topo_idx] = VK_NULL_HANDLE;
+-    } else {
+-        s_vk_pcache_dirty = 1;
++    static int stats = -1;
++    if (stats < 0) { const char* e = getenv("RSX_PIPE_STATS"); stats = e && *e && *e != '0'; }
++    const u64 t0 = stats ? vk_now_ns() : 0;
++    const char* how = "driver";
++    vk_plist_entry* E = vk_plist_find(key);
++    if (E) {
++        int q = VK_PL_QUEUED;
++        if (__atomic_compare_exchange_n(&E->state, &q, VK_PL_TAKEN, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
++            how = "listed, built here";
++        } else {
++            if (q == VK_PL_BUILDING) how = "listed, waited for";
++            while (__atomic_load_n(&E->state, __ATOMIC_ACQUIRE) == VK_PL_BUILDING) {
++#ifdef _WIN32
++                Sleep(0);
++#else
++                struct timespec ts = { 0, 100000 }; nanosleep(&ts, NULL);
++#endif
++            }
++            if (__atomic_load_n(&E->state, __ATOMIC_ACQUIRE) == VK_PL_BUILT && E->pipe) {
++                P->variant[topo_idx] = E->pipe;
++                E->pipe = VK_NULL_HANDLE;
++                __atomic_store_n(&E->state, VK_PL_TAKEN, __ATOMIC_RELEASE);
++                if (q != VK_PL_BUILDING) how = "listed, built ahead";
++            }
++        }
++    }
++    if (!P->variant[topo_idx]) {
++        if (vk_eng_build(&R, P->vs, P->fs, &P->variant[topo_idx]) != VK_SUCCESS) {
++            VK_LOG("engine: vkCreateGraphicsPipelines failed\n");
++            P->variant[topo_idx] = VK_NULL_HANDLE;
++        } else {
++            s_vk_pcache_dirty = 1;
++            if (!E) vk_plist_add(&R, key);
++        }
++    }
++    if (stats) {
++        const u64 t1 = vk_now_ns();
++        fprintf(stderr, "[rsx pipe] %.3f s: variant %u/%u %.2f ms (%s)\n",
++                t1 / 1e9, (u32)(P - s_epipe) + 1u, topo_idx, (t1 - t0) / 1e6, how);
+     }
+     PS3_TRACE_END(_tr, "pipeline", 0);
+     return P->variant[topo_idx];
