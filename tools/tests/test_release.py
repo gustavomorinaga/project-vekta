@@ -98,7 +98,9 @@ with tempfile.TemporaryDirectory() as tmp:
     check("only on the maintainer's machine" in r.stdout, "v0.1.0's notes say no other machine has built it")
     check("only on the maintainer's machine" in body and "setup program has been tried" in body,
           "v0.2.0's notes say only the maintainer's machine has tried the setup program")
-    later = release_notes.notes("0.3.0", es["0.2.0"])
+    check("installed over 0.2.0" in release_notes.notes("0.3.0", es["0.2.0"]) and "installed over" not in body,
+          "v0.3.0's notes say it was installed over 0.2.0 on the maintainer's machine")
+    later = release_notes.notes("0.3.1", es["0.2.0"])
     check("only on the maintainer's machine" not in later, "later notes do not")
     check(run(REL / "release_notes.py", "--tag", "v0.3.0", "--root", tmp).returncode == 1, "a tag with no entry is refused")
     r = run(REL / "release_notes.py", "--preview", "0.3.0", "--root", tmp)
