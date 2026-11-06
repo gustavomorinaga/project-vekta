@@ -4,7 +4,7 @@ Native PC versions (Linux and Windows, Vulkan) of the PS3 Killzone games by stat
 [ps3recomp](https://github.com/sp00nznet/ps3recomp), starting with Killzone HD. Technical plan:
 [dev/recomp-plan.md](dev/recomp-plan.md). The port's journal: [dev/port-journal.md](dev/port-journal.md).
 
-Updated 2026-11-02 (first reports from testers; the installer shipped in 0.2.0). Tick items as they are done; each phase's
+Updated 2026-11-06 (0.3.0: the temporal upscalers and the Linux release folder; the installer shipped in 0.2.0). Tick items as they are done; each phase's
 percentage comes from its items and its weight.
 
 ## Principles
@@ -208,7 +208,8 @@ and online modes whose servers were shut down.
 ### Phase 11. Launcher
 - [ ] Design the architecture (one executable per game or one process, language, interface)
 - [x] "Bring your own game" installer: find the player's files, check them by hash, translate the EBOOT and compile
-      on their machine (the Windows setup program and `tools/install.sh` on Linux, 0.2.0)
+      on their machine (the Windows setup program and `tools/install.sh` on Linux, 0.2.0; the Linux release folder,
+      0.3.0)
 - [ ] Library with the games, install state and port updates; global and per-game options; controller profiles
 - [ ] Save and local trophy manager
 - [ ] Windows and Linux builds; its own name, no Killzone branding

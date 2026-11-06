@@ -47,7 +47,7 @@ def fill_markers(text, version):
 
 
 def release_span(text, version):
-    link = f"[v{version}]({REPO}/releases/tag/v{version}), a source {kind(version)}"
+    link = f"[v{version}]({REPO}/releases/tag/v{version}), a {kind(version)}"
     return RELEASE_SPAN.sub(lambda m: m.group(1) + link + m.group(3), text)
 
 

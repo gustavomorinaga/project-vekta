@@ -12,7 +12,7 @@ No PlayStation Network account is used.
 |---|---|---|
 | Operating system | CachyOS (Linux x64); the maintainer's Windows install for the cross-built exe; Wine and Proton (GE-Proton 11, proton-cachyos) | Linux x64; Windows x64 (other Windows versions and machines not tried) |
 | CPU | the maintainer's desktop CPU with AVX-512 (`KZ_MARCH=x86-64-v4`) | x86-64 with AVX2 (`x86-64-v3`, Intel Haswell or AMD Zen and newer), the default build target; `KZ_MARCH=""` builds for any x86-64, untested |
-| GPU | NVIDIA GeForce RTX 3070 Ti, driver 615 | a Vulkan GPU and driver; other vendors not tried yet |
+| GPU | NVIDIA GeForce RTX 3070 Ti, driver 615 | a Vulkan GPU and driver; NVIDIA DLSS needs an NVIDIA RTX GPU, AMD FSR 3.1 runs on any; a tester's AMD Radeon 8060S on Windows runs it with open problems ([KNOWN_ISSUES.md](KNOWN_ISSUES.md), issues #17 and #18), other GPUs not tried yet |
 | Memory | | building: several GB for the lifted code (use fewer jobs on small machines); playing: not measured |
 | Disk | | about 4 GB for the game files, plus the build (`work/`), a few GB |
 

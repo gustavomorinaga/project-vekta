@@ -327,7 +327,7 @@ tools/play.sh</pre>
 <tbody>
 <tr><td>Operating system</td><td>Linux x64; Windows x64 (other Windows versions and machines not tried)</td><td>CachyOS (Linux x64); the maintainer&#x27;s Windows install for the cross-built exe; Wine and Proton (GE-Proton 11, proton-cachyos)</td></tr>
 <tr><td>CPU</td><td>x86-64 with AVX2 (<code>x86-64-v3</code>, Intel Haswell or AMD Zen and newer), the default build target; <code>KZ_MARCH=&quot;&quot;</code> builds for any x86-64, untested</td><td>the maintainer&#x27;s desktop CPU with AVX-512 (<code>KZ_MARCH=x86-64-v4</code>)</td></tr>
-<tr><td>GPU</td><td>a Vulkan GPU and driver; other vendors not tried yet</td><td>NVIDIA GeForce RTX 3070 Ti, driver 615</td></tr>
+<tr><td>GPU</td><td>a Vulkan GPU and driver; NVIDIA DLSS needs an NVIDIA RTX GPU, AMD FSR 3.1 runs on any; a tester&#x27;s AMD Radeon 8060S on Windows runs it with open problems (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>, issues #17 and #18), other GPUs not tried yet</td><td>NVIDIA GeForce RTX 3070 Ti, driver 615</td></tr>
 <tr><td>Memory</td><td>building: several GB for the lifted code (use fewer jobs on small machines); playing: not measured</td><td></td></tr>
 <tr><td>Disk</td><td>about 4 GB for the game files, plus the build (<code>work/</code>), a few GB</td><td></td></tr>
 </tbody></table></div>
