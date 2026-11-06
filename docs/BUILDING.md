@@ -185,7 +185,7 @@ Notes from the Windows bring-up (what changed, speed under Wine and on Windows):
 ## Building on Windows or macOS
 
 Windows: a release folder, made on Linux, builds the port on the player's PC with nothing else installed (no Git,
-no MSYS, no Python), and a setup program carries it. From the next release on, `.github/workflows/release.yml` builds
+no MSYS, no Python), and a setup program carries it. Since 0.2.0, `.github/workflows/release.yml` builds
 both from the tag and publishes them beside the source archive: the setup program, and the folder as a zip.
 
 ```sh

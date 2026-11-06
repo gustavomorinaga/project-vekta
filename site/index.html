@@ -24,7 +24,7 @@
 <header id="top" class="box">
 <div class="logo"><img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320" alt="Project Vekta: Killzone HD PC"><span class="sticker">Work in progress</span></div>
 <ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li></ul>
-<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.2.0</b>source pre-release</a></nav>
+<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.3.0</b>source pre-release</a></nav>
 <div class="intro">
 <h1>Project Vekta<span>Killzone HD: Unofficial PC Port (static recompilation)</span></h1>
 <p class="lead">A native Linux and Windows x64 port of the 2011 PS3 remaster of the first Killzone, made by static recompilation: the game's PowerPC and SPU code is translated to C++ ahead of time and compiled into a PC program on your machine; graphics go through Vulkan. No emulator runs at play time.</p>
@@ -62,7 +62,7 @@
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Linux build</b><span class="blurb">built and played on the maintainer&#x27;s machine; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a></span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the campaign not checked there</span></div><span class="st st-part">Partial</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Frame rate</b><span class="blurb">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published from the next release on</span></div><span class="st st-part">Partial</span></li>
+<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</span></div><span class="st st-part">Partial</span></li>
 </ul>
 <h3>The PS3 game, feature by feature</h3>
 <ul class="meters">
@@ -189,15 +189,15 @@
 <tr><td>Linux x64 build</td><td></td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>Windows x64 exe (cross-built on Linux)</td><td>runs under Wine, Proton and on Windows; the campaign not checked there</td><td><span class="st st-part">Partial</span></td></tr>
 <tr><td>Frame rate</td><td>a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Installer that builds the port on the player&#x27;s PC</td><td><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published from the next release on</td><td><span class="st st-part">Partial</span></td></tr>
+<tr><td>Installer that builds the port on the player&#x27;s PC</td><td><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</td><td><span class="st st-part">Partial</span></td></tr>
 </tbody></table></div>
 </details>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">Every feature, with evidence<span aria-hidden="true"> &gt;</span></a></p>
 </article>
 <div id="news">
 <article class="news rel">
-<h2>Unreleased</h2>
-<p class="meta">not released yet</p>
+<h2>0.3.0</h2>
+<p class="meta">5 Nov 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="sec">Added</span>Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution and DLAA, chosen on the PC page (&quot;Temporal Upscaler (on restart)&quot;) or with <code>PS3RECOMP_TEMPORAL</code>, with the camera jittered and per-object motion vectors; the HUD is drawn at the output resolution (patches 2045 to 2052, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/upscalers.md">docs/dev/upscalers.md</a>). FSR 3.1 is in every build, from the FidelityFX SDK&#x27;s files vendored in <code>third_party/fidelityfx-fsr3/</code>. DLSS is downloaded from NVIDIA on your machine only if you accept NVIDIA&#x27;s DLSS SDK licence: when <code>tools/install.sh</code> or <code>run.cmd</code> asks (<code>--dlss accept|decline</code>), or with the Windows setup&#x27;s &quot;Download NVIDIA DLSS&quot; box, unticked by default; no release carries NVIDIA&#x27;s files.</li>
 <li><span class="sec">Added</span>The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</li>
@@ -267,14 +267,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</span></li>
-<li><time>next</time><span><b>Unreleased</b> Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</span></li>
-<li><time>next</time><span><b>Unreleased</b> Developer tools: Tracy zones (patch 3029), frame-time and per-thread CPU measurement (perf.cpp, tools/perf/), recorded...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive and...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Start menu entries &quot;Verify and rebuild&quot; (checks the installed files, then your game files, and rebuilds what changed)...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The setup refuses install folders the build cannot use ([ ] ; in the path, OneDrive, system and profile folders), also...</span></li>
+<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution...</span></li>
+<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</span></li>
+<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch...</span></li>
+<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</span></li>
+<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Developer tools: Tracy zones (patch 3029), frame-time and per-thread CPU measurement (perf.cpp, tools/perf/), recorded...</span></li>
+<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive and...</span></li>
+<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Start menu entries &quot;Verify and rebuild&quot; (checks the installed files, then your game files, and rebuilds what changed)...</span></li>
+<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The setup refuses install folders the build cannot use ([ ] ; in the path, OneDrive, system and profile folders), also...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -307,10 +307,10 @@
 <section id="install" class="promo">
 <h2>Install</h2>
 <div class="dl">
-<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.2.0">v0.2.0</a> <span>pre-release</span></p>
-<p class="small">1 Nov 2026 · partly playable · source for Linux x64</p>
-<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.2.0">Download v0.2.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
-<p>The release page has project-vekta-0.2.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.3.0">v0.3.0</a> <span>pre-release</span></p>
+<p class="small">5 Nov 2026 · partly playable · source for Linux x64</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.3.0">Download v0.3.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has project-vekta-0.3.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
 </div>
 <p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <pre>git clone --recurse-submodules \
