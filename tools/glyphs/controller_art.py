@@ -240,7 +240,7 @@ def kbm(mode):
     s = ""
     U, G = 23, 3
     x0, y0 = 12, 108
-    # (label, width in keys, kz1hd_keys.ini name)
+    # (label, width in key units, name in kz1hd_keys.ini)
     rows = [
         [("Esc", 1, "ESCAPE"), (None, 0.6, None), ("F1", 1, "F1"), ("F2", 1, "F2"), ("F3", 1, "F3"), ("F4", 1, "F4"), (None, 0.4, None), ("F5", 1, "F5")],
         [("`", 1, "`"), ("1", 1, "1"), ("2", 1, "2"), ("3", 1, "3"), ("4", 1, "4"), ("5", 1, "5"), ("6", 1, "6"), ("7", 1, "7")],

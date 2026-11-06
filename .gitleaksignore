@@ -1,0 +1,4 @@
+# Findings gitleaks reports that are not secrets, by fingerprint (commit:file:rule:line); the scan reads the whole
+# history, so a line fixed later still needs its old commit listed here.
+# A code comment naming the keyboard layout's columns ("width in keys, kz1hd_keys.ini name"), reworded in a later commit.
+0918ea52360d529e962f2cf75b537087b9cebe3b:tools/glyphs/controller_art.py:generic-api-key:243
