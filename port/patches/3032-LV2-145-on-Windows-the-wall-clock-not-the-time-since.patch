@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 6 Nov 2026 03:56:30 +0000
+Subject: [PATCH] LV2 145 on Windows: the wall clock, not the time since boot
+
+sys_time_get_current_time returned QueryPerformanceCounter's count as
+seconds and nanoseconds on Windows, which is the time since the machine
+started, so a title that reads the date through LV2 145 saw early January
+1970. It now reads the system time (GetSystemTimePreciseAsFileTime, moved
+from 1601 to the 1970 epoch), as the POSIX build already did with
+CLOCK_REALTIME; both live in lv2_wall_clock.h so a host test can check them
+without the rest of the LV2 layer. Written from the Windows API's
+documentation, not from other code.
+
+Found by Project Pyrrhus (the Killzone 2 port, MIT; its patch 6057, after
+sp00nznet/ps3recomp#633), which reported it in this port's issue #27.
+---
+ runtime/syscalls/lv2_wall_clock.h | 40 +++++++++++++++++++++++++++++++
+ runtime/syscalls/sys_timer.c      | 18 ++------------
+ 2 files changed, 42 insertions(+), 16 deletions(-)
+ create mode 100644 runtime/syscalls/lv2_wall_clock.h
+
+diff --git a/runtime/syscalls/lv2_wall_clock.h b/runtime/syscalls/lv2_wall_clock.h
+new file mode 100644
+index 0000000..67680c2
+--- /dev/null
++++ b/runtime/syscalls/lv2_wall_clock.h
+@@ -0,0 +1,40 @@
++/*
++ * ps3recomp - the host's wall clock, as LV2 145 (sys_time_get_current_time)
++ * returns it: seconds and nanoseconds since 1970-01-01 UTC.
++ */
++#ifndef LV2_WALL_CLOCK_H
++#define LV2_WALL_CLOCK_H
++
++#include <stdint.h>
++
++#ifdef _WIN32
++  #ifndef WIN32_LEAN_AND_MEAN
++    #define WIN32_LEAN_AND_MEAN
++  #endif
++  #include <windows.h>
++#else
++  #include <time.h>
++#endif
++
++/* Windows: the system time, not QueryPerformanceCounter (time since boot,
++ * which made the guest's clock read early January 1970). FILETIME counts
++ * 100 ns since 1601-01-01; 11644473600 s lie between 1601 and 1970.
++ * GetSystemTimePreciseAsFileTime is Windows 8 and newer. */
++static inline void lv2_wall_clock(uint64_t* sec, uint64_t* nsec)
++{
++#ifdef _WIN32
++    FILETIME ft;
++    GetSystemTimePreciseAsFileTime(&ft);
++    uint64_t t = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
++    t -= 116444736000000000ULL;
++    *sec  = t / 10000000ULL;
++    *nsec = (t % 10000000ULL) * 100ULL;
++#else
++    struct timespec ts;
++    clock_gettime(CLOCK_REALTIME, &ts);
++    *sec  = (uint64_t)ts.tv_sec;
++    *nsec = (uint64_t)ts.tv_nsec;
++#endif
++}
++
++#endif /* LV2_WALL_CLOCK_H */
+diff --git a/runtime/syscalls/sys_timer.c b/runtime/syscalls/sys_timer.c
+index c604c1c..001effd 100644
+--- a/runtime/syscalls/sys_timer.c
++++ b/runtime/syscalls/sys_timer.c
+@@ -7,6 +7,7 @@
+ #endif
+ #include "../ps3_trace.h"
+ #include "sys_timer.h"
++#include "lv2_wall_clock.h"
+ #include "sys_ppu_thread.h"   /* ppu_thread_note_block */
+ #include <time.h>
+ #include "sys_event.h"
+@@ -392,22 +393,7 @@ int64_t sys_time_get_current_time(ppu_context* ctx)
+     uint32_t nsec_addr = LV2_ARG_PTR(ctx, 1);
+ 
+     uint64_t sec, nsec;
+-
+-#ifdef _WIN32
+-    ensure_qpc_init();
+-    LARGE_INTEGER now;
+-    QueryPerformanceCounter(&now);
+-
+-    /* Convert QPC to seconds + nanoseconds */
+-    sec  = (uint64_t)(now.QuadPart / s_qpc_freq.QuadPart);
+-    uint64_t remainder = (uint64_t)(now.QuadPart % s_qpc_freq.QuadPart);
+-    nsec = (remainder * 1000000000ULL) / (uint64_t)s_qpc_freq.QuadPart;
+-#else
+-    struct timespec ts;
+-    clock_gettime(CLOCK_REALTIME, &ts);
+-    sec  = (uint64_t)ts.tv_sec;
+-    nsec = (uint64_t)ts.tv_nsec;
+-#endif
++    lv2_wall_clock(&sec, &nsec);
+ 
+     if (sec_addr != 0) {
+         write_be64(sec_addr, sec);
+-- 
+2.56.0
+

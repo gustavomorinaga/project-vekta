@@ -21,5 +21,6 @@ tools/tests/test_sandbox.sh
 tools/tests/test_upstream_suite.sh
 tools/tests/test_spu_put_recheck.sh
 tools/tests/test_pad_rawinput.sh
+tools/tests/test_wall_clock.sh
 tools/tests/test_wine_test.sh
 tools/tests/test_zig_wrappers.sh
