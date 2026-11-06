@@ -32,7 +32,8 @@ with tempfile.TemporaryDirectory() as tmp:
     m = {"count": len(entries), "version": "0.2.0", "files": entries}
     (d / "manifest.json").write_text(json.dumps(m))
     (d / "unins000.exe").write_bytes(b"MZ")
-    check(check_install.main([str(d)]) == 0, "an exact install passes, with the uninstaller's files")
+    (d / "work" / "dlss-choice").write_text("decline\n")
+    check(check_install.main([str(d)]) == 0, "an exact install passes, with the setup's own files")
     (d / "extra.txt").write_text("x")
     check(check_install.check(str(d), m) == ["not in the payload: extra.txt"], "an extra file is reported")
     (d / "extra.txt").unlink()
@@ -40,7 +41,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(any("sha256" in p for p in check_install.check(str(d), m)), "a changed file is reported")
     (d / "tools/kzbuild.py").unlink()
     check("missing: tools/kzbuild.py" in check_install.check(str(d), m), "a missing file is reported")
-    for rel in ("VERSION", "manifest.json", "unins000.exe", "tools"):
+    for rel in ("VERSION", "manifest.json", "unins000.exe", "work/dlss-choice", "tools"):
         p = d / rel
         p.rmdir() if p.is_dir() else p.unlink()
     check(check_install.main([str(d), "--after-uninstall"]) == 0, "after uninstall, work/vfs may stay")
