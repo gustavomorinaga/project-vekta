@@ -49,5 +49,7 @@ run test_spu_put_recheck -std=gnu17 -I "$P/include" -I "$S" -I "$P/runtime/platf
 # SDL2's hints on Windows (patch 4012): the Raw Input joystick driver off unless the environment says otherwise
 run test_pad_rawinput -std=gnu17 -DPS3RECOMP_PAD_USE_SDL2 -I "$P/include" -I "$P/libs/input" -I "$SD/include" -I "$SD/include/SDL2" \
   "$KZ_ROOT/tools/tests/test_pad_rawinput.c" -L "$SD/lib" -lSDL2 -pthread
+# LV2 145's wall clock on Windows (patch 3032): not the time since boot
+run test_wall_clock -std=gnu17 -I "$P/runtime/syscalls" "$KZ_ROOT/tools/tests/test_wall_clock.c"
 echo "wine host tests: $((n - ${#failed[@]}))/$n pass${failed:+; failed: ${failed[*]}}"
 (( ${#failed[@]} == 0 ))

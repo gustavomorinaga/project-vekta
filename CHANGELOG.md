@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- Windows: LV2 145 (`sys_time_get_current_time`) returns the wall clock, not the time since the PC started (it read
+  January 1970); the Linux build was right (patch 3032). The game's own dates come through `cellRtc`, which was
+  already right, so no effect in play is known. Found by Project Pyrrhus (issue #27, after its patch 6057).
+
 ## [0.3.0] - 2026-11-05 (pre-release)
 
 ### Added

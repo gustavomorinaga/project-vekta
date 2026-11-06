@@ -196,6 +196,13 @@
 </article>
 <div id="news">
 <article class="news rel">
+<h2>Unreleased</h2>
+<p class="meta">not released yet</p>
+<ul class="rlist">
+<li><span class="sec">Fixed</span>Windows: LV2 145 (<code>sys_time_get_current_time</code>) returns the wall clock, not the time since the PC started (it read January 1970); the Linux build was right (patch 3032). The game&#x27;s own dates come through <code>cellRtc</code>, which was already right, so no effect in play is known. Found by Project Pyrrhus (issue #27, after its patch 6057).</li>
+</ul>
+</article>
+<article class="news rel">
 <h2>0.3.0</h2>
 <p class="meta">5 Nov 2026 · pre-release</p>
 <ul class="rlist">
@@ -236,29 +243,12 @@
 <li><span class="sec">Fixed</span><code>tools/play.sh</code> names the missing step when there is no <code>work/vfs</code> or no build yet.</li>
 </ul>
 </article>
-<article class="news rel">
-<h2>0.1.0</h2>
-<p class="meta">31 Oct 2026 · pre-release</p>
-<ul class="rlist">
-<li><span class="sec">Added</span>The game&#x27;s own MLAA anti-aliasing, reimplemented as a GPU compute pass equal to the SPU code (patches 2035 to 2037, <code>KZ_MLAA=gpu|spu|off</code>); the first frame no longer waits for the driver to compile it.</li>
-<li><span class="sec">Added</span>NVIDIA Reflex (Off, On, On + Boost) on the PC page, through <code>VK_NV_low_latency2</code> (patch 2038).</li>
-<li><span class="sec">Added</span>In-game key capture for remapping screens (patch 4011).</li>
-<li><span class="sec">Added</span><code>tools/wine-test.sh</code> runs the Windows build under Wine or Proton for a minute and says whether it held its frame rate; it passed at 144 fps under both on the maintainer&#x27;s machine.</li>
-<li><span class="sec">Added</span><code>tools/mlaa_harness</code> and <code>tools/mlaa_probe</code>: the lifted MLAA jobs run outside the game, test patterns and checks.</li>
-<li><span class="sec">Added</span>Releases: <code>VERSION</code> holds the one version string; <code>tools/release/bump_version.py</code> moves it everywhere and turns this section into the release&#x27;s entry; a pushed tag builds a reproducible source archive (the tree with ps3recomp at its pinned commit) and opens a draft pre-release with notes from this file and SHA-256 sums (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/RELEASE-CRITERIA.md">docs/RELEASE-CRITERIA.md</a>).</li>
-<li><span class="sec">Changed</span>The project page is generated whole from the repository (the feature table, the screenshots, this changelog, the requirements and the patch series) and laid out like the Killzone 2 and Killzone 3 ports&#x27; pages; <code>docs/FEATURES.md</code> gains a section on the port itself (builds, frame rate, installer).</li>
-<li><span class="sec">Fixed</span><code>tools/release/bump_version.py</code> leaves an empty <code>## [Unreleased]</code> above the entry it releases, and an empty entry is not news on the project page.</li>
-<li><span class="sec">Fixed</span><code>tools/ps3recomp-patched.sh</code> also works in an unpacked source archive, where there is no git checkout.</li>
-<li><span class="sec">Fixed</span>An SPU write into a GPU-mapped range that overlaps one already unmapped is seen as GPU-mapped again (patch 2039), and the SPU poison-write diagnostic works with <code>SPU_POISON_DMA_WATCH</code> (patch 1019); both found by ps3recomp&#x27;s own tests, which now run on the patched tree in CI (patch 0004).</li>
-<li><span class="sec">Fixed</span>An SPU that reserves a line while another SPU&#x27;s plain write to it is being copied now loses the reservation at once, not at the next 10 ms poll (patch 1020).</li>
-</ul>
-</article>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">The whole changelog<span aria-hidden="true"> &gt;</span></a></p>
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 122 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 122 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 123 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 123 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -267,6 +257,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> Windows: LV2 145 (sys_time_get_current_time) returns the wall clock, not the time since the PC started (it read...</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution...</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch...</span></li>
@@ -274,7 +265,6 @@
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Developer tools: Tracy zones (patch 3029), frame-time and per-thread CPU measurement (perf.cpp, tools/perf/), recorded...</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive and...</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Start menu entries &quot;Verify and rebuild&quot; (checks the installed files, then your game files, and rebuilds what changed)...</span></li>
-<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The setup refuses install folders the build cannot use ([ ] ; in the path, OneDrive, system and profile folders), also...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
