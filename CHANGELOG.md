@@ -53,6 +53,10 @@ program and folder that build it. Until a release that calls itself playable
   earlier version left in the install folder move there on the next start.
 
 ### Fixed
+- Windows: the launcher stopped the game the moment it started whenever the last session's log (`work\play.log`)
+  ended with its window being closed: it read that old log before the new game had emptied it. An install over an
+  earlier version kept that log, so the game never opened until the old version was uninstalled; any start after a
+  session closed by its window could hit it too. The launcher now empties the log before it starts the game.
 - Installing over an earlier version: on a tester's Windows machine the game started and closed again at once, with
   nothing on screen, until the old version was uninstalled (its log went with the uninstall). The lift now starts
   from empty output folders, so no source an earlier version lifted is compiled in; the build now configures CMake afresh when the build folder was made from another

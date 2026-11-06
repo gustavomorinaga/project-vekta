@@ -241,6 +241,13 @@ with tempfile.TemporaryDirectory() as tmp:
     t0 = time.time()
     launch.run(argv, cwd, e, log, poll=0.05)
     check(time.time() - t0 < 10, "a closed window stops the game")
+    # On Windows the exe writes its own log (KZ_LOG), and only once it runs: the last session's "window closed" in
+    # that file must not stop the next one before it has started (an install over an earlier version keeps the log)
+    pathlib.Path(log).write_text("[kz] quitting (window closed)\n")
+    exe.write_text('#!/bin/sh\nsleep 0.5\necho "started" > "$KZ_LOG"\nexit 0\n')
+    rc = launch.run(argv, cwd, dict(e, KZ_LOG=log), log, poll=0.05)
+    check(rc == 0 and pathlib.Path(log).read_text() == "started\n",
+          f"the last session's log does not stop the game that writes its own: {rc} {pathlib.Path(log).read_text()!r}")
     so = sys.stdout
     sys.stdout = io.StringIO()
     try:

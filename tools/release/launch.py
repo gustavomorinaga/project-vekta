@@ -139,6 +139,10 @@ def window_closed(log):
 def run(argv, cwd, env, log, poll=1.0):
     """Runs the game; its output goes to log (on Windows the exe writes KZ_LOG itself)."""
     own = env.get("KZ_LOG") == log
+    if own:
+        # The exe empties its log only once it runs: until then the file holds the last session, whose "window
+        # closed" would stop this one at once (an install over an earlier version keeps that log). Empty it first.
+        open(log, "wb").close()
     with open(os.devnull if own else log, "wb") as out:
         p = subprocess.Popen(argv, cwd=cwd, env=env, stdout=out, stderr=subprocess.STDOUT)
         # The window closing leaves the process running headless: stop it then.
