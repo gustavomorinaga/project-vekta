@@ -40,6 +40,10 @@ FIRST_BUILD_NOTE = ("This first preview has been built only on the maintainer's 
 SETUP_BUILD_NOTE = ("The setup program has been tried only on the maintainer's machine (Linux, and Windows on the same "
                     "PC: installed, built and played); no other machine has built this release yet. Reports of an "
                     "install elsewhere, working or not, are welcome as issues.")
+# v0.3.0: gate 2 relaxed a third time (maintainer's decision, 2026-11-06), after an install over 0.2.0 on Windows.
+OVER_020_NOTE = ("This release has been tried only on the maintainer's machine (Linux, and Windows on the same PC: "
+                 "installed over 0.2.0, built and played); no other machine has built it yet. Reports of an install "
+                 "or a build elsewhere, working or not, are welcome as issues.")
 
 # v0.1.0 carried the source archive only; later releases also carry the Windows setup program and folder (release.yml).
 SOURCE_ONLY = (
@@ -130,7 +134,7 @@ def notes(version, entry, first=False):
           [FILES.format(version=version, blob=blob, linux=(
               LINUX_FOLDER if tuple(int(x) for x in version.split(".")) > (0, 2, 0) else LINUX_SOURCE
           ).format(version=version, blob=blob))]),
-        *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE]}.get(version, [])),
+        *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE]}.get(version, [])),
     ]) + "\n"
 
 

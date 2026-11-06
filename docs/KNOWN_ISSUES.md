@@ -40,8 +40,8 @@ are linked.
 - **No MangoHUD row** on the PC page of the Windows exe (MangoHUD is a Linux Vulkan layer; under Proton use it from
   the Linux side).
 - **The setup program was tried on one real Windows** (the maintainer's, 2026-10-31: the first build took about four
-  minutes, then the game held 60 fps), not yet on a clean Windows machine, and the full campaign was not played on
-  Windows.
+  minutes, then the game held 60 fps; 0.3.0's installed over 0.2.0 there on 2026-11-06 and played), not yet on a
+  clean Windows machine, and the full campaign was not played on Windows.
 - **The port is built on the player's PC**, by the setup program or on the first start (about four to five minutes,
   and about 1.6 GB more on disk): the game is not shipped, so it cannot be prebuilt.
 
