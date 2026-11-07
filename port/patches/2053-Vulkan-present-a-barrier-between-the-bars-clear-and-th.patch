@@ -1,0 +1,134 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 7 Nov 2026 16:10:48 -0300
+Subject: [PATCH] Vulkan present: a barrier between the bars' clear and the
+ frame's blit
+
+When the frame does not fill the window, the present cleared the swapchain
+image to black and blitted the frame into its middle with no barrier between
+the two. Both are transfer writes to the same image, and Vulkan does not order
+them without one: the clear may land over the blit. The Khronos validation
+layer's synchronization check reports it (SYNC-HAZARD-WRITE-AFTER-WRITE,
+vkCmdBlitImage after vkCmdClearColorImage) in a 1280x800 window on an
+NVIDIA card, which happens to run them in order. On a Radeon 8060S under
+Windows it matches issue #17: sharp black blocks over the frame in every
+mode with bars (a 1280x800 window, borderless 1920x1200 and borderless
+1920x1080 on a 1920x1200 desktop, widescreen on or off) and none in
+fullscreen 1920x1080, where there are no bars and so no clear.
+The order of the commands is now in rsx_present_steps.h, which the present
+follows and a host test checks. Written from the Vulkan specification's
+synchronization rules.
+---
+ libs/video/rsx_present_steps.h  | 37 +++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c | 44 ++++++++++++++++++++++-----------
+ 2 files changed, 66 insertions(+), 15 deletions(-)
+ create mode 100644 libs/video/rsx_present_steps.h
+
+diff --git a/libs/video/rsx_present_steps.h b/libs/video/rsx_present_steps.h
+new file mode 100644
+index 0000000..7ad1552
+--- /dev/null
++++ b/libs/video/rsx_present_steps.h
+@@ -0,0 +1,37 @@
++/*
++ * ps3recomp - the order of the window present's transfer commands
++ *
++ * When the frame does not fill the window, the swapchain image is cleared to
++ * black (the bars) and the frame is blitted into its middle. Both write the
++ * same image at the transfer stage, and Vulkan does not order two commands of
++ * one command buffer without a barrier between them: the blit may land first
++ * and the clear over it. The Khronos validation layer's synchronization check
++ * reports it (SYNC-HAZARD-WRITE-AFTER-WRITE, vkCmdBlitImage after
++ * vkCmdClearColorImage). NVIDIA happens to run them in order; on AMD
++ * (Radeon 8060S, Windows) the clear overwrote parts of the frame as sharp
++ * black blocks in every case with bars, and never in fullscreen without them.
++ * The present runs these steps in this order; a host test checks that a
++ * barrier always separates the clear from the blit.
++ */
++#ifndef PS3RECOMP_RSX_PRESENT_STEPS_H
++#define PS3RECOMP_RSX_PRESENT_STEPS_H
++
++enum {
++    RSX_PRESENT_CLEAR = 1,     /* the whole image to black */
++    RSX_PRESENT_CLEAR_DONE,    /* transfer write -> transfer write barrier */
++    RSX_PRESENT_BLIT,          /* the frame into its place */
++};
++
++/* steps[] gets the commands in order (at most 3); returns how many. */
++static inline int rsx_present_steps(int bars, int steps[3])
++{
++    int n = 0;
++    if (bars) {
++        steps[n++] = RSX_PRESENT_CLEAR;
++        steps[n++] = RSX_PRESENT_CLEAR_DONE;
++    }
++    steps[n++] = RSX_PRESENT_BLIT;
++    return n;
++}
++
++#endif
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index e74bcdc..5bf196e 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -50,6 +50,7 @@
+ #include "rsx_fp_decompiler.h"
+ #include "rsx_shader_spirv.h"
+ #include "rsx_draw_engine.h"
++#include "rsx_present_steps.h"
+ #include "rsx_temporal.h"
+ #include "rsx_vk_dlss.h"
+ #include "rsx_vk_fsr3.h"
+@@ -2500,21 +2501,34 @@ static void vk_present_window_body(void)
+     };
+     pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           0, 0, NULL, 0, NULL, 1, &b);
+-    if (dx || dy) {
+-        VkClearColorValue black = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+-        VkImageSubresourceRange all = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+-        pvkCmdClearColorImage(s_vk.cmd, s_vk.sc_images[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &all);
+-    }
+-    VkImageBlit blit = {
+-        .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+-        .srcOffsets = { { sx0, 0, 0 }, { sx1, (int32_t)s_vk.height, 1 } },
+-        .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+-        .dstOffsets = { { dx, dy, 0 }, { dx + dw, dy + dh, 1 } },
+-    };
+-    if (fsr) blit.srcOffsets[1] = (VkOffset3D){ dw, dh, 1 };   /* already the window's size */
+-    pvkCmdBlitImage(s_vk.cmd, fsr ? s_fsr.out.img : s_vk.color.img, VK_IMAGE_LAYOUT_GENERAL,
+-                    s_vk.sc_images[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+-                    1, &blit, fsr ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
++    /* bars: clear, then a barrier, then the blit (rsx_present_steps.h) */
++    int steps[3];
++    const int nsteps = rsx_present_steps(dx || dy, steps);
++    for (int k = 0; k < nsteps; k++) {
++        if (steps[k] == RSX_PRESENT_CLEAR) {
++            VkClearColorValue black = { { 0.0f, 0.0f, 0.0f, 1.0f } };
++            VkImageSubresourceRange all = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
++            pvkCmdClearColorImage(s_vk.cmd, s_vk.sc_images[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &all);
++        } else if (steps[k] == RSX_PRESENT_CLEAR_DONE) {
++            VkImageMemoryBarrier cb = b;
++            cb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
++            cb.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
++            cb.oldLayout = cb.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
++            pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
++                                  0, 0, NULL, 0, NULL, 1, &cb);
++        } else {
++            VkImageBlit blit = {
++                .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
++                .srcOffsets = { { sx0, 0, 0 }, { sx1, (int32_t)s_vk.height, 1 } },
++                .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
++                .dstOffsets = { { dx, dy, 0 }, { dx + dw, dy + dh, 1 } },
++            };
++            if (fsr) blit.srcOffsets[1] = (VkOffset3D){ dw, dh, 1 };   /* already the window's size */
++            pvkCmdBlitImage(s_vk.cmd, fsr ? s_fsr.out.img : s_vk.color.img, VK_IMAGE_LAYOUT_GENERAL,
++                            s_vk.sc_images[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++                            1, &blit, fsr ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
++        }
++    }
+     /* PS3RECOMP_VK_DUMP_PRESENT=<path with %u>: the dumped frames also as the
+      * window shows them, bars and all (tests of how a frame is presented) */
+     static const char* pdump = (const char*)-1;
+-- 
+2.56.0
+
