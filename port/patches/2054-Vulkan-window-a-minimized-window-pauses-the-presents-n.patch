@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gustavo Morinaga <me@gustavomorinaga.dev>
 Date: Sat, 7 Nov 2026 16:14:10 -0300
-Subject: [PATCH] Vulkan window: a minimized window pauses the presents, not
+Subject: [PATCH] Vulkan window: a window with no area pauses the presents, not
  the window
 
 On Windows a fullscreen window minimizes when it loses the focus, and the
@@ -9,15 +9,16 @@ surface of a minimized window has no area (its current extent is 0x0), so
 no swapchain can be made for it. The present took that for a failure and
 closed the window for good ("window disabled, continuing headless: the
 swapchain could not be recreated", issue #17 on a Radeon 8060S after
-Alt+Tab from fullscreen). The old swapchain is now kept, the presents
-return at once while the window is minimized, and the swapchain is made
-again once the window has an area.
+Alt+Tab from fullscreen). The same happened at start when the window had
+no area yet, as in exclusive fullscreen under Wine. The old swapchain, if
+any, is now kept, the presents return at once while the window has no
+area, and the swapchain is made once it has one.
 ---
- libs/video/rsx_vulkan_backend.c | 21 ++++++++++++++++++---
- 1 file changed, 18 insertions(+), 3 deletions(-)
+ libs/video/rsx_vulkan_backend.c | 27 ++++++++++++++++++++++-----
+ 1 file changed, 22 insertions(+), 5 deletions(-)
 
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 5bf196e..c036f1b 100644
+index 5bf196e..834210d 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -249,6 +249,7 @@ typedef struct vk_state {
@@ -63,6 +64,15 @@ index 5bf196e..c036f1b 100644
  }
  
  /* Blit the offscreen target into the next swapchain image and present it. */
+@@ -2442,7 +2453,7 @@ static void vk_fsr_record(u32 sw, u32 sh)
+ 
+ static void vk_present_window_body(void)
+ {
+-    if (!s_vk.windowed || !s_vk.swapchain) return;
++    if (!s_vk.windowed || (!s_vk.swapchain && !s_vk.no_area)) return;
+ 
+     /* The blit goes in its own command buffer and is not waited for here: the
+      * frame clock thread that presents is also the one draining the FIFO. The
 @@ -2463,7 +2474,11 @@ static void vk_present_window_body(void)
      pvkWaitForFences(s_vk.device, 1, &s_vk.pfence, VK_TRUE, UINT64_MAX);
      vk_flush();   /* whatever wrote the display image is submitted first */
@@ -76,6 +86,18 @@ index 5bf196e..c036f1b 100644
      u32 idx = 0;
      VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
                                          s_vk.sem_acquire, VK_NULL_HANDLE, &idx);
+@@ -6544,8 +6559,10 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+ 
+     if (s_vk.windowed) {
+         VkSemaphoreCreateInfo semi = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
++        /* no area yet (a fullscreen mode still being set, or minimized):
++         * the first present that finds one makes the swapchain */
+         if (pvkCreateSemaphore(s_vk.device, &semi, NULL, &s_vk.sem_acquire) != VK_SUCCESS ||
+-            vk_create_swapchain())
++            vk_create_swapchain() < 0)
+             vk_window_drop("the swapchain could not be created");
+     }
+     return 0;
 -- 
 2.56.0
 
