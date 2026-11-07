@@ -108,7 +108,9 @@ of the repository.
 ## Commits and pull requests
 
 - One topic per commit; short, plain, descriptive messages (what changed and why), in English. Credits go in the
-  message as above; no tool-generated footers, co-author trailers or advertising lines. Commits are not signed.
+  message as above; no tool-generated footers, co-author trailers or advertising lines. Commits are not signed. The
+  one trailer CI accepts is the one GitHub adds when it squash-merges a Dependabot pull request
+  (`tools/check-coauthors.sh`); never an AI agent's.
 - The pull request says what was run and what was seen. Use the templates in `.github/`.
 - Never add personal paths, user names, tokens or other secrets.
 
