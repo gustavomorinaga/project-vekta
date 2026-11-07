@@ -25,5 +25,6 @@ tools/tests/test_pad_rawinput.sh
 tools/tests/test_wall_clock.sh
 tools/tests/test_present_steps.sh
 tools/tests/test_gcm_flip_wait.sh
+tools/tests/test_vk_cache_key.sh
 tools/tests/test_wine_test.sh
 tools/tests/test_zig_wrappers.sh

@@ -20,6 +20,12 @@ program and folder that build it. Until a release that calls itself playable
 - Windows: LV2 145 (`sys_time_get_current_time`) returns the wall clock, not the time since the PC started (it read
   January 1970); the Linux build was right (patch 3032). The game's own dates come through `cellRtc`, which was
   already right, so no effect in play is known. Found by Project Pyrrhus (issue #27, after its patch 6057).
+- An update over an older install can no longer run the older build's translated shaders: the shader cache on disk
+  (`PS3RECOMP_VK_CACHE`, default `~/.cache/ps3recomp-vk`) was keyed by the program and a version number bumped by
+  hand, so a build whose shader translator or glslang changed without the bump read the older SPIR-V as its own. Its
+  files and pipeline list are now keyed by the translator's id, a hash of its sources and the glslang version; the
+  first start after such an update builds the cache again (patch 2056). Not seen in this port; Project Pyrrhus lost
+  its sight's reticle that way (its issue #25, fixed by its patch 6047).
 
 ## [0.3.0] - 2026-11-05 (pre-release)
 
