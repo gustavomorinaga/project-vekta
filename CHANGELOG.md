@@ -13,7 +13,9 @@ program and folder that build it. Until a release that calls itself playable
   clear could land over the frame (patch 2053).
 - Windows: a fullscreen window that loses the focus no longer goes headless ("the swapchain could not be
   recreated", issue #17): while minimized the window shows nothing, and the picture comes back when it is restored
-  (patch 2054).
+  (patch 2054). Any other swapchain that cannot be recreated no longer closes the window either: the frames are
+  skipped and the next presents try again, and the swapchain is also recreated after Alt+Enter, a restore or a move
+  to another display at the same size (patch 2057, after Project Helghast and Project Pyrrhus on D3D12).
 - Windows: `PS3_GCM_MAX_QUEUED_FLIPS` works. Its wait ended at once on Windows, so with V-Sync (FIFO, the only mode
   some AMD drivers offer) the menus and the opening movies ran 400 to 650 frames (3 to 4 s) ahead of the screen:
   slow menu input and stutter (issue #18). The Windows build under Wine now stays at 2 frames ahead (patch 2055).

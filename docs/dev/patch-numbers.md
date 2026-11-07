@@ -142,3 +142,4 @@ private series: 0004 and 2039 now come from the private branch, made on top of t
 | (none) | 2054 | Vulkan window: a minimized window pauses the presents, not the window (written in this tree, 2026-11-07) |
 | (none) | 2055 | cellGcm: PS3_GCM_MAX_QUEUED_FLIPS waits on Windows too (written in this tree, 2026-11-07) |
 | (none) | 2056 | Vulkan: the shader caches on disk are keyed by the translator's id (written in this tree, 2026-11-07, after Project Pyrrhus's patch 6047) |
+| (none) | 2057 | Vulkan window: a swapchain not recreated skips frames, not the window (written in this tree, 2026-11-07, after Project Helghast's patches 2130, 2133 and 2152) |

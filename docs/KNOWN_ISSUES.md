@@ -37,7 +37,9 @@ are linked.
   ahead of the screen, because `PS3_GCM_MAX_QUEUED_FLIPS`'s wait ended at once on Windows; reproduced with the
   Windows build under Wine (2026-11-07). Fixed after 0.3.0 (patch 2055), not yet confirmed on an AMD card.
 - **A fullscreen window that loses the focus goes headless** in 0.3.0 (issue #17): the game keeps running with no
-  picture. Fixed after 0.3.0 (patch 2054), not yet tried on Windows. Workaround: borderless or a window.
+  picture. Fixed after 0.3.0 (patch 2054), not yet tried on Windows; since patch 2057 no failure to recreate the
+  swapchain closes the window (the frames are skipped and the presents try again). Workaround: borderless or a
+  window.
 - **A controller that is detected but gives no input** (a OneXPlayer X2 Mini Pro's built-in Xbox-style pad, issue
   #19). Fixed in 0.3.0 (patch 4012), not yet confirmed on that machine; in 0.2.0 set `SDL_JOYSTICK_RAWINPUT=0`
   before `play.cmd`.
