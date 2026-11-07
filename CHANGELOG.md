@@ -19,6 +19,8 @@ program and folder that build it. Until a release that calls itself playable
 - Windows: `PS3_GCM_MAX_QUEUED_FLIPS` works. Its wait ended at once on Windows, so with V-Sync (FIFO, the only mode
   some AMD drivers offer) the menus and the opening movies ran 400 to 650 frames (3 to 4 s) ahead of the screen:
   slow menu input and stutter (issue #18). The Windows build under Wine now stays at 2 frames ahead (patch 2055).
+  Between its checks the wait naps 100 us on a high-resolution timer, as on Linux, instead of `Sleep(1)` (at least
+  1 ms), which saw each flip up to a millisecond late (patch 2058, after sp00nznet/ps3recomp#628).
 - Windows: LV2 145 (`sys_time_get_current_time`) returns the wall clock, not the time since the PC started (it read
   January 1970); the Linux build was right (patch 3032). The game's own dates come through `cellRtc`, which was
   already right, so no effect in play is known. Found by Project Pyrrhus (issue #27, after its patch 6057).
