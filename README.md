@@ -88,7 +88,7 @@ exception: unless you pick its "Portable" option, the settings and saves go to `
 
 ## Getting it
 
-Latest release: <!-- release -->[v0.3.1](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.3.1), a pre-release<!-- /release -->. Each release carries the Windows setup program and the same folder as
+Latest release: <!-- release -->[v0.3.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.3.0), a pre-release<!-- /release -->. Each release carries the Windows setup program and the same folder as
 a zip, a Linux folder with its own toolchain, and a source archive (this tree with ps3recomp at its pinned commit),
 each checked by SHA-256; either way the port is built on your machine from your own game
 ([docs/BUILDING.md](docs/BUILDING.md)). You need:
