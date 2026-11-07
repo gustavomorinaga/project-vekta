@@ -1,0 +1,123 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 7 Nov 2026 16:18:28 -0300
+Subject: [PATCH] cellGcm: PS3_GCM_MAX_QUEUED_FLIPS waits on Windows too
+
+_cellGcmSetFlipCommand waits while the title is PS3_GCM_MAX_QUEUED_FLIPS
+flips ahead of the drain, in 1000 rounds: usleep(100) on POSIX, at least
+100 ms, but Sleep(0) on Windows, which only yields to a ready thread and
+ends the 1000 rounds within microseconds. The cap held nothing there: under
+FIFO at 144 Hz Killzone HD's menus ran 430 to 650 flips (3 to 4 s) ahead of
+the screen, in the tester's logs on a Radeon 8060S (issue #18, also with the
+cap at 1) and in the Windows build under Wine on an NVIDIA card, while the
+Linux build stayed at 2. The wait is now bounded by time, 100 ms on both,
+with a real sleep between checks (Sleep(1) on Windows, where the port sets
+a 1 ms timer resolution), in gcm_flip_wait.h for a host test.
+---
+ libs/video/cellGcmSys.c    | 14 +++++-----
+ libs/video/gcm_flip_wait.h | 54 ++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 61 insertions(+), 7 deletions(-)
+ create mode 100644 libs/video/gcm_flip_wait.h
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index c86f800..ee76d97 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -35,6 +35,7 @@ static u32 s_gcm_context_ea = 0;
+ #else
+ #include <time.h>
+ #endif
++#include "gcm_flip_wait.h"   /* PS3_GCM_MAX_QUEUED_FLIPS's wait */
+ 
+ /* ---------------------------------------------------------------------------
+  * Timestamp helpers (same pattern as sys_timer)
+@@ -4375,6 +4376,11 @@ s32 cellGcmSetDefaultFifoSize(u32 size)
+  * NVIDIA Reflex sleep (rsx_vulkan_latency_sleep), NULL otherwise. */
+ void (*g_gcm_flip_queued_hook)(void);
+ 
++static int gcm_flips_ahead_of_cap(void* cap)
++{
++    return (int)(cellGcm_flip_written_count() - s_flip_request_count) >= *(int*)cap;
++}
++
+ /* NID: 0x21397818 */
+ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+ {
+@@ -4389,13 +4395,7 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+       if (cap < 0) { const char* e = getenv("PS3_GCM_MAX_QUEUED_FLIPS"); cap = e ? atoi(e) : 2; }
+       if (cap > 0) {
+           PS3_TRACE_BEGIN(_tr);
+-          for (int i = 0; i < 1000 && (int)(cellGcm_flip_written_count() - s_flip_request_count) >= cap; i++) {
+-#ifdef _WIN32
+-              Sleep(0);
+-#else
+-              usleep(100);
+-#endif
+-          }
++          gcm_flip_wait(gcm_flips_ahead_of_cap, &cap, 100000);   /* at most 100 ms (gcm_flip_wait.h) */
+           PS3_TRACE_END(_tr, "flip_wait", 0);
+       } }
+     s32 rc = gcm_flip_into_fifo((u32)(uintptr_t)ctx, bufferId)
+diff --git a/libs/video/gcm_flip_wait.h b/libs/video/gcm_flip_wait.h
+new file mode 100644
+index 0000000..36c7ce4
+--- /dev/null
++++ b/libs/video/gcm_flip_wait.h
+@@ -0,0 +1,54 @@
++/*
++ * ps3recomp - the bounded wait behind PS3_GCM_MAX_QUEUED_FLIPS
++ *
++ * _cellGcmSetFlipCommand waits while the title is `cap` or more flips ahead
++ * of the drain. The wait used to be 1000 rounds of usleep(100) on POSIX and of
++ * Sleep(0) on Windows. Sleep(0) only gives the rest of the time slice to a
++ * thread that is ready to run, so on Windows the 1000 rounds ended within
++ * microseconds and the cap held nothing: under FIFO at 144 Hz Killzone HD's
++ * menus ran 430 to 650 flips (3 to 4 s) ahead of the screen, on a Radeon
++ * 8060S (issue #18) and in the Windows build under Wine, while the Linux build
++ * stayed at 2. The wait is now bounded by time on both, sleeping for real
++ * between checks (Sleep(1); the port raises the timer resolution to 1 ms).
++ */
++#ifndef PS3RECOMP_GCM_FLIP_WAIT_H
++#define PS3RECOMP_GCM_FLIP_WAIT_H
++
++#ifdef _WIN32
++#include <windows.h>
++static inline unsigned long long gcm_flip_wait_now_us(void)
++{
++    LARGE_INTEGER f, c;
++    QueryPerformanceFrequency(&f);
++    QueryPerformanceCounter(&c);
++    return (unsigned long long)(c.QuadPart / f.QuadPart) * 1000000ULL +
++           (unsigned long long)(c.QuadPart % f.QuadPart) * 1000000ULL / (unsigned long long)f.QuadPart;
++}
++static inline void gcm_flip_wait_nap(void) { Sleep(1); }
++#else
++#include <time.h>
++#include <unistd.h>
++static inline unsigned long long gcm_flip_wait_now_us(void)
++{
++    struct timespec t;
++    clock_gettime(CLOCK_MONOTONIC, &t);
++    return (unsigned long long)t.tv_sec * 1000000ULL + (unsigned long long)t.tv_nsec / 1000ULL;
++}
++static inline void gcm_flip_wait_nap(void) { usleep(100); }
++#endif
++
++/* Waits while ahead(arg) is true, at most max_us; returns the microseconds
++ * waited. Bounded, in case the earlier flip sits behind a put the title has
++ * not flushed. */
++static inline unsigned long long gcm_flip_wait(int (*ahead)(void*), void* arg, unsigned long long max_us)
++{
++    const unsigned long long t0 = gcm_flip_wait_now_us();
++    unsigned long long t = t0;
++    while (ahead(arg) && t - t0 < max_us) {
++        gcm_flip_wait_nap();
++        t = gcm_flip_wait_now_us();
++    }
++    return t - t0;
++}
++
++#endif
+-- 
+2.56.0
+
