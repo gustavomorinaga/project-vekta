@@ -22,5 +22,7 @@ tools/tests/test_upstream_suite.sh
 tools/tests/test_spu_put_recheck.sh
 tools/tests/test_pad_rawinput.sh
 tools/tests/test_wall_clock.sh
+tools/tests/test_present_steps.sh
+tools/tests/test_gcm_flip_wait.sh
 tools/tests/test_wine_test.sh
 tools/tests/test_zig_wrappers.sh

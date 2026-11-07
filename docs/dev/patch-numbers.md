@@ -138,3 +138,6 @@ private series: 0004 and 2039 now come from the private branch, made on top of t
 | (none) | 2051 | vulkan: PS3RECOMP_FFX_TARGET, FSR 3.1 from a library target (written in this tree) |
 | 0118 | 2052 | vulkan: DLSS and FSR 3.1 in the MinGW (Windows) build |
 | (none) | 3032 | LV2 145 on Windows: the wall clock, not the time since boot (written in this tree, 2026-11-06) |
+| (none) | 2053 | Vulkan present: a barrier between the bars' clear and the frame's blit (written in this tree, 2026-11-07) |
+| (none) | 2054 | Vulkan window: a minimized window pauses the presents, not the window (written in this tree, 2026-11-07) |
+| (none) | 2055 | cellGcm: PS3_GCM_MAX_QUEUED_FLIPS waits on Windows too (written in this tree, 2026-11-07) |

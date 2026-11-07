@@ -125,3 +125,6 @@
 2051-vulkan-PS3RECOMP_FFX_TARGET-FSR-3.1-from-a-target.patch
 2052-vulkan-DLSS-and-FSR-3.1-in-the-MinGW-Windows-build.patch
 3032-LV2-145-on-Windows-the-wall-clock-not-the-time-since.patch
+2053-Vulkan-present-a-barrier-between-the-bars-clear-and-th.patch
+2054-Vulkan-window-a-minimized-window-pauses-the-presents-n.patch
+2055-cellGcm-PS3_GCM_MAX_QUEUED_FLIPS-waits-on-Windows-too.patch
