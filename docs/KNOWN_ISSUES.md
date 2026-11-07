@@ -34,6 +34,8 @@ are linked.
   confirmed on an AMD card. Workaround in 0.3.0: fullscreen at a 16:9 resolution.
 - **Stutter in the opening movies and the menus, and slow menu input** (AMD Radeon 8060S, issue #18), while play
   itself holds 60 fps. `PS3_GCM_MAX_QUEUED_FLIPS` 1 to 3 did not help. No workaround yet.
+- **A fullscreen window that loses the focus goes headless** in 0.3.0 (issue #17): the game keeps running with no
+  picture. Fixed after 0.3.0 (patch 2054), not yet tried on Windows. Workaround: borderless or a window.
 - **A controller that is detected but gives no input** (a OneXPlayer X2 Mini Pro's built-in Xbox-style pad, issue
   #19). Fixed in 0.3.0 (patch 4012), not yet confirmed on that machine; in 0.2.0 set `SDL_JOYSTICK_RAWINPUT=0`
   before `play.cmd`.

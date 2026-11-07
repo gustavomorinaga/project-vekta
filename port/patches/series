@@ -126,3 +126,4 @@
 2052-vulkan-DLSS-and-FSR-3.1-in-the-MinGW-Windows-build.patch
 3032-LV2-145-on-Windows-the-wall-clock-not-the-time-since.patch
 2053-Vulkan-present-a-barrier-between-the-bars-clear-and-th.patch
+2054-Vulkan-window-a-minimized-window-pauses-the-presents-n.patch

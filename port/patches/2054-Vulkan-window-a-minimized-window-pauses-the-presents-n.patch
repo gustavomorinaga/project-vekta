@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 7 Nov 2026 16:14:10 -0300
+Subject: [PATCH] Vulkan window: a minimized window pauses the presents, not
+ the window
+
+On Windows a fullscreen window minimizes when it loses the focus, and the
+surface of a minimized window has no area (its current extent is 0x0), so
+no swapchain can be made for it. The present took that for a failure and
+closed the window for good ("window disabled, continuing headless: the
+swapchain could not be recreated", issue #17 on a Radeon 8060S after
+Alt+Tab from fullscreen). The old swapchain is now kept, the presents
+return at once while the window is minimized, and the swapchain is made
+again once the window has an area.
+---
+ libs/video/rsx_vulkan_backend.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 5bf196e..c036f1b 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -249,6 +249,7 @@ typedef struct vk_state {
+     SDL_Window*      window;
+     Uint32           fs_flags;        /* SDL_WINDOW_FULLSCREEN(_DESKTOP) for Alt+Enter */
+     volatile int     resized;
++    int              no_area;         /* minimized: presents wait for the window */
+     const char*      inst_exts[16];
+     u32              inst_ext_count;
+     VkSurfaceKHR     surface;
+@@ -2205,7 +2206,15 @@ static int vk_create_swapchain(void)
+         if (ext.width  > caps.maxImageExtent.width)  ext.width  = caps.maxImageExtent.width;
+         if (ext.height > caps.maxImageExtent.height) ext.height = caps.maxImageExtent.height;
+     }
+-    if (!ext.width || !ext.height) { VK_LOG("window has no drawable area\n"); return -1; }
++    /* Minimized (on Windows a fullscreen window minimizes when it loses the
++     * focus) the surface has no area and no swapchain can be made for it.
++     * Not an error: the old swapchain is kept and presents wait until the
++     * window has an area again. */
++    if (!ext.width || !ext.height) {
++        if (!s_vk.no_area) VK_LOG("window has no drawable area: presents wait for it\n");
++        s_vk.no_area = 1;
++        return 1;
++    }
+ 
+     u32 count = caps.minImageCount + 1;
+     if (caps.maxImageCount && count > caps.maxImageCount) count = caps.maxImageCount;
+@@ -2280,6 +2289,8 @@ static int vk_create_swapchain(void)
+ 
+     s_vk.sc_extent = ext;
+     s_vk.sc_count = n;
++    if (s_vk.no_area) VK_LOG("window has an area again\n");
++    s_vk.no_area = 0;
+     VK_LOG("window swapchain %ux%u, %u images, format %d\n", ext.width, ext.height, n, (int)fmt.format);
+     return 0;
+ }
+@@ -2287,7 +2298,7 @@ static int vk_create_swapchain(void)
+ static void vk_swapchain_lost(void)
+ {
+     pvkDeviceWaitIdle(s_vk.device);
+-    if (vk_create_swapchain()) vk_window_drop("the swapchain could not be recreated");
++    if (vk_create_swapchain() < 0) vk_window_drop("the swapchain could not be recreated");
+ }
+ 
+ /* Blit the offscreen target into the next swapchain image and present it. */
+@@ -2463,7 +2474,11 @@ static void vk_present_window_body(void)
+     pvkWaitForFences(s_vk.device, 1, &s_vk.pfence, VK_TRUE, UINT64_MAX);
+     vk_flush();   /* whatever wrote the display image is submitted first */
+ 
+-    if (s_vk.resized) { s_vk.resized = 0; vk_swapchain_lost(); if (!s_vk.swapchain) return; }
++    if (s_vk.no_area) {   /* minimized: nothing to show until it is restored */
++        if (SDL_GetWindowFlags(s_vk.window) & SDL_WINDOW_MINIMIZED) return;
++        s_vk.resized = 1;
++    }
++    if (s_vk.resized) { s_vk.resized = 0; vk_swapchain_lost(); if (!s_vk.swapchain || s_vk.no_area) return; }
+     u32 idx = 0;
+     VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
+                                         s_vk.sem_acquire, VK_NULL_HANDLE, &idx);
+-- 
+2.56.0
+

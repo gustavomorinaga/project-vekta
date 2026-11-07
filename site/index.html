@@ -200,6 +200,7 @@
 <p class="meta">not released yet</p>
 <ul class="rlist">
 <li><span class="sec">Fixed</span>Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD, issue #17): the window&#x27;s present cleared the bars and copied the frame with no barrier between them, so the clear could land over the frame (patch 2053).</li>
+<li><span class="sec">Fixed</span>Windows: a fullscreen window that loses the focus no longer goes headless (&quot;the swapchain could not be recreated&quot;, issue #17): while minimized the window shows nothing, and the picture comes back when it is restored (patch 2054).</li>
 <li><span class="sec">Fixed</span>Windows: LV2 145 (<code>sys_time_get_current_time</code>) returns the wall clock, not the time since the PC started (it read January 1970); the Linux build was right (patch 3032). The game&#x27;s own dates come through <code>cellRtc</code>, which was already right, so no effect in play is known. Found by Project Pyrrhus (issue #27, after its patch 6057).</li>
 </ul>
 </article>
@@ -248,8 +249,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.18.0 · 124 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 124 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.18.0 · 125 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.18.0 with 125 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -259,13 +260,13 @@
 <h2>Changelog</h2>
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD, issue...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Windows: a fullscreen window that loses the focus no longer goes headless (&quot;the swapchain could not be recreated&quot;...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Windows: LV2 145 (sys_time_get_current_time) returns the wall clock, not the time since the PC started (it read...</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution...</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Button prompts: Kenney&#x27;s Input Prompts (CC0) in the game&#x27;s own finish, and pad pictures of our own for Xbox, Switch...</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The pipelines a run used are listed and built ahead on worker threads at the next start (patch 2044).</span></li>
 <li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Developer tools: Tracy zones (patch 3029), frame-time and per-thread CPU measurement (perf.cpp, tools/perf/), recorded...</span></li>
-<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The Windows setup program asks for your files on pages of its own (the game folder, the decrypted EBOOT, archive and...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

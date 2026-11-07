@@ -11,6 +11,9 @@ program and folder that build it. Until a release that calls itself playable
 - Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD,
   issue #17): the window's present cleared the bars and copied the frame with no barrier between them, so the
   clear could land over the frame (patch 2053).
+- Windows: a fullscreen window that loses the focus no longer goes headless ("the swapchain could not be
+  recreated", issue #17): while minimized the window shows nothing, and the picture comes back when it is restored
+  (patch 2054).
 - Windows: LV2 145 (`sys_time_get_current_time`) returns the wall clock, not the time since the PC started (it read
   January 1970); the Linux build was right (patch 3032). The game's own dates come through `cellRtc`, which was
   already right, so no effect in play is known. Found by Project Pyrrhus (issue #27, after its patch 6057).
