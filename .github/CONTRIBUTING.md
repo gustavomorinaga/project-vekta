@@ -46,4 +46,5 @@ removed. Never attach game files or saves.
 ## Commits
 
 One topic per commit, a short plain message that says what changed and why, in English, with credits for anything
-absorbed from elsewhere. No tool-generated footers or co-author trailers.
+absorbed from elsewhere. No tool-generated footers or co-author trailers
+(only the one GitHub adds to a squash-merged Dependabot pull request passes CI, `tools/check-coauthors.sh`).

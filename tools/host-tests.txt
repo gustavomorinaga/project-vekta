@@ -16,6 +16,7 @@ tools/tests/test_version_agree.py
 tools/tests/test_doc_refs.py
 tools/tests/test_sync_from_private.py
 tools/tests/test_check_tree.sh
+tools/tests/test_check_coauthors.sh
 tools/tests/test_mlaa_ref.sh
 tools/tests/test_sandbox.sh
 tools/tests/test_upstream_suite.sh
