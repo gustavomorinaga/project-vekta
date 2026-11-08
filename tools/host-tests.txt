@@ -30,3 +30,4 @@ tools/tests/test_swapchain_retry.sh
 tools/tests/test_wine_test.sh
 tools/tests/test_zig_wrappers.sh
 tools/tests/test_nv0039_route.sh
+tools/tests/test_audio_notify.sh

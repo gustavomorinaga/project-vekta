@@ -1,0 +1,164 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sun, 8 Nov 2026 04:10:00 -0300
+Subject: [PATCH] cellAudio: a notify queue key holds one slot (movies stop
+ starting after the 8th)
+
+cellAudioCreateNotifyEventQueue registered its new key in a notify slot,
+cellAudioSetNotifyEventQueue registered the same key again in a second
+slot, and cellAudioRemoveNotifyEventQueue freed only one of them. Killzone
+HD's movie player (FUN_00061FD8) does Create, Set and, when the movie ends,
+Remove: each movie leaked a slot, and every live key got two events per
+mixed block. With CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES = 8, the 8th movie of a
+session saw Set fail with CELL_AUDIO_ERROR_PARAM; the player then returns
+before sys_ppu_thread_create (it sets +0x40 first, so its stop path joins
+the stale thread id at +0x38: a log of 2026-11-08 shows
+ppu_thread_join(tid=0x3C6C696E653E203C), the text "<line> <"), the movie
+never starts, and the main menu after Pause > Quit waited for it behind
+its full-screen fade (an F12 capture: one draw a frame, a black quad of
+alpha 1). A long session plays intros, outros and the menu movie until the
+8th.
+
+A key now holds at most one slot (cellAudio_notify.h): registering it
+again returns its slot, and removing it frees it. Written from the
+observed behaviour; not specific to the title (a candidate for upstream).
+---
+diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
+index 54e6535..5c5948b 100644
+--- a/libs/audio/cellAudio.c
++++ b/libs/audio/cellAudio.c
+@@ -14,6 +14,7 @@
+ 
+ #include "../../runtime/memory/vm.h"   /* vm_commit */
+ #include "cellAudio.h"
++#include "cellAudio_notify.h"   /* one slot per key (patch 3033) */
+ #include "../../runtime/ppu/ppu_memory.h"   /* vm_base, vm_read64, vm_write32 */
+ #include <stdio.h>
+ #include <string.h>
+@@ -133,11 +134,7 @@ typedef struct {
+ static int            s_audio_initialized = 0;
+ static AudioPortSlot  s_ports[CELL_AUDIO_PORT_MAX];
+ 
+-/* Event queue notification */
+-typedef struct {
+-    int  in_use;
+-    u64  key;
+-} AudioNotifySlot;
++/* Event queue notification (AudioNotifySlot: cellAudio_notify.h) */
+ static AudioNotifySlot s_notify_queues[CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES];
+ 
+ /* Timestamp anchor for cellAudioGetPortTimestamp (microseconds, set at init) */
+@@ -1181,14 +1178,9 @@ s32 cellAudioCreateNotifyEventQueue(u32* id, u64* key)
+         return CELL_AUDIO_ERROR_EVENT_QUEUE;
+ 
+     mutex_lock(&s_audio_mutex);
+-    int slot = -1;
+-    for (int i = 0; i < CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES; i++) {
+-        if (!s_notify_queues[i].in_use) { slot = i; break; }
+-    }
+-    if (slot < 0) { mutex_unlock(&s_audio_mutex); return CELL_AUDIO_ERROR_PARAM; }
+-    s_notify_queues[slot].in_use = 1;
+-    s_notify_queues[slot].key    = k;
++    const int slot = audio_notify_register(s_notify_queues, CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES, k);
+     mutex_unlock(&s_audio_mutex);
++    if (slot < 0) return CELL_AUDIO_ERROR_PARAM;
+ 
+     vm_write32(id_ea, qid);
+     vm_write64(key_ea, k);
+@@ -1207,17 +1199,15 @@ s32 cellAudioSetNotifyEventQueue(u64 key)
+ 
+     mutex_lock(&s_audio_mutex);
+ 
+-    for (int i = 0; i < CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES; i++) {
+-        if (!s_notify_queues[i].in_use) {
+-            s_notify_queues[i].in_use = 1;
+-            s_notify_queues[i].key = key;
+-            mutex_unlock(&s_audio_mutex);
+-            return CELL_OK;
+-        }
+-    }
+-
++    /* the key Create registered keeps its one slot */
++    const int slot = audio_notify_register(s_notify_queues, CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES, key);
+     mutex_unlock(&s_audio_mutex);
+-    return CELL_AUDIO_ERROR_PARAM; /* no free slots */
++    if (slot < 0) {
++        static int n; if (PS3_LOG_FIRST(n, 4))
++            fprintf(stderr, "[cellAudio] SetNotifyEventQueue: all %d notify slots in use\n", CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES);
++        return CELL_AUDIO_ERROR_PARAM; /* no free slots */
++    }
++    return CELL_OK;
+ }
+ 
+ s32 cellAudioRemoveNotifyEventQueue(u64 key)
+@@ -1230,16 +1220,9 @@ s32 cellAudioRemoveNotifyEventQueue(u64 key)
+ 
+     mutex_lock(&s_audio_mutex);
+ 
+-    for (int i = 0; i < CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES; i++) {
+-        if (s_notify_queues[i].in_use && s_notify_queues[i].key == key) {
+-            s_notify_queues[i].in_use = 0;
+-            mutex_unlock(&s_audio_mutex);
+-            return CELL_OK;
+-        }
+-    }
+-
++    const int found = audio_notify_remove(s_notify_queues, CELL_AUDIO_MAX_NOTIFY_EVENT_QUEUES, key);
+     mutex_unlock(&s_audio_mutex);
+-    return CELL_AUDIO_ERROR_PARAM;
++    return found ? CELL_OK : CELL_AUDIO_ERROR_PARAM;
+ }
+ 
+ s32 cellAudioGetPortConfig(u32 portNum, CellAudioPortConfig* config)
+diff --git a/libs/audio/cellAudio_notify.h b/libs/audio/cellAudio_notify.h
+new file mode 100644
+index 0000000..dbce353
+--- /dev/null
++++ b/libs/audio/cellAudio_notify.h
+@@ -0,0 +1,44 @@
++/*
++ * cellAudio's notify registrations: which event queue keys get an event per
++ * mixed block. Header-only so a host test can check it.
++ *
++ * CreateNotifyEventQueue registered its new key and SetNotifyEventQueue
++ * registered it again in a second slot, while RemoveNotifyEventQueue freed
++ * only one: every movie (Killzone HD's player, FUN_00061FD8: Create, Set,
++ * then Remove at the end) leaked a slot, and every live key got two events a
++ * block. With 8 slots, the 8th movie's Set failed (CELL_AUDIO_ERROR_PARAM);
++ * the player then skipped creating its audio thread and never started, and
++ * the main menu, which waits for its movie, stayed behind its fade to black
++ * after a long session. A key now holds at most one slot: registering it
++ * again is a no-op, and removing it frees it.
++ */
++#ifndef PS3RECOMP_CELLAUDIO_NOTIFY_H
++#define PS3RECOMP_CELLAUDIO_NOTIFY_H
++#include <stdint.h>
++
++typedef struct {
++    int      in_use;
++    uint64_t key;
++} AudioNotifySlot;
++
++/* The slot of `key`, registering it in a free one if it has none; -1 when full. */
++static inline int audio_notify_register(AudioNotifySlot* s, int n, uint64_t key)
++{
++    int free_slot = -1;
++    for (int i = 0; i < n; i++) {
++        if (s[i].in_use && s[i].key == key) return i;
++        if (!s[i].in_use && free_slot < 0) free_slot = i;
++    }
++    if (free_slot >= 0) { s[free_slot].in_use = 1; s[free_slot].key = key; }
++    return free_slot;
++}
++
++/* Frees `key`'s slot; 0 when it had none. */
++static inline int audio_notify_remove(AudioNotifySlot* s, int n, uint64_t key)
++{
++    int found = 0;
++    for (int i = 0; i < n; i++)
++        if (s[i].in_use && s[i].key == key) { s[i].in_use = 0; found = 1; }
++    return found;
++}
++#endif
+-- 
+2.47.0

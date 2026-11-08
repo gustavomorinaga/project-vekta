@@ -7,12 +7,12 @@
 # that no menu background in the presented frames is grainy (the mean difference between neighbouring pixels: 7.4
 # in a report's screenshot, under 0.2 for the flat VICTORY and the tinted pause snapshot), and that the main menu
 # after quitting is visible (not dark).
-# Usage: tools/menu-bg-check.sh [CYCLES] (default 3). Close the game first: one instance at a time.
+# Usage: tools/menu-bg-check.sh [CYCLES] (default 5, which plays more than 8 movies: patch 3033). Close the game first: one instance at a time.
 # KZ_BIN: another build (default work/build/KZ1HD).
 set -eu
 KZ_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 . "$KZ_ROOT/tools/env.sh"
-cycles=${1:-3}
+cycles=${1:-5}   # 5 cycles play more than 8 movies (patch 3033: the 8th used to fail)
 bin=${KZ_BIN:-$KZ_WORK/build/KZ1HD}
 if pgrep -x KZ1HD >/dev/null 2>&1; then echo "menu-bg-check: the game is running; close it first" >&2; exit 1; fi
 out="$KZ_WORK/menu-bg-check"
@@ -44,16 +44,22 @@ echo "local-to-local copies logged: $copies"
 # the main menu's movie opened after the last level started: the quit reached the main menu
 menu_movie=$(awk '/kz-sail\] open .*Movies\/Level/ { n = 0 } /kz-sail\] open .*Campaign\.avi/ { n++ } END { print n + 0 }' "$out/run.log")
 echo "main menu movie opened after the last level: $menu_movie"
+# patch 3033: no movie's audio registration may fail, and no join may take a thread id that is not one
+notify_full=$(grep -ac 'notify slots in use' "$out/run.log" || true)
+bad_join=$(grep -aoE 'ppu_thread_join\(tid=[0-9]+\)' "$out/run.log" | tr -dc '0-9\n' | awk '$1 > 64' | wc -l)
+movies=$(grep -ac 'kz-sail\] open ' "$out/run.log" || true)
+echo "movies opened: $movies; notify slots full: $notify_full; joins of a bad thread id: $bad_join"
 # a Python with Pillow (the build venv, which env.sh puts first, may not have it)
 py=
 for c in "$KZ_PY" python3 /usr/bin/python3; do
     if "$c" -c 'import PIL' >/dev/null 2>&1; then py=$c; break; fi
 done
 [ -n "$py" ] || { echo "menu-bg-check: no Python with Pillow (pip install pillow)" >&2; exit 1; }
-"$py" - "$out/frames" "$copies" "$(( (quit_at + 15) * 1000 ))" "$menu_movie" <<'PY'
+"$py" - "$out/frames" "$copies" "$(( (quit_at + 15) * 1000 ))" "$menu_movie" "$notify_full" "$bad_join" <<'PY'
 import glob, os, statistics, sys
 from PIL import Image
 frames, copies, menu_ms, menu_movie = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+notify_full, bad_join = int(sys.argv[5]), int(sys.argv[6])
 def grain(c):
     """mean difference between horizontal neighbours, on every other pixel"""
     p = c.load(); W, H = c.size
@@ -86,6 +92,8 @@ if copies == 0:
 grainy = [m[0] for m in menus if m[1] > 2.0]
 if grainy:
     fail.append("a grainy background in " + ", ".join(grainy))
+if notify_full or bad_join:
+    fail.append("a movie's audio could not start (notify slots full: %d, bad thread joins: %d)" % (notify_full, bad_join))
 if menu_movie == 0:
     fail.append("the quit did not reach the main menu (its movie never opened after the last level)")
 if not main_menu:

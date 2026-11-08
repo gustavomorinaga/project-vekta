@@ -134,3 +134,4 @@
 0007-Killzone-port-on-v0.19.0-one-keyboard-fallback-one-AU.patch
 0008-tests-v0.19.0-s-new-host-tests-follow-the-port-s-patc.patch
 2059-cellGcm-NV0039-copies-other-than-the-frame-chain-run-.patch
+3033-cellAudio-a-notify-queue-key-holds-one-slot-movies-.patch

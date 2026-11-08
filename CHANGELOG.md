@@ -18,6 +18,9 @@ program and folder that build it. Until a release that calls itself playable
   long session: the game copies the frame into the screen's background texture when the screen opens, and with the
   MLAA on the GPU (the default) that copy was dropped, so the texture showed whatever a later level had left in that
   memory (patch 2059).
+- The main menu no longer stays black after quitting from the pause menu late in a long session: every movie
+  leaked one of cellAudio's 8 notify slots, so the 8th movie of a session could not start its sound and never
+  played, and the menu waited for it behind its fade (patch 3033).
 - Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD,
   issue #17): the window's present cleared the bars and copied the frame with no barrier between them, so the
   clear could land over the frame (patch 2053).
