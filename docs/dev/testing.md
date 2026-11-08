@@ -24,9 +24,9 @@ an existing profile changes the menu flow.
 - `KZ_DEBUG_MENU=1` adds the pause menu's Debug Options; its Next Level ends the level on the VICTORY screen.
   `tools/menu-bg-check.sh [CYCLES]` uses it to check that the VICTORY background stays flat over several levels
   (patch 2059; needs the game, a GPU and a display).
-- `KZ_DEBUG_GIVE="HandGrenade:3:0,ChainGun:731:0"` gives the player weapons once per level through the game's own
-  `PLAYER:AddWeapon(name, ammo, secondary)` (`port/kz1hd/debug_give.h`). Grenades take the hand when given; TRIANGLE
-  (`0x1000`) cycles to the gun. `ChainGun` is Rico's M224-A3.
+- `KZ_DEBUG_GIVE="ChainGun:731:0,HandGrenade:3"` gives the player weapons once per level through the game's own
+  `PLAYER:AddWeapon(name, ammo, secondary)` (the last one is held) and grenades after them with
+  `PLAYER:PickupAmmo(name, count, 0)` (`port/kz1hd/debug_give.h`). `ChainGun` is Rico's M224-A3.
 - `KZ_HUD_SITES=1` logs each HUD drawing site once per third of the screen (`[kz-hud-site]`, `[kz-hud-site2]`),
   HUD text (`[kz-hud-text]`) and who builds the menus' 512x448 layout (`[kz-menu-ortho]`).
 - `KZ_UNLOCK_LEVELS=1` makes every level selectable: START, X (GAME), X (Campaign), X (select level), DOWN × (level −
