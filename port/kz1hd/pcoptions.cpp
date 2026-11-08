@@ -42,6 +42,8 @@
 
 #include "ppu_recomp.h"
 #include "view.h"
+#include "view_flat.h"   /* when the picture goes 16:9 */
+#include "lua_states.h"  /* the Lua states given the PC script */
 #include "route.h"
 
 extern "C" {
@@ -190,6 +192,7 @@ static void overlay_env(void)
 
 extern "C" struct KzView kz_view = { 0.0f, 0.0f, 1.0f, 1.0f };
 extern "C" volatile unsigned kz_view_3d = 0, kz_view_menu = 0;
+extern "C" unsigned cellGcm_flip_request_count(void);   /* frames the game asked to flip */
 extern "C" {
 void rsx_vulkan_set_stretch(int on);
 void rsx_vulkan_set_fsr(int on, float sharpness);
@@ -217,22 +220,13 @@ extern "C" void kz_view_update(void)
     float a = 0.0f;
     if (s_widescreen && rsx_vulkan_output_size(&w, &h)) a = (float)w / (float)h;
     if (!(a > 16.0f / 9.0f + 0.01f)) a = 0.0f;
-    /* A 2D screen (no 3D for 200 ms: menus, movies, loading) or a menu over
-     * the game (the pause menu, a character on the frontend, Failed) is shown
-     * as the game made it, 16:9 with bars: its layout has pieces just off a
-     * 16:9 screen that widening would show. */
-    static unsigned last_3d, last_menu; static long long last_3d_ms, last_menu_ms;
+    /* A 2D screen or a menu over the game is shown 16:9 with bars; a hitch in
+     * gameplay is not one (view_flat.h). */
+    static struct view_flat vf;
     const long long t = now_ms();
-    if (kz_view_3d != last_3d) { last_3d = kz_view_3d; last_3d_ms = t; }
-    if (kz_view_menu != last_menu) { last_menu = kz_view_menu; last_menu_ms = t; }
     static int log = getenv("KZ_CAM_LOG") ? 1 : 0; static long long next_log;
     if (log && t >= next_log) { next_log = t + 5000; fprintf(stderr, "[kz-view] 3d %u menu %u\n", kz_view_3d, kz_view_menu); }
-    const bool flat_now = t - last_3d_ms > 200 || t - last_menu_ms < 200;
-    /* into 16:9 at once, back to the full width after half a second of 3D
-     * without a menu: a screen does not flicker between the two */
-    static bool flat; static long long wide_since;
-    if (flat_now) { flat = true; wide_since = 0; }
-    else if (flat) { if (!wide_since) wide_since = t; if (t - wide_since >= 500) flat = false; }
+    const bool flat = view_flat_update(&vf, t, kz_view_3d, kz_view_menu, cellGcm_flip_request_count()) != 0;
     if (flat) a = 0.0f;
     if (a != kz_view.aspect) {
         kz_view.aspect = a;
@@ -1183,11 +1177,10 @@ static void lua_run(ppu_context* ctx, uint32_t L, const std::string& src, const 
 
 static void lua_binding(ppu_context* ctx)
 {
-    static uint32_t tried[16]; static unsigned n_tried; static bool busy;
+    static struct lua_states tried; static bool busy;   /* lua_states.h */
     const uint32_t L = (uint32_t)ctx->gpr[3];
     if (!busy) {
-        bool seen = false;
-        for (unsigned i = 0; i < n_tried; i++) if (tried[i] == L) seen = true;
+        const bool seen = lua_states_seen(&tried, L) != 0;
         /* Each new state gets the script; after that, every 50th call, a
          * one-line probe asks whether a menu script it changes has loaded
          * and is still unchanged (the pause menu is made with the level:
@@ -1196,7 +1189,7 @@ static void lua_binding(ppu_context* ctx)
          * ~4% of the game's thread in play. */
         static unsigned calls;
         if (!seen || ++calls % 50 == 0) {
-            if (!seen && n_tried < 16) tried[n_tried++] = L;
+            if (!seen) lua_states_add(&tried, L);
             busy = true;
             kz_pc_inject_attrs(ctx);
             static const std::string probe =

@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sun, 8 Nov 2026 02:40:00 -0300
+Subject: [PATCH] cellGcm: NV0039 copies other than the frame chain run with
+ the GPU MLAA
+
+With PS3RECOMP_MLAA_GPU=1 (the default through KZ_MLAA=gpu) and
+PS3RECOMP_NV0039 off, every NV0039 copy was dropped, not only the two of
+Killzone HD's frame chain (FUN_001109E8: the 1280x720x4 frame out to main
+memory, where the GPU MLAA runs, and the SPUs' result back). When the
+VICTORY, FAILED or pause screen opens, the game (FUN_00273F00) makes a
+local texture the size of the draw target (renderer +0x60), copies the
+target into it with an NV0039 copy (FUN_002FE3EC -> FUN_0031BB58) and
+func_0029BDC8 draws it full screen, tinted through a 256x1 palette, as the
+screen's background. Without the copy the texture kept what the memory
+held: zeros early in a session (a flat dark green, as on the PS3), and
+after a few levels a later level's data (an F12 capture of 2026-11-08: the
+texture at local 0x0CDE0000 held big-endian floats), drawn as coloured
+noise and tinted green (issue: the menus' background stays grainy in long
+sessions).
+
+gcm_nv0039_route() decides: with PS3RECOMP_NV0039 on, everything is copied
+as before; otherwise only the frame chain's two copies (1280x720x4 bytes in
+one line between local and main memory) go to the GPU MLAA or are dropped,
+and every other copy runs, reading the source back from the GPU first as
+patch 2035's copies do.
+---
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index fedab6e..0235d38 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -38,6 +38,7 @@ static u32 s_gcm_context_ea = 0;
+ #include <time.h>
+ #endif
+ #include "gcm_flip_wait.h"   /* PS3_GCM_MAX_QUEUED_FLIPS's wait */
++#include "gcm_nv0039_route.h" /* which NV0039 copies run (patch 2059) */
+ 
+ /* ---------------------------------------------------------------------------
+  * Timestamp helpers (same pattern as sys_timer)
+@@ -1525,8 +1526,11 @@ static void nv0039_copy(const u32* r)
+     }
+     const u32 loc_in  = s_nv0039.dma_in  == 0xFEED0001u ? RSX_LOCATION_MAIN : RSX_LOCATION_LOCAL;
+     const u32 loc_out = s_nv0039.dma_out == 0xFEED0001u ? RSX_LOCATION_MAIN : RSX_LOCATION_LOCAL;
+-    if (mlaa_gpu_enabled()) {
+-        if (loc_in == RSX_LOCATION_LOCAL && loc_out == RSX_LOCATION_MAIN && len == 1280u * 720u * 4u && lines == 1u) {
++    const int route = gcm_nv0039_route(nv0039_enabled(), mlaa_gpu_enabled(), loc_in == RSX_LOCATION_MAIN,
++                                       loc_out == RSX_LOCATION_MAIN, len, lines);
++    if (route == NV0039_ROUTE_DROP) return;
++    if (route == NV0039_ROUTE_MLAA) {
++        {
+             /* PS3RECOMP_MB_GPU=<IO offset>: the 640x360 main-memory target there
+              * is the title's motion field, and its motion blur follows the MLAA */
+             static u32 mb = 0;
+diff --git a/libs/video/gcm_nv0039_route.h b/libs/video/gcm_nv0039_route.h
+new file mode 100644
+index 0000000..d2f938f
+--- /dev/null
++++ b/libs/video/gcm_nv0039_route.h
+@@ -0,0 +1,32 @@
++/*
++ * What an NV0039 (memory to memory) copy becomes, by the switches and its
++ * shape. Header-only so a host test can check it without the GCM state.
++ *
++ * Killzone HD's frame chain (FUN_001109E8) moves the whole finished frame,
++ * 1280x720x4 bytes as one line, between a local display buffer and main
++ * memory, out and back. Those two are the only copies that need the SPU chain
++ * (PS3RECOMP_NV0039=1) or that the GPU MLAA (PS3RECOMP_MLAA_GPU=1) takes
++ * over. Every other copy is a plain copy the title relies on: when a screen
++ * opens (VICTORY, FAILED, pause; FUN_00273F00), the game copies the current
++ * draw target into a new local texture (local to local, FUN_002FE3EC) and
++ * draws it tinted as the screen's background (func_0029BDC8). With the MLAA
++ * on the GPU that copy was dropped as well, so the texture kept whatever the
++ * memory held: zeros early in a session (a flat background), a later level's
++ * data after a few levels (a grainy one).
++ */
++#ifndef PS3RECOMP_GCM_NV0039_ROUTE_H
++#define PS3RECOMP_GCM_NV0039_ROUTE_H
++
++enum { NV0039_ROUTE_COPY, NV0039_ROUTE_MLAA, NV0039_ROUTE_DROP };
++
++/* loc_*: 0 local, 1 main (RSX_LOCATION_*). */
++static inline int gcm_nv0039_route(int nv0039_on, int mlaa_gpu, unsigned loc_in, unsigned loc_out,
++                                   unsigned len, unsigned lines)
++{
++    if (nv0039_on) return NV0039_ROUTE_COPY;
++    const int frame_chain = len == 1280u * 720u * 4u && lines == 1u && loc_in != loc_out;
++    if (!frame_chain) return NV0039_ROUTE_COPY;
++    /* the frame out to main memory: the GPU MLAA; the SPUs' result back: dropped */
++    return mlaa_gpu && loc_in == 0u && loc_out == 1u ? NV0039_ROUTE_MLAA : NV0039_ROUTE_DROP;
++}
++#endif
+-- 
+2.47.0

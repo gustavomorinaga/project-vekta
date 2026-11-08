@@ -14,6 +14,18 @@ program and folder that build it. Until a release that calls itself playable
   ([docs/dev/ps3recomp-v019-migration.md](docs/dev/ps3recomp-v019-migration.md)).
 
 ### Fixed
+- The background of the VICTORY, FAILED and pause screens no longer turns into green static after a few levels in a
+  long session: the game copies the frame into the screen's background texture when the screen opens, and with the
+  MLAA on the GPU (the default) that copy was dropped, so the texture showed whatever a later level had left in that
+  memory (patch 2059).
+- The main menu no longer stays black after quitting from the pause menu late in a long session: every movie
+  leaked one of cellAudio's 8 notify slots, so the 8th movie of a session could not start its sound and never
+  played, and the menu waited for it behind its fade (patch 3033).
+- Widescreen: the picture no longer shrinks to 16:9 with bars and stretches back during gameplay. A frame that took
+  over 200 ms (a hitch) counted as a 2D screen; now a 2D screen must also keep showing frames without a 3D picture.
+- Long sessions no longer slow down to about 70 fps from the fifth or sixth level on: the PC menu's Lua script was
+  compiled again at every script call in each new Lua state once 16 states had been seen (a level makes two to five).
+  It is now given to each state once (8 levels in a row: 68 to 90 fps before, 140 to 145 after).
 - Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD,
   issue #17): the window's present cleared the bars and copied the frame with no barrier between them, so the
   clear could land over the frame (patch 2053).

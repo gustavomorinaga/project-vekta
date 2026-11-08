@@ -200,6 +200,10 @@
 <p class="meta">not released yet</p>
 <ul class="rlist">
 <li><span class="sec">Changed</span>ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch series was re-applied: 1006 dropped (now upstream), 1017 smaller, 0006 to 0008 new; the Vulkan backend stays the port&#x27;s. Levels 1 to 8 replay to their end; speed the same or better (levels 3, 4 and 8 faster) (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/ps3recomp-v019-migration.md">docs/dev/ps3recomp-v019-migration.md</a>).</li>
+<li><span class="sec">Fixed</span>The background of the VICTORY, FAILED and pause screens no longer turns into green static after a few levels in a long session: the game copies the frame into the screen&#x27;s background texture when the screen opens, and with the MLAA on the GPU (the default) that copy was dropped, so the texture showed whatever a later level had left in that memory (patch 2059).</li>
+<li><span class="sec">Fixed</span>The main menu no longer stays black after quitting from the pause menu late in a long session: every movie leaked one of cellAudio&#x27;s 8 notify slots, so the 8th movie of a session could not start its sound and never played, and the menu waited for it behind its fade (patch 3033).</li>
+<li><span class="sec">Fixed</span>Widescreen: the picture no longer shrinks to 16:9 with bars and stretches back during gameplay. A frame that took over 200 ms (a hitch) counted as a 2D screen; now a 2D screen must also keep showing frames without a 3D picture.</li>
+<li><span class="sec">Fixed</span>Long sessions no longer slow down to about 70 fps from the fifth or sixth level on: the PC menu&#x27;s Lua script was compiled again at every script call in each new Lua state once 16 states had been seen (a level makes two to five). It is now given to each state once (8 levels in a row: 68 to 90 fps before, 140 to 145 after).</li>
 <li><span class="sec">Fixed</span>Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD, issue #17): the window&#x27;s present cleared the bars and copied the frame with no barrier between them, so the clear could land over the frame (patch 2053).</li>
 <li><span class="sec">Fixed</span>Windows: a fullscreen window that loses the focus no longer goes headless (&quot;the swapchain could not be recreated&quot;, issue #17): while minimized the window shows nothing, and the picture comes back when it is restored (patch 2054). Any other swapchain that cannot be recreated no longer closes the window either: the frames are skipped and the next presents try again, and the swapchain is also recreated after Alt+Enter, a restore or a move to another display at the same size (patch 2057, after Project Helghast and Project Pyrrhus on D3D12).</li>
 <li><span class="sec">Fixed</span>Windows: <code>PS3_GCM_MAX_QUEUED_FLIPS</code> works. Its wait ended at once on Windows, so with V-Sync (FIFO, the only mode some AMD drivers offer) the menus and the opening movies ran 400 to 650 frames (3 to 4 s) ahead of the screen: slow menu input and stutter (issue #18). The Windows build under Wine now stays at 2 frames ahead (patch 2055). Between its checks the wait naps 100 us on a high-resolution timer, as on Linux, instead of <code>Sleep(1)</code> (at least 1 ms), which saw each flip up to a millisecond late (patch 2058, after sp00nznet/ps3recomp#628).</li>
@@ -252,8 +256,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 131 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 131 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 133 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 133 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -263,13 +267,13 @@
 <h2>Changelog</h2>
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The background of the VICTORY, FAILED and pause screens no longer turns into green static after a few levels in a long...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The main menu no longer stays black after quitting from the pause menu late in a long session: every movie leaked one...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Widescreen: the picture no longer shrinks to 16:9 with bars and stretches back during gameplay. A frame that took over...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Long sessions no longer slow down to about 70 fps from the fifth or sixth level on: the PC menu&#x27;s Lua script was...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD, issue...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Windows: a fullscreen window that loses the focus no longer goes headless (&quot;the swapchain could not be recreated&quot;...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Windows: PS3_GCM_MAX_QUEUED_FLIPS works. Its wait ended at once on Windows, so with V-Sync (FIFO, the only mode some...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Windows: LV2 145 (sys_time_get_current_time) returns the wall clock, not the time since the PC started (it read...</span></li>
-<li><time>next</time><span><b>Unreleased</b> An update over an older install can no longer run the older build&#x27;s translated shaders: the shader cache on disk...</span></li>
-<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> Temporal upscalers on Linux and Windows (ENHANCEMENT, off by default): AMD FSR 3.1 and NVIDIA DLSS Super Resolution...</span></li>
-<li><time datetime="2026-11-05">11-05</time><span><b>0.3.0</b> The sprint motion blur runs on the GPU (patch 2043), also over an upscaled image (patch 2048).</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

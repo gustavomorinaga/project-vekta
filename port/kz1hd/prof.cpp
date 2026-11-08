@@ -1,6 +1,8 @@
 /*
  * KZ_PROF="<start s>,<seconds>[,<out file>]": an in-process sampling profiler
- * (start 0: when gameplay is on screen, see main.cpp).
+ * (start 0: when gameplay is on screen, see main.cpp; start "key": each time
+ * F11 is pressed in the game's window or the trigger file appears,
+ * KZ_PROF_TRIGGER=<file>, default <out file>.start; prof_trigger.h).
  * At <start> it arms a per-thread CPU-time timer on every thread (1 kHz of
  * that thread's own CPU time), records the interrupted instruction pointer,
  * and after <seconds> writes "tid name rip" lines to <out file> (default
@@ -27,6 +29,7 @@
 #include <ucontext.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include "prof_trigger.h"   /* KZ_PROF parsing, the trigger file */
 
 extern "C" __thread int g_spurs_cur_wid;   /* cellSpurs.c: workload being run, -1 if none */
 
@@ -53,10 +56,53 @@ void on_prof(int, siginfo_t*, void* uc)
 
 std::atomic<int> g_armed{0};
 
-void run(double start, double secs, std::string out)
+/* F11 in the game's window: SDL's keyboard state, which the backend's event
+ * loop keeps (SDL2 is linked through ps3recomp; weak, so a build without it
+ * still has the trigger file). SDL_SCANCODE_F11 is 68. */
+extern "C" const unsigned char* SDL_GetKeyboardState(int*) __attribute__((weak));
+bool f11_down()
 {
-    if (start > 0) std::this_thread::sleep_for(std::chrono::duration<double>(start));
-    else while (!g_armed.load()) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    if (!SDL_GetKeyboardState) return false;
+    const unsigned char* k = SDL_GetKeyboardState(nullptr);
+    return k && k[68];
+}
+
+/* KZ_PROF="key,...": wait for F11 (a new press) or the trigger file. */
+const char* wait_trigger(const char* path)
+{
+    bool was_down = f11_down();
+    for (;;) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        if (prof_trigger_fired(path)) return "the trigger file";
+        const bool down = f11_down();
+        if (down && !was_down) return "F11";
+        was_down = down;
+    }
+}
+
+void record(double secs, const std::string& out);
+
+void run(prof_spec p, std::string trigger)
+{
+    if (!p.on_key) {
+        if (p.start > 0) std::this_thread::sleep_for(std::chrono::duration<double>(p.start));
+        else while (!g_armed.load()) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        record(p.secs, p.out);
+        return;
+    }
+    fprintf(stderr, "[kz-prof] waiting for F11 or %s to record %.0f s\n", trigger.c_str(), p.secs);
+    for (int i = 0;; i++) {
+        const char* why = wait_trigger(trigger.c_str());
+        /* each recording to its own file: <out>, then <out>.2, .3 ... */
+        const std::string out = i ? p.out + ("." + std::to_string(i + 1)) : std::string(p.out);
+        fprintf(stderr, "[kz-prof] started by %s\n", why);
+        g_n = 0;
+        record(p.secs, out);
+    }
+}
+
+void record(double secs, const std::string& out)
+{
     struct sigaction sa = {};
     sa.sa_sigaction = on_prof;
     sa.sa_flags = SA_SIGINFO | SA_RESTART;
@@ -118,7 +164,7 @@ void run(double start, double secs, std::string out)
         }
         fclose(m);
     }
-    fprintf(stderr, "[kz-prof] %u samples -> %s\n", n, out.c_str());
+    fprintf(stderr, "[kz-prof] stopped after %.0f s: %u samples -> %s\n", secs, n, out.c_str());
 }
 }  // namespace
 
@@ -130,14 +176,16 @@ extern "C" void kz_prof_start(void)
 {
     const char* e = getenv("KZ_PROF");
     if (!e) return;
-    double start = 0, secs = 30; char out[512] = "kz_prof.txt";
-    sscanf(e, "%lf,%lf,%511s", &start, &secs, out);
+    prof_spec p;
+    if (!prof_parse(e, &p)) { fprintf(stderr, "[kz-prof] KZ_PROF=\"%s\" not understood (<start>|key,<seconds>[,<file>])\n", e); return; }
+    char trigger[600];
+    prof_trigger_path(&p, getenv("KZ_PROF_TRIGGER"), trigger, sizeof trigger);
     g_wall = getenv("KZ_PROF_WALL") != nullptr;
     g_ts = getenv("KZ_PROF_TS") != nullptr;
     g_stack = getenv("KZ_PROF_STACK") != nullptr;
     if (g_wall) { void* warm[1]; backtrace(warm, 1); }   /* loads libgcc_s outside the handler */
     g_samples = (Sample*)calloc(kMax, sizeof(Sample));
-    std::thread(run, start, secs, std::string(out)).detach();
+    std::thread(run, p, std::string(trigger)).detach();
 }
 #else
 extern "C" void kz_prof_start(void) {}
