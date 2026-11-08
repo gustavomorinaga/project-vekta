@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 7 Nov 2026 23:10:00 -0300
+Subject: [PATCH] tests: v0.19.0's new host tests follow the port's patches
+
+Four tests that v0.19.0 added compile units the port's patches make call
+something new, as 0004 does for the older ones: test_gcm_flip_queue links
+win32_compat.c (cellGcmSys's events), test_spurs_api_limits
+runtime/ps3_trace.c (cellSpurs's spans), test_sail_memory_allocator stubs
+ppu_prof_stamp_host (as test_sail_boot_callback) and
+test_trophy_registration defines ppu_vfs_root (sceNpTrophy's TROPHY.TRP
+lookup, none there). No test checks anything different.
+---
+ libs/network/tests/test_trophy_registration.c | 1 +
+ tests/test_sail_memory_allocator.cpp          | 1 +
+ tools/test_gcm_flip_queue.py                  | 3 ++-
+ tools/test_spurs_api_limits.py                | 2 +-
+ 4 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/libs/network/tests/test_trophy_registration.c b/libs/network/tests/test_trophy_registration.c
+index b08a5b24e0c75412c5fb6ff3c215c1aaa3f84e53..2d3fd231133ebac6383edd5a9b2c48ed876c8e5f 100644
+--- a/libs/network/tests/test_trophy_registration.c
++++ b/libs/network/tests/test_trophy_registration.c
+@@ -7,6 +7,7 @@ uint8_t* vm_base;
+ uint32_t ppu_vm_size;
+ int g_resv_store_active;
+ uint32_t g_ww_lo, g_ww_hi;
++const char* ppu_vfs_root;   /* the port's TROPHY.TRP lookup (none here) */
+ void ppu_resv_break_store(uint64_t ea) { (void)ea; }
+ void ps3_ww_report_inline(uint32_t a, uint64_t v, int w) { (void)a; (void)v; (void)w; }
+ int spu_coh_is_reserved(uint32_t a) { (void)a; return 0; }
+diff --git a/tests/test_sail_memory_allocator.cpp b/tests/test_sail_memory_allocator.cpp
+index 5dec5dc2477d07dd71c6c35c168d525208cea831..7d6b8e7aa56ded95afce4664344df72c63432c14 100644
+--- a/tests/test_sail_memory_allocator.cpp
++++ b/tests/test_sail_memory_allocator.cpp
+@@ -17,6 +17,7 @@ void ppu_hle_register_all();
+ int ps3_hle_has(uint32_t);
+ void ps3_hle_call(uint32_t,ppu_context*);
+ int cellfs_translate_path(const char*,char*,size_t) { return -1; }
++void ppu_prof_stamp_host(void*,void*) {}   /* the port's profiler stamps (as test_sail_boot_callback) */
+ int32_t cellPamfReaderInitialize(void*,void*,uint64_t,uint32_t) { std::abort(); }
+ int32_t cellPamfReaderGetStreamIndex(void*) { std::abort(); }
+ uint32_t prx_resolve_export(uint32_t) { return 0; }
+diff --git a/tools/test_gcm_flip_queue.py b/tools/test_gcm_flip_queue.py
+index 52bbaaf40e64e406308647d72eb90e20477f9d65..bbc5077c41054955a0ff71754f1b5beffccc8ced 100644
+--- a/tools/test_gcm_flip_queue.py
++++ b/tools/test_gcm_flip_queue.py
+@@ -14,7 +14,8 @@ with tempfile.TemporaryDirectory(prefix='gcm-flip-queue-') as tmp:
+     linker = ['-Wl,-dead_strip'] if sys.platform == 'darwin' else ['-Wl,--gc-sections', '-pthread', '-lm']
+     subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu17', '-D_GNU_SOURCE', '-O1', '-UNDEBUG',
+                     '-DCELL_GCM_MAX_IO_MAPPINGS=16', '-ffunction-sections', '-fdata-sections',
+-                    '-I' + str(root / 'include'), str(root / 'tests/test_gcm_flip_queue.c'), *linker,
++                    '-I' + str(root / 'include'), str(root / 'tests/test_gcm_flip_queue.c'),
++                    str(root / 'runtime/platform/win32_compat.c'), *linker,   # the port's events (SetEvent)
+                     '-o', str(binary)], check=True)
+     subprocess.run([str(binary)], check=True, timeout=10,
+                    env={k: v for k, v in os.environ.items() if not k.startswith('A2O_')})
+diff --git a/tools/test_spurs_api_limits.py b/tools/test_spurs_api_limits.py
+index 573b713e8d55cf186826fbd1583d7bf0a03d12f7..a10fbe8853d4d135ddc999253f7c920e0f4c3b48 100755
+--- a/tools/test_spurs_api_limits.py
++++ b/tools/test_spurs_api_limits.py
+@@ -16,5 +16,5 @@ with tempfile.TemporaryDirectory(prefix='spurs-limits-') as tmp:
+         '-I'+str(r/'include'),'-I'+str(r/'runtime/spu'),'-I'+str(r/'runtime/platform'),
+         str(r/'tests/test_spurs_api_limits.c'),
+         *[str(r/'runtime/spu'/f'{u}.c') for u in units],
+-        str(r/'runtime/platform/win32_compat.c'),'-pthread','-lm','-o',str(out)],check=True)
++        str(r/'runtime/platform/win32_compat.c'),str(r/'runtime/ps3_trace.c'),'-pthread','-lm','-o',str(out)],check=True)
+     subprocess.run([str(out)],check=True,timeout=15)
+-- 
+2.56.0
+

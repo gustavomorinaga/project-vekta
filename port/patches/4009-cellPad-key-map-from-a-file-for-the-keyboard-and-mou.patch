@@ -10,15 +10,15 @@ and wheel bindings count in play only. PS3RECOMP_ESC_QUITS=0 leaves Esc to
 the key map. PAD_MOUSE_POS_FILE gives tests a pointer that clicks.
 
 ---
- libs/input/cellPad.c            | 162 +++++++++++++++++++++++++++-----
+ libs/input/cellPad.c            | 162 ++++++++++++++++++++++++++++++++++------
  libs/video/rsx_vulkan_backend.c |   8 +-
  2 files changed, 146 insertions(+), 24 deletions(-)
 
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index f63cf621..8163e8d5 100644
+index 8d55a9c25998d6e65ed96ccece29f8cdf3e1d2f7..12d122d963676f12e355c6d0472dac50cdc933c0 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
-@@ -713,6 +713,115 @@ static unsigned long long pad_now_ms(void)
+@@ -796,6 +796,115 @@ static unsigned long long pad_now_ms(void)
  }
  
  #if !defined(_WIN32) && PAD_BACKEND_SDL2
@@ -134,7 +134,7 @@ index f63cf621..8163e8d5 100644
  /* Mouse on the right stick (the window captures the pointer on a click; PAD_NO_MOUSE=1
   * turns it off). A stick is a turn rate, so the stick follows the mouse's speed: the
   * motion of each poll goes into a value that decays by PAD_MOUSE_DECAY per 4 ms poll,
-@@ -743,11 +852,19 @@ volatile int g_pad_mouse_wheel;
+@@ -826,11 +935,19 @@ volatile int g_pad_mouse_wheel;
  void pad_mouse_ui_state(int* x, int* y, int* w, int* h, unsigned* buttons, int* wheel)
  {
      *x = *y = *w = *h = 0; *buttons = 0;
@@ -156,7 +156,7 @@ index f63cf621..8163e8d5 100644
      if (!win) return;
      *buttons = SDL_GetMouseState(x, y);
      SDL_GetWindowSize(win, w, h);
-@@ -805,9 +922,18 @@ static void pad_poll_mouse(PadHostState* hs)
+@@ -888,9 +1005,18 @@ static void pad_poll_mouse(PadHostState* hs)
          u8* stick = axis ? &hs->analog_ry : &hs->analog_rx;
          if (d != 0) *stick = (u8)(128 + (int)d);
      }
@@ -178,7 +178,7 @@ index f63cf621..8163e8d5 100644
  }
  
  /* The same keyboard fallback off Windows, read from SDL's keyboard state: keys
-@@ -829,30 +955,19 @@ static void pad_poll_keyboard(void)
+@@ -912,30 +1038,19 @@ static void pad_poll_keyboard(void)
          hs->trigger_l2 = hs->trigger_r2 = 0;
          return;
      }
@@ -216,16 +216,16 @@ index f63cf621..8163e8d5 100644
      btns = hs->buttons;
      hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
      hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
-@@ -880,6 +995,7 @@ static void pad_poll_backend(void)
-     if (!s_host_state[0].connected) pad_poll_keyboard();
+@@ -961,6 +1076,7 @@ static void pad_poll_backend(void)
  #endif
+     if (!s_host_state[0].connected) pad_poll_keyboard();
  #if !defined(_WIN32) && PAD_BACKEND_SDL2
 +    if (s_nbinds < 0) pad_keymap_load();
      /* With a controller too: the mouse adds to whatever drives port 0. */
      if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus()) pad_poll_mouse(&s_host_state[0]);
  #endif
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 0fe216fc..593ad1d2 100644
+index 0fe216fc01cb89c25338831ed43783a5c8a5bfa1..593ad1d2d9028e7ff7a77807aea988fae1d1b762 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -4237,7 +4237,13 @@ int rsx_vulkan_backend_pump_messages(void)

@@ -11,12 +11,12 @@ pointer again. The mouse is polled whether or not a controller is connected.
 PAD_MOUSE_POS=x,y,w,h stands in for the pointer in tests.
 
 ---
- libs/input/cellPad.c            | 45 ++++++++++++++++++++++++++++++++-
- libs/video/rsx_vulkan_backend.c |  4 +++
+ libs/input/cellPad.c            | 45 ++++++++++++++++++++++++++++++++++++++++-
+ libs/video/rsx_vulkan_backend.c |  4 ++++
  2 files changed, 48 insertions(+), 1 deletion(-)
 
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index a815fe4b..f63cf621 100644
+index bfdf588bfe2db32231b6ea221082297a56acbeac..8d55a9c25998d6e65ed96ccece29f8cdf3e1d2f7 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
 @@ -190,6 +190,10 @@ static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
@@ -28,9 +28,9 @@ index a815fe4b..f63cf621 100644
 +static volatile int s_inj_reads;
 +void pad_inject(unsigned mask, int reads) { s_inj_mask = mask; s_inj_reads = reads; }
  
- /* ---------------------------------------------------------------------------
-  * XInput backend
-@@ -198,6 +202,7 @@ static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
+ /* Keyboard fallback for port 0.
+  *
+@@ -355,6 +359,7 @@ static void pad_poll_keyboard(void)
  #if PAD_BACKEND_XINPUT
  
  /* Deadzone for analog sticks (same as XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) */
@@ -38,7 +38,7 @@ index a815fe4b..f63cf621 100644
  #define PAD_STICK_DEADZONE  7849
  #define PAD_TRIGGER_THRESHOLD 30
  
-@@ -729,6 +734,25 @@ void pad_mouse_take(int* dx, int* dy)
+@@ -812,6 +817,25 @@ void pad_mouse_take(int* dx, int* dy)
      if (fake) { *dx += fx; *dy += fy; }
  }
  
@@ -64,7 +64,7 @@ index a815fe4b..f63cf621 100644
  static void pad_poll_mouse(PadHostState* hs)
  {
      static int off = -1;
-@@ -744,6 +768,17 @@ static void pad_poll_mouse(PadHostState* hs)
+@@ -827,6 +851,17 @@ static void pad_poll_mouse(PadHostState* hs)
      static float sx, sy;
      int dx = 0, dy = 0;
      Uint32 mb;
@@ -82,7 +82,7 @@ index a815fe4b..f63cf621 100644
      if (!SDL_GetRelativeMouseMode()) {
          /* The first click into the window captures the pointer and does not shoot. */
          if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
-@@ -818,7 +853,6 @@ static void pad_poll_keyboard(void)
+@@ -901,7 +936,6 @@ static void pad_poll_keyboard(void)
      hs->analog_ly = (u8)(k[SDL_SCANCODE_W] ? 0 : k[SDL_SCANCODE_S] ? 255 : 128);
      hs->analog_rx = (u8)(k[SDL_SCANCODE_J] ? 0 : k[SDL_SCANCODE_L] ? 255 : 128);
      hs->analog_ry = (u8)(k[SDL_SCANCODE_I] ? 0 : k[SDL_SCANCODE_K] ? 255 : 128);
@@ -90,18 +90,18 @@ index a815fe4b..f63cf621 100644
      btns = hs->buttons;
      hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
      hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
-@@ -844,6 +878,10 @@ static void pad_poll_backend(void)
+@@ -926,6 +960,10 @@ static void pad_poll_backend(void)
+     pad_poll_sdl2();
  #endif
- #if defined(_WIN32) || PAD_BACKEND_SDL2
      if (!s_host_state[0].connected) pad_poll_keyboard();
-+#endif
 +#if !defined(_WIN32) && PAD_BACKEND_SDL2
 +    /* With a controller too: the mouse adds to whatever drives port 0. */
 +    if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus()) pad_poll_mouse(&s_host_state[0]);
- #endif
++#endif
      pad_track_assign();
      pad_unlock();
-@@ -1126,6 +1164,11 @@ skip_inject: ;
+ }
+@@ -1207,6 +1245,11 @@ skip_inject: ;
                data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((held_mask >> 8) & 0xFF); }
        } }
  
@@ -114,7 +114,7 @@ index a815fe4b..f63cf621 100644
      /* PAD_STICK="lx,ly,rx,ry" (0-255, 128 = centred): hold the analog sticks at
       * fixed positions. Rubber Ducky drives its camera from the sticks and never
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index eacf71e7..0fe216fc 100644
+index eacf71e7459722892572a94ede032f19c3a62964..0fe216fc01cb89c25338831ed43783a5c8a5bfa1 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -4233,6 +4233,10 @@ int rsx_vulkan_backend_pump_messages(void)

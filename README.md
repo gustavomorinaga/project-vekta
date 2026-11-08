@@ -24,7 +24,7 @@ not affiliated with or endorsed by Sony Interactive Entertainment or Guerrilla G
 
 **What this is:** a static recompilation of **Killzone HD**, the PS3 remaster of the first Killzone (title NPUA80856,
 the package on the Killzone Trilogy disc). The game's PowerPC (PPU) and Cell SPU code is translated to C++ ahead of
-time with [ps3recomp](https://github.com/sp00nznet/ps3recomp) (pinned at v0.18.0, plus this project's patches in
+time with [ps3recomp](https://github.com/sp00nznet/ps3recomp) (pinned at v0.19.0, plus this project's patches in
 `port/patches/`) and compiled into a native Linux or Windows x64 program. It is **not an emulator** (no CPU emulator
 runs at play time) and **not a rewrite** (the game's logic is the game's own code). Around that code, the PS3's
 system libraries and hardware behaviour are reimplemented on PC APIs, and the game's graphics commands are replayed
@@ -113,7 +113,7 @@ Step by step (what `tools/install.sh` runs):
 ```sh
 git clone --recurse-submodules https://github.com/gustavomorinaga/project-vekta
 cd project-vekta
-tools/ps3recomp-patched.sh   # ps3recomp v0.18.0 with port/patches applied, in work/
+tools/ps3recomp-patched.sh   # ps3recomp v0.19.0 with port/patches applied, in work/
 tools/lift.sh                # translates your EBOOT, SPU code and firmware pieces, in work/lift
 tools/setup-vfs.sh           # the folder the game runs from, in work/vfs
 tools/build.sh               # work/build/KZ1HD

@@ -11,14 +11,14 @@ is let go; pad_capture_take() hands out its name as PAD_KEYMAP writes it
 again at the next poll.
 
 ---
- libs/input/cellPad.c | 52 ++++++++++++++++++++++++++++++++++++++++++++
+ libs/input/cellPad.c | 52 ++++++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 52 insertions(+)
 
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index 6e758d34..8290c32f 100644
+index a1b68262b684edf2542c3202c73716f31548141e..7d7589d1fd4d1d065ae2b64b394dc086f43aa45c 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
-@@ -1074,6 +1074,51 @@ static void pad_poll_mouse(PadHostState* hs)
+@@ -1157,6 +1157,51 @@ static void pad_poll_mouse(PadHostState* hs)
   * count only while one of this process's SDL windows (the Vulkan backend's,
   * PS3RECOMP_VK_WINDOW=1) has keyboard focus. Same map as on Windows, plus
   * W/A/S/D on the left stick and I/J/K/L on the right one. */
@@ -70,7 +70,7 @@ index 6e758d34..8290c32f 100644
  static void pad_poll_keyboard(void)
  {
      static int off = -1;
-@@ -1093,6 +1138,13 @@ static void pad_poll_keyboard(void)
+@@ -1176,6 +1221,13 @@ static void pad_poll_keyboard(void)
          hs->trigger_l2 = hs->trigger_r2 = 0;
          return;
      }
@@ -84,3 +84,6 @@ index 6e758d34..8290c32f 100644
      if (s_nbinds < 0) pad_keymap_load();
      int st[9] = {0};
      PadHostState kb;
+-- 
+2.56.0
+

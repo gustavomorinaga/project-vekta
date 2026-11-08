@@ -14,10 +14,10 @@ without a prebuilt archive.
  1 file changed, 15 insertions(+), 3 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 7091cdd..d5a78a2 100644
+index d6ec19dfec45b2266ea2673da255e45d8827a777..bcec41519888918c5a693da1e8b30d2cade8c866 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -223,18 +223,30 @@ if(PS3RECOMP_RSX_VULKAN)
+@@ -231,18 +231,30 @@ if(PS3RECOMP_RSX_VULKAN)
      # into one static library with its shaders (the SDK's shader compiler is a
      # Windows program), next to the SDK's include/ folder:
      # PS3RECOMP_FFX_DIR/include, PS3RECOMP_FFX_DIR/lib/libffx_fsr3_vk.a.
@@ -51,3 +51,6 @@ index 7091cdd..d5a78a2 100644
      endif()
  endif()
  
+-- 
+2.56.0
+

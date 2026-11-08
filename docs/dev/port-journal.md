@@ -13,7 +13,7 @@ Packages: `glslang`, `spirv-tools`, `vulkan-headers`, `vulkan-icd-loader`, `sdl2
 
 ## ps3recomp (phase 0)
 
-Pinned at tag `v0.14.0` (commit `a2c2010`) then; v0.18.0 since 2026-10-28. Built with
+Pinned at tag `v0.14.0` (commit `a2c2010`) then; v0.18.0 from 2026-10-28, v0.19.0 since 2026-11-08. Built with
 `-DPS3RECOMP_RSX_VULKAN=ON -DPS3RECOMP_BUILD_TESTS=ON`; CMake reports `Vulkan: guest programs available`.
 
 Checked on 2026-10-14:

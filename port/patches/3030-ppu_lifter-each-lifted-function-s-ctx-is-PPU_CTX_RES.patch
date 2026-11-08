@@ -27,7 +27,7 @@ replay with no position difference, as before.
  6 files changed, 18 insertions(+), 6 deletions(-)
 
 diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
-index 480b7d14..4ffa6800 100644
+index 739d8eab59e65414844297d7047fc4b3ce9baa7b..b8448449c1f3354940e7d86532d702e4d6e9f794 100644
 --- a/tools/ppu_lifter.py
 +++ b/tools/ppu_lifter.py
 @@ -74,6 +74,18 @@ HEADER_PREAMBLE = """\
@@ -59,7 +59,7 @@ index 480b7d14..4ffa6800 100644
          stk = os.environ.get("PPU_LIFT_NO_STK", "") != "1"
          for bline in _fuse_cr(func.body_lines):
 diff --git a/tools/ppu_regcache.py b/tools/ppu_regcache.py
-index 4cbe1b27..d426950b 100644
+index 4cbe1b2788f38420d94922e9ce284431a7fc62e2..d426950b01f17fa6d3c6f1cceea74933b356be28 100644
 --- a/tools/ppu_regcache.py
 +++ b/tools/ppu_regcache.py
 @@ -33,7 +33,7 @@ ppu_recomp_*.cpp in it, in place)
@@ -72,7 +72,7 @@ index 4cbe1b27..d426950b 100644
  ESCAPE_RE = re.compile(r'\bctx\b(?!->)')          # ctx passed on, not dereferenced
  WRITE_RE = re.compile(r'(_g\d+|_cr|_xer)\s*(?:[-+*/|&^]|<<|>>)?=(?!=)')
 diff --git a/tools/show_func.py b/tools/show_func.py
-index 51b0aca6..9fb59fc7 100644
+index 51b0aca6f11c070ebcacaadfca3051c52b97aa65..9fb59fc7780b9ad6267c7ba11548b24a0aa09144 100644
 --- a/tools/show_func.py
 +++ b/tools/show_func.py
 @@ -33,7 +33,7 @@ def norm_addr(text: str) -> int:
@@ -85,7 +85,7 @@ index 51b0aca6..9fb59fc7 100644
      paths = sorted(glob.glob(os.path.join(recomp_dir, "ppu_recomp_*.cpp")))
      single = os.path.join(recomp_dir, "ppu_recomp.c")
 diff --git a/tools/spbalance.py b/tools/spbalance.py
-index 2316643c..3cfa96d6 100644
+index 2316643cf1067710b9e02d5612017ef5126073e1..3cfa96d6aa694a3833bea5567c124aea6a1fb58d 100644
 --- a/tools/spbalance.py
 +++ b/tools/spbalance.py
 @@ -16,7 +16,7 @@ import glob, os, re, sys, collections
@@ -98,7 +98,7 @@ index 2316643c..3cfa96d6 100644
  
  def parse(d):
 diff --git a/tools/test_ppu_jumptable_extent.py b/tools/test_ppu_jumptable_extent.py
-index c65fcb22..b5e69ae9 100644
+index c65fcb2284bca82fed25ce132a387aa49b5727bc..b5e69ae9c355b0235a8a329cf26728bf374e04ff 100644
 --- a/tools/test_ppu_jumptable_extent.py
 +++ b/tools/test_ppu_jumptable_extent.py
 @@ -136,7 +136,7 @@ def lift(td, words, at, bounds):
@@ -111,7 +111,7 @@ index c65fcb22..b5e69ae9 100644
  
  
 diff --git a/tools/test_ppu_lifter_chunks.py b/tools/test_ppu_lifter_chunks.py
-index fbc5523f..8a62f1c4 100644
+index fbc5523fae33083e992cb23e69d244835714ca85..8a62f1c4310cbab805cccbf560c4733d281aeec5 100644
 --- a/tools/test_ppu_lifter_chunks.py
 +++ b/tools/test_ppu_lifter_chunks.py
 @@ -60,7 +60,7 @@ def snapshot(out):
@@ -123,3 +123,6 @@ index fbc5523f..8a62f1c4 100644
  
  
  def main() -> int:
+-- 
+2.56.0
+

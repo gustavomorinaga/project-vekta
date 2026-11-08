@@ -10,14 +10,14 @@ project-helghast's patch 0002 (MIT).
 ---
  libs/spurs/cellSpurs.c       |  4 ++++
  libs/video/rsx_draw_engine.c |  7 +++++++
- runtime/ppu/ppu_loader.cpp   | 10 +++++++++-
- 3 files changed, 20 insertions(+), 1 deletion(-)
+ runtime/ppu/ppu_loader.cpp   | 11 +++++++----
+ 3 files changed, 18 insertions(+), 4 deletions(-)
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 3ca804ae..799eca37 100644
+index 6d6bcdf218925beebdbdecdffaabd8f900938793..12dc261cc57839652a6fb327b9a4920df19c1be6 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
-@@ -1861,8 +1861,12 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+@@ -2129,8 +2129,12 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
              kick_pass = ++kick_run < 16;
          } else if (s_poll_us < 1000) {
              ReleaseSRWLockExclusive(&si->lock);
@@ -31,10 +31,10 @@ index 3ca804ae..799eca37 100644
              (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
          } else {
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 219ccf26..4b8c16fa 100644
+index ffa737df7802c9657e5d67baead51d1c8e5ee479..9694dd73e3632612f919a8ed3286ab5c4ea49658 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -25,6 +25,9 @@
+@@ -26,6 +26,9 @@
  #include <time.h>
  #include "ps3emu/log_first.h"
  #include <sys/stat.h>
@@ -44,7 +44,7 @@ index 219ccf26..4b8c16fa 100644
  
  /* Each pipeline's two programs, kept for an F12 capture to write the ones
   * its draws use (RSX_ENGINE_SHADER_DUMP writes them as they are made). */
-@@ -2792,7 +2795,11 @@ static int pd_capturing(void)
+@@ -3042,7 +3045,11 @@ static int pd_capturing(void)
          static char dir[64];
          const time_t now = time(NULL);
          strftime(dir, sizeof dir, "capture_%Y%m%d_%H%M%S", localtime(&now));
@@ -57,25 +57,27 @@ index 219ccf26..4b8c16fa 100644
          { const char* x = getenv("RSX_ENGINE_PASS_DUMP_MAX"); s_pd.max_passes = x ? (u32)strtoul(x, NULL, 0) : 16u; }
          s_pd.pass = 0; s_pd.draws = 0; s_pd.clears = 0; s_pd.first[0] = 0;
 diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
-index e49ae880..3622f05a 100644
+index a544b9f98ed81fc03c8b7879b539e7df88f7984b..70401a0a666f09d6c9ffb2fecd2bd91bbbb47bc5 100644
 --- a/runtime/ppu/ppu_loader.cpp
 +++ b/runtime/ppu/ppu_loader.cpp
-@@ -632,7 +632,14 @@ static uint32_t samp_stack_guest(HANDLE h, const CONTEXT* c)
+@@ -632,11 +632,13 @@ static uint32_t samp_stack_guest(HANDLE h, const CONTEXT* c)
      const uintptr_t* sp = (const uintptr_t*)c->Rsp;
      for (int i = 0; i < 512; i++) {          /* 4 KB of stack */
          uintptr_t v;
+-#ifdef _MSC_VER
 +#if defined(_MSC_VER)
          __try { v = sp[i]; } __except (1) { return 0; }
-+#else
+ #else
+-        /* no SEH in GCC/MinGW: ReadProcessMemory fails on an unreadable address where a plain read would fault */
+-        if (!ReadProcessMemory(GetCurrentProcess(), sp + i, &v, sizeof v, NULL)) return 0;
 +        /* MinGW has no __try/__except: ReadProcessMemory on our own process
 +         * fails instead of faulting (project-helghast patch 0002, MIT). */
 +        SIZE_T got = 0;
 +        if (!ReadProcessMemory(GetCurrentProcess(), &sp[i], &v, sizeof v, &got) || got != sizeof v) return 0;
-+#endif
+ #endif
          uint32_t g = samp_lookup(v);
          if (g) return g;
-     }
-@@ -996,7 +1003,8 @@ static inline volatile LONG* resv_slot(uint64_t ea) { return &g_resv_locks[((uin
+@@ -1001,7 +1003,8 @@ static inline volatile LONG* resv_slot(uint64_t ea) { return &g_resv_locks[((uin
  static inline volatile LONG* resv_line_slot(uint64_t ea) { return &g_resv_locks[((uint32_t)ea >> 7) & (PPU_RESV_LOCKS - 1)]; }
  static inline void resv_lock(volatile LONG* L)   { while (_InterlockedExchange(L, 1)) { while (*L) YieldProcessor(); } }
  static inline void resv_unlock(volatile LONG* L) { _InterlockedExchange(L, 0); }

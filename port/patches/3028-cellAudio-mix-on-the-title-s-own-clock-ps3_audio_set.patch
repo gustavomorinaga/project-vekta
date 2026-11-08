@@ -19,17 +19,17 @@ decided differently. On this clock 4 of 5 Level 1 combat routes replay
 with the player's position exact to the end.
 
 ---
- libs/audio/cellAudio.c | 49 ++++++++++++++++++++++++++++++++++++++++++
+ libs/audio/cellAudio.c | 49 +++++++++++++++++++++++++++++++++++++++++++++++++
  libs/audio/cellAudio.h |  6 ++++++
  2 files changed, 55 insertions(+)
 
 diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
-index 20d588d7..6eacb755 100644
+index 6f0ad13028eefb2bae22de18f0badce15761e72a..688ea8fd9e02e88ce843d9fa3b82fb09b6c2a154 100644
 --- a/libs/audio/cellAudio.c
 +++ b/libs/audio/cellAudio.c
-@@ -146,6 +146,17 @@ static u64            s_audio_start_us = 0;
- /* Mixing thread */
- static unsigned long long g_audio_dropped;   /* frames the device had no room for */
+@@ -149,6 +149,17 @@ static unsigned long long g_audio_dropped;   /* frames the device had no room fo
+ static unsigned g_audio_holes[CELL_AUDIO_PORT_MAX];   /* AUDIO_RATE: empty blocks right after a block with sound */
+ #endif
  static volatile int  s_mix_thread_running = 0;
 +
 +/* A title's own clock for the mix (ps3_audio_set_clock_ms): while it is set
@@ -45,8 +45,8 @@ index 20d588d7..6eacb755 100644
  static thread_t      s_mix_thread;
  #ifndef _WIN32
  /* Is s_mix_thread a thread that exists and has not been joined? The Win32
-@@ -611,6 +622,38 @@ static void audio_notify_event_queues(void)
-     }
+@@ -644,6 +655,38 @@ static void audio_dump_mix(void)
+     if (wf) fwrite(s_mix_buffer, sizeof(float), CELL_AUDIO_BLOCK_SAMPLES * 2, wf);
  }
  
 +/* One pass of the mix loop on the title's clock (ps3_audio_set_clock_ms):
@@ -84,7 +84,7 @@ index 20d588d7..6eacb755 100644
  #ifdef _WIN32
  static unsigned long long g_audio_underruns;
  static unsigned __stdcall audio_mix_thread_func(void* arg)
-@@ -641,6 +684,9 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+@@ -674,6 +717,9 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
      unsigned long long blocks = 0;
      while (s_mix_thread_running) {
          const int room = audio_backend_room();
@@ -94,8 +94,8 @@ index 20d588d7..6eacb755 100644
          if (room >= 0 && room < CELL_AUDIO_BLOCK_SAMPLES) { audio_backend_wait(); continue; }
  #if AUDIO_BACKEND_WASAPI
          /* Device queue under half a block: it is about to play silence (an
-@@ -716,6 +762,9 @@ static void* audio_mix_thread_func(void* arg)
-     unsigned long long blocks = 0;
+@@ -752,6 +798,9 @@ static void* audio_mix_thread_func(void* arg)
+     float peak = 0.0f; unsigned long pk_blocks = 0;
      while (s_mix_thread_running) {
          const int room = audio_backend_room();
 +        const int tc = audio_title_clock_step(room);
@@ -105,7 +105,7 @@ index 20d588d7..6eacb755 100644
          if (room < 0) {
              struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
 diff --git a/libs/audio/cellAudio.h b/libs/audio/cellAudio.h
-index 696ed357..cef360a8 100644
+index 696ed357958057b21b4262c5a01f1d8617ab298b..cef360a83a12b741aa11f63f7c5c10b8ca53b269 100644
 --- a/libs/audio/cellAudio.h
 +++ b/libs/audio/cellAudio.h
 @@ -115,6 +115,12 @@ s32 cellAudioSetPersonalDevice(s32 iPersonalStream, s32 iDevice);
@@ -121,3 +121,6 @@ index 696ed357..cef360a8 100644
  #ifdef __cplusplus
  }
  #endif
+-- 
+2.56.0
+

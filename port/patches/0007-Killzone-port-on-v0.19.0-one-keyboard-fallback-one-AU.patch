@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 7 Nov 2026 22:40:00 -0300
+Subject: [PATCH] Killzone port on v0.19.0: one keyboard fallback, one
+ AUDIO_WAV writer, the SPU holder array
+
+ps3recomp v0.19.0 brought two things the series already had: a keyboard
+fallback on SDL for every platform (#612, after the port's patch 4002) and
+an AUDIO_WAV dump of the mix. On the patched tree each existed twice.
+- cellPad: the upstream fallback (GetAsyncKeyState, macOS key state or SDL
+  with the d-pad on the left stick) is built only without SDL; SDL builds
+  keep the port's (patch 4002 and the key map of 4009/4010: W/A/S/D and
+  I/J/K/L on the sticks, merged with a controller on port 0).
+- cellAudio: the mix loops kept upstream's audio_dump_mix() beside the
+  port's AUDIO_WAV writer, two fopen("wb") of the same file; the port's
+  writes s_out_ch channels (patch 3027), so upstream's is removed.
+- spu_coherency: v0.19.0 keeps the reservation holders in an array (#672);
+  the mark drop of patch 0002 walked them as the list they were.
+---
+ libs/audio/cellAudio.c      | 11 -----------
+ libs/input/cellPad.c        |  4 ++++
+ runtime/spu/spu_coherency.c |  4 ++--
+ 3 files changed, 6 insertions(+), 13 deletions(-)
+
+diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
+index 688ea8fd9e02e88ce843d9fa3b82fb09b6c2a154..54e653501a90c2755ddc679fda60bc7a72e47d8a 100644
+--- a/libs/audio/cellAudio.c
++++ b/libs/audio/cellAudio.c
+@@ -646,15 +646,6 @@ static float audio_mix_peak(void)
+     return pk;
+ }
+ 
+-/* AUDIO_WAV=<file>: append the final mix as raw f32le stereo 48 kHz
+- * (ffmpeg -f f32le -ar 48000 -ac 2 -i <file>). */
+-static void audio_dump_mix(void)
+-{
+-    static FILE* wf = (FILE*)-1;
+-    if (wf == (FILE*)-1) { const char* e = getenv("AUDIO_WAV"); wf = e ? fopen(e, "wb") : NULL; }
+-    if (wf) fwrite(s_mix_buffer, sizeof(float), CELL_AUDIO_BLOCK_SAMPLES * 2, wf);
+-}
+-
+ /* One pass of the mix loop on the title's clock (ps3_audio_set_clock_ms):
+  * 1 when it took the pass (mixed a block or waited for the clock), -1 once
+  * when the clock was just cleared (the loop restarts its own pacing), 0 when
+@@ -754,7 +745,6 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+         { static FILE* _wf = (FILE*)-1;
+           if (_wf == (FILE*)-1) { const char* e = getenv("AUDIO_WAV"); _wf = e ? fopen(e, "wb") : NULL; }
+           if (_wf) fwrite(s_mix_buffer, sizeof(float), CELL_AUDIO_BLOCK_SAMPLES * s_out_ch, _wf); }
+-        audio_dump_mix();
+         audio_backend_submit(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
+         /* AUDIO_RATE=1: blocks mixed vs real time, and frames dropped. */
+         { static int on = -1; if (on < 0) on = getenv("AUDIO_RATE") ? 1 : 0;
+@@ -811,7 +801,6 @@ static void* audio_mix_thread_func(void* arg)
+         }
+         blocks++;
+         audio_mix_one_block();
+-        audio_dump_mix();
+         /* AUDIO_RATE=1: blocks per second and the share of silent ones;
+          * AUDIO_WAV=<file>: the mix as raw f32le stereo 48 kHz. */
+         { static int on = -1; static FILE* wf;
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 54475605911ade3c1e7e1e13ef4902ea4ff96b20..c18145d4201129a60fba3e1375c5ed876340a2dd 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -217,6 +217,9 @@ void pad_inject(unsigned mask, int reads) { s_inj_mask = mask; s_inj_reads = rea
+  * keyboard state, which is kept current by whoever pumps SDL's events (in
+  * practice the window of the video backend). PS3RECOMP_PAD_KEYBOARD_SDL selects
+  * the SDL source on macOS too, which is how the keyboard test is built. */
++/* SDL builds use the SDL keyboard fallback further down (patch 4002), which
++ * also maps the sticks to W/A/S/D and I/J/K/L. */
++#if !PAD_BACKEND_SDL2
+ #if PAD_BACKEND_XINPUT
+ static int pad_host_window_focused(void)
+ {
+@@ -351,6 +354,7 @@ static void pad_poll_keyboard(void)
+           printf("[cellPad] keyboard fallback active on port 0 (no controller)\n");
+           fflush(stdout); } }
+ }
++#endif /* !PAD_BACKEND_SDL2 */
+ 
+ /* ---------------------------------------------------------------------------
+  * XInput backend
+diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
+index e7d1387c6bbb182d816324de579e752cb782f274..e6e1f0b555b35a777f103c88293e003ae00f7ddf 100644
+--- a/runtime/spu/spu_coherency.c
++++ b/runtime/spu/spu_coherency.c
+@@ -403,8 +403,8 @@ static void spu_coh_unmark(uint32_t line, const void* self)
+     const unsigned char bit = (unsigned char)(1u << (l & 7));
+     __atomic_fetch_and(&s_coh_bitmap[l >> 3], (unsigned char)~bit, __ATOMIC_RELAXED);
+     __atomic_thread_fence(__ATOMIC_SEQ_CST);
+-    for (spu_coh_entry* entry = s_coh_ctxs; entry; entry = entry->next)
+-        if (entry->ctx && spu_coh_holds(entry->ctx, line)) {
++    for (unsigned i = 0; i < s_coh_n; i++)   /* the holder array (upstream #672) */
++        if (s_coh_ctxs[i] && spu_coh_holds(s_coh_ctxs[i], line)) {
+             __atomic_fetch_or(&s_coh_bitmap[l >> 3], bit, __ATOMIC_RELAXED);
+             return;
+         }
+-- 
+2.56.0
+

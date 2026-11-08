@@ -2,7 +2,7 @@
 """Brings changes from the maintainer's private working repositories into this public tree, for review before a commit.
 
     tools/sync-from-private.py --private <repo> [--private-ref main] [--private-work <dir>]
-                               --ps3recomp <repo> --ps3recomp-ref <branch> [--base v0.18.0] [--dry-run]
+                               --ps3recomp <repo> --ps3recomp-ref <branch> [--base v0.19.0] [--dry-run]
 
 What it does, and nothing else (it never commits, pushes or touches the private repositories):
 
@@ -248,7 +248,7 @@ def main():
     ap.add_argument("--private-ref", default="main")
     ap.add_argument("--ps3recomp", required=True, help="the private ps3recomp repository holding our commits")
     ap.add_argument("--ps3recomp-ref", required=True, help="its branch, e.g. kz-windows")
-    ap.add_argument("--base", default="v0.18.0", help="the release our patches sit on (the submodule's pin)")
+    ap.add_argument("--base", default="v0.19.0", help="the release our patches sit on (the submodule's pin)")
     ap.add_argument("--since", help="list private doc changes since this date (default: this tree's last commit)")
     ap.add_argument("--private-work", help="the maintainer's work folder the private scripts default to (rewritten to work/)")
     ap.add_argument("--dry-run", action="store_true", help="report only")

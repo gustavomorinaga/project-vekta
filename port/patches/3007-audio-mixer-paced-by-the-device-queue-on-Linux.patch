@@ -9,17 +9,18 @@ Mix only when the device queue has room for a block; the queue now
 stays at one block (21.3 ms). AUDIO_QUEUE=1 logs its depth.
 
 ---
- libs/audio/cellAudio.c | 30 +++++++++++++++++++++++-------
- 1 file changed, 23 insertions(+), 7 deletions(-)
+ libs/audio/cellAudio.c | 34 +++++++++++++++++++++++++---------
+ 1 file changed, 25 insertions(+), 9 deletions(-)
 
 diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
-index 02b751b2..6bbfb0ac 100644
+index f231ea266a49afae82d216a979ea3f58bfa0c3da..39143d626d611022e86c0aa17901df600c2ebb94 100644
 --- a/libs/audio/cellAudio.c
 +++ b/libs/audio/cellAudio.c
-@@ -654,17 +654,33 @@ static void* audio_mix_thread_func(void* arg)
+@@ -683,8 +683,26 @@ static void* audio_mix_thread_func(void* arg)
      (void)arg;
      printf("[cellAudio] Mixing thread started\n");
  
+-    unsigned long blocks = 0; float peak = 0.0f;
 +    /* Paced by the device's queue, as on Windows. The old loop mixed a block
 +     * and slept 5 ms (2 ms below four queued blocks) whatever the device had
 +     * left: a block is 5.33 ms, so it ran a little ahead and the queue grew
@@ -28,6 +29,7 @@ index 02b751b2..6bbfb0ac 100644
 +     * queued (~21 ms); with no device, pace on the clock. */
 +    struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
 +    unsigned long long blocks = 0;
++    float peak = 0.0f; unsigned long pk_blocks = 0;
      while (s_mix_thread_running) {
 +        const int room = audio_backend_room();
 +        if (room >= 0 && room < CELL_AUDIO_BLOCK_SAMPLES) { usleep(1000); continue; }
@@ -40,8 +42,15 @@ index 02b751b2..6bbfb0ac 100644
 +        }
 +        blocks++;
          audio_mix_one_block();
+         audio_dump_mix();
          audio_backend_submit(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
-         audio_notify_event_queues();
+@@ -693,15 +711,13 @@ static void* audio_mix_thread_func(void* arg)
+         { static int pk_on = -1; if (pk_on < 0) pk_on = getenv("AUDIO_PEAK") ? 1 : 0;
+           if (pk_on) {
+               const float pk = audio_mix_peak(); if (pk > peak) peak = pk;
+-              if (++blocks % 188 == 0) { fprintf(stderr, "[audio-peak] %lu s: peak %.4f\n", blocks / 188, peak); peak = 0.0f; }
++              if (++pk_blocks % 188 == 0) { fprintf(stderr, "[audio-peak] %lu s: peak %.4f\n", pk_blocks / 188, peak); peak = 0.0f; }
+           } }
 -
 -        u32 queued = audio_backend_queued_samples();
 -        if (queued > CELL_AUDIO_BLOCK_SAMPLES * 4) {

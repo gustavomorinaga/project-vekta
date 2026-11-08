@@ -89,7 +89,7 @@ tools/check-game-files.py
 ## 4. Patch, lift, build
 
 ```sh
-tools/ps3recomp-patched.sh   # work/ps3recomp-patched: ps3recomp v0.18.0 + port/patches, in series order
+tools/ps3recomp-patched.sh   # work/ps3recomp-patched: ps3recomp v0.19.0 + port/patches, in series order
 tools/lift.sh                # work/lift (the game's code as C++) and work/fw (libsre); a few minutes
 tools/setup-vfs.sh           # work/vfs: the folder the game runs from, with the movies taken out of the archive
 tools/build.sh               # work/build/KZ1HD

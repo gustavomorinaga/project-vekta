@@ -20,21 +20,19 @@ balanced | performance | ultra | native picks the mode for either; the
 temporal record carries the camera's near, far and vertical FOV.
 
 ---
- CMakeLists.txt                             |  19 ++
+ CMakeLists.txt                             |  19 +++
  libs/video/rsx_temporal.c                  |   6 +-
  libs/video/rsx_temporal.h                  |  10 +-
  libs/video/rsx_vk_dlss.h                   |   6 +-
- libs/video/rsx_vk_fsr3.cpp                 | 200 +++++++++++++++++++++
- libs/video/rsx_vk_fsr3.h                   |  32 ++++
- libs/video/rsx_vulkan_backend.c            | 110 +++++++++---
+ libs/video/rsx_vk_fsr3.cpp                 | 200 +++++++++++++++++++++++++++++
+ libs/video/rsx_vk_fsr3.h                   |  32 +++++
+ libs/video/rsx_vulkan_backend.c            | 110 ++++++++++++----
  libs/video/vulkan/rsx_vk_motion.comp       |   9 +-
- libs/video/vulkan/rsx_vk_motion_comp.spv.h | 191 ++++++++++----------
+ libs/video/vulkan/rsx_vk_motion_comp.spv.h | 191 ++++++++++++++-------------
  9 files changed, 460 insertions(+), 123 deletions(-)
- create mode 100644 libs/video/rsx_vk_fsr3.cpp
- create mode 100644 libs/video/rsx_vk_fsr3.h
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 22aafc88..7091cdd2 100644
+index ca41f3b5b8f6e3df0ab43693484f695cf4633762..d6ec19dfec45b2266ea2673da255e45d8827a777 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -64,6 +64,8 @@ if(PS3RECOMP_RSX_VULKAN)
@@ -46,7 +44,7 @@ index 22aafc88..7091cdd2 100644
  endif()
  
  # The Metal backend is Objective-C and Apple-only, so it is added explicitly
-@@ -217,6 +219,23 @@ if(PS3RECOMP_RSX_VULKAN)
+@@ -225,6 +227,23 @@ if(PS3RECOMP_RSX_VULKAN)
          target_link_libraries(ps3recomp_runtime PUBLIC "${_ngx_lib}" ${CMAKE_DL_LIBS})
          message(STATUS "  DLSS:         NGX from ${PS3RECOMP_DLSS_SDK}")
      endif()
@@ -71,7 +69,7 @@ index 22aafc88..7091cdd2 100644
  
  # cellVdec decodes H.264 / MPEG-2 through FFmpeg when this is on. libavcodec
 diff --git a/libs/video/rsx_temporal.c b/libs/video/rsx_temporal.c
-index 634a3c95..c2601e94 100644
+index 634a3c956cfa41b843856637ce0ab6da00e6a04a..c2601e94692510bef54d4115f5f45fa924fb4a72 100644
 --- a/libs/video/rsx_temporal.c
 +++ b/libs/video/rsx_temporal.c
 @@ -40,7 +40,8 @@ int rsx_temporal_next_jitter(float* jitter_x, float* jitter_y)
@@ -95,7 +93,7 @@ index 634a3c95..c2601e94 100644
  }
  
 diff --git a/libs/video/rsx_temporal.h b/libs/video/rsx_temporal.h
-index 88ccd104..f9b91e0e 100644
+index 88ccd104bc92bfee0d2be96e1a87669c222db45c..f9b91e0e1c22febf3b56796cb5ed57f8bab219bb 100644
 --- a/libs/video/rsx_temporal.h
 +++ b/libs/video/rsx_temporal.h
 @@ -20,9 +20,12 @@ typedef struct rsx_temporal_view {
@@ -124,7 +122,7 @@ index 88ccd104..f9b91e0e 100644
  int rsx_temporal_get_view(uint32_t frame, rsx_temporal_view* out);
  
 diff --git a/libs/video/rsx_vk_dlss.h b/libs/video/rsx_vk_dlss.h
-index 2f761199..eac2f84d 100644
+index 2f761199e36ce66eca067911f0328c4482b3efcb..eac2f84d46d359cc3a1ef089c7f79f48c01508b0 100644
 --- a/libs/video/rsx_vk_dlss.h
 +++ b/libs/video/rsx_vk_dlss.h
 @@ -38,10 +38,14 @@ typedef struct rsx_dlss_image {
@@ -145,7 +143,7 @@ index 2f761199..eac2f84d 100644
  /* Recorded into cmd. The feature is made on the first call and again when the
 diff --git a/libs/video/rsx_vk_fsr3.cpp b/libs/video/rsx_vk_fsr3.cpp
 new file mode 100644
-index 00000000..672373be
+index 0000000000000000000000000000000000000000..672373be7edac85cda5c6fccb8e5ee6b72c4fd89
 --- /dev/null
 +++ b/libs/video/rsx_vk_fsr3.cpp
 @@ -0,0 +1,200 @@
@@ -351,7 +349,7 @@ index 00000000..672373be
 +#endif
 diff --git a/libs/video/rsx_vk_fsr3.h b/libs/video/rsx_vk_fsr3.h
 new file mode 100644
-index 00000000..9187b704
+index 0000000000000000000000000000000000000000..9187b70429fa3a7c6c7bc10576ac12455b69765d
 --- /dev/null
 +++ b/libs/video/rsx_vk_fsr3.h
 @@ -0,0 +1,32 @@
@@ -388,7 +386,7 @@ index 00000000..9187b704
 +#endif
 +#endif
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 8516d87b..fa7de5b7 100644
+index 8516d87b4ed39929260d555914017b8b2de91edb..fa7de5b76e92ed5a6f1927109447eb8cd661584a 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -52,6 +52,7 @@
@@ -636,7 +634,7 @@ index 8516d87b..fa7de5b7 100644
          rsx_dlss_required_extensions(&a, &ia, &b, &da);
          u32 nd = 0;
 diff --git a/libs/video/vulkan/rsx_vk_motion.comp b/libs/video/vulkan/rsx_vk_motion.comp
-index e7f0af59..6777fa35 100644
+index e7f0af591dfb51d5c4f70523535eba82c7b34dcb..6777fa3588e3a0d03b5428f9b81cd58ca97a2a35 100644
 --- a/libs/video/vulkan/rsx_vk_motion.comp
 +++ b/libs/video/vulkan/rsx_vk_motion.comp
 @@ -8,6 +8,10 @@ layout(local_size_x = 16, local_size_y = 16) in;
@@ -663,7 +661,7 @@ index e7f0af59..6777fa35 100644
          vec4 ndc = vec4(uv.x * 2.0 - 1.0, pc.y_sign * (1.0 - uv.y * 2.0), z * pc.size_z.z + pc.size_z.w, 1.0);
          vec4 q = pc.reproject * ndc;
 diff --git a/libs/video/vulkan/rsx_vk_motion_comp.spv.h b/libs/video/vulkan/rsx_vk_motion_comp.spv.h
-index 7d27b414..ba418e4b 100644
+index 7d27b414f4b094316905499e8342eb86caccad97..ba418e4bce25481bb512610fe541d65d07cf0f4c 100644
 --- a/libs/video/vulkan/rsx_vk_motion_comp.spv.h
 +++ b/libs/video/vulkan/rsx_vk_motion_comp.spv.h
 @@ -1,7 +1,7 @@
@@ -880,3 +878,6 @@ index 7d27b414..ba418e4b 100644
 +	0x00000001,0x00070050,0x00000016,0x000000ae,0x000000ac,0x000000ad,0x00000039,0x00000039,
 +	0x00040063,0x000000a9,0x000000aa,0x000000ae,0x000100fd,0x00010038
  };
+-- 
+2.56.0
+

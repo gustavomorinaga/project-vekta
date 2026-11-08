@@ -21,16 +21,16 @@ its writable guest bytes, so a title can recognise and rewrite it (cached
 textures are re-hashed every frame, so later rewrites show too).
 
 ---
- libs/input/cellPad.c         | 180 +++++++++++++++++++++++++++++++++--
- libs/video/rsx_draw_engine.c |   9 ++
+ libs/input/cellPad.c         | 180 +++++++++++++++++++++++++++++++++++++++++--
+ libs/video/rsx_draw_engine.c |   9 +++
  libs/video/rsx_draw_engine.h |   6 ++
- 3 files changed, 186 insertions(+), 9 deletions(-)
+ 3 files changed, 187 insertions(+), 8 deletions(-)
 
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index 16aba8f6..01162b24 100644
+index 13dfeaa35e2715691ca8e8c807e2125cf0077dae..b5717415ac6199b66f0dcfb2f9740722cf720217 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
-@@ -448,6 +448,93 @@ static u8 pad_sdl_trigger_to_u8(int raw)
+@@ -531,6 +531,93 @@ static u8 pad_sdl_trigger_to_u8(int raw)
      return (u8)val;
  }
  
@@ -124,7 +124,7 @@ index 16aba8f6..01162b24 100644
  /* Send port i's rumble state to its controller, with a fresh duration. */
  static void pad_sdl_rumble_send(int i)
  {
-@@ -531,6 +618,9 @@ static void pad_sdl_scan(void)
+@@ -614,6 +701,9 @@ static void pad_sdl_scan(void)
          s_sdl_had[port] = 1;
          memset(&s_rumble[port], 0, sizeof s_rumble[port]);   /* nothing left over from before */
          SDL_GameControllerRumble(gc, 0, 0, 0);
@@ -134,7 +134,7 @@ index 16aba8f6..01162b24 100644
          const char* name = SDL_GameControllerName(gc);
          fprintf(stderr, "[cellPad] SDL controller %s on port %d: %s (instance %d)%s\n",
                  back ? "reconnected" : "connected", port, name ? name : "?", (int)id,
-@@ -568,6 +658,7 @@ static void pad_sdl_hotplug(int force)
+@@ -651,6 +741,7 @@ static void pad_sdl_hotplug(int force)
  static void pad_poll_sdl2(void)
  {
      SDL_GameControllerUpdate();
@@ -142,7 +142,7 @@ index 16aba8f6..01162b24 100644
      pad_sdl_hotplug(0);
  
      for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
-@@ -629,7 +720,37 @@ static void pad_poll_sdl2(void)
+@@ -712,7 +803,37 @@ static void pad_poll_sdl2(void)
          s_host_state[i].press_square   = (btns & CELL_PAD_CTRL_SQUARE)   ? 255 : 0;
          s_host_state[i].press_l1       = (btns & CELL_PAD_CTRL_L1)       ? 255 : 0;
          s_host_state[i].press_r1       = (btns & CELL_PAD_CTRL_R1)       ? 255 : 0;
@@ -152,7 +152,7 @@ index 16aba8f6..01162b24 100644
 +            abs(h->analog_lx - 128) > 48 || abs(h->analog_ly - 128) > 48 ||
 +            abs(h->analog_rx - 128) > 48 || abs(h->analog_ry - 128) > 48)
 +            pad_set_active(s_sdl_family[i]);
-     }
++    }
 +
 +    /* PAD_MERGE=1: every controller drives port 0 (single-player titles
 +     * read one pad; whichever the player picks up just works). Buttons add
@@ -175,12 +175,12 @@ index 16aba8f6..01162b24 100644
 +        u8* pd = &p0->press_right; const u8* ps = &h->press_right;
 +        for (int k = 0; k < 10; k++) if (ps[k] > pd[k]) pd[k] = ps[k];
 +        h->connected = 0;
-+    }
+     }
 +    s_port0_pad = p0->connected;
  }
  
  static void pad_init_backend(void)
-@@ -648,8 +769,15 @@ static void pad_init_backend(void)
+@@ -731,8 +852,15 @@ static void pad_init_backend(void)
               * cared. SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=0 in the
               * environment still wins over this. */
              SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -196,7 +196,7 @@ index 16aba8f6..01162b24 100644
          s_sdl_inited = 1;
      }
      memset(s_sdl_controllers, 0, sizeof(s_sdl_controllers));
-@@ -888,6 +1016,11 @@ static void pad_poll_mouse(PadHostState* hs)
+@@ -971,6 +1099,11 @@ static void pad_poll_mouse(PadHostState* hs)
      static int was_ui;
      if (g_pad_mouse_ui) {
          if (SDL_GetRelativeMouseMode()) SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -208,7 +208,7 @@ index 16aba8f6..01162b24 100644
          was_ui = 1; sx = sy = 0;
          return;
      }
-@@ -906,6 +1039,7 @@ static void pad_poll_mouse(PadHostState* hs)
+@@ -989,6 +1122,7 @@ static void pad_poll_mouse(PadHostState* hs)
          return;
      }
      mb = SDL_GetRelativeMouseState(&dx, &dy);
@@ -216,7 +216,7 @@ index 16aba8f6..01162b24 100644
      if (g_pad_mouse_direct) {
          __atomic_add_fetch(&s_mouse_dx, dx, __ATOMIC_ACQ_REL);
          __atomic_add_fetch(&s_mouse_dy, dy, __ATOMIC_ACQ_REL);
-@@ -946,10 +1080,14 @@ static void pad_poll_keyboard(void)
+@@ -1029,10 +1163,14 @@ static void pad_poll_keyboard(void)
      if (off < 0) off = getenv("PAD_NO_KEYBOARD") ? 1 : 0;
      if (off || SDL_WasInit(SDL_INIT_VIDEO) == 0) return;
  
@@ -231,7 +231,7 @@ index 16aba8f6..01162b24 100644
          hs->buttons = 0;
          hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
          hs->trigger_l2 = hs->trigger_r2 = 0;
-@@ -957,20 +1095,36 @@ static void pad_poll_keyboard(void)
+@@ -1040,20 +1178,36 @@ static void pad_poll_keyboard(void)
      }
      if (s_nbinds < 0) pad_keymap_load();
      int st[9] = {0};
@@ -276,18 +276,19 @@ index 16aba8f6..01162b24 100644
  }
  #endif
  
-@@ -991,7 +1145,9 @@ static void pad_poll_backend(void)
+@@ -1074,7 +1228,11 @@ static void pad_poll_backend(void)
  #elif PAD_BACKEND_SDL2
      pad_poll_sdl2();
  #endif
--#if defined(_WIN32) || PAD_BACKEND_SDL2
 +#if PAD_BACKEND_SDL2
 +    pad_poll_keyboard();   /* merges with a controller on port 0 */
 +#elif defined(_WIN32)
      if (!s_host_state[0].connected) pad_poll_keyboard();
- #endif
++#endif
  #if !defined(_WIN32) && PAD_BACKEND_SDL2
-@@ -1725,6 +1881,12 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+     if (s_nbinds < 0) pad_keymap_load();
+     /* With a controller too: the mouse adds to whatever drives port 0. */
+@@ -1806,6 +1964,12 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
  #if PAD_BACKEND_SDL2
      pad_lock();
      pad_sdl_rumble_send((int)port_no);
@@ -301,10 +302,10 @@ index 16aba8f6..01162b24 100644
  #endif
  
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index dd6333d2..c1f5623b 100644
+index 339822ca1bc02210e0aa6624f7bea09df1018cd1..3dbeb049d6088d1313cdc47d879de2e20080fca3 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -1357,6 +1357,8 @@ static u32 eng_texture_upload_body(u32 location, u32 offset, u32 fmt, u32 w, u32
+@@ -1511,6 +1511,8 @@ static u32 eng_texture_upload_body(u32 location, u32 offset, u32 fmt, u32 w, u32
   * cache full evicts the least recently used entry rather than returning
   * nothing: returning white "made the recovered orphanage render as flat
   * green/black geometry" (rsx_live_draw.c:2326-2334). */
@@ -313,7 +314,7 @@ index dd6333d2..c1f5623b 100644
  static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
                              u32 levels, u32 pitch, int cube, u32 remap, u32 depth)
  {
-@@ -1449,6 +1451,13 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1603,6 +1605,13 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
          evicted = g.textures[index].handle;
      }
  
@@ -328,10 +329,10 @@ index dd6333d2..c1f5623b 100644
      memset(&e, 0, sizeof(e));
      e.location = location; e.offset = offset; e.format = fmt;
 diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
-index a25ecc29..77ec778f 100644
+index 097692ce05d17477841d3d46091e459aef1e2769..46b8ec93308f4d8c07160a82d63d2cbd5a0f35f8 100644
 --- a/libs/video/rsx_draw_engine.h
 +++ b/libs/video/rsx_draw_engine.h
-@@ -400,6 +400,12 @@ void rsx_draw_engine_write_topology_indices(u32 primitive, u32 source_refs,
+@@ -404,6 +404,12 @@ void rsx_draw_engine_write_topology_indices(u32 primitive, u32 source_refs,
                                              const u32* occurrence_to_unique,
                                              u32* indices);
  

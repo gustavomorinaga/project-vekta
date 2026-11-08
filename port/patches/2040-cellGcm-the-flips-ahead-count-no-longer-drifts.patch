@@ -15,18 +15,16 @@ uncounted if the drain reaches one after all), and the counters shared by the
 guest and the drain are bumped atomically. test_gcm_flip_queue runs the real
 flip paths and fails on the old count.
 ---
- libs/video/cellGcmSys.c      | 37 ++++++++++++++++--------
- tests/test_gcm_flip_queue.c  | 54 ++++++++++++++++++++++++++++++++++++
- tools/test_gcm_flip_queue.py | 20 +++++++++++++
+ libs/video/cellGcmSys.c      | 37 +++++++++++++++++++++---------
+ tests/test_gcm_flip_queue.c  | 54 ++++++++++++++++++++++++++++++++++++++++++++
+ tools/test_gcm_flip_queue.py | 20 ++++++++++++++++
  3 files changed, 100 insertions(+), 11 deletions(-)
- create mode 100644 tests/test_gcm_flip_queue.c
- create mode 100644 tools/test_gcm_flip_queue.py
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index f115125..4964715 100644
+index 76541d5a27c1c173a66dbfc2fd740c457e3c4581..9bd1567cfe4f0a4c34924d8805086c62e36bbaf4 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -100,11 +100,21 @@ static volatile int s_flip_lock;
+@@ -103,11 +103,21 @@ static volatile int s_flip_lock;
   * clear+few-draws frame as a visible flicker). */
  static volatile u32 s_flip_request_count = 0;
  
@@ -52,7 +50,7 @@ index f115125..4964715 100644
  u32 cellGcm_flip_request_count(void)
  {
      return s_flip_request_count;
-@@ -1827,7 +1837,8 @@ static void gcm_fifo_resync_why(const char* why, u32* getoff, u32 put)
+@@ -2161,7 +2171,8 @@ static void gcm_fifo_resync_why(const char* why, u32* getoff, u32 put)
              /* A flip marker skipped here will never be reached: count it, or
               * every flip after it waits for the drain forever. */
              if ((w & 0xFFFFFF00u) == GCM_FLIP_MARKER &&
@@ -62,7 +60,7 @@ index f115125..4964715 100644
              if ((w >> 29) != 0 || (w & 0x1FFCu) != 0x0050u) continue;
              u32 dea = gcm_io2ea(io + 4); if (!dea) continue;
              gcm_ref_push_at(vm_read32(dea), io);
-@@ -2432,6 +2443,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
+@@ -2808,6 +2819,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
              /* Whatever the walker had not reached is gone, and so are the flips
               * queued in it: none of them will ever be executed, so do not let a
               * flip wait on them. */
@@ -70,7 +68,7 @@ index f115125..4964715 100644
              s_fifo_flips_reached = s_fifo_flips_queued;
              why = "no-io-mapping";
              break;
-@@ -2533,10 +2545,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
+@@ -2910,10 +2922,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
                   * guest-visible half of the request. */
                  gcm_set_current_display_buffer(w & 7u);
                  s_flip_pending = 1;
@@ -84,7 +82,7 @@ index f115125..4964715 100644
              } else {
                  cellGcmSetFlipCommand(w & 0xFFu);
              }
-@@ -3371,7 +3384,8 @@ static s32 gcm_flip_request(u32 bufferId, int in_fifo)
+@@ -3822,7 +3835,8 @@ static s32 gcm_flip_request(u32 bufferId, int in_fifo)
      if (!in_fifo) {
          gcm_set_current_display_buffer(bufferId);
          s_flip_pending = 1;   /* ticker: present BEFORE the next drain */
@@ -94,8 +92,8 @@ index f115125..4964715 100644
          s_flip_direct_pending = 1;
      }
      /* Flip requested but not yet shown: a subsequent cellGcmSetWaitFlip blocks
-@@ -3420,7 +3434,7 @@ static int gcm_flip_into_fifo(u32 ctx, u32 bufferId)
-     if (cur + 8 + GCM_RECYCLE_SLACK > end || gcm_ea2io(cur) == 0xFFFFFFFFu) return 0;
+@@ -3873,7 +3887,7 @@ static int gcm_flip_into_fifo(u32 ctx, u32 bufferId)
+     if (gcm_ea2io(cur) == 0xFFFFFFFFu) return 0;
      vm_write32(cur, GCM_FLIP_MARKER | bufferId);
      s_fifo_flips_queued++;
 -    s_flip_written_count++;
@@ -103,7 +101,7 @@ index f115125..4964715 100644
      /* Wrap here, on the guest thread, once the ring is nearly used -- what the
       * SDK's buffer-full callback does. Otherwise the drain thread recycles it
       * (see "recycled the title's own ring"), rewriting ctx->current and put
-@@ -3486,7 +3500,8 @@ s32 cellGcmSetPrepareFlip(void* ctx, u32 bufferId)
+@@ -3939,7 +3953,8 @@ s32 cellGcmSetPrepareFlip(void* ctx, u32 bufferId)
  
      gcm_set_current_display_buffer(bufferId);
      s_flip_status = CELL_GCM_FLIP_STATUS_DONE;
@@ -113,7 +111,7 @@ index f115125..4964715 100644
      s_last_flip_time = get_timestamp_ns();
  
      /* Invoke the guest flip handler via OPD resolution -- s_flip_handler holds
-@@ -4263,7 +4278,7 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+@@ -4729,7 +4744,7 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
        if (cap < 0) { const char* e = getenv("PS3_GCM_MAX_QUEUED_FLIPS"); cap = e ? atoi(e) : 2; }
        if (cap > 0) {
            PS3_TRACE_BEGIN(_tr);
@@ -124,7 +122,7 @@ index f115125..4964715 100644
  #else
 diff --git a/tests/test_gcm_flip_queue.c b/tests/test_gcm_flip_queue.c
 new file mode 100644
-index 0000000..44502cb
+index 0000000000000000000000000000000000000000..44502cbf3ad7c08c9f1f9a3f19a581d9f323fcfd
 --- /dev/null
 +++ b/tests/test_gcm_flip_queue.c
 @@ -0,0 +1,54 @@
@@ -184,7 +182,7 @@ index 0000000..44502cb
 +}
 diff --git a/tools/test_gcm_flip_queue.py b/tools/test_gcm_flip_queue.py
 new file mode 100644
-index 0000000..52bbaaf
+index 0000000000000000000000000000000000000000..52bbaaf40e64e406308647d72eb90e20477f9d65
 --- /dev/null
 +++ b/tools/test_gcm_flip_queue.py
 @@ -0,0 +1,20 @@
@@ -208,3 +206,6 @@ index 0000000..52bbaaf
 +                    '-o', str(binary)], check=True)
 +    subprocess.run([str(binary)], check=True, timeout=10,
 +                   env={k: v for k, v in os.environ.items() if not k.startswith('A2O_')})
+-- 
+2.56.0
+

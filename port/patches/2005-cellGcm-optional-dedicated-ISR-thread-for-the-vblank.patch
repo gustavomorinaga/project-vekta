@@ -9,10 +9,10 @@ Subject: [PATCH] cellGcm: optional dedicated ISR thread for the
  1 file changed, 31 insertions(+)
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 626a03e9..6cd59df7 100644
+index 4ed970778a16e00dcb0ea9256bc6608227e78ec5..a7385605fbf702cf52d068d2ee3e869d38c7b86a 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -837,8 +837,39 @@ void* ppu_gcm_wait_pump(void (**pump)(void))
+@@ -911,6 +911,31 @@ void* ppu_gcm_wait_pump(void (**pump)(void))
      return (void*)s_gcm_pump_ev;
  }
  #endif
@@ -42,6 +42,11 @@ index 626a03e9..6cd59df7 100644
 +    }
 +}
  
+ /* GCM_HANDLER_THREAD=1: deliver the guest's vblank/flip/user handlers only on a
+  * dedicated host thread, as the PS3 does on its GCM interrupt thread. Pumped at
+@@ -948,6 +973,12 @@ static void* gcm_intr_posix(void* a) { gcm_intr_main(a); return NULL; }
+ #endif
+ 
  void ppu_gcm_pump(void)
 +{
 +    if (s_isr_thread_on && !t_is_isr_thread) return;
@@ -50,8 +55,8 @@ index 626a03e9..6cd59df7 100644
 +
 +static void gcm_pump_body(void)
  {
-     if (!GCM_PUMP_TRY_ENTER()) return;
-     long p = (long)GCM_PENDING_TAKE();
+     /* Every HLE call and timer sleep pumps, tens of thousands of times a
+      * second, and almost always nothing is pending. Look before taking the
 -- 
 2.56.0
 

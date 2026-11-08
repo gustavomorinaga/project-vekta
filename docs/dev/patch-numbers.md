@@ -144,3 +144,8 @@ private series: 0004 and 2039 now come from the private branch, made on top of t
 | (none) | 2056 | Vulkan: the shader caches on disk are keyed by the translator's id (written in this tree, 2026-11-07, after Project Pyrrhus's patch 6047) |
 | (none) | 2057 | Vulkan window: a swapchain not recreated skips frames, not the window (written in this tree, 2026-11-07, after Project Helghast's patches 2130, 2133 and 2152) |
 | (none) | 2058 | cellGcm: the flip wait's naps on Windows are 100 us, not Sleep(1) (written in this tree, 2026-11-07, after ps3recomp PR #628) |
+| (none) | 0006 | Killzone port on v0.19.0: the Vulkan backend stays the port's (written in this tree, 2026-11-08; first in the series) |
+| (none) | 0007 | Killzone port on v0.19.0: one keyboard fallback, one AUDIO_WAV writer, the SPU holder array (2026-11-08) |
+| (none) | 0008 | tests: v0.19.0's new host tests follow the port's patches (2026-11-08) |
+
+1006 left the series on 2026-11-08: ps3recomp v0.19.0's `SPU_LS_VEC` (#637) does the same.

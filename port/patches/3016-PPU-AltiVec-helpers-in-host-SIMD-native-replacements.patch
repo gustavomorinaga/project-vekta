@@ -19,12 +19,12 @@ then define <name> natively and fall back to, or verify against, the lifted
 body.
 
 ---
- runtime/ppu/ppu_vmx.h | 102 ++++++++++++++++++++++++++++++++++++++++++
- tools/ppu_lifter.py   |  30 +++++++------
+ runtime/ppu/ppu_vmx.h | 102 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ tools/ppu_lifter.py   |  30 ++++++++-------
  2 files changed, 118 insertions(+), 14 deletions(-)
 
 diff --git a/runtime/ppu/ppu_vmx.h b/runtime/ppu/ppu_vmx.h
-index 35052c67..bbb9a770 100644
+index f164678812d940b9b73c4228153a7e59d6fddca7..f5fafc56a50956256481441c2dd91c814a7597e9 100644
 --- a/runtime/ppu/ppu_vmx.h
 +++ b/runtime/ppu/ppu_vmx.h
 @@ -76,6 +76,27 @@ VMX_INL uint32_t vmx_vnan1(uint32_t r, uint32_t b) {
@@ -130,7 +130,7 @@ index 35052c67..bbb9a770 100644
  /* ======================================================================
   * floating point
   * ==================================================================== */
-@@ -270,11 +342,34 @@ VMX_INL float vmx_minf(float x, float y) {
+@@ -270,8 +342,21 @@ VMX_INL float vmx_minf(float x, float y) {
      if (x == 0 && y == 0) return signbit(x) ? x : y;      /* min(-0,+0) = -0 */
      return x < y ? x : y;
  }
@@ -152,6 +152,10 @@ index 35052c67..bbb9a770 100644
  VMX_FBIN(vmx_vmaxfp, vmx_maxf(vmx_f(x), vmx_f(y)), 0)
  VMX_FBIN(vmx_vminfp, vmx_minf(vmx_f(x), vmx_f(y)), 0)
  
+@@ -296,6 +381,16 @@ VMX_INL float vmx_fmaf(float x, float z, float y) {
+     return fmaf(x, z, y);
+ #endif
+ }
 +#ifdef VMX_SIMD
 +VMX_INL void vmx_vmaddfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) {
 +    __m128 x = vmx_ldf4(a_, vscr), y = vmx_ldf4(b_, vscr), z = vmx_ldf4(c_, vscr);
@@ -165,31 +169,32 @@ index 35052c67..bbb9a770 100644
  VMX_INL void vmx_vmaddfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_PREP; const uint8_t* c = (const uint8_t*)c_;
      for (int i = 0; i < 4; i++) {
          float x = vmx_f(vmx_flush(vmx_w(a, i), vscr)), y = vmx_f(vmx_flush(vmx_w(b, i), vscr)),
-@@ -285,6 +380,7 @@ VMX_INL void vmx_vnmsubfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_
+@@ -306,6 +401,7 @@ VMX_INL void vmx_vnmsubfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_
          float x = vmx_f(vmx_flush(vmx_w(a, i), vscr)), y = vmx_f(vmx_flush(vmx_w(b, i), vscr)),
                z = vmx_f(vmx_flush(vmx_w(c, i), vscr));
-         vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(-fmaf(x, z, -y))), vscr)); } VMX_OUT; }
+         vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(-vmx_fmaf(x, z, -y))), vscr)); } VMX_OUT; }
 +#endif
  
  #define VMX_FUN(name, expr, flush_in, nanmode) \
  VMX_INL void name(VMX_D, VMX_B, uint32_t vscr) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16]; \
-@@ -303,8 +399,14 @@ VMX_FUN(vmx_vrfim, floorf(f), 1, 2)
- /* int <-> float with a 2^uimm scale */
+@@ -328,9 +424,15 @@ VMX_INL float vmx_pow2(int e) { return vmx_f((uint32_t)(127 + e) << 23); }
  VMX_INL void vmx_vcfux(VMX_D, VMX_B, unsigned uimm) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16];
-     for (int i = 0; i < 4; i++) vmx_sw(r, i, vmx_u(ldexpf((float)vmx_w(b, i), -(int)uimm))); VMX_OUT; }
+     const float s = vmx_pow2(-(int)(uimm & 31u));
+     for (int i = 0; i < 4; i++) vmx_sw(r, i, vmx_u((float)vmx_w(b, i) * s)); VMX_OUT; }
 +#ifdef VMX_SIMD
 +/* the conversion rounds once; the power-of-two scale is exact (2^-31 at most) */
 +VMX_INL void vmx_vcfsx(VMX_D, VMX_B, unsigned uimm) {
-+    vmx_st4(d_, _mm_castps_si128(_mm_mul_ps(_mm_cvtepi32_ps(vmx_ld4(b_)), _mm_set1_ps(ldexpf(1.0f, -(int)uimm))))); }
++    vmx_st4(d_, _mm_castps_si128(_mm_mul_ps(_mm_cvtepi32_ps(vmx_ld4(b_)), _mm_set1_ps(vmx_pow2(-(int)(uimm & 31u)))))); }
 +#else
  VMX_INL void vmx_vcfsx(VMX_D, VMX_B, unsigned uimm) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16];
-     for (int i = 0; i < 4; i++) vmx_sw(r, i, vmx_u(ldexpf((float)(int32_t)vmx_w(b, i), -(int)uimm))); VMX_OUT; }
+     const float s = vmx_pow2(-(int)(uimm & 31u));
+     for (int i = 0; i < 4; i++) vmx_sw(r, i, vmx_u((float)(int32_t)vmx_w(b, i) * s)); VMX_OUT; }
 +#endif
  VMX_INL void vmx_vctsxs(VMX_D, VMX_B, unsigned uimm, uint32_t* vscr) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16];
-     for (int i = 0; i < 4; i++) { float f = vmx_f(vmx_w(b, i)) * ldexpf(1.0f, (int)uimm); int32_t v;
+     for (int i = 0; i < 4; i++) { float f = vmx_f(vmx_w(b, i)) * vmx_pow2((int)(uimm & 31u)); int32_t v;
          if (f != f) v = 0;
 diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
-index ff2f53fc..a5540e35 100644
+index 5062d870a41c079f033fc71582bb078982d44895..d48687503858835ee3da17491ab97e6391ae86c9 100644
 --- a/tools/ppu_lifter.py
 +++ b/tools/ppu_lifter.py
 @@ -898,6 +898,11 @@ def _crval_to_c(val: str, mask: int, decl_a: str, a_expr: str, b_expr: str) -> s

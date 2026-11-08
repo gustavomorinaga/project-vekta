@@ -15,7 +15,7 @@ unless PS3_TRACE asks, and write tracking unless PS3RECOMP_WTRACK=1.
  2 files changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/tools/test_rsx_immediate_vertices.py b/tools/test_rsx_immediate_vertices.py
-index d6a2ff3..0e0c361 100644
+index d6a2ff3b1e1350674f3b65147cc94ac8a9cae18b..0e0c36118ed954f34cb5640967af56047ce4d084 100644
 --- a/tools/test_rsx_immediate_vertices.py
 +++ b/tools/test_rsx_immediate_vertices.py
 @@ -12,7 +12,8 @@ def main():
@@ -29,7 +29,7 @@ index d6a2ff3..0e0c361 100644
          binary = Path(directory) / "test_rsx_draw_engine"
          subprocess.run([os.environ.get("CC", "cc"), "-std=gnu17",
 diff --git a/tools/test_spurs_scheduler.py b/tools/test_spurs_scheduler.py
-index 1f62588..3f9cf93 100644
+index 1f62588b67f1c2740c1bcebd132c296afb566f01..3f9cf93558d4f3c4f98730522c2886fc3e1b46d1 100644
 --- a/tools/test_spurs_scheduler.py
 +++ b/tools/test_spurs_scheduler.py
 @@ -16,5 +16,6 @@ with tempfile.TemporaryDirectory(prefix='spurs-scheduler-') as tmp:
@@ -39,3 +39,6 @@ index 1f62588..3f9cf93 100644
 +        str(r/'runtime/ps3_trace.c'),
          str(r/'runtime/platform/win32_compat.c'),'-pthread','-lm','-o',str(out)],check=True)
      subprocess.run([str(out)],check=True,timeout=15)
+-- 
+2.56.0
+

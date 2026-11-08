@@ -6,15 +6,15 @@ Subject: [PATCH] spu: DMA fast path without the env-gated diagnostics;
 
 ---
  runtime/spu/spu_channels.c |  3 +-
- runtime/spu/spu_dma.h      | 95 ++++++++++++++++++++++++++++++++++++--
+ runtime/spu/spu_dma.h      | 95 ++++++++++++++++++++++++++++++++++++++++++++--
  2 files changed, 94 insertions(+), 4 deletions(-)
 
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 7bc69847..6957480d 100644
+index f28b97085157816ce4c1dc374c60f2b0ef649d12..682c42f0aeb4066caec7cfecff148f0b73fa9254 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
-@@ -2155,7 +2155,8 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
-     if (size < 512 && !spu_ovl_ea_known(ea)) return;
+@@ -2235,7 +2235,8 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
+         !spu_ovl_ea_known(ea)) return;
      for (int i = 0; i < nsrc; i++) {
          const spu_ovl_src* o = &s_ovl_src[i];
 -        int hit = o->has_sig ? (size >= 512 && memcmp(ls, o->sig, 16) == 0)
@@ -24,7 +24,7 @@ index 7bc69847..6957480d 100644
          if (hit) {
              if (o->span) {
 diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
-index 22d83614..2ec1b0fc 100644
+index 22d8361403f77f6ed2d47312fad0e45c6f319193..2ec1b0fca17b426f5e5152275f35cd96a5521a91 100644
 --- a/runtime/spu/spu_dma.h
 +++ b/runtime/spu/spu_dma.h
 @@ -168,6 +168,16 @@ static inline int mfc_is_fence(uint32_t cmd)

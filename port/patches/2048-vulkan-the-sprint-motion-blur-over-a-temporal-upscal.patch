@@ -13,13 +13,13 @@ image binding is a 1x1 stand-in). The device also gets independentBlend
 and format-less storage writes when an upscaler is on.
 
 ---
- libs/video/rsx_vulkan_backend.c        |  135 ++-
+ libs/video/rsx_vulkan_backend.c        |  135 +++-
  libs/video/vulkan/rsx_vk_mb.comp       |   22 +-
- libs/video/vulkan/rsx_vk_mb_comp.spv.h | 1297 +++++++++++++-----------
+ libs/video/vulkan/rsx_vk_mb_comp.spv.h | 1297 ++++++++++++++++++--------------
  3 files changed, 859 insertions(+), 595 deletions(-)
 
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 28cddf47..28f16801 100644
+index 28cddf471ab37b82be0d9b7ff25cbca8458cd57c..28f16801adc9edfd1f0728a57844073ed96032d6 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -3697,6 +3697,14 @@ static struct {
@@ -242,7 +242,7 @@ index 28cddf47..28f16801 100644
      { VkPhysicalDeviceProperties dp; pvkGetPhysicalDeviceProperties(s_vk.phys, &dp);
        s_vk.aniso_max = dp.limits.maxSamplerAnisotropy >= 16.0f ? 16u : (u32)dp.limits.maxSamplerAnisotropy; }
 diff --git a/libs/video/vulkan/rsx_vk_mb.comp b/libs/video/vulkan/rsx_vk_mb.comp
-index ef2a44c3..711377f4 100644
+index ef2a44c3157bf82677a6c9591d8aaf4807591eb7..711377f4b186a3007f44dfa2daeb400ae680ebec 100644
 --- a/libs/video/vulkan/rsx_vk_mb.comp
 +++ b/libs/video/vulkan/rsx_vk_mb.comp
 @@ -15,13 +15,17 @@
@@ -294,7 +294,7 @@ index ef2a44c3..711377f4 100644
      }
  }
 diff --git a/libs/video/vulkan/rsx_vk_mb_comp.spv.h b/libs/video/vulkan/rsx_vk_mb_comp.spv.h
-index da372de5..a99f92a3 100644
+index da372de5cf6658eeec3e9bf06f5d3d356344fc81..a99f92a3ab87418b2de0d7d026d9ad2b69c09220 100644
 --- a/libs/video/vulkan/rsx_vk_mb_comp.spv.h
 +++ b/libs/video/vulkan/rsx_vk_mb_comp.spv.h
 @@ -1,7 +1,7 @@
@@ -1615,3 +1615,6 @@ index da372de5..a99f92a3 100644
  	0x000200f9,0x000002be,0x000200f8,0x000002be,0x000200f9,0x00000203,0x000200f8,0x00000203,
  	0x000100fd,0x00010038,0x00050036,0x00000008,0x0000000b,0x00000000,0x00000009,0x00030037,
  	0x00000007,0x0000000a,0x000200f8,0x0000000c,0x0004003b,0x0000000e,0x00000044,0x00000007,
+-- 
+2.56.0
+

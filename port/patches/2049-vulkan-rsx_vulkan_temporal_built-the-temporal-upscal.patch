@@ -15,7 +15,7 @@ DLSS (PS3RECOMP_DLSS_SDK).
  4 files changed, 15 insertions(+)
 
 diff --git a/libs/video/rsx_vk_fsr3.cpp b/libs/video/rsx_vk_fsr3.cpp
-index 672373be..ed768d71 100644
+index 672373be7edac85cda5c6fccb8e5ee6b72c4fd89..ed768d71c57c2ba47ba02f8828b9b6c47b8d86f4 100644
 --- a/libs/video/rsx_vk_fsr3.cpp
 +++ b/libs/video/rsx_vk_fsr3.cpp
 @@ -7,6 +7,7 @@
@@ -36,7 +36,7 @@ index 672373be..ed768d71 100644
                    PFN_vkGetInstanceProcAddr gipa, PFN_vkGetDeviceProcAddr gdpa)
  {
 diff --git a/libs/video/rsx_vk_fsr3.h b/libs/video/rsx_vk_fsr3.h
-index 9187b704..e05ca377 100644
+index 9187b70429fa3a7c6c7bc10576ac12455b69765d..e05ca37734b8730559e7a39486e701318b72420b 100644
 --- a/libs/video/rsx_vk_fsr3.h
 +++ b/libs/video/rsx_vk_fsr3.h
 @@ -16,6 +16,8 @@ extern "C" {
@@ -49,7 +49,7 @@ index 9187b704..e05ca377 100644
  int rsx_fsr3_init(VkInstance instance, VkPhysicalDevice phys, VkDevice device,
                    PFN_vkGetInstanceProcAddr gipa, PFN_vkGetDeviceProcAddr gdpa);
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 28f16801..79c9f87d 100644
+index 28f16801adc9edfd1f0728a57844073ed96032d6..79c9f87dab5a09217379d5eed8fed4034ecbb960 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -510,6 +510,12 @@ void rsx_vulkan_set_reflex(int mode)
@@ -66,7 +66,7 @@ index 28f16801..79c9f87d 100644
  /* The game's thread, after it queued a flip: this frame's simulation ended,
   * sleep until the driver wants the next one to start. */
 diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
-index 8d704496..bfde453e 100644
+index 8d704496bb11b9f2effcc57bb6e3401eb43e4e84..bfde453e879eb577eb813d18a87fac1c8f43d013 100644
 --- a/libs/video/rsx_vulkan_backend.h
 +++ b/libs/video/rsx_vulkan_backend.h
 @@ -92,6 +92,10 @@ void rsx_vulkan_set_reflex(int mode);
@@ -80,3 +80,6 @@ index 8d704496..bfde453e 100644
  void rsx_vulkan_latency_sleep(void);   /* the game's thread, after a flip */
  void rsx_vulkan_set_crop(float f);
  int  rsx_vulkan_output_size(int* w, int* h);
+-- 
+2.56.0
+

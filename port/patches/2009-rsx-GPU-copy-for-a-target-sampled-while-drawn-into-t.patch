@@ -12,18 +12,16 @@ re-decode; uploads stage in the batch ring instead of a buffer and a wait each.
 
 ---
  libs/spurs/cellSpurs.c          |  1 +
- libs/video/cellGcmSys.c         |  3 +
- libs/video/rsx_draw_engine.c    | 25 +++++++++
- libs/video/rsx_vulkan_backend.c |  5 +-
- runtime/ps3_trace.c             | 97 +++++++++++++++++++++++++++++++++
- runtime/ps3_trace.h             | 24 ++++++++
- runtime/syscalls/sys_timer.c    | 22 +++++++-
+ libs/video/cellGcmSys.c         |  3 ++
+ libs/video/rsx_draw_engine.c    | 25 +++++++++++
+ libs/video/rsx_vulkan_backend.c |  5 ++-
+ runtime/ps3_trace.c             | 97 +++++++++++++++++++++++++++++++++++++++++
+ runtime/ps3_trace.h             | 24 ++++++++++
+ runtime/syscalls/sys_timer.c    | 22 ++++++++--
  7 files changed, 173 insertions(+), 4 deletions(-)
- create mode 100644 runtime/ps3_trace.c
- create mode 100644 runtime/ps3_trace.h
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 8a4f73f5..19810760 100644
+index a6f0d92c14b5a3f19880ff22bf8c644850111070..61b357f5f88021af7ad70398ee75367f495a89c3 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
 @@ -10,6 +10,7 @@
@@ -35,7 +33,7 @@ index 8a4f73f5..19810760 100644
  #include "../../runtime/ps3_log.h"
  #include "spu_workload.h"   /* SPU image -> lifted-entry dispatch (runtime/spu) */
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index b59339d0..d24b64ee 100644
+index cd92b3c7a0667c65b5cfa7160e0e4512760b356e..d10ba52a5f835363ead55c4d68e447c882dcdcf6 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
 @@ -8,6 +8,7 @@
@@ -45,8 +43,8 @@ index b59339d0..d24b64ee 100644
 +#include "../../runtime/ps3_trace.h"
  #include "rsx_live_draw.h"
  #include "rsx_draw_engine.h"
- #include "cellGcmSys.h"
-@@ -1994,9 +1995,11 @@ void cellGcm_rsx_process_fifo(void)
+ #include "rsx_tiling.h"
+@@ -2221,9 +2222,11 @@ void cellGcm_rsx_process_fifo(void)
      wprof_note_walker();
      g_gcm_drain_tid = GetCurrentThreadId();
      const uint64_t ft_t0 = PS3_FT_ON() ? ps3_ft_now() : 0;
@@ -59,7 +57,7 @@ index b59339d0..d24b64ee 100644
          const uint64_t t1 = ps3_ft_now();
          if (t1 - ft_t0 >= ps3_ft_min_ns())
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 275efa0e..41e6ad62 100644
+index 6ef38a613a436f897c5b7ceb2a6947e836340460..a771a34d31efa4e019655f21a24118c58eff88c3 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
 @@ -10,6 +10,7 @@
@@ -70,7 +68,7 @@ index 275efa0e..41e6ad62 100644
  #include "rsx_draw_engine.h"
  
  #include "rsx_fp_decompiler.h"
-@@ -1174,8 +1175,19 @@ static void eng_deswizzle_3d_slice(u8* dst, const u8* src, u32 w, u32 h, u32 d,
+@@ -1316,8 +1317,19 @@ static void eng_unvtc_3d_slice(u8* dst, const u8* src, u32 blocks, u32 d, u32 z,
  /* One hash per cached texture per presented frame. Word-at-a-time FNV over
   * the whole span is deliberately cheap: this is a mutation detector, not a
   * content id (rsx_live_draw.c:2002-2026). */
@@ -88,9 +86,9 @@ index 275efa0e..41e6ad62 100644
 +static u64 eng_texture_content_hash_body(u32 location, u32 offset, u32 span,
 +                                    int* readable)
  {
-     const u8* src = span ? eng_guest_ptr(NULL, location, offset, span) : NULL;
-     if (!src) { *readable = 0; return 0; }
-@@ -1245,9 +1257,22 @@ static int eng_staging_reserve(u32 bytes)
+     /* in tiled main memory, every byte the texture's texels are stored in */
+     if (rsx_tiling_active()) rsx_tiling_footprint(location, offset, span, &offset, &span);
+@@ -1390,9 +1402,22 @@ static int eng_staging_reserve(u32 bytes)
   * the backend. Returns the backend handle, or 0. `into`, when nonzero, is an
   * existing 2D texture of exactly this key to rewrite instead of creating one
   * (rsx_draw_backend.texture_upload_ordered). */
@@ -114,7 +112,7 @@ index 275efa0e..41e6ad62 100644
      rsx_tex_level lv[RSX_MAX_TEXTURE_LEVELS];
      const u32 nlv = rsx_texture_mip_chain(fmt, w, h, levels, pitch, lv);
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 94fd7bf7..43814d5e 100644
+index 94fd7bf70f61e2c03b09eda49778d908fe052795..43814d5ef766b835d39385f4b6b6916a187792b7 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -42,6 +42,7 @@
@@ -138,7 +136,7 @@ index 94fd7bf7..43814d5e 100644
  
 diff --git a/runtime/ps3_trace.c b/runtime/ps3_trace.c
 new file mode 100644
-index 00000000..e3e0f831
+index 0000000000000000000000000000000000000000..e3e0f8312684681af6f7782e9530531f660324bc
 --- /dev/null
 +++ b/runtime/ps3_trace.c
 @@ -0,0 +1,97 @@
@@ -241,7 +239,7 @@ index 00000000..e3e0f831
 +#endif
 diff --git a/runtime/ps3_trace.h b/runtime/ps3_trace.h
 new file mode 100644
-index 00000000..c9d72f99
+index 0000000000000000000000000000000000000000..c9d72f99f9d53caf275d95182d2016816369d821
 --- /dev/null
 +++ b/runtime/ps3_trace.h
 @@ -0,0 +1,24 @@
@@ -270,7 +268,7 @@ index 00000000..c9d72f99
 +#endif
 +#endif
 diff --git a/runtime/syscalls/sys_timer.c b/runtime/syscalls/sys_timer.c
-index b8ac7133..a72d6c4d 100644
+index b8ac713372719c3832aeb83fe9c6ff0a5b99c23e..a72d6c4d54d947d94eac6504133f75618423d632 100644
 --- a/runtime/syscalls/sys_timer.c
 +++ b/runtime/syscalls/sys_timer.c
 @@ -5,6 +5,7 @@

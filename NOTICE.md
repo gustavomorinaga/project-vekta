@@ -10,7 +10,7 @@ which is (c) Sony Interactive Entertainment and is not part of this repository.
 
 | Project | Author | Source | Licence | What was used |
 |---|---|---|---|---|
-| ps3recomp | Ned Heller (sp00nznet) and its contributors | <https://github.com/sp00nznet/ps3recomp> (submodule `third_party/ps3recomp`, pinned at release v0.18.0) | MIT ([licenses/ps3recomp-LICENSE.txt](licenses/ps3recomp-LICENSE.txt)) | the PPU and SPU lifters, the PS3 runtime and the HLE system libraries the port is built on; our changes are the patches in `port/patches/`, applied on top of that exact release |
+| ps3recomp | Ned Heller (sp00nznet) and its contributors | <https://github.com/sp00nznet/ps3recomp> (submodule `third_party/ps3recomp`, pinned at release v0.19.0) | MIT ([licenses/ps3recomp-LICENSE.txt](licenses/ps3recomp-LICENSE.txt)) | the PPU and SPU lifters, the PS3 runtime and the HLE system libraries the port is built on; our changes are the patches in `port/patches/`, applied on top of that exact release |
 
 ## Other ports
 

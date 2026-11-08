@@ -18,13 +18,13 @@ GETs from an EA range.
  3 files changed, 17 insertions(+), 2 deletions(-)
 
 diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
-index 6bbfb0ac..800d17d7 100644
+index 39143d626d611022e86c0aa17901df600c2ebb94..89c7d398da317d9a6504738c923349f357dbda6e 100644
 --- a/libs/audio/cellAudio.c
 +++ b/libs/audio/cellAudio.c
-@@ -674,6 +674,15 @@ static void* audio_mix_thread_func(void* arg)
-         }
+@@ -705,6 +705,15 @@ static void* audio_mix_thread_func(void* arg)
          blocks++;
          audio_mix_one_block();
+         audio_dump_mix();
 +        /* AUDIO_RATE=1: blocks per second and the share of silent ones;
 +         * AUDIO_WAV=<file>: the mix as raw f32le stereo 48 kHz. */
 +        { static int on = -1; static FILE* wf;
@@ -36,12 +36,12 @@ index 6bbfb0ac..800d17d7 100644
 +            if (n == 937) { fprintf(stderr, "[audio-rate] silent %.1f%% of the last 5 s\n", 100.0 * z / n); n = z = 0; } } }
          audio_backend_submit(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
          audio_notify_event_queues();
-         /* AUDIO_QUEUE=1: the device queue (= output latency) every ~5 s. */
+         /* AUDIO_PEAK=1: the loudest sample of every second of mixed output (187.5 blocks of 256). */
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index 8163e8d5..16aba8f6 100644
+index 12d122d963676f12e355c6d0472dac50cdc933c0..13dfeaa35e2715691ca8e8c807e2125cf0077dae 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
-@@ -1592,8 +1592,8 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
+@@ -1673,8 +1673,8 @@ s32 cellPadPeriphGetInfo(CellPadPeriphInfo* info_guest)
  
  s32 cellPadSetPortSetting(u32 port_no, u32 port_setting)
  {
@@ -53,10 +53,10 @@ index 8163e8d5..16aba8f6 100644
      if (!s_pad_initialized)
          return CELL_PAD_ERROR_NOT_OPENED;
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 2c132af3..7ac9c128 100644
+index a9e82b758001aff9f73d042e9efda407bc326504..4b1409d748ec56e182f0c38ea4a1975cd3755715 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
-@@ -2138,6 +2138,12 @@ void spu_lockguard_check(spu_context* ctx, uint32_t ea, const uint8_t* src, uint
+@@ -2213,6 +2213,12 @@ void spu_lockguard_check(spu_context* ctx, uint32_t ea, const uint8_t* src, uint
  void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint32_t size)
  {
      uint32_t lsa = (uint32_t)(ls - ctx->ls);

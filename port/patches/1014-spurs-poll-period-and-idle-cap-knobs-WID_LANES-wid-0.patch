@@ -7,11 +7,11 @@ Subject: [PATCH] spurs: poll period and idle cap knobs,
 PS3_SPURS_POLL_US / PS3_SPURS_IDLE_MAX on the #291 coordinator, PS3_SPURS_WID_LANES=<wid>:0 keeps a workload off the workers, and g_spurs_workload_added_hook names each workload with its instance and argument, for a port whose native code used heap addresses that moved with v0.18.0's memory domains (#296). Killzone HD runs Level 7 on this tree, but far slower than on v0.14.0: the SPURS tuning is not finished.
 
 ---
- libs/spurs/cellSpurs.c | 66 ++++++++++++++++++++++++++++++++++++++----
+ libs/spurs/cellSpurs.c | 66 ++++++++++++++++++++++++++++++++++++++++++++++----
  1 file changed, 61 insertions(+), 5 deletions(-)
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 19810760..8eb57cec 100644
+index 61b357f5f88021af7ad70398ee75367f495a89c3..9a5b0ccb687627dae1d2cbcb23f0796f6ba72c85 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
 @@ -41,6 +41,7 @@ uint32_t g_ydkj_real_spurs_ea   = 0;   /* real CellSpurs instance EA (for the ta
@@ -22,7 +22,7 @@ index 19810760..8eb57cec 100644
  #endif
  #include "ps3emu/thread_name.h"
  
-@@ -1516,6 +1517,12 @@ static DWORD WINAPI pm_write_watch(LPVOID unused)
+@@ -1734,6 +1735,12 @@ static DWORD WINAPI pm_write_watch(LPVOID unused)
      return 0;
  }
  
@@ -35,7 +35,7 @@ index 19810760..8eb57cec 100644
  s32 cellSpursAddWorkloadWithAttribute(CellSpurs* spurs,
                                         CellSpursWorkloadId* wid,
                                         const CellSpursWorkloadAttribute* attr)
-@@ -1588,10 +1595,15 @@ s32 cellSpursAddWorkloadWithAttribute(CellSpurs* spurs,
+@@ -1806,10 +1813,15 @@ s32 cellSpursAddWorkloadWithAttribute(CellSpurs* spurs,
      }
  
      /* Forward the BE-decoded values (priority as guest EA of the 8-byte table). */
@@ -54,8 +54,8 @@ index 19810760..8eb57cec 100644
 +    return rc;
  }
  
- /* The SDK-versioned workload-attribute initializer (the import the game links;
-@@ -1778,6 +1790,29 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
+ /* cellSpursGetWorkloadFlag(spurs, CellSpursWorkloadFlag** flag): the flag the
+@@ -2046,6 +2058,29 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
      return 0;
  }
  
@@ -85,7 +85,7 @@ index 19810760..8eb57cec 100644
  static DWORD WINAPI spurs_kernel_thread(LPVOID p)
  {
      struct SpursInst* si = (struct SpursInst*)p;
-@@ -1792,11 +1827,30 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+@@ -2060,11 +2095,30 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
           * line (a probed policy module that writes it cannot feed itself more
           * probes). Every 16th kick pass in a row is a full one, so a steady
           * stream of commits cannot starve the probes either. */
@@ -117,17 +117,17 @@ index 19810760..8eb57cec 100644
              /* This full pass reads the line after any commit that woke it. */
              (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
          }
-@@ -1819,6 +1873,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+@@ -2088,6 +2142,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
                      continue;
-                 if (!vm_read8(ea + SPURS_WKL_INFO1 + wid * SPURS_WKL_INFO_SZ + 0x18 + sn))
+                 if (!vm_read8(ea + wkl_info_off(wid) + 0x18 + sn))
                      continue; /* priority zero makes this physical lane ineligible */
 +                if (spurs_wid_off(wid)) continue;
-                 u32 maxcont = vm_read8(ea + SPURS_WKL_MAXCONT + wid);
+                 u32 maxcont = wkl_count_get(ea, SPURS_WKL_MAXCONT, wid, si->is2);
                  if (!maxcont || si->active[wid] >= maxcont) continue;
                  WklPm* pm = spurs_resolve_pm(wid);
-@@ -1827,6 +1882,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
-                 u32 ready = vm_read8(ea + SPURS_WKL_READY1 + wid);
-                 int kicked = ready || (signal & (0x8000u >> wid));
+@@ -2100,6 +2155,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+                               vm_read32(ea + SPURS_WKL_FLAG_WORD) == 0;
+                 int kicked = ready || (signal & wkl_signal_bit(wid)) || flagged;
                  if (kicked) si->idle[wid] = 0;
 +                if (si->idle[wid] > s_idle_max) si->idle[wid] = (u8)s_idle_max;
                  if (!kicked && (kick_pass || (si->pass_no & ((1u << si->idle[wid]) - 1))))

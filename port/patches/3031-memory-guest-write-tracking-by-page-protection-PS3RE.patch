@@ -18,16 +18,14 @@ level loads take millions of faults.
 
 ---
  libs/filesystem/cellFs.c     |   2 +
- libs/video/rsx_draw_engine.c |  40 ++++++++-
- runtime/memory/vm_wtrack.c   | 158 +++++++++++++++++++++++++++++++++++
- runtime/memory/vm_wtrack.h   |  43 ++++++++++
+ libs/video/rsx_draw_engine.c |  40 ++++++++++-
+ runtime/memory/vm_wtrack.c   | 158 +++++++++++++++++++++++++++++++++++++++++++
+ runtime/memory/vm_wtrack.h   |  43 ++++++++++++
  runtime/syscalls/sys_fs.c    |   2 +
  5 files changed, 243 insertions(+), 2 deletions(-)
- create mode 100644 runtime/memory/vm_wtrack.c
- create mode 100644 runtime/memory/vm_wtrack.h
 
 diff --git a/libs/filesystem/cellFs.c b/libs/filesystem/cellFs.c
-index 4d916ac7..a5ff5d2b 100644
+index 4d916ac733ed2ec99e741a65c57435cf981645e3..a5ff5d2b3fad749af4ef2efe5a30441185fa1cbf 100644
 --- a/libs/filesystem/cellFs.c
 +++ b/libs/filesystem/cellFs.c
 @@ -5,6 +5,7 @@
@@ -47,7 +45,7 @@ index 4d916ac7..a5ff5d2b 100644
      }
  
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index b1967422..1a28532e 100644
+index ae1026db3e96b72a1da309b6cc907e692c542a41..cf31d9676bcf34130f963b12464a84d37cc9b3a2 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
 @@ -12,6 +12,7 @@
@@ -58,7 +56,7 @@ index b1967422..1a28532e 100644
  
  #include "rsx_fp_decompiler.h"
  #include "rsx_primitives.h"
-@@ -156,6 +157,7 @@ typedef struct {
+@@ -161,6 +162,7 @@ typedef struct {
      u32 depth;                  /* slices of a 3D texture, else 1 */
      u32 levels;                 /* SET_TEXTURE_FORMAT mipmap count it was built with */
      int rewritten;              /* guest bytes rewritten by the engine itself */
@@ -66,7 +64,7 @@ index b1967422..1a28532e 100644
  
  } eng_texture;
  
-@@ -1428,6 +1430,30 @@ static int eng_texture_full_rehash(u32 span, u32 last_full_frame)
+@@ -1573,6 +1575,30 @@ static int eng_texture_full_rehash(u32 span, u32 last_full_frame)
             (u32)(g.frames - last_full_frame) >= ENG_TEXHASH_FULL_EVERY;
  }
  
@@ -97,7 +95,7 @@ index b1967422..1a28532e 100644
  static int eng_staging_reserve(u32 bytes)
  {
      if (g.tex_staging_cap >= bytes) return 1;
-@@ -1575,7 +1601,14 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1729,7 +1755,14 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
  #undef ENG_TEXTURE_KEY_MATCHES
      if (hit) {
          eng_texture* e = hit;
@@ -113,7 +111,7 @@ index b1967422..1a28532e 100644
              /* Every cached texture used to be hashed in full every frame;
               * in a big scene that is hundreds of MB a second for the few
               * that change. Now the sparse check every frame, and the full
-@@ -1592,7 +1625,7 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1746,7 +1779,7 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
              if (e->rewritten && readable) {
                  hash = ~e->content_hash;
                  e->rewritten = 0;
@@ -122,7 +120,7 @@ index b1967422..1a28532e 100644
                               eng_texture_full_rehash(span, e->last_full_frame))) {
                  hash = eng_texture_content_hash(location, offset, span, &readable);
                  e->last_full_frame = g.frames;
-@@ -1600,6 +1633,7 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1754,6 +1787,7 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
              if (readable) e->sparse_hash = sparse;
              e->last_hash_frame = g.frames;
              if (readable && hash != e->content_hash) {
@@ -130,7 +128,7 @@ index b1967422..1a28532e 100644
                  /* In place when the backend orders the upload after the draws
                   * that sampled the old bytes; a volume keeps create-and-swap,
                   * and so does a different mip count (the key does not hold it,
-@@ -1647,6 +1681,8 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+@@ -1801,6 +1835,8 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
      e.last_hash_frame = g.frames;
      e.last_full_frame = g.frames - (index & (ENG_TEXHASH_FULL_EVERY - 1u));
      e.last_use_serial = ++g.texture_use_serial;
@@ -141,7 +139,7 @@ index b1967422..1a28532e 100644
        e.sparse_hash = eng_texture_sparse_hash(location, offset, span, &readable); }
 diff --git a/runtime/memory/vm_wtrack.c b/runtime/memory/vm_wtrack.c
 new file mode 100644
-index 00000000..5a995a18
+index 0000000000000000000000000000000000000000..5a995a18fdb13aed987f520d83a25c55f7e1418c
 --- /dev/null
 +++ b/runtime/memory/vm_wtrack.c
 @@ -0,0 +1,158 @@
@@ -305,7 +303,7 @@ index 00000000..5a995a18
 +uint64_t vm_wtrack_faults(void) { return __atomic_load_n(&s_faults, __ATOMIC_RELAXED); }
 diff --git a/runtime/memory/vm_wtrack.h b/runtime/memory/vm_wtrack.h
 new file mode 100644
-index 00000000..0a96b61c
+index 0000000000000000000000000000000000000000..0a96b61c112bc9cb753d0a750ee3501cf3a60456
 --- /dev/null
 +++ b/runtime/memory/vm_wtrack.h
 @@ -0,0 +1,43 @@
@@ -353,7 +351,7 @@ index 00000000..0a96b61c
 +#endif
 +#endif
 diff --git a/runtime/syscalls/sys_fs.c b/runtime/syscalls/sys_fs.c
-index f076ef89..592839f5 100644
+index e435555ae1b6c632c9f927b9b68e74b2973d150c..9ba9fee21b8fa635976f68b5431db76f9863a81f 100644
 --- a/runtime/syscalls/sys_fs.c
 +++ b/runtime/syscalls/sys_fs.c
 @@ -2,6 +2,7 @@
@@ -364,7 +362,7 @@ index f076ef89..592839f5 100644
  #include "sys_fs.h"
  #include "../../libs/filesystem/edat.h"
  #include "../memory/vm.h"
-@@ -512,6 +513,7 @@ int64_t sys_fs_read(ppu_context* ctx)
+@@ -548,6 +549,7 @@ int64_t sys_fs_read(ppu_context* ctx)
       * as a read error on every movie and never decoded a frame -- solid green
       * video. ppu_fs.cpp fs_prefault is the same fix for cellFs. */
      if (size) vm_commit(buf_addr, (uint32_t)size);
@@ -372,3 +370,6 @@ index f076ef89..592839f5 100644
      size_t nread = fread(buf, 1, (size_t)size, f->fp);
  
      /* PS3_FSTRACE=<n>: every nth read, the fd and the file offset it came from.
+-- 
+2.56.0
+
