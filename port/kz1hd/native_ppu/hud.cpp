@@ -332,27 +332,3 @@ void func_0023A588(ppu_context* ctx)
     func_0023A588_lifted(ctx);
     s_rich_k = 0.0;
 }
-
-/* func_00227658(batch r3, uv r4, integer coordinates r5..r9): the HUD's other
- * quad, from integer screen coordinates (vcfsx), used by about 30 HUD sites.
- * KZ_HUD_SITES=1 logs each site's arguments once. */
-void func_00227658(ppu_context* ctx)
-{
-    static int on = -1; if (on < 0) on = getenv("KZ_HUD_SITES") ? 1 : 0;
-    if (on) {
-        static uint32_t seen[512]; static int n; int i = 0;
-        const uint32_t ret = (uint32_t)ctx->lr;
-        while (i < n && seen[i] != ret) i++;
-        if (i == n && n < 512) {
-            seen[n++] = ret;
-            const uint32_t r3 = (uint32_t)ctx->gpr[3], r4 = (uint32_t)ctx->gpr[4];
-            fprintf(stderr, "[kz-hud-site2] 0x%08X: r5 %d r6 %d r7 %d r8 %d r9 %d r10 %d | r4 %08X:", ret, (int)ctx->gpr[5],
-                    (int)ctx->gpr[6], (int)ctx->gpr[7], (int)ctx->gpr[8], (int)ctx->gpr[9], (int)ctx->gpr[10], r4);
-            for (int k = 0; k < 8; k++) fprintf(stderr, " %g", ldf(r4 + 4 * k));
-            const uint32_t p4 = vm_read32(r4 + 4);
-            fprintf(stderr, " | [r4+4] %08X: %d %d %d", p4, (int)vm_read32(p4 + 28), (int)vm_read32(p4 + 8), (int)vm_read32(p4 + 4));
-            fprintf(stderr, " | r3 %08X f1 %g f2 %g f3 %g f4 %g\n", r3, ctx->fpr[1], ctx->fpr[2], ctx->fpr[3], ctx->fpr[4]);
-        }
-    }
-    func_00227658_lifted(ctx);
-}
