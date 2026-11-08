@@ -44,6 +44,7 @@
 #include "view.h"
 #include "view_flat.h"   /* when the picture goes 16:9 */
 #include "lua_states.h"  /* the Lua states given the PC script */
+#include "debug_give.h"  /* KZ_DEBUG_GIVE */
 #include "route.h"
 
 extern "C" {
@@ -1205,6 +1206,9 @@ static void lua_binding(ppu_context* ctx)
                 static const bool tr = getenv("KZ_LUA_TRACE") != nullptr; static unsigned runs;
                 if (tr) fprintf(stderr, "[kz-lua] script %u in state %08X\n", ++runs, L);
             }
+            /* KZ_DEBUG_GIVE (testing; debug_give.h): weapons for the player, once a state has one */
+            static const std::string give = debug_give_lua(getenv("KZ_DEBUG_GIVE"));
+            if (!give.empty()) lua_run(ctx, L, give, "=kzgive");
             busy = false;
         }
     }

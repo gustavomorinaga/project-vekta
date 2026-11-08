@@ -31,6 +31,7 @@
  */
 #include "native_ppu.h"
 #include "../view.h"
+#include "hud_sites.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <algorithm>
@@ -155,6 +156,16 @@ void func_0005C498(ppu_context* ctx)
         ctx->fpr[2] = S(kW * 0.5 + kW * 0.5 * e);
     }
     if ((uint32_t)ctx->lr == kMenuOrthoRet) kz_view_menu++;
+    /* KZ_HUD_SITES=1: who builds the menus' layout, each chain once */
+    { static int on = -1; if (on < 0) on = getenv("KZ_HUD_SITES") ? 1 : 0;
+      if (on && (uint32_t)ctx->lr == kMenuOrthoRet) {
+          uint32_t ch[10]; const int m = guest_chain(ctx, ch, 10);
+          static uint32_t seen[256]; static int ns; uint32_t key = 0;
+          for (int i = 0; i < m; i++) key = key * 31 + ch[i];
+          int i = 0; while (i < ns && seen[i] != key) i++;
+          if (i == ns && ns < 256) { seen[ns++] = key; fprintf(stderr, "[kz-menu-ortho]");
+              for (int k = 0; k < m; k++) fprintf(stderr, " %08X", ch[k]);
+              fprintf(stderr, "\n"); } } }
     /* the menus' layout, 512x448 (built at 0x554A8) */
     if (e != 1.0f && (uint32_t)ctx->lr == kMenuOrthoRet && ctx->fpr[1] == 0.0 && ctx->fpr[2] == 512.0 &&
         ctx->fpr[4] == 0.0) {
@@ -181,6 +192,17 @@ void func_00227A1C(ppu_context* ctx)
                     ldf(rect + 8), ldf(rect + 12), ldf((uint32_t)ctx->gpr[6]), ldf((uint32_t)ctx->gpr[6] + 4));
         }
     }
+    /* KZ_HUD_SITES=1 (diagnostic): each drawing site once, with the first
+     * rectangle it draws in each third of the screen */
+    { static int on = -1; if (on < 0) on = getenv("KZ_HUD_SITES") ? 1 : 0;
+      if (on) { static uint32_t seen[512]; static int n; int i = 0;
+          const double cx = (ldf(rect) + ldf(rect + 8)) * 0.5;
+          const uint32_t key = ret * 4u + (cx < kW / 3 ? 0u : cx > kW * 2 / 3 ? 2u : 1u);   /* once per site and third */
+          while (i < n && seen[i] != key) i++;
+          if (i == n && n < 512) { seen[n++] = key;
+              fprintf(stderr, "[kz-hud-site] 0x%08X hud %d: %g %g %g %g (middle x %g: %s third)\n", ret, hud ? 1 : 0,
+                      ldf(rect), ldf(rect + 4), ldf(rect + 8), ldf(rect + 12), cx,
+                      cx < kW / 3 ? "left" : cx > kW * 2 / 3 ? "right" : "middle"); } } }
     const float e = widen(), size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0f;
     if (!hud || (e == 1.0f && size == 1.0f)) {
         func_00227A1C_lifted(ctx);
@@ -203,6 +225,10 @@ void func_00227A1C(ppu_context* ctx)
         const double cx = (x0 + x1) * 0.5, cy = ((y0 + y1) * 0.5) * sy + ty;
         double site_ax, ay_out;
         anchor_of(cx, cy, &site_ax, &ay_out);
+        if (hud_site_side(ret) == HUD_SIDE_RIGHT) {   /* hud_sites.h: the grenade row goes with the ammo panel */
+            site_ax = kW;
+            ay_out = cy < kH * 0.5 ? 0.0 : kH;
+        }
         const double ay = sy != 0.0 ? (ay_out - ty) / sy : 0.0;
         const double lo = std::min(x0, x1), hi = std::max(x0, x1);
         if (lo < kW / 3 && hi > kW * 2 / 3) {
@@ -246,6 +272,15 @@ void func_00044108(ppu_context* ctx)
              * aligns the string, f5 also spaces the glyphs) */
             ctx->fpr[4] = S(ctx->fpr[4] * s_rich_k);
         }
+        { static int on = -1; if (on < 0) on = getenv("KZ_HUD_SITES") ? 1 : 0;
+          if (on && (hud || ctx->fpr[2] > 540.0)) { static uint32_t seen[512]; static int n; int i = 0;
+              const double x = ctx->fpr[1];
+              const uint32_t key = ((uint32_t)ctx->lr ^ (m > 1 ? ch[1] << 1 : 0)) * 4u + (x < kW / 3 ? 0u : x > kW * 2 / 3 ? 2u : 1u);
+              while (i < n && seen[i] != key) i++;
+              if (i == n && n < 512) { seen[n++] = key;
+                  fprintf(stderr, "[kz-hud-text] 0x%08X (%08X %08X) hud %d: x %g y %g size %g (%s third)\n", (uint32_t)ctx->lr,
+                          m > 0 ? ch[0] : 0, m > 1 ? ch[1] : 0, hud ? 1 : 0, x, ctx->fpr[2], ctx->fpr[4],
+                          x < kW / 3 ? "left" : x > kW * 2 / 3 ? "right" : "middle"); } } }
         if (hud && !rich && (e != 1.0f || size != 1.0f)) {
             const double x = ctx->fpr[1], y = ctx->fpr[2];
             double ax, ay;

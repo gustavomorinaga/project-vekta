@@ -14,6 +14,9 @@ program and folder that build it. Until a release that calls itself playable
   ([docs/dev/ps3recomp-v019-migration.md](docs/dev/ps3recomp-v019-migration.md)).
 
 ### Fixed
+- Button prompts no longer turn back into PlayStation glyphs after a while (picking up and swapping weapons): the
+  game reloads its button atlas over the same memory, and that copy now gets the player's glyphs again (patch 2060).
+- Ultrawide: Rico's grenade icons stay next to his M224-A3's ammo panel instead of near the middle of the screen.
 - The background of the VICTORY, FAILED and pause screens no longer turns into green static after a few levels in a
   long session: the game copies the frame into the screen's background texture when the screen opens, and with the
   MLAA on the GPU (the default) that copy was dropped, so the texture showed whatever a later level had left in that
