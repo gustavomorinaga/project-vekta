@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sun, 8 Nov 2026 17:30:00 -0300
+Subject: [PATCH] draw engine: the texture hook sees new bytes in a texture
+ already in use
+
+rsx_texture_seen_hook (patch 4010) was called only when a texture first
+came into use, as its cache entry was made. A title that loads the same
+texture again over the same address (Killzone HD's button atlases, which the
+port rewrites with the prompts of the player's device) changed the bytes of
+an entry already there: the engine noticed and uploaded them, and the hook
+never saw them, so the game's own glyphs (PlayStation's) stayed on screen
+until the port's next rewrite, which only a change of device made ("Hold
+<triangle> to pick up" on a keyboard after picking up a few weapons). The
+hook now also sees the bytes when an entry's content changed, before the
+upload, and the hash is taken again after it. Test: test_rsx_draw_engine's
+"texture hook on new bytes".
+---
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 4b0cf80..a9e9e16 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -1786,6 +1786,18 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+             }
+             if (readable) e->sparse_hash = sparse;
+             e->last_hash_frame = g.frames;
++            /* New bytes in a texture already in use: the title's hook sees
++             * them too, not only a texture's first use (patch 2060), so a
++             * texture the title reloads over the same address is rewritten
++             * again before it is uploaded. */
++            if (readable && hash != e->content_hash && rsx_texture_seen_hook) {
++                u8* p = (u8*)eng_guest_ptr(NULL, location, offset, span);
++                if (p) {
++                    rsx_texture_seen_hook(p, fmt, w, h, span);
++                    hash = eng_texture_content_hash(location, offset, span, &readable);
++                    if (readable) e->sparse_hash = eng_texture_sparse_hash(location, offset, span, &readable);
++                }
++            }
+             if (readable && hash != e->content_hash) {
+                 s_wt.changed += e->tracked;
+                 /* In place when the backend orders the upload after the draws
+diff --git a/libs/video/tests/test_rsx_draw_engine.c b/libs/video/tests/test_rsx_draw_engine.c
+index aabad93..ca3e6ff 100644
+--- a/libs/video/tests/test_rsx_draw_engine.c
++++ b/libs/video/tests/test_rsx_draw_engine.c
+@@ -800,6 +800,44 @@ static void test_texture_sparse_rehash(void)
+     unsetenv("PS3RECOMP_ENG_TEXHASH_FULL");
+ }
+ 
++/* The title's texture hook (button prompts that follow the player's device)
++ * sees a texture again when its bytes change, not only on first use (patch
++ * 2060): a title that reloads the original over the same address gets it
++ * rewritten again before the upload, instead of the original until it quits. */
++extern void (*rsx_texture_seen_hook)(u8* bytes, u32 fmt, u32 w, u32 h, u32 span);
++static int g_hook_calls;
++static void rewrite_hook(u8* p, u32 fmt, u32 w, u32 h, u32 span)
++{
++    (void)fmt; (void)w; (void)h;
++    g_hook_calls++;
++    if (p[0] == 0x11) memset(p, 0x77, span);   /* the game's bytes: ours instead */
++}
++
++static void test_texture_hook_on_change(void)
++{
++    printf("-- texture hook on new bytes\n");
++    u8* tex = vm_base + BIG_TEX_OFFSET;
++    rsx_texture_seen_hook = rewrite_hook;
++    g_hook_calls = 0;
++    engine_up();
++    bind_big_texture();
++    memset(tex, 0x11, BIG_TEX_BYTES);
++    draw_triangle();
++    CHECK(g_hook_calls == 1 && g_upload_first[0] == 0x77, "first use: the hook rewrites it before the upload");
++    rsx_draw_engine_present();
++    memset(tex, 0x11, BIG_TEX_BYTES);   /* the title loads its original again */
++    const int calls = g_hook_calls;
++    draw_triangle();   /* the reload is seen at the next use: the hook puts back the bytes already on the GPU */
++    CHECK(g_hook_calls == calls + 1, "the hook sees the new bytes (%d calls)", g_hook_calls - calls);
++    CHECK(g_upload_first[0] == 0x77, "and the upload carries the rewrite, not the original (0x%02X)", g_upload_first[0]);
++    CHECK(tex[0] == 0x77, "guest memory holds the rewrite");
++    rsx_draw_engine_present();
++    memset(tex, 0x33, BIG_TEX_BYTES);   /* other bytes: the hook leaves them */
++    CHECK(frames_to_notice(0) == 0 && g_upload_first[0] == 0x33, "bytes the hook does not claim go up as they are");
++    engine_down();
++    rsx_texture_seen_hook = NULL;
++}
++
+ /* ---- 4. the pipeline key ------------------------------------------------- */
+ 
+ /* A block-compressed volume (dimension 3, DXT) goes up slice by slice as a
+@@ -2729,6 +2767,7 @@ int main(void)
+     test_texture_cache();
+     test_texture_lookup_memo();
+     test_texture_sparse_rehash();
++    test_texture_hook_on_change();
+     test_compressed_volume();
+     test_pipeline_key();
+     test_restart_expansion();
+-- 
+2.47.0
