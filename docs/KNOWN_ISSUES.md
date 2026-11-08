@@ -11,6 +11,12 @@ are linked.
   affected. A first fix (the SPURS policy module's `selectWorkload` answer, after Project Helghast) removed the more
   common case where single weapon parts jumped. Workarounds: play at 60 Hz, or set `KZ_JM_SKIP_US=10` (about 15 %
   slower in Level 7). Investigation: [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md).
+- **The guest heap to watch in long sessions (2026-11-08).** Not a known fault: in a 41-minute session at 144 Hz (the
+  end of Level 3 to the start of Level 5) the game's heap rose and fell with each level load, between 63 and
+  188 MB, and ended at its highest, 188 MB; earlier sessions that day ended at 164 to 180 MB. It drops at several
+  loads, so it is not a steady leak. If a very long session ever crashes or stutters while a level loads, look
+  at it first: `KZ_STATS=1` (on in `tools/play.sh`) logs it every 2 s as `heap=` in the `[kz-stats]` lines of
+  `play.log`.
 - **Levels 2 to 11 not each played to their end.** All load and reach gameplay, and parts were played by hand; a
   problem late in a level may still be found. The lighting at the start of level 11 (Hope) is to be checked.
 - **Slow memory growth** of about 0.24 MB per minute standing still in Level 1 (15 minutes, 2026-10-17). Not a
