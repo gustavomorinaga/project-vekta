@@ -31,6 +31,7 @@
  */
 #include "native_ppu.h"
 #include "../view.h"
+#include "hud_sites.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <algorithm>
@@ -224,6 +225,10 @@ void func_00227A1C(ppu_context* ctx)
         const double cx = (x0 + x1) * 0.5, cy = ((y0 + y1) * 0.5) * sy + ty;
         double site_ax, ay_out;
         anchor_of(cx, cy, &site_ax, &ay_out);
+        if (hud_site_side(ret) == HUD_SIDE_RIGHT) {   /* hud_sites.h: the grenade row goes with the ammo panel */
+            site_ax = kW;
+            ay_out = cy < kH * 0.5 ? 0.0 : kH;
+        }
         const double ay = sy != 0.0 ? (ay_out - ty) / sy : 0.0;
         const double lo = std::min(x0, x1), hi = std::max(x0, x1);
         if (lo < kW / 3 && hi > kW * 2 / 3) {
