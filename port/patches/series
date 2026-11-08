@@ -130,3 +130,4 @@
 2055-cellGcm-PS3_GCM_MAX_QUEUED_FLIPS-waits-on-Windows-too.patch
 2056-Vulkan-the-shader-caches-on-disk-are-keyed-by-the-tr.patch
 2057-Vulkan-window-a-swapchain-not-recreated-skips-frames-n.patch
+2058-cellGcm-the-flip-wait-s-naps-on-Windows-are-100-us-not.patch

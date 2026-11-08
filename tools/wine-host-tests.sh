@@ -51,7 +51,8 @@ run test_pad_rawinput -std=gnu17 -DPS3RECOMP_PAD_USE_SDL2 -I "$P/include" -I "$P
   "$KZ_ROOT/tools/tests/test_pad_rawinput.c" -L "$SD/lib" -lSDL2 -pthread
 # LV2 145's wall clock on Windows (patch 3032): not the time since boot
 run test_wall_clock -std=gnu17 -I "$P/runtime/syscalls" "$KZ_ROOT/tools/tests/test_wall_clock.c"
-# PS3_GCM_MAX_QUEUED_FLIPS's wait on Windows (patch 2055): a real wait, not 1000 rounds of Sleep(0)
+# PS3_GCM_MAX_QUEUED_FLIPS's wait on Windows (patch 2055): a real wait, not 1000 rounds of Sleep(0), with 100 us naps
+# on a high-resolution timer (patch 2058), not Sleep(1)
 run test_gcm_flip_wait -std=gnu17 -I "$P/libs/video" "$KZ_ROOT/tools/tests/test_gcm_flip_wait.c"
 echo "wine host tests: $((n - ${#failed[@]}))/$n pass${failed:+; failed: ${failed[*]}}"
 (( ${#failed[@]} == 0 ))
