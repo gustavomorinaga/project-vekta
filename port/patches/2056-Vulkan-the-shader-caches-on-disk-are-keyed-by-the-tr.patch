@@ -1,0 +1,238 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 7 Nov 2026 19:47:18 -0300
+Subject: [PATCH] Vulkan: the shader caches on disk are keyed by the
+ translator's id
+
+The backend keeps each program's SPIR-V in <cache>/<key>.spv and its
+pipelines in pipelines.list. The SPIR-V key was the HLSL text, the stage and
+VK_CACHE_VERSION, a constant to bump by hand when the translator's output
+changes for the same source; a build whose translator
+(rsx_shader_spirv.cpp) or glslang changed without the bump read an older
+build's SPIR-V back as its own. Project Pyrrhus (undecuple's Killzone 2
+port) lost the holographic sight's reticle and glow that way after an
+update (its issue #25, fixed by its patch 6047, MIT); written here from
+that report.
+
+The build now takes the translator's id (cmake/RsxSpirvTranslatorId.cmake:
+a SHA-256 of rsx_shader_spirv.cpp, rsx_shader_spirv.h and glslang_VERSION,
+taken again when either file changes) and rsx_hlsl_to_spirv_id() adds the
+glslang version it runs with. The SPIR-V key and the fourth word of
+pipelines.list's header hold it (rsx_vk_cache_key.h): another translator
+finds none of the older files and starts a new list; two builds of the same
+sources share their cache. The id is logged once ("shader cache:
+translator ...").
+---
+ CMakeLists.txt                   |  9 ++++++-
+ cmake/RsxSpirvTranslatorId.cmake | 18 +++++++++++++
+ libs/video/rsx_shader_spirv.cpp  | 17 ++++++++++++
+ libs/video/rsx_shader_spirv.h    |  8 ++++++
+ libs/video/rsx_vk_cache_key.h    | 44 ++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c  | 18 +++++++++----
+ 6 files changed, 108 insertions(+), 6 deletions(-)
+ create mode 100644 cmake/RsxSpirvTranslatorId.cmake
+ create mode 100644 libs/video/rsx_vk_cache_key.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bc3c391..0ec4513 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -369,9 +369,16 @@ if(PS3RECOMP_RSX_VULKAN)
+         find_package(glslang CONFIG QUIET)
+     endif()
+     if(glslang_FOUND AND TARGET glslang::glslang AND TARGET glslang::SPIRV)
++        # The translator's id (cmake/RsxSpirvTranslatorId.cmake): caches of
++        # its SPIR-V on disk key their files by it.
++        include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/RsxSpirvTranslatorId.cmake")
++        rsx_spirv_translator_id(_rsx_spirv_id
++            "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_shader_spirv.cpp"
++            "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_shader_spirv.h")
+         set_source_files_properties(
+             "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_shader_spirv.cpp"
+-            PROPERTIES COMPILE_DEFINITIONS PS3RECOMP_HAVE_SPIRV_TRANSLATION=1)
++            PROPERTIES COMPILE_DEFINITIONS
++            "PS3RECOMP_HAVE_SPIRV_TRANSLATION=1;RSX_SPIRV_TRANSLATOR_ID=\"${_rsx_spirv_id}\"")
+         target_link_libraries(ps3recomp_runtime PRIVATE glslang::glslang glslang::SPIRV)
+         if(TARGET glslang::glslang-default-resource-limits)
+             target_link_libraries(ps3recomp_runtime PRIVATE
+diff --git a/cmake/RsxSpirvTranslatorId.cmake b/cmake/RsxSpirvTranslatorId.cmake
+new file mode 100644
+index 0000000..9aee1e4
+--- /dev/null
++++ b/cmake/RsxSpirvTranslatorId.cmake
+@@ -0,0 +1,18 @@
++# rsx_spirv_translator_id(<out-var> <file>...): the translator id that
++# libs/video/rsx_shader_spirv.cpp is built with (RSX_SPIRV_TRANSLATOR_ID): the
++# first 16 hex digits of a SHA-256 over the given files' contents and
++# glslang_VERSION. Two builds of the same sources get the same id, so a cache
++# of translated shaders survives a rebuild and a reinstall and is dropped only
++# when the translator changed. The files are added to CMAKE_CONFIGURE_DEPENDS:
++# an edit to one of them configures again, which takes the id again.
++function(rsx_spirv_translator_id out)
++    set(_all "glslang ${glslang_VERSION}")
++    foreach(_f IN LISTS ARGN)
++        file(SHA256 "${_f}" _h)
++        string(APPEND _all ";${_h}")
++        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_f}")
++    endforeach()
++    string(SHA256 _id "${_all}")
++    string(SUBSTRING "${_id}" 0 16 _id)
++    set(${out} "${_id}" PARENT_SCOPE)
++endfunction()
+diff --git a/libs/video/rsx_shader_spirv.cpp b/libs/video/rsx_shader_spirv.cpp
+index e615dd3..b55815d 100644
+--- a/libs/video/rsx_shader_spirv.cpp
++++ b/libs/video/rsx_shader_spirv.cpp
+@@ -268,6 +268,21 @@ void cache_store(const std::string& path, const std::string& key,
+ 
+ extern "C" int rsx_hlsl_to_spirv_available(void) { return 1; }
+ 
++extern "C" unsigned long long rsx_hlsl_to_spirv_id(void)
++{
++#ifdef RSX_SPIRV_TRANSLATOR_ID
++    const char* src = RSX_SPIRV_TRANSLATOR_ID;
++#else
++    const char* src = kTranslatorBuild;
++#endif
++    const glslang::Version v = glslang::GetVersion();
++    char buf[160];
++    snprintf(buf, sizeof buf, "%s/glslang %d.%d.%d%s", src, v.major, v.minor, v.patch, v.flavor ? v.flavor : "");
++    unsigned long long h = 0xcbf29ce484222325ull;       /* FNV-1a 64 */
++    for (const unsigned char* c = (const unsigned char*)buf; *c; c++) { h ^= *c; h *= 0x100000001b3ull; }
++    return h ? h : 1;
++}
++
+ extern "C" int rsx_hlsl_to_spirv(const char* hlsl, int stage,
+                                  u32* words, u32 max_words, u32* out_words,
+                                  char* log, u32 log_size)
+@@ -335,6 +350,8 @@ extern "C" void rsx_hlsl_to_spirv_cache_reset(void)
+ 
+ extern "C" int rsx_hlsl_to_spirv_available(void) { return 0; }
+ 
++extern "C" unsigned long long rsx_hlsl_to_spirv_id(void) { return 0; }
++
+ extern "C" int rsx_hlsl_to_spirv(const char* hlsl, int stage,
+                                  u32* words, u32 max_words, u32* out_words,
+                                  char* log, u32 log_size)
+diff --git a/libs/video/rsx_shader_spirv.h b/libs/video/rsx_shader_spirv.h
+index b9f67f5..2f5b231 100644
+--- a/libs/video/rsx_shader_spirv.h
++++ b/libs/video/rsx_shader_spirv.h
+@@ -58,6 +58,14 @@ int rsx_hlsl_to_spirv(const char* hlsl, int stage,
+                       u32* words, u32 max_words, u32* out_words,
+                       char* log, u32 log_size);
+ 
++/* The translator's id: the same for two builds only when they translate the
++ * same HLSL to the same SPIR-V. A hash of RSX_SPIRV_TRANSLATOR_ID (the build's
++ * hash of rsx_shader_spirv.cpp and this header, CMakeLists.txt; this file's
++ * compile time when a build does not define it) and of the version of the
++ * glslang it runs with. Caches of translated shaders kept by others (the
++ * Vulkan backend's, rsx_vk_cache_key.h) put it in their keys. 0 for the stub. */
++unsigned long long rsx_hlsl_to_spirv_id(void);
++
+ /* The translation cache (rsx_shader_spirv.cpp). A request is answered from
+  * memory, else from PS3RECOMP_SPIRV_CACHE's directory, else by glslang. */
+ typedef struct RsxSpirvCacheStats {
+diff --git a/libs/video/rsx_vk_cache_key.h b/libs/video/rsx_vk_cache_key.h
+new file mode 100644
+index 0000000..2dd60bc
+--- /dev/null
++++ b/libs/video/rsx_vk_cache_key.h
+@@ -0,0 +1,44 @@
++/*
++ * ps3recomp - the keys of the Vulkan backend's shader and pipeline caches on disk
++ *
++ * The backend keeps each program's SPIR-V in <cache>/<key>.spv and the list of
++ * pipelines it built in <cache>/pipelines.list (rsx_vulkan_backend.c). The
++ * SPIR-V key was the HLSL text, the stage and VK_CACHE_VERSION, a constant to
++ * bump by hand when the translator's output changes for the same source. A
++ * build whose translator (rsx_shader_spirv.cpp) or glslang changed without the
++ * bump read the older build's SPIR-V back as its own: a player who updates over
++ * an older install would run the old shaders against the new backend. Project
++ * Pyrrhus (undecuple's Killzone 2 port) lost the holographic sight's reticle
++ * and glow that way after an update (its issue #25; fixed by tying its cache
++ * to the translator in its patch 6047, MIT); written here from that report.
++ *
++ * Both keys now also hold rsx_hlsl_to_spirv_id(), the translator's id (the
++ * hash of its sources taken by the build, and the glslang version it runs
++ * with). Another translator finds none of the older files, and starts a new
++ * pipeline list.
++ */
++#ifndef PS3RECOMP_RSX_VK_CACHE_KEY_H
++#define PS3RECOMP_RSX_VK_CACHE_KEY_H
++
++#include <stdint.h>
++
++/* The name of a program's SPIR-V file. inv: Invariant position on
++ * (PS3RECOMP_SPIRV_INVARIANT, which translates differently). */
++static inline uint64_t rsx_vk_spv_key(const char* hlsl, int stage, int inv, uint32_t cache_version,
++                                      uint64_t translator_id)
++{
++    uint64_t h = (1469598103934665603ull ^ (cache_version + (inv ? 0u : 0x100u))) + (uint64_t)stage;
++    for (int i = 0; i < 8; i++) { h ^= (translator_id >> (8 * i)) & 0xFFu; h *= 1099511628211ull; }
++    for (const unsigned char* c = (const unsigned char*)hlsl; *c; c++) { h ^= *c; h *= 1099511628211ull; }
++    return h;
++}
++
++/* The fourth word of pipelines.list's header: a list written by another
++ * translator names SPIR-V files this build does not have, so it starts over. */
++static inline uint32_t rsx_vk_plist_translator_word(uint64_t translator_id)
++{
++    const uint32_t w = (uint32_t)(translator_id ^ (translator_id >> 32));
++    return w ? w : 1u;
++}
++
++#endif
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 834210d..c249dd5 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -51,6 +51,7 @@
+ #include "rsx_shader_spirv.h"
+ #include "rsx_draw_engine.h"
+ #include "rsx_present_steps.h"
++#include "rsx_vk_cache_key.h"   /* the caches' keys hold the translator's id */
+ #include "rsx_temporal.h"
+ #include "rsx_vk_dlss.h"
+ #include "rsx_vk_fsr3.h"
+@@ -4839,8 +4840,10 @@ static VkStencilOpState vk_gcm_stencil_face(u32 func, u32 fail, u32 zfail, u32 z
+  * translation and a driver pipeline compile: 70-250 ms hitches in Killzone's
+  * Level 1. SPIR-V is kept per program source, and the driver's compiled
+  * pipelines in one VkPipelineCache blob, under $PS3RECOMP_VK_CACHE (default
+- * ~/.cache/ps3recomp-vk; "0" turns both off). Bump VK_CACHE_VERSION when the
+- * translator's output changes for the same source. */
++ * ~/.cache/ps3recomp-vk; "0" turns both off). The keys hold the translator's
++ * id (rsx_vk_cache_key.h), so a build with another translator or glslang
++ * never reads an older build's SPIR-V; bump VK_CACHE_VERSION when the SPIR-V
++ * this file makes of the same translation changes. */
+ #define VK_CACHE_VERSION 2u   /* 2: invariant position (rsx_shader_spirv.cpp) */
+ static void vk_mkdir(const char* d)
+ {
+@@ -4973,8 +4976,12 @@ static int vk_eng_translate(const char* hlsl, int stage, VkShaderModule* out, u6
+         /* PS3RECOMP_SPIRV_INVARIANT=0 translates differently: its own files */
+         static int inv = -1;
+         if (inv < 0) { const char* e = getenv("PS3RECOMP_SPIRV_INVARIANT"); inv = !(e && *e && atoi(e) == 0); }
+-        u64 h = (1469598103934665603ull ^ (VK_CACHE_VERSION + (inv ? 0u : 0x100u))) + (u64)stage;
+-        for (const unsigned char* c = (const unsigned char*)hlsl; *c; c++) { h ^= *c; h *= 1099511628211ull; }
++        static u64 tid;
++        if (!tid) {
++            tid = rsx_hlsl_to_spirv_id();
++            VK_LOG("shader cache: translator %016llx\n", (unsigned long long)tid);
++        }
++        const u64 h = rsx_vk_spv_key(hlsl, stage, inv, VK_CACHE_VERSION, tid);
+         snprintf(path, sizeof path, "%s/%016llx.spv", dir, (unsigned long long)h);
+         *file_hash = h;
+         FILE* f = fopen(path, "rb");
+@@ -5511,7 +5518,8 @@ static void vk_plist_start(void)
+     char path[600];
+     snprintf(path, sizeof path, "%s/pipelines.list", dir);
+     u32 hdr[4] = { 0 };
+-    const u32 want[4] = { 0x5453494Cu /* "LIST" */, VK_PLIST_VERSION, (u32)sizeof(vk_plist_rec), 0 };
++    const u32 want[4] = { 0x5453494Cu /* "LIST" */, VK_PLIST_VERSION, (u32)sizeof(vk_plist_rec),
++                          rsx_vk_plist_translator_word(rsx_hlsl_to_spirv_id()) };
+     FILE* f = fopen(path, "rb");
+     long size = 0;
+     if (f) { fseek(f, 0, SEEK_END); size = ftell(f); fseek(f, 0, SEEK_SET); }
+-- 
+2.56.0
+
