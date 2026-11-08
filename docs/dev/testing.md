@@ -21,6 +21,9 @@ an existing profile changes the menu flow.
   starts.
 - `PAD_STICK="lx,ly,rx,ry,from,to"` holds the sticks in a time window; `PAD_MOUSE_POS`/`PAD_MOUSE_POS_FILE` simulate the
   mouse pointer in menus.
+- `KZ_DEBUG_MENU=1` adds the pause menu's Debug Options; its Next Level ends the level on the VICTORY screen.
+  `tools/menu-bg-check.sh [CYCLES]` uses it to check that the VICTORY background stays flat over several levels
+  (patch 2059; needs the game, a GPU and a display).
 - `KZ_UNLOCK_LEVELS=1` makes every level selectable: START, X (GAME), X (Campaign), X (select level), DOWN × (level −
   1), X, DOWN (Normal), X, X (character).
 

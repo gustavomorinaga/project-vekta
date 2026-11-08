@@ -14,6 +14,10 @@ program and folder that build it. Until a release that calls itself playable
   ([docs/dev/ps3recomp-v019-migration.md](docs/dev/ps3recomp-v019-migration.md)).
 
 ### Fixed
+- The background of the VICTORY, FAILED and pause screens no longer turns into green static after a few levels in a
+  long session: the game copies the frame into the screen's background texture when the screen opens, and with the
+  MLAA on the GPU (the default) that copy was dropped, so the texture showed whatever a later level had left in that
+  memory (patch 2059).
 - Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD,
   issue #17): the window's present cleared the bars and copied the frame with no barrier between them, so the
   clear could land over the frame (patch 2053).
