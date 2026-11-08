@@ -1,0 +1,180 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 7 Nov 2026 19:49:36 -0300
+Subject: [PATCH] Vulkan window: a swapchain not recreated skips frames, not
+ the window
+
+A swapchain that could not be recreated (after a resize, a display mode
+change, an out-of-date acquire or present) closed the window for good:
+"window disabled, continuing headless: the swapchain could not be
+recreated", and the game went on with no picture until it was restarted
+(issue #17 showed it after Alt+Tab from fullscreen on a Radeon 8060S;
+patch 2054 took out that cause, a window with no area). The present now
+skips that frame and tries again at the next ones, then once in 30
+(rsx_swapchain_retry.h), as Project Helghast and Project Pyrrhus
+(undecuple's Killzone 3 and 2 ports, patches 2133/2152 and 6040/6055, MIT)
+do on D3D12; written here from their description.
+
+The swapchain is also recreated after a change that keeps the window's
+size: Alt+Enter, a window restored, or moved to another display (Project
+Helghast's patch 2130 found the first present after going fullscreen
+failing on D3D12 when the swap chain was not resized at the same size).
+
+PS3RECOMP_VK_SC_FAIL=<n> (tests) makes the first present recreate the
+swapchain and that recreate and the next n-1 fail.
+---
+ libs/video/rsx_swapchain_retry.h | 35 ++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c  | 56 +++++++++++++++++++++++++++++---
+ 2 files changed, 87 insertions(+), 4 deletions(-)
+ create mode 100644 libs/video/rsx_swapchain_retry.h
+
+diff --git a/libs/video/rsx_swapchain_retry.h b/libs/video/rsx_swapchain_retry.h
+new file mode 100644
+index 0000000..af76837
+--- /dev/null
++++ b/libs/video/rsx_swapchain_retry.h
+@@ -0,0 +1,35 @@
++/*
++ * ps3recomp - when the window present tries again to make a swapchain
++ *
++ * A swapchain that could not be recreated (after a resize, a display mode
++ * change, an out-of-date or failed acquire or present) used to close the
++ * window for good, "window disabled, continuing headless: the swapchain could
++ * not be recreated", and the game went on with no picture until it was
++ * restarted. The present now skips that frame and tries again at a later one,
++ * as Project Helghast and Project Pyrrhus (undecuple's Killzone 3 and 2 ports,
++ * patches 2133/2152 and 6040/6055, MIT) do on D3D12 when the swap chain's
++ * buffer cannot be had after a resize; written here from their description.
++ * The first tries follow each other, then one present in RSX_SC_RETRY_EVERY
++ * tries, because each try waits for the device to go idle.
++ */
++#ifndef PS3RECOMP_RSX_SWAPCHAIN_RETRY_H
++#define PS3RECOMP_RSX_SWAPCHAIN_RETRY_H
++
++#define RSX_SC_RETRY_BURST 3u    /* tries on consecutive presents */
++#define RSX_SC_RETRY_EVERY 30u   /* then one present in this many */
++
++/* fails: consecutive failed tries so far; skipped: presents skipped since the
++ * last try. Nonzero when this present should try. */
++static inline int rsx_sc_retry_due(unsigned fails, unsigned skipped)
++{
++    return fails < RSX_SC_RETRY_BURST || skipped + 1u >= RSX_SC_RETRY_EVERY;
++}
++
++/* Whether a failed try is logged: the first, then one in 100, so a window
++ * that stays unpresentable does not fill the log. */
++static inline int rsx_sc_retry_logs(unsigned fails)
++{
++    return fails <= 1u || fails % 100u == 0u;
++}
++
++#endif
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 834210d..afef9a9 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -62,6 +62,7 @@
+ #include "vulkan/rsx_vk_mb_comp.spv.h"
+ #include "vulkan/rsx_vk_fsr1_easu_comp.spv.h"
+ #include "vulkan/rsx_vk_fsr1_rcas_comp.spv.h"
++#include "rsx_swapchain_retry.h"   /* a swapchain not recreated: skip, try again */
+ /* FSR 1's constants, computed on the CPU (vulkan/ffx, MIT). */
+ #include <math.h>
+ #include <stdlib.h>
+@@ -250,6 +251,8 @@ typedef struct vk_state {
+     Uint32           fs_flags;        /* SDL_WINDOW_FULLSCREEN(_DESKTOP) for Alt+Enter */
+     volatile int     resized;
+     int              no_area;         /* minimized: presents wait for the window */
++    int              sc_retry;        /* not recreated: presents skip and try again */
++    unsigned         sc_fails, sc_skipped;   /* rsx_swapchain_retry.h */
+     const char*      inst_exts[16];
+     u32              inst_ext_count;
+     VkSurfaceKHR     surface;
+@@ -2295,10 +2298,37 @@ static int vk_create_swapchain(void)
+     return 0;
+ }
+ 
++/* PS3RECOMP_VK_SC_FAIL=<n> (tests; default 0): the first present recreates
++ * the swapchain, and that recreate and the next n-1 fail as if the driver had
++ * refused them, the old swapchain gone. */
++static int s_sc_fail_left = -1;
++static int vk_sc_fail_left(void)
++{
++    if (s_sc_fail_left < 0) { const char* e = getenv("PS3RECOMP_VK_SC_FAIL"); s_sc_fail_left = e && atoi(e) > 0 ? atoi(e) : 0; }
++    return s_sc_fail_left;
++}
++
++/* A swapchain that could not be recreated no longer closes the window: the
++ * presents skip their frames and try again (rsx_swapchain_retry.h). */
+ static void vk_swapchain_lost(void)
+ {
+     pvkDeviceWaitIdle(s_vk.device);
+-    if (vk_create_swapchain() < 0) vk_window_drop("the swapchain could not be recreated");
++    if (vk_sc_fail_left() > 0) s_sc_fail_left--;
++    else if (vk_create_swapchain() >= 0) {
++        if (s_vk.sc_retry) VK_LOG("swapchain recreated after %u failed tries\n", s_vk.sc_fails);
++        s_vk.sc_retry = 0; s_vk.sc_fails = 0; s_vk.sc_skipped = 0;
++        return;
++    }
++    if (s_vk.swapchain) {   /* made but not its images or semaphores, or PS3RECOMP_VK_SC_FAIL's */
++        vk_reflex_lock();
++        pvkDestroySwapchainKHR(s_vk.device, s_vk.swapchain, NULL);
++        s_vk.swapchain = VK_NULL_HANDLE;
++        vk_reflex_unlock();
++    }
++    s_vk.sc_count = 0;
++    s_vk.sc_retry = 1; s_vk.sc_fails++; s_vk.sc_skipped = 0;
++    if (rsx_sc_retry_logs(s_vk.sc_fails))
++        VK_LOG("the swapchain could not be recreated (try %u): the presents skip and try again\n", s_vk.sc_fails);
+ }
+ 
+ /* Blit the offscreen target into the next swapchain image and present it. */
+@@ -2453,7 +2483,7 @@ static void vk_fsr_record(u32 sw, u32 sh)
+ 
+ static void vk_present_window_body(void)
+ {
+-    if (!s_vk.windowed || (!s_vk.swapchain && !s_vk.no_area)) return;
++    if (!s_vk.windowed || (!s_vk.swapchain && !s_vk.no_area && !s_vk.sc_retry)) return;
+ 
+     /* The blit goes in its own command buffer and is not waited for here: the
+      * frame clock thread that presents is also the one draining the FIFO. The
+@@ -2478,6 +2508,12 @@ static void vk_present_window_body(void)
+         if (SDL_GetWindowFlags(s_vk.window) & SDL_WINDOW_MINIMIZED) return;
+         s_vk.resized = 1;
+     }
++    static int sc_fail_test = -1;
++    if (sc_fail_test < 0 && (sc_fail_test = vk_sc_fail_left() > 0)) s_vk.resized = 1;
++    if (s_vk.sc_retry) {   /* the last recreate failed: this frame is skipped, or tries again */
++        if (!rsx_sc_retry_due(s_vk.sc_fails, s_vk.sc_skipped)) { s_vk.sc_skipped++; return; }
++        s_vk.resized = 1;
++    }
+     if (s_vk.resized) { s_vk.resized = 0; vk_swapchain_lost(); if (!s_vk.swapchain || s_vk.no_area) return; }
+     u32 idx = 0;
+     VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
+@@ -6659,9 +6695,21 @@ int rsx_vulkan_backend_pump_messages(void)
+         else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT) && s_vk.window) {
+             const int is_fs = (SDL_GetWindowFlags(s_vk.window) & SDL_WINDOW_FULLSCREEN) != 0;
+             SDL_SetWindowFullscreen(s_vk.window, is_fs ? 0 : (s_vk.fs_flags ? s_vk.fs_flags : SDL_WINDOW_FULLSCREEN_DESKTOP));
++            s_vk.resized = 1;   /* a mode change, even at the same size */
+         }
+-        else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+-            s_vk.resized = 1;   /* the next present recreates the swapchain */
++        /* The next present recreates the swapchain after a resize, and also
++         * after a change that keeps the size: a window made borderless at the
++         * desktop's size, restored, or moved to another display. Project
++         * Helghast found on D3D12 that the first present after going
++         * fullscreen failed when the swap chain was not resized because the
++         * size had not changed (its patch 2130, MIT). */
++        else if (e.type == SDL_WINDOWEVENT && (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
++                                               e.window.event == SDL_WINDOWEVENT_RESTORED
++#if SDL_VERSION_ATLEAST(2, 0, 18)
++                                               || e.window.event == SDL_WINDOWEVENT_DISPLAY_CHANGED
++#endif
++                                               )) {
++            s_vk.resized = 1;
+         }
+         else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F12 && !e.key.repeat &&
+                  !(e.key.keysym.mod & KMOD_SHIFT)) {   /* Shift+F12 is MangoHUD's */
+-- 
+2.56.0
+
