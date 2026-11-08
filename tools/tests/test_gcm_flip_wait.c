@@ -30,7 +30,21 @@ int main(void)
         late += gcm_flip_wait_now_us() - end;
     }
     printf("ahead for 2 to 4.6 ms: the waits ended %llu us late on average\n", late / 20);
-    if (late / 20 > 300) { fprintf(stderr, "FAIL: the naps are too long (Sleep(1)?)\n"); return 1; }
+#ifdef _WIN32
+    /* How fine the timer is depends on the system: 100 us naps take about 108 us on Windows 10 1803 and later
+     * and under Wine 11, but a millisecond under Wine 9 (CI's Ubuntu package), the same as Sleep(1). So on
+     * Windows the naps must be no longer than Sleep(1)'s, measured here, and are only reported. */
+    unsigned long long t0 = gcm_flip_wait_now_us();
+    for (int i = 0; i < 50; i++) gcm_flip_wait_nap();
+    const unsigned long long nap = (gcm_flip_wait_now_us() - t0) / 50;
+    t0 = gcm_flip_wait_now_us();
+    for (int i = 0; i < 50; i++) Sleep(1);
+    const unsigned long long slp = (gcm_flip_wait_now_us() - t0) / 50;
+    printf("a nap: %llu us; Sleep(1): %llu us\n", nap, slp);
+    if (nap > slp + slp / 10 + 50) { fprintf(stderr, "FAIL: the naps are longer than Sleep(1)'s\n"); return 1; }
+#else
+    if (late / 20 > 300) { fprintf(stderr, "FAIL: the naps are too long\n"); return 1; }
+#endif
     puts("test_gcm_flip_wait: ok");
     return 0;
 }
