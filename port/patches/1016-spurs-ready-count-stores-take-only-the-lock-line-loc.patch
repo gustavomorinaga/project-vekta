@@ -10,10 +10,10 @@ The coordinator holds the instance lock through a whole pass; ReadyCountStore/Sw
  1 file changed, 26 insertions(+), 11 deletions(-)
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 6f1591c1..3ca804ae 100644
+index f7e89fb081d3aca917812b05d69fc128dfbc8ab6..6d6bcdf218925beebdbdecdffaabd8f900938793 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
-@@ -2005,21 +2005,39 @@ static void spurs_scheduler_retire(u32 ea)
+@@ -2280,21 +2280,39 @@ static void spurs_scheduler_retire(u32 ea)
      ReleaseSRWLockExclusive(&s_workload_registry_lock);
  }
  
@@ -40,7 +40,7 @@ index 6f1591c1..3ca804ae 100644
                               u32 value)
  {
      if (!spurs) return CELL_SPURS_CORE_ERROR_NULL_POINTER;
-     if (wid >= CELL_SPURS_MAX_WORKLOAD) return CELL_SPURS_CORE_ERROR_INVAL;
+     if (wid >= SPURS_MAX_WID) return CELL_SPURS_CORE_ERROR_INVAL;
      struct SpursInst* si;
 -    s32 rc = spurs_api_lock((u32)(uintptr_t)spurs, &si);
 +    s32 rc = spurs_ready_begin((u32)(uintptr_t)spurs, wid, &si);
@@ -51,14 +51,14 @@ index 6f1591c1..3ca804ae 100644
  
      s_workloads[wid].readyCount = value;
      /* The real store: the instance byte the kernel (poll thread) watches. */
--    vm_write8(si->ea + SPURS_WKL_READY1 + wid, (u8)value);
+-    vm_write8(si->ea + wkl_ready_off(wid), (u8)value);
 +    spu_lockline_lock();
-+    vm_base[si->ea + SPURS_WKL_READY1 + wid] = (u8)value;
++    vm_base[si->ea + wkl_ready_off(wid)] = (u8)value;
 +    ef_line_end(si->ea);
      {   static int _n = 0;
          if (_n < 32)
              printf("[cellSpurs] ReadyCountStore(wid=%u, value=%u)\n", wid, value);
-@@ -2027,7 +2045,7 @@ s32 cellSpursReadyCountStore(CellSpurs* spurs, CellSpursWorkloadId wid,
+@@ -2302,7 +2320,7 @@ s32 cellSpursReadyCountStore(CellSpurs* spurs, CellSpursWorkloadId wid,
              printf("[cellSpurs] ReadyCountStore further logs suppressed\n");
          _n++;
      }
@@ -67,9 +67,9 @@ index 6f1591c1..3ca804ae 100644
      return CELL_OK;
  }
  
-@@ -2037,11 +2055,8 @@ static s32 spurs_ready_exchange(CellSpurs* spurs, CellSpursWorkloadId wid,
+@@ -2312,11 +2330,8 @@ static s32 spurs_ready_exchange(CellSpurs* spurs, CellSpursWorkloadId wid,
      if (!spurs || !old) return CELL_SPURS_CORE_ERROR_NULL_POINTER;
-     if (wid >= CELL_SPURS_MAX_WORKLOAD) return CELL_SPURS_CORE_ERROR_INVAL;
+     if (wid >= SPURS_MAX_WID) return CELL_SPURS_CORE_ERROR_INVAL;
      struct SpursInst* si;
 -    s32 rc = spurs_api_lock((u32)(uintptr_t)spurs, &si);
 +    s32 rc = spurs_ready_begin((u32)(uintptr_t)spurs, wid, &si);
@@ -78,9 +78,9 @@ index 6f1591c1..3ca804ae 100644
 -        spurs_api_unlock(si); return CELL_SPURS_CORE_ERROR_SRCH;
 -    }
      spu_lockline_lock();
-     u8 previous = vm_read8(si->ea + SPURS_WKL_READY1 + wid);
+     u8 previous = vm_read8(si->ea + wkl_ready_off(wid));
      if (!conditional || previous == compare) {
-@@ -2050,7 +2065,7 @@ static s32 spurs_ready_exchange(CellSpurs* spurs, CellSpursWorkloadId wid,
+@@ -2325,7 +2340,7 @@ static s32 spurs_ready_exchange(CellSpurs* spurs, CellSpursWorkloadId wid,
          ef_line_end(si->ea);
      } else spu_lockline_unlock();
      vm_write32((u32)(uintptr_t)old, previous);

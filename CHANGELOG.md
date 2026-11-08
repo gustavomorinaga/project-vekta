@@ -7,6 +7,12 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch
+  series was re-applied: 1006 dropped (now upstream), 1017 smaller, 0006 to 0008 new; the Vulkan backend stays the
+  port's. Levels 1 to 8 replay to their end; speed the same or better (levels 3, 4 and 8 faster)
+  ([docs/dev/ps3recomp-v019-migration.md](docs/dev/ps3recomp-v019-migration.md)).
+
 ### Fixed
 - Black blocks over the menus and movies whenever the frame has bars (a 16:10 window or borderless display; AMD,
   issue #17): the window's present cleared the bars and copied the frame with no barrier between them, so the

@@ -9,10 +9,10 @@ Subject: [PATCH] cellGcm: main-memory reports at IO 0x0E000000;
  1 file changed, 31 insertions(+), 4 deletions(-)
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 6cd59df7..5f64a730 100644
+index a7385605fbf702cf52d068d2ee3e869d38c7b86a..d6bfab2077a677dfd58628e4f3f93f0382169688 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -372,6 +372,7 @@ static u64 gcm_report_timestamp(void)
+@@ -399,6 +399,7 @@ static u64 gcm_report_timestamp(void)
   * pointer would be read as a guest offset and land out of bounds. */
  #define GCM_LABEL_GUEST_BASE  (VM_HLE_INJECT_BASE + 0x0000u)
  #define GCM_LABEL_STRIDE      0x10u
@@ -20,7 +20,7 @@ index 6cd59df7..5f64a730 100644
  static u32 s_labels[CELL_GCM_MAX_LABEL_COUNT];
  
  /* GCM control register (put/get/ref). This MUST live in guest memory: the title
-@@ -2065,8 +2066,12 @@ static void gcm_3d_method(rsx_state* st, u32 m, u32 v, int legacy_state_live)
+@@ -2292,8 +2293,12 @@ static void gcm_3d_method(rsx_state* st, u32 m, u32 v, int legacy_state_live)
          const int main_mem = s_report_dma == 0xFEED0001u || s_report_dma == 0xBAD68000u;
          { static int rn = 0; if (PS3_LOG_FIRST(rn, 6)) printf("[GET_REPORT] type=%u off=0x%X dma=0x%08X%c", v >> 24, off, s_report_dma, 10); }
          if (main_mem) {
@@ -35,19 +35,19 @@ index 6cd59df7..5f64a730 100644
              if (rea) {
                  vm_write32(rea, (u32)(ts >> 32));
                  vm_write32(rea + 4u, (u32)ts);
-@@ -2375,6 +2380,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
+@@ -2643,6 +2648,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
              { static int _rd = -1; if (_rd < 0) _rd = getenv("GCM_RECDBG") ? 1 : 0;
                if (_rd) fprintf(stderr, "[JMP] %08X -> %08X (put=%08X)\n",
-                                s_fifo_getoff, w & 0x1FFFFFFCu, put); }
+                                s_fifo_getoff, jump_tgt, put); }
 +            { static int cd = -1; if (cd < 0) cd = getenv("GCM_CALLDBG") ? 1 : 0;
-+              if (cd) { static u32 seen[64]; static int ns; u32 tg = w & 0x1FFFFFFCu; int k;
++              if (cd) { static u32 seen[64]; static int ns; u32 tg = jump_tgt; int k;
 +                for (k = 0; k < ns && seen[k] != (tg & ~0xFFFFu); k++) {}
 +                if (k == ns && ns < 64) { seen[ns++] = tg & ~0xFFFFu;
 +                  fprintf(stderr, "[JUMP] from io=%08X to io=%08X (ea %08X)\n", s_fifo_getoff, tg, gcm_io2ea(tg)); } } }
-             { u32 tgt = w & 0x1FFFFFFCu;
+             { u32 tgt = jump_tgt;
                if (!gcm_io2ea(tgt)) { gcm_fifo_bad_branch("JUMP", tgt, w); gcm_fifo_dump_around(s_fifo_getoff); gcm_fifo_resync_why("unmapped-JUMP", &s_fifo_getoff, put); break; }
                /* A JUMP to its own address is the "park the RSX here" idiom:
-@@ -2442,6 +2452,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
+@@ -2710,6 +2720,11 @@ static void gcm_rsx_process_fifo_unlocked(void)
              continue;
          }
          if ((w & 3) == 2) {                    /* CALL: offset | 2 */
@@ -59,7 +59,7 @@ index 6cd59df7..5f64a730 100644
              { u32 tgt = w & 0x1FFFFFFCu;
                if (!gcm_io2ea(tgt)) { gcm_fifo_bad_branch("CALL", tgt, w); gcm_fifo_resync_why("unmapped-CALL", &s_fifo_getoff, put); break; }
                s_fifo_calloff = s_fifo_getoff + 4;
-@@ -4366,8 +4381,20 @@ CellGcmReportData* cellGcmGetReportDataAddressLocation(u32 index, u32 location)
+@@ -4725,8 +4740,20 @@ CellGcmReportData* cellGcmGetReportDataAddressLocation(u32 index, u32 location)
  /* Get report value at index with location */
  u32 cellGcmGetReportDataLocation(u32 index, u32 location)
  {

@@ -48,11 +48,10 @@ field arguments that the GPU motion blur patch (0101) added.
  tools/test_rsx_immediate_vertices.py            |  2 +-
  tools/test_spu_program_pipeline.py              |  4 ++++
  20 files changed, 47 insertions(+), 10 deletions(-)
- create mode 100644 libs/video/tests/port_links.h
 
 diff --git a/libs/video/tests/port_links.h b/libs/video/tests/port_links.h
 new file mode 100644
-index 00000000..123ca3eb
+index 0000000000000000000000000000000000000000..123ca3eb051340da747e82d8d48b51466f8c7008
 --- /dev/null
 +++ b/libs/video/tests/port_links.h
 @@ -0,0 +1,7 @@
@@ -64,103 +63,103 @@ index 00000000..123ca3eb
 +int rsx_draw_engine_mlaa(u32 location, u32 offset, u32 field_location, u32 field_offset)
 +{ (void)location; (void)offset; (void)field_location; (void)field_offset; return 0; }
 diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
-index 832f0fbd..99ce147d 100644
+index c06475ba8addd2e846e4cf98074b65abd569ca41..d69711431b991788a7b0a969763d70df937f1370 100644
 --- a/libs/video/tests/test_gcm_flip_stream.c
 +++ b/libs/video/tests/test_gcm_flip_stream.c
-@@ -28,6 +28,7 @@
-  *   -o /tmp/test_gcm_flip_stream        (clang on macOS: -Wl,-dead_strip)
+@@ -29,6 +29,7 @@
   */
  #include "../cellGcmSys.c"
+ #include "../rsx_tiling.c"
 +#include "port_links.h"
  #include <stdio.h>
  #include <stdlib.h>
- uint8_t* vm_base;
+ /* GCM_REPORT_SPU_HOLD_MS asks the SPU task layer whether a task round is
 diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
-index 07e5a959..07df6b5b 100644
+index be65eb482e0411e42dc8b44215dbf09034fb6872..7be26ffe6385ec0db3bdd3d642301d064c8041aa 100644
 --- a/libs/video/tests/test_gcm_get_on_jump.c
 +++ b/libs/video/tests/test_gcm_get_on_jump.c
-@@ -17,6 +17,7 @@
-  *   (clang on macOS: -Wl,-dead_strip)
+@@ -18,6 +18,7 @@
   */
  #include "../cellGcmSys.c"
+ #include "../rsx_tiling.c"
 +#include "port_links.h"
  #include <stdio.h>
  #include <stdlib.h>
- uint8_t* vm_base;
+ /* GCM_REPORT_SPU_HOLD_MS asks the SPU task layer whether a task round is
 diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
-index 830f6724..37e4d307 100644
+index e05fc617eb3619f570019836bfb6fe7d524b3f3c..df3916dc9f339a661bde705e5521c75ab96b9685 100644
 --- a/libs/video/tests/test_gcm_get_on_release.c
 +++ b/libs/video/tests/test_gcm_get_on_release.c
-@@ -22,6 +22,7 @@
-  *   (clang on macOS: -Wl,-dead_strip)
+@@ -23,6 +23,7 @@
   */
  #include "../cellGcmSys.c"
+ #include "../rsx_tiling.c"
 +#include "port_links.h"
  #include <stdio.h>
  #include <stdlib.h>
  #include <string.h>
 diff --git a/libs/video/tests/test_gcm_legacy_state_filter.c b/libs/video/tests/test_gcm_legacy_state_filter.c
-index 7fe49e37..ea0684fd 100644
+index 6570a44c774df6b81260ef67603cbd6faccb5d1c..5f840e1fb224a5cc36956e5a0451ce53f5d0ba11 100644
 --- a/libs/video/tests/test_gcm_legacy_state_filter.c
 +++ b/libs/video/tests/test_gcm_legacy_state_filter.c
-@@ -11,6 +11,7 @@
-  *   (gcc: -Wl,--gc-sections -pthread -lm)
+@@ -12,6 +12,7 @@
   */
  #include "../cellGcmSys.c"
+ #include "../rsx_tiling.c"
 +#include "port_links.h"
  #include <stdio.h>
  #include <stdlib.h>
  #include <string.h>
 diff --git a/libs/video/tests/test_gcm_nop_runs.c b/libs/video/tests/test_gcm_nop_runs.c
-index b4713b87..2d5b842b 100644
+index 135f4bed834f1ca47593a46c702ed1ef07845255..7d6c339647024f2a4bb7d202e1ef925f25366109 100644
 --- a/libs/video/tests/test_gcm_nop_runs.c
 +++ b/libs/video/tests/test_gcm_nop_runs.c
-@@ -12,6 +12,7 @@
-  *   (clang on macOS: -Wl,-dead_strip)
+@@ -13,6 +13,7 @@
   */
  #include "../cellGcmSys.c"
+ #include "../rsx_tiling.c"
 +#include "port_links.h"
  #include <stdio.h>
  #include <stdlib.h>
- uint8_t* vm_base;
+ /* GCM_REPORT_SPU_HOLD_MS asks the SPU task layer whether a task round is
 diff --git a/libs/video/tests/test_gcm_park_reuse.c b/libs/video/tests/test_gcm_park_reuse.c
-index 1efb7a8c..71688660 100644
+index 5d123ac76db13ed470f92ed286c721d071520727..032322ee8c442049dbc3a64c189ac267062be42b 100644
 --- a/libs/video/tests/test_gcm_park_reuse.c
 +++ b/libs/video/tests/test_gcm_park_reuse.c
-@@ -20,6 +20,7 @@
-  *   (clang on macOS: -Wl,-dead_strip)
+@@ -21,6 +21,7 @@
   */
  #include "../cellGcmSys.c"
+ #include "../rsx_tiling.c"
 +#include "port_links.h"
  #include <stdio.h>
  #include <stdlib.h>
  #include <unistd.h>
 diff --git a/libs/video/tests/test_gcm_resync_labels.c b/libs/video/tests/test_gcm_resync_labels.c
-index 5f99a3f2..50985faf 100644
+index 68105003a575e9b7bbabd05154f0754313cb54b6..829b3c40901d79db84535c7dda1a26ebe6a94d11 100644
 --- a/libs/video/tests/test_gcm_resync_labels.c
 +++ b/libs/video/tests/test_gcm_resync_labels.c
-@@ -18,6 +18,7 @@
-  *   (clang on macOS: -Wl,-dead_strip)
+@@ -19,6 +19,7 @@
   */
  #include "../cellGcmSys.c"
+ #include "../rsx_tiling.c"
 +#include "port_links.h"
  #include <stdio.h>
  #include <stdlib.h>
  #include <time.h>
 diff --git a/libs/video/tests/test_gcm_walker_prof.c b/libs/video/tests/test_gcm_walker_prof.c
-index ba32a572..d61d586e 100644
+index a54be0fcf7040004d2e3e09055c6bbd6de92419e..cc4ce32bbee8ae3dc5df0c9c768daa978f28f347 100644
 --- a/libs/video/tests/test_gcm_walker_prof.c
 +++ b/libs/video/tests/test_gcm_walker_prof.c
-@@ -11,6 +11,7 @@
-  *      /tmp/test_gcm_walker_prof off <file>  (RSX_WALKER_PROF unset)
-  */
- #include "../cellGcmSys.c"
+@@ -30,6 +30,7 @@ static int wprof_test_nanosleep(const struct timespec* req, struct timespec* rem
+ }
+ #endif
+ #include "../rsx_tiling.c"
 +#include "port_links.h"
  #include <stdio.h>
  #include <stdlib.h>
  #include <string.h>
 diff --git a/runtime/spu/tests/spu_interp_selftest.c b/runtime/spu/tests/spu_interp_selftest.c
-index 21bc39e7..dd958ca6 100644
+index 21bc39e7cf6c47eacaf10225acae4b14e560ecd2..dd958ca6caac6e7c114eae6416d17b5fddcd076e 100644
 --- a/runtime/spu/tests/spu_interp_selftest.c
 +++ b/runtime/spu/tests/spu_interp_selftest.c
 @@ -15,7 +15,7 @@
@@ -173,7 +172,7 @@ index 21bc39e7..dd958ca6 100644
  
  /* The rest of the runtime the interpreter reaches: probes off, nothing lifted. */
 diff --git a/runtime/spu/tests/test_mfc_resume_elements.c b/runtime/spu/tests/test_mfc_resume_elements.c
-index 2a930b50..ac51d634 100644
+index 2a930b50b9eea5ebc0579974c4f74285fbc58db0..ac51d6341cb666d0dccdd855b0d1b16e81375fc6 100644
 --- a/runtime/spu/tests/test_mfc_resume_elements.c
 +++ b/runtime/spu/tests/test_mfc_resume_elements.c
 @@ -17,6 +17,7 @@ int g_cri_video_dma;
@@ -185,7 +184,7 @@ index 2a930b50..ac51d634 100644
  volatile unsigned g_sn_defer;
  unsigned long long ps3_ms_now(void) { return 0; }
 diff --git a/runtime/spu/tests/test_spu_coherency.c b/runtime/spu/tests/test_spu_coherency.c
-index b9c714da..4407ccb2 100644
+index b9c714da5495a380d8bfd09322cf6a8ebeff85ab..4407ccb24772c26ad6f5f4cca754a16570458d36 100644
 --- a/runtime/spu/tests/test_spu_coherency.c
 +++ b/runtime/spu/tests/test_spu_coherency.c
 @@ -160,8 +160,10 @@ static void test_ppu_store_raises_lr(void)
@@ -202,7 +201,7 @@ index b9c714da..4407ccb2 100644
      TEST("a second store with no live reservation raises nothing more");
      vm_write32(LINE_A + 8, 0x11111111u);
 diff --git a/runtime/spu/tests/test_spu_interpreter_ilh.c b/runtime/spu/tests/test_spu_interpreter_ilh.c
-index 35a5669c..c4060bf1 100644
+index 35a5669c6d38d328c4036d8b402392cd0ffa5d7c..c4060bf1481688ec42a7d20b03bb7de96dcdce4d 100644
 --- a/runtime/spu/tests/test_spu_interpreter_ilh.c
 +++ b/runtime/spu/tests/test_spu_interpreter_ilh.c
 @@ -9,7 +9,7 @@
@@ -215,7 +214,7 @@ index 35a5669c..c4060bf1 100644
  int g_spu_ls_watch_n, g_spu_ls_probe, g_wws_read_probe, g_wws_code_probe, g_spu_smc_watch;
  spu_lifted_fn spu_lifted_lookup(const spu_context* c, uint32_t a) { (void)c; (void)a; abort(); }
 diff --git a/runtime/spu/tests/test_spu_poison_scan.c b/runtime/spu/tests/test_spu_poison_scan.c
-index 710392d8..4300d81f 100644
+index 710392d8004c0a2db2421953dea527290bd6002e..4300d81f3a5af94886836256aa1b309a219b88f2 100644
 --- a/runtime/spu/tests/test_spu_poison_scan.c
 +++ b/runtime/spu/tests/test_spu_poison_scan.c
 @@ -18,6 +18,7 @@ int g_cri_video_dma;
@@ -227,7 +226,7 @@ index 710392d8..4300d81f 100644
  volatile unsigned g_sn_defer;
  unsigned long long ps3_ms_now(void) { return 0; }
 diff --git a/tests/test_sail_boot_callback.cpp b/tests/test_sail_boot_callback.cpp
-index 2b92932e..5482f205 100644
+index 2b92932e1ac481d6bdffc15f223214f19211baa7..5482f205c6cdaffdb02caedeb3bb45c6d4cf7e19 100644
 --- a/tests/test_sail_boot_callback.cpp
 +++ b/tests/test_sail_boot_callback.cpp
 @@ -19,6 +19,7 @@ uint32_t prx_resolve_export(uint32_t) { return 0; }
@@ -239,7 +238,7 @@ index 2b92932e..5482f205 100644
  uint32_t ppu_prof_resolve_host(void*) { return 0; }
  void ps3_msf(const char*,...) {}
 diff --git a/tests/test_spurs_coordinator_kick.c b/tests/test_spurs_coordinator_kick.c
-index 8d679068..0a97f0b2 100644
+index 8d67906863e1507f92c4ff9a25864bba40fe372b..0a97f0b264e5c027ab9835d187b195e40f527dd5 100644
 --- a/tests/test_spurs_coordinator_kick.c
 +++ b/tests/test_spurs_coordinator_kick.c
 @@ -30,7 +30,7 @@ static DWORD WINAPI waiter(LPVOID p)
@@ -276,7 +275,7 @@ index 8d679068..0a97f0b2 100644
      assert(t);
      for (;;) {
 diff --git a/tests/test_sysmodule_unload_module_ex.cpp b/tests/test_sysmodule_unload_module_ex.cpp
-index c2546882..5e6e1843 100644
+index c2546882c7c4f8c129d31e51532a92bbc3471c68..5e6e184359e6641025114e3d23f9046bed4fefb1 100644
 --- a/tests/test_sysmodule_unload_module_ex.cpp
 +++ b/tests/test_sysmodule_unload_module_ex.cpp
 @@ -20,6 +20,7 @@ uint32_t prx_resolve_export(uint32_t) { return 0; }
@@ -288,7 +287,7 @@ index c2546882..5e6e1843 100644
  uint32_t ppu_prof_resolve_host(void*) { return 0; }
  void ps3_msf(const char*,...) {}
 diff --git a/tools/test_lwcond_layout.py b/tools/test_lwcond_layout.py
-index 74232614..676c5025 100644
+index 74232614b79ea3ec2ba8e09ce017cb24c642e4b8..676c5025b55ed6fe5c57c9099b231bcadd090784 100644
 --- a/tools/test_lwcond_layout.py
 +++ b/tools/test_lwcond_layout.py
 @@ -31,9 +31,13 @@ def extract(src, name):
@@ -319,7 +318,7 @@ index 74232614..676c5025 100644
  %s
  int main() {
 diff --git a/tools/test_rsx_immediate_vertices.py b/tools/test_rsx_immediate_vertices.py
-index 47224895..d6a2ff3b 100644
+index 47224895c2317b92820d938fd65e534c4abe32cc..d6a2ff3b1e1350674f3b65147cc94ac8a9cae18b 100644
 --- a/tools/test_rsx_immediate_vertices.py
 +++ b/tools/test_rsx_immediate_vertices.py
 @@ -12,7 +12,7 @@ def main():
@@ -332,7 +331,7 @@ index 47224895..d6a2ff3b 100644
          binary = Path(directory) / "test_rsx_draw_engine"
          subprocess.run([os.environ.get("CC", "cc"), "-std=gnu17",
 diff --git a/tools/test_spu_program_pipeline.py b/tools/test_spu_program_pipeline.py
-index cdfa2ad5..05af223f 100644
+index cdfa2ad5b0c695237e67504ea61f2e15289ea3cb..05af223f9a91709e5b410c7d678aac5d1f667384 100644
 --- a/tools/test_spu_program_pipeline.py
 +++ b/tools/test_spu_program_pipeline.py
 @@ -226,6 +226,8 @@ class Pipeline(unittest.TestCase):
@@ -353,3 +352,6 @@ index cdfa2ad5..05af223f 100644
              'int main(void) { spu_register_all();\n' + '\n'.join(body) + '\nreturn 0; }\n')
          # Minimal consumer uses the same CMake generation helper as the template.
          cmake_source = 'cmake_minimum_required(VERSION 3.20)\nproject(proof C)\n'
+-- 
+2.56.0
+

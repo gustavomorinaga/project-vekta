@@ -19,16 +19,16 @@ mode, alternated A/B in one binary:
   RSX_VTX_SLOW=1 is the old loop.
 
 ---
- libs/video/rsx_draw_engine.c    | 14 ++++++++++++-
- libs/video/rsx_vertex_compact.c | 36 ++++++++++++++++++++++++++++++++-
+ libs/video/rsx_draw_engine.c    | 14 +++++++++++++-
+ libs/video/rsx_vertex_compact.c | 36 +++++++++++++++++++++++++++++++++++-
  2 files changed, 48 insertions(+), 2 deletions(-)
 
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 89744444..5ae936d3 100644
+index d514e68e6d683c02ab274f2c68b4ab978dc0ed6f..8235b8b9f5598bca1cccc2c6682ecbd4f4c68883 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -287,10 +287,22 @@ static const u8* eng_guest_ptr(void* user, u32 location, u32 offset,
-     return vm_base + ea;
+@@ -382,10 +382,22 @@ static const u8* eng_fetch_ptr(void* user, u32 location, u32 offset, u32 min_byt
+     return eng_fetch_detiled(location, offset, min_bytes);
  }
  
 +/* FNV-1a, eight bytes a step (a vertex program's ucode, up to 8 KB, is
@@ -52,10 +52,10 @@ index 89744444..5ae936d3 100644
  }
  
 diff --git a/libs/video/rsx_vertex_compact.c b/libs/video/rsx_vertex_compact.c
-index 2953c748..53d2bcb0 100644
+index d278e4b8ced96e599007d4c9972e681d69e1d34d..62f59c37e40d7c33674b55d5fda7ef35c672d3ad 100644
 --- a/libs/video/rsx_vertex_compact.c
 +++ b/libs/video/rsx_vertex_compact.c
-@@ -445,7 +445,41 @@ int rsx_vertex_fetch_all(
+@@ -452,7 +452,41 @@ int rsx_vertex_fetch_all(
          }
          const u32 freq = fetch->desc.frequency, modulo = (plan->divider_mask >> attr) & 1u;
          const u32 type = fetch->desc.type, size = fetch->desc.size;

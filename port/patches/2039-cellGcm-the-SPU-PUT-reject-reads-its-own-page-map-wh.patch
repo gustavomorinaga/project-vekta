@@ -18,10 +18,10 @@ compiles populate_offset_table on its own, declares the map.
  2 files changed, 18 insertions(+), 3 deletions(-)
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 340ce352..a9a11673 100644
+index 1d79f92f7cf5fbfdc86f33bbffbb60866e57cfb2..76541d5a27c1c173a66dbfc2fd740c457e3c4581 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -214,6 +214,11 @@ static CellGcmControl s_control;
+@@ -227,6 +227,11 @@ static CellGcmControl s_control;
  uint32_t ppu_hle_inject_base = 0x20000000u;
  
  static u16 s_io_address_table[65536];
@@ -33,7 +33,7 @@ index 340ce352..a9a11673 100644
  static u16 s_ea_address_table[65536];
  
  #define GCM_OFFSET_TABLE_PAGES   4096u                 /* 4 GiB / 1 MiB       */
-@@ -434,6 +439,11 @@ static void populate_offset_table(u32 ea, u32 io, u32 size)
+@@ -480,6 +485,11 @@ static void populate_offset_table(u32 ea, u32 io, u32 size)
      u32 ea_page = ea >> 20;
      u32 io_page = io >> 20;
  
@@ -45,7 +45,7 @@ index 340ce352..a9a11673 100644
      for (u32 i = 0; i < pages && (ea_page + i) < 65536 && (io_page + i) < 65536; i++) {
          s_io_address_table[ea_page + i] = (u16)(io_page + i);
          s_ea_address_table[io_page + i] = (u16)(ea_page + i);
-@@ -525,6 +535,7 @@ s32 cellGcmInit(u32 cmdSize, u32 ioSize, u32 ioAddress)
+@@ -574,6 +584,7 @@ s32 cellGcmInit(u32 cmdSize, u32 ioSize, u32 ioAddress)
      s_report_dma = 0xFEED0000u;
      memset(s_labels, 0, sizeof(s_labels));
      memset(s_io_address_table, 0xFF, sizeof(s_io_address_table));
@@ -53,7 +53,7 @@ index 340ce352..a9a11673 100644
      memset(s_ea_address_table, 0xFF, sizeof(s_ea_address_table));
  
      /*
-@@ -544,6 +555,7 @@ s32 cellGcmInit(u32 cmdSize, u32 ioSize, u32 ioAddress)
+@@ -593,6 +604,7 @@ s32 cellGcmInit(u32 cmdSize, u32 ioSize, u32 ioAddress)
       * this every unmapped EA page silently aliased io page 0 (and vice versa),
       * producing plausible-but-wrong offsets instead of a translation failure. */
      memset(s_io_address_table, 0xFF, sizeof(s_io_address_table));
@@ -61,7 +61,7 @@ index 340ce352..a9a11673 100644
      memset(s_ea_address_table, 0xFF, sizeof(s_ea_address_table));
      s_current_display_buffer_id = 0;
      s_flip_handler = NULL;
-@@ -1823,12 +1835,12 @@ static int s_spu_blk_w = 0;
+@@ -2048,12 +2060,12 @@ static int s_spu_blk_w = 0;
  static u32 gcm_ea2io_range(u32 ea, u32* room)
  {
      /* Called for every SPU PUT, and nearly all of them are not IO-mapped:
@@ -77,7 +77,7 @@ index 340ce352..a9a11673 100644
      const int n = __atomic_load_n(&s_io_mapping_hw, __ATOMIC_RELAXED);
      for (int i = 0; i < n; i++) {
          IoMapping* m = &s_io_mappings[i];
-@@ -4460,6 +4472,7 @@ void cellGcmTerminate(void)
+@@ -4819,6 +4831,7 @@ void cellGcmTerminate(void)
      s_report_dma = 0xFEED0000u;
      memset(s_labels, 0, sizeof(s_labels));
      memset(s_io_address_table, 0xFF, sizeof(s_io_address_table));
@@ -85,7 +85,7 @@ index 340ce352..a9a11673 100644
      memset(s_ea_address_table, 0xFF, sizeof(s_ea_address_table));
  
      s_flip_handler     = NULL;
-@@ -4474,6 +4487,7 @@ void cellGcmTerminate(void)
+@@ -4833,6 +4846,7 @@ void cellGcmTerminate(void)
       * this every unmapped EA page silently aliased io page 0 (and vice versa),
       * producing plausible-but-wrong offsets instead of a translation failure. */
      memset(s_io_address_table, 0xFF, sizeof(s_io_address_table));
@@ -94,14 +94,17 @@ index 340ce352..a9a11673 100644
      s_current_display_buffer_id = 0;
      s_last_flip_time = 0;
 diff --git a/tools/test_gcm_io_mappings.py b/tools/test_gcm_io_mappings.py
-index 10a24bf0..ccb52459 100644
+index 6d3cb3b34731cb8d3d1fd2621fed2c6cc2e74ec6..c9c47c212cdb9ed71008b27e1106340546da9160 100644
 --- a/tools/test_gcm_io_mappings.py
 +++ b/tools/test_gcm_io_mappings.py
-@@ -79,6 +79,7 @@ static u32 rd32(u32 a) { return (u32)mem[a] << 24 | mem[a + 1] << 16 | mem[a + 2
- static int s_gcm_initialized = 0;
- static u16 s_ea_address_table[65536];   /* IO page -> EA page, 0xFFFF = free */
- static u16 s_io_address_table[65536];   /* EA page -> IO page */
+@@ -94,6 +94,7 @@ static void vm_write16(u32 a, u16 v)
+     if (a >= GCM_OFFSET_TABLE_EA_ADDR) guest_ea[(a - GCM_OFFSET_TABLE_EA_ADDR) / 2] = v;
+     else if (a >= GCM_OFFSET_TABLE_IO_ADDR) guest_io[(a - GCM_OFFSET_TABLE_IO_ADDR) / 2] = v;
+ }
 +static u8 s_io_ea_seen[65536];          /* EA pages any mapping covered (the SPU PUT reject) */
  static int io_pages_used(void)
  {
      int n = 0;
+-- 
+2.56.0
+

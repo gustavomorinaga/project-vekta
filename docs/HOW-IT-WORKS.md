@@ -17,7 +17,7 @@ program is translated to C++ ahead of time, compiled for x64, and given a PC sta
 
 ## The build, step by step
 
-1. `tools/ps3recomp-patched.sh` copies ps3recomp v0.18.0 (the submodule) and applies `port/patches/` in the order of
+1. `tools/ps3recomp-patched.sh` copies ps3recomp v0.19.0 (the submodule) and applies `port/patches/` in the order of
    `port/patches/series`. The submodule itself is never edited.
 2. `tools/lift.sh` reads your decrypted EBOOT: ps3recomp's loader lists its segments, imports and the functions its
    tables name; `find_functions.py` completes the list with the seeds in `re/function_seeds.txt`; the PPU lifter
@@ -43,5 +43,5 @@ at most one frame ahead of the screen. Logic tied to the frame rate was checked 
 - [docs/dev/recomp-plan.md](dev/recomp-plan.md): the original plan and the reasoning behind it.
 - [docs/dev/port-journal.md](dev/port-journal.md): the dated journal of the port, from the first lift to the
   current state.
-- [docs/dev/](dev/): performance work, the ps3recomp v0.18.0 migration, the Windows build, the WWS job manager and
+- [docs/dev/](dev/): performance work, the ps3recomp v0.18.0 and v0.19.0 migrations, the Windows build, the WWS job manager and
   its post-processing jobs, data formats, and notes on other ports.

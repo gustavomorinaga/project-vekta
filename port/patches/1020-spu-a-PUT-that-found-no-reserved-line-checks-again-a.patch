@@ -21,10 +21,10 @@ reservation on the fast path and 158 on the full path; 0 on both now.
  2 files changed, 20 insertions(+)
 
 diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
-index cbcaedf..1d08313 100644
+index 52ac3fe74dc75bfa00f49ae966f16f04bf212130..e7d1387c6bbb182d816324de579e752cb782f274 100644
 --- a/runtime/spu/spu_coherency.c
 +++ b/runtime/spu/spu_coherency.c
-@@ -153,6 +153,14 @@ void spu_coh_reserve(spu_context* ctx, uint32_t ea)
+@@ -172,6 +172,14 @@ void spu_coh_reserve(spu_context* ctx, uint32_t ea)
          s_coh_bitmap[line >> 3] |= bit;
      if (!g_spu_coh_bits)
          g_spu_coh_bits = s_coh_bitmap;
@@ -38,9 +38,9 @@ index cbcaedf..1d08313 100644
 +    __atomic_thread_fence(__ATOMIC_SEQ_CST);
  
      if (!ctx) return;
-     for (spu_coh_entry* entry = s_coh_ctxs; entry; entry = entry->next)
+     for (unsigned i = 0; i < s_coh_n; i++)
 diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
-index 9ece7e0..0f1727c 100644
+index 9ece7e0488d64496e683e69e61d720aa6ded1033..0f1727c539eb8f541c233bee34418cb0d35e66a2 100644
 --- a/runtime/spu/spu_dma.h
 +++ b/runtime/spu/spu_dma.h
 @@ -263,7 +263,18 @@ static inline int mfc_do_transfer_fast(spu_context* spu, uint32_t lsa, uint64_t
@@ -70,3 +70,6 @@ index 9ece7e0..0f1727c 100644
                  for (uint32_t a = a0; ; a += 128u) {
                      if (spu_coh_line_reserved(a)) {
                          spu_lockline_lock();
+-- 
+2.56.0
+

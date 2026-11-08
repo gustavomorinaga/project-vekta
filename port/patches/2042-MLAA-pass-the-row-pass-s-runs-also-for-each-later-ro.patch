@@ -14,7 +14,7 @@ a frame off the C reference. mlaa_vk_test already dispatched them.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 0f9095b1..dfa9598b 100644
+index 0f9095b18a986c9065bf4d83265aae07ae367e88..dfa9598b4998f1af48edae013340ba3701fedd2a 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -3745,7 +3745,7 @@ static int vk_eng_mlaa(void* user, u32 surface)
@@ -26,3 +26,6 @@ index 0f9095b1..dfa9598b 100644
      for (int j = 0; j < 5; j++) {                         /* CHAIN2, row job by row job */
          const u32 lo = j ? 144u * j - 1u : 0u, last = j == 4 ? H - 2u : 144u * j + 143u;
          vk_mlaa_stage(7, j, W / 256, last - lo + 1u);
+-- 
+2.56.0
+

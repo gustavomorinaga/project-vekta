@@ -18,15 +18,15 @@ thread. Level 7 route with the driver cache and pipelines.bin deleted:
 about 2.6 s of driver builds on the RSX thread without the list.
 
 ---
- libs/video/rsx_draw_engine.c    |  20 ++
- libs/video/rsx_vulkan_backend.c | 313 +++++++++++++++++++++++++++++---
+ libs/video/rsx_draw_engine.c    |  20 +++
+ libs/video/rsx_vulkan_backend.c | 313 +++++++++++++++++++++++++++++++++++++---
  2 files changed, 309 insertions(+), 24 deletions(-)
 
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 360458b7..b1967422 100644
+index 02256be3cd255dea3bfb6bc279a64af265e37a9b..ae1026db3e96b72a1da309b6cc907e692c542a41 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -331,6 +331,20 @@ static u64 eng_vp_hash(const u8* uc, u32 bytes, u64 seed)
+@@ -426,6 +426,20 @@ static u64 eng_vp_hash(const u8* uc, u32 bytes, u64 seed)
      return m->hash;
  }
  
@@ -47,7 +47,7 @@ index 360458b7..b1967422 100644
  static u32 eng_pipeline_slot(u64 key)
  {
      return (u32)((key ^ (key >> 29)) * 0x9E3779B97F4A7C15ull >> 40) & (ENG_PIPELINE_INDEX - 1u);
-@@ -2253,6 +2267,7 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -2492,6 +2506,7 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
      }
      if (g.n_pipelines >= ENG_MAX_PIPELINES) return 0;
  
@@ -55,7 +55,7 @@ index 360458b7..b1967422 100644
      u32 handle = 0;
      int vi = 1, fi = 1;
      u32 nconst = 0;
-@@ -2352,6 +2367,11 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -2602,6 +2617,11 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
                  vi, fi, nconst, (unsigned long long)fp_hash,
                  handle ? "ok" : "FAILED (draw dropped)"); }
  
@@ -68,7 +68,7 @@ index 360458b7..b1967422 100644
      g.pipelines[g.n_pipelines].fp_hash = fp_hash;
      g.pipelines[g.n_pipelines].handle = handle;
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index fff0c355..70c1166f 100644
+index fff0c3554c3365c2828a42a3123b0939ce3b8d4e..70c1166f73a60c14d9923723e54051a8b4c756d5 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -97,6 +97,10 @@ static int dlclose(void* lib) { return FreeLibrary((HMODULE)lib) ? 0 : -1; }
@@ -478,3 +478,6 @@ index fff0c355..70c1166f 100644
      }
      PS3_TRACE_END(_tr, "pipeline", 0);
      return P->variant[topo_idx];
+-- 
+2.56.0
+

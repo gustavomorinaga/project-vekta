@@ -21,19 +21,17 @@ PS3RECOMP_MLAA_DUMP_MOVING=1 keeps only frames with some strength.
  libs/video/cellGcmSys.c                |   6 +-
  libs/video/rsx_draw_engine.c           |  52 +-
  libs/video/rsx_draw_engine.h           |  12 +-
- libs/video/rsx_vulkan_backend.c        | 115 +++-
+ libs/video/rsx_vulkan_backend.c        | 115 ++++-
  libs/video/rsx_vulkan_backend.h        |   3 +
- libs/video/vulkan/rsx_vk_mb.comp       | 158 +++++
- libs/video/vulkan/rsx_vk_mb_comp.spv.h | 869 +++++++++++++++++++++++++
+ libs/video/vulkan/rsx_vk_mb.comp       | 158 ++++++
+ libs/video/vulkan/rsx_vk_mb_comp.spv.h | 869 +++++++++++++++++++++++++++++++++
  7 files changed, 1189 insertions(+), 26 deletions(-)
- create mode 100644 libs/video/vulkan/rsx_vk_mb.comp
- create mode 100644 libs/video/vulkan/rsx_vk_mb_comp.spv.h
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 7263d002..340ce352 100644
+index afc699b91219a2a9827b51f4ee1b0226d462e0e3..1d79f92f7cf5fbfdc86f33bbffbb60866e57cfb2 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -1324,7 +1324,11 @@ static void nv0039_copy(const u32* r)
+@@ -1502,7 +1502,11 @@ static void nv0039_copy(const u32* r)
      const u32 loc_out = s_nv0039.dma_out == 0xFEED0001u ? RSX_LOCATION_MAIN : RSX_LOCATION_LOCAL;
      if (mlaa_gpu_enabled()) {
          if (loc_in == RSX_LOCATION_LOCAL && loc_out == RSX_LOCATION_MAIN && len == 1280u * 720u * 4u && lines == 1u) {
@@ -47,10 +45,10 @@ index 7263d002..340ce352 100644
                  fprintf(stderr, "[NV0039] GPU MLAA on local 0x%08X: %s\n", off_in,
                          ran ? "ran" : "not run (no 1280x720 R8G8B8A8 surface, or the pass is still being built)");
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 4bae11c7..360458b7 100644
+index 3d9dc8e057f55860ba86e41c7a0e8f991bfebdc8..02256be3cd255dea3bfb6bc279a64af265e37a9b 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -993,43 +993,61 @@ u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset)
+@@ -1113,43 +1113,61 @@ u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset)
  }
  
  /* Killzone HD's jm_post MLAA on the colour surface based exactly at
@@ -130,10 +128,10 @@ index 4bae11c7..360458b7 100644
      }
      return 0;
 diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
-index 70649fd2..b45cef45 100644
+index e795d26d83c8d92a4de60275a0948d67771c263e..5c7d2d6c5eab4918f77a28aca90050b772192d7e 100644
 --- a/libs/video/rsx_draw_engine.h
 +++ b/libs/video/rsx_draw_engine.h
-@@ -301,8 +301,10 @@ typedef struct rsx_draw_backend {
+@@ -305,8 +305,10 @@ typedef struct rsx_draw_backend {
                                       u32 x, u32 y, u32 w, u32 h);
  
      /* Optional. Killzone HD's jm_post MLAA run in place on a colour target,
@@ -146,7 +144,7 @@ index 70649fd2..b45cef45 100644
  
  } rsx_draw_backend;
  
-@@ -371,8 +373,10 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
+@@ -375,8 +377,10 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
  void rsx_draw_engine_label_released(void);
  /* The pitch of the colour surface based exactly at location:offset, or 0. */
  u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset);
@@ -160,7 +158,7 @@ index 70649fd2..b45cef45 100644
  /* --- test hooks ---------------------------------------------------------- */
  
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index dfa9598b..fc47be02 100644
+index dfa9598b4998f1af48edae013340ba3701fedd2a..fc47be021eeaf1f3a353f89313f26bb58fb9d9aa 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -54,6 +54,7 @@
@@ -332,7 +330,7 @@ index dfa9598b..fc47be02 100644
      vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
      return 1;
 diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
-index 735c6968..8d704496 100644
+index 735c69688d3e9897614e8ef8674a63828f3ed9e7..8d704496bb11b9f2effcc57bb6e3401eb43e4e84 100644
 --- a/libs/video/rsx_vulkan_backend.h
 +++ b/libs/video/rsx_vulkan_backend.h
 @@ -88,6 +88,9 @@ void rsx_vulkan_set_fsr(int on, float sharpness);
@@ -347,7 +345,7 @@ index 735c6968..8d704496 100644
  void rsx_vulkan_set_crop(float f);
 diff --git a/libs/video/vulkan/rsx_vk_mb.comp b/libs/video/vulkan/rsx_vk_mb.comp
 new file mode 100644
-index 00000000..ef2a44c3
+index 0000000000000000000000000000000000000000..ef2a44c3157bf82677a6c9591d8aaf4807591eb7
 --- /dev/null
 +++ b/libs/video/vulkan/rsx_vk_mb.comp
 @@ -0,0 +1,158 @@
@@ -511,7 +509,7 @@ index 00000000..ef2a44c3
 +}
 diff --git a/libs/video/vulkan/rsx_vk_mb_comp.spv.h b/libs/video/vulkan/rsx_vk_mb_comp.spv.h
 new file mode 100644
-index 00000000..da372de5
+index 0000000000000000000000000000000000000000..da372de5cf6658eeec3e9bf06f5d3d356344fc81
 --- /dev/null
 +++ b/libs/video/vulkan/rsx_vk_mb_comp.spv.h
 @@ -0,0 +1,869 @@
@@ -1384,3 +1382,6 @@ index 00000000..da372de5
 +	0x000200f8,0x000001df,0x0004003d,0x0000000d,0x000001f0,0x000001dd,0x000200fe,0x000001f0,
 +	0x00010038
 +};
+-- 
+2.56.0
+

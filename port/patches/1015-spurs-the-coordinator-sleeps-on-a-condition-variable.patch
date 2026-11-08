@@ -11,10 +11,10 @@ Kicks, API calls and freed slots woke every worker of the instance along with th
  1 file changed, 10 insertions(+), 7 deletions(-)
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index d8c19d15..6f1591c1 100644
+index b1d4a21a47392f00ca2a651fcf22fadb637e2e01..f7e89fb081d3aca917812b05d69fc128dfbc8ab6 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
-@@ -454,7 +454,10 @@ static struct SpursInst {
+@@ -475,7 +475,10 @@ static struct SpursInst {
      int kernel_live, stopping, starting;
      int kick;   /* an SPU committed the request line since the coordinator last looked */
      SRWLOCK lock;
@@ -25,8 +25,8 @@ index d8c19d15..6f1591c1 100644
 +                                * every worker too. */
      HANDLE coordinator;
      struct SpursPmSlot slots[6];
-     u8 active[16], idle[16];
-@@ -484,7 +487,7 @@ static void spurs_line_committed(uint32_t line)
+     u8 active[SPURS_MAX_WID], idle[SPURS_MAX_WID];
+@@ -506,7 +509,7 @@ static void spurs_line_committed(uint32_t line)
          if (!ea || (ea & ~127u) != line || !__atomic_load_n(&si->kernel_live, __ATOMIC_ACQUIRE))
              continue;
          __atomic_store_n(&si->kick, 1, __ATOMIC_RELEASE);
@@ -35,7 +35,7 @@ index d8c19d15..6f1591c1 100644
      }
  }
  static void spurs_commit_hook(uint32_t line)
-@@ -524,7 +527,7 @@ static s32 spurs_api_lock(u32 ea, struct SpursInst** out)
+@@ -583,7 +586,7 @@ static s32 spurs_api_lock(u32 ea, struct SpursInst** out)
  static void spurs_api_unlock(struct SpursInst* si)
  {
      ReleaseSRWLockExclusive(&s_workload_registry_lock);
@@ -44,16 +44,16 @@ index d8c19d15..6f1591c1 100644
      ReleaseSRWLockExclusive(&si->lock);
  }
  
-@@ -1796,7 +1799,7 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
+@@ -2064,7 +2067,7 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
          if (polls) si->idle[wid] = 0;
-         else if (si->idle[wid] < 4) si->idle[wid]++;
+         else if (si->idle[wid] < spurs_idle_max()) si->idle[wid]++;
          slot->busy = 0;
 -        WakeAllConditionVariable(&si->wake);
 +        WakeAllConditionVariable(&si->kwake);
      }
      ReleaseSRWLockExclusive(&si->lock);
      ps3_tprof_thread_exit();
-@@ -1863,7 +1866,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+@@ -2131,7 +2134,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
              AcquireSRWLockExclusive(&si->lock);
              (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
          } else {
@@ -62,7 +62,7 @@ index d8c19d15..6f1591c1 100644
              /* This full pass reads the line after any commit that woke it. */
              (void)__atomic_exchange_n(&si->kick, 0, __ATOMIC_ACQ_REL);
          }
-@@ -1954,7 +1957,7 @@ static s32 spurs_scheduler_start(struct SpursInst* si)
+@@ -2229,7 +2232,7 @@ static s32 spurs_scheduler_start(struct SpursInst* si)
      return CELL_OK;
  failed:
      AcquireSRWLockExclusive(&si->lock);
@@ -71,9 +71,9 @@ index d8c19d15..6f1591c1 100644
      ReleaseSRWLockExclusive(&si->lock);
      for (u32 sn = 0; sn < si->nspus; sn++) {
          HANDLE h = si->slots[sn].thread;
-@@ -1973,7 +1976,7 @@ static s32 spurs_scheduler_stop(struct SpursInst* si, u32 ea)
+@@ -2248,7 +2251,7 @@ static s32 spurs_scheduler_stop(struct SpursInst* si, u32 ea)
      if (si->stopping || si->starting) { ReleaseSRWLockExclusive(&si->lock); return CELL_SPURS_CORE_ERROR_BUSY; }
-     for (u32 wid = 0; wid < 16; wid++)
+     for (u32 wid = 0; wid < SPURS_MAX_WID; wid++)
          if (si->active[wid]) { ReleaseSRWLockExclusive(&si->lock); return CELL_SPURS_CORE_ERROR_BUSY; }
 -    si->stopping = 1; WakeAllConditionVariable(&si->wake);
 +    si->stopping = 1; WakeAllConditionVariable(&si->wake); WakeAllConditionVariable(&si->kwake);

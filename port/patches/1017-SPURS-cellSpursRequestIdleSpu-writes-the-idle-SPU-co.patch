@@ -9,14 +9,14 @@ The admission rule is the real SPURS kernel's, from upstream ps3recomp PR #213
 by NoahBPeterson, as project-helghast's patch 1074 ports it (MIT); that patch
 also found the cellSpursRequestIdleSpu stub.
 ---
- libs/spurs/cellSpurs.c | 31 ++++++++++++++++++++++++++++---
- 1 file changed, 28 insertions(+), 3 deletions(-)
+ libs/spurs/cellSpurs.c | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 799eca37..3ecfc154 100644
+index 12dc261cc57839652a6fb327b9a4920df19c1be6..52c7394d622279a9be8b42aac21476ee18bfe834 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
-@@ -531,6 +531,15 @@ static void spurs_api_unlock(struct SpursInst* si)
+@@ -590,6 +590,15 @@ static void spurs_api_unlock(struct SpursInst* si)
      ReleaseSRWLockExclusive(&si->lock);
  }
  
@@ -30,10 +30,10 @@ index 799eca37..3ecfc154 100644
 +}
 +
  static DWORD WINAPI spurs_kernel_thread(LPVOID p);
+ static int spurs_guest_range_valid(u32 ea, u32 bytes);
  
- static s32 spurs_initialize_common(u32 spurs_ea, u32 nspus, const char* prefix)
-@@ -1912,7 +1921,13 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
-                 int kicked = ready || (signal & (0x8000u >> wid));
+@@ -2185,7 +2194,13 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+                 int kicked = ready || (signal & wkl_signal_bit(wid)) || flagged;
                  if (kicked) si->idle[wid] = 0;
                  if (si->idle[wid] > s_idle_max) si->idle[wid] = (u8)s_idle_max;
 -                if (!kicked && (kick_pass || (si->pass_no & ((1u << si->idle[wid]) - 1))))
@@ -46,30 +46,19 @@ index 799eca37..3ecfc154 100644
 +                } else if (!kicked && (kick_pass || (si->pass_no & ((1u << si->idle[wid]) - 1))))
                      continue;
                  spu_lockline_lock();
-                 ready = vm_read8(ea + SPURS_WKL_READY1 + wid);
-@@ -3254,10 +3269,20 @@ s32 cellSpursQueuePushBody(u64 queue_ea, u64 data_ea, u32 isBlocking)
-  * Misc SPURS surface the title links (logged CELL_OK stubs).
-  * =====================================================================*/
- 
--s32 cellSpursRequestIdleSpu(u64 spurs_ea)
-+/* cellSpursRequestIdleSpu(spurs, wid, count): how many idle SPUs the workload
-+ * may take beyond its ready count (wklIdleSpuCountOrReadyCount2, the byte the
-+ * kernel reads). It was a stub that dropped wid and count (project-helghast's
-+ * patch 1074 found the same). */
-+s32 cellSpursRequestIdleSpu(u64 spurs_ea, u64 wid, u64 count)
- {
-     static int _n = 0;
--    if (PS3_LOG_FIRST(_n, 4)) printf("[cellSpurs] RequestIdleSpu(spurs=0x%08X)\n", (u32)spurs_ea);
-+    if (PS3_LOG_FIRST(_n, 4))
-+        printf("[cellSpurs] RequestIdleSpu(spurs=0x%08X, wid=%u, count=%u)\n", (u32)spurs_ea, (u32)wid, (u32)count);
-+    struct SpursInst* si = spurs_inst_find((u32)spurs_ea);
-+    if (!si || wid >= CELL_SPURS_MAX_WORKLOAD) return CELL_OK;
+                 ready = vm_read8(ea + wkl_ready_off(wid));
+@@ -3543,7 +3558,10 @@ s32 cellSpursRequestIdleSpu(u64 spurs_ea, u64 wid64, u64 count64)
+     if (!s_workloads[wid].in_use || s_workloads[wid].spurs_ea != si->ea) {
+         spurs_api_unlock(si); return CELL_SPURS_CORE_ERROR_SRCH;   /* same as SetMaxContention */
+     }
+-    vm_write8(si->ea + SPURS_WKL_IDLE2 + wid, (u8)count);
++    /* through the lock line, as the SPU-side kernel reads it (patch 1017) */
 +    spu_lockline_lock();
 +    vm_base[si->ea + SPURS_WKL_IDLE2 + wid] = (u8)(count > 0xFF ? 0xFF : count);
 +    ef_line_end(si->ea);
-     return CELL_OK;
- }
- 
+     static int _n = 0;
+     if (PS3_LOG_FIRST(_n, 8))
+         printf("[cellSpurs] RequestIdleSpu(spurs=0x%08X wid=%u count=%u)\n", (u32)spurs_ea, wid, count);
 -- 
 2.56.0
 

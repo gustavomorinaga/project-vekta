@@ -14,10 +14,10 @@ cellGcm_flip_written_count() reports the queue.
  1 file changed, 24 insertions(+)
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 0d07d1cb..55d9ffac 100644
+index 2c10916a05a3663ed4c8f181ca4eefa25f95e698..4071f9de8bb093f03e982d252959e7157fffcf74 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -100,6 +100,11 @@ static volatile int s_flip_lock;
+@@ -102,6 +102,11 @@ static volatile int s_flip_lock;
   * clear+few-draws frame as a visible flicker). */
  static volatile u32 s_flip_request_count = 0;
  
@@ -29,15 +29,15 @@ index 0d07d1cb..55d9ffac 100644
  u32 cellGcm_flip_request_count(void)
  {
      return s_flip_request_count;
-@@ -3232,6 +3237,7 @@ static int gcm_flip_into_fifo(u32 ctx, u32 bufferId)
-     if (cur + 8 + GCM_RECYCLE_SLACK > end || gcm_ea2io(cur) == 0xFFFFFFFFu) return 0;
+@@ -3576,6 +3581,7 @@ static int gcm_flip_into_fifo(u32 ctx, u32 bufferId)
+     if (gcm_ea2io(cur) == 0xFFFFFFFFu) return 0;
      vm_write32(cur, GCM_FLIP_MARKER | bufferId);
      s_fifo_flips_queued++;
 +    s_flip_written_count++;
      /* Wrap here, on the guest thread, once the ring is nearly used -- what the
       * SDK's buffer-full callback does. Otherwise the drain thread recycles it
       * (see "recycled the title's own ring"), rewriting ctx->current and put
-@@ -4059,6 +4065,24 @@ s32 cellGcmSetDefaultFifoSize(u32 size)
+@@ -4416,6 +4422,24 @@ s32 cellGcmSetDefaultFifoSize(u32 size)
  /* NID: 0x21397818 */
  s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
  {

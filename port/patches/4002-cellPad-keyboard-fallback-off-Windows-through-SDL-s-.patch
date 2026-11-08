@@ -5,14 +5,14 @@ Subject: [PATCH] cellPad: keyboard fallback off Windows through SDL's
  keyboard state
 
 ---
- libs/input/cellPad.c | 45 +++++++++++++++++++++++++++++++++++++++++++-
- 1 file changed, 44 insertions(+), 1 deletion(-)
+ libs/input/cellPad.c | 43 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 43 insertions(+)
 
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index afdd93de..d3785158 100644
+index 5f8a2fa277a1cb57e12b734d92248d85ba75af2f..f7274739dfa768094184bfb4aa1e176b50f53e97 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
-@@ -693,6 +693,49 @@ static unsigned long long pad_now_ms(void)
+@@ -776,6 +776,49 @@ static unsigned long long pad_now_ms(void)
  #endif
  }
  
@@ -62,15 +62,6 @@ index afdd93de..d3785158 100644
  static void pad_poll_backend(void)
  {
      static unsigned long long s_last_ms = 0;
-@@ -710,7 +753,7 @@ static void pad_poll_backend(void)
- #elif PAD_BACKEND_SDL2
-     pad_poll_sdl2();
- #endif
--#ifdef _WIN32
-+#if defined(_WIN32) || PAD_BACKEND_SDL2
-     if (!s_host_state[0].connected) pad_poll_keyboard();
- #endif
-     pad_track_assign();
 -- 
 2.56.0
 

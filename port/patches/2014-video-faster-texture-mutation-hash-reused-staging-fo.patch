@@ -16,11 +16,11 @@ share one per usage, grown on demand.
  1 file changed, 11 insertions(+), 7 deletions(-)
 
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 41e6ad62..dd6333d2 100644
+index a771a34d31efa4e019655f21a24118c58eff88c3..339822ca1bc02210e0aa6624f7bea09df1018cd1 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -1191,14 +1191,18 @@ static u64 eng_texture_content_hash_body(u32 location, u32 offset, u32 span,
- {
+@@ -1335,14 +1335,18 @@ static u64 eng_texture_content_hash_body(u32 location, u32 offset, u32 span,
+     if (rsx_tiling_active()) rsx_tiling_footprint(location, offset, span, &offset, &span);
      const u8* src = span ? eng_guest_ptr(NULL, location, offset, span) : NULL;
      if (!src) { *readable = 0; return 0; }
 -    u64 hash = 1469598103934665603ull;

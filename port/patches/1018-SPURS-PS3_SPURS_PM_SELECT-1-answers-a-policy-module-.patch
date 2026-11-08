@@ -14,10 +14,10 @@ wid 0's was told to switch after each job.
  2 files changed, 13 insertions(+), 4 deletions(-)
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 3ecfc154..993243d2 100644
+index 52c7394d622279a9be8b42aac21476ee18bfe834..d89e55f527deed51dbb1825914a154925f0d04b3 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
-@@ -532,11 +532,12 @@ static void spurs_api_unlock(struct SpursInst* si)
+@@ -591,11 +591,12 @@ static void spurs_api_unlock(struct SpursInst* si)
  }
  
  /* PS3_SPURS_WANTED=1 (experiment): workloads run only when kicked or when they
@@ -32,7 +32,7 @@ index 3ecfc154..993243d2 100644
      return on;
  }
  
-@@ -1926,7 +1927,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+@@ -2199,7 +2200,7 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
                       * patch 1074 ports it): an unkicked workload runs only on
                       * the idle SPUs it asked for, never on a probe */
                      const u32 idle_req = vm_read8(ea + SPURS_WKL_IDLE2 + wid);
@@ -42,10 +42,10 @@ index 3ecfc154..993243d2 100644
                      continue;
                  spu_lockline_lock();
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 60f0329f..636c6066 100644
+index 6e3aa99a390b872598841dcb3e00d1836c866c4f..067047c45b8e2fab6091a5c79c5cab6a57bf42da 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
-@@ -2683,7 +2683,15 @@ void spu_indirect_branch(spu_context* ctx)
+@@ -2767,7 +2767,15 @@ void spu_indirect_branch(spu_context* ctx)
                if (s_t && (n <= 4 || (n % 4096) == 0) && s_poll_logs++ < 64)
                    fprintf(stderr, "[spurs-pm] poll #%u (r3=0x%08X) -> continue\n",
                            n, ctx->gpr[3]._u32[0]); }
@@ -59,9 +59,9 @@ index 60f0329f..636c6066 100644
 +              const uint32_t cur = cur_on ? ((uint32_t)ctx->ls[0x1DC] << 24 | (uint32_t)ctx->ls[0x1DD] << 16 |
 +                                              (uint32_t)ctx->ls[0x1DE] << 8 | ctx->ls[0x1DF]) : 0;
 +              ctx->gpr[3] = spu_make_preferred_u32(cur < 16 ? cur : 0); }
-             ctx->pc = ctx->gpr[0]._u32[0] & SPU_LS_MASK;
-             return;
-         }
+             /* The kernel's selection copies the instance's first line into the
+              * context's tempArea (LS 0x100) on every call, not only at module
+              * entry, and jobs that ran since may have overwritten it. */
 -- 
 2.56.0
 

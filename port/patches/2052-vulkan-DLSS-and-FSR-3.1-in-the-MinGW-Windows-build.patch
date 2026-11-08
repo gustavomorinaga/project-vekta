@@ -19,16 +19,15 @@ Subject: [PATCH] vulkan: DLSS and FSR 3.1 in the MinGW (Windows) build
 ---
  CMakeLists.txt                  |   8 +++
  libs/video/cellGcmSys.c         |   3 +-
- libs/video/rsx_vk_fsr3.cpp      |  16 ++++-
- libs/video/rsx_vk_ngx_mingw.cpp | 117 ++++++++++++++++++++++++++++++++
+ libs/video/rsx_vk_fsr3.cpp      |  16 ++++--
+ libs/video/rsx_vk_ngx_mingw.cpp | 117 ++++++++++++++++++++++++++++++++++++++++
  4 files changed, 139 insertions(+), 5 deletions(-)
- create mode 100644 libs/video/rsx_vk_ngx_mingw.cpp
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 7091cdd2..b3b4c8e8 100644
+index bcec41519888918c5a693da1e8b30d2cade8c866..347ec0b5cf542ae8b8b11a61ec03842782a004ed 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -217,6 +217,14 @@ if(PS3RECOMP_RSX_VULKAN)
+@@ -225,6 +225,14 @@ if(PS3RECOMP_RSX_VULKAN)
          target_include_directories(ps3recomp_runtime PRIVATE "${PS3RECOMP_DLSS_SDK}/include")
          target_compile_definitions(ps3recomp_runtime PRIVATE PS3RECOMP_DLSS)
          target_link_libraries(ps3recomp_runtime PUBLIC "${_ngx_lib}" ${CMAKE_DL_LIBS})
@@ -44,10 +43,10 @@ index 7091cdd2..b3b4c8e8 100644
      endif()
      # AMD FSR 3.1: the FidelityFX SDK's FSR 3 upscaler and VK backend, built
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 57dd8bea..0b1b7c8d 100644
+index ca0ebe5b02263df38166f1cab916bf3a15cc5233..62c3b183517d44db3fc9a2781b303712adea7349 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -1236,8 +1236,7 @@ static struct { u32 ea[2]; u8* raw[2]; double last_dump, last_line; unsigned fra
+@@ -1424,8 +1424,7 @@ static struct { u32 ea[2]; u8* raw[2]; double last_dump, last_line; unsigned fra
  
  static double nvst_now(void)
  {
@@ -58,7 +57,7 @@ index 57dd8bea..0b1b7c8d 100644
  
  static void nvst_ppm(const char* path, const u8* p, int argb)
 diff --git a/libs/video/rsx_vk_fsr3.cpp b/libs/video/rsx_vk_fsr3.cpp
-index ed768d71..791bec7c 100644
+index ed768d71c57c2ba47ba02f8828b9b6c47b8d86f4..791bec7c2601ffdabf8ba4612694a9655935fc90 100644
 --- a/libs/video/rsx_vk_fsr3.cpp
 +++ b/libs/video/rsx_vk_fsr3.cpp
 @@ -22,6 +22,16 @@ void rsx_fsr3_shutdown(void) {}
@@ -104,7 +103,7 @@ index ed768d71..791bec7c 100644
  
 diff --git a/libs/video/rsx_vk_ngx_mingw.cpp b/libs/video/rsx_vk_ngx_mingw.cpp
 new file mode 100644
-index 00000000..0e61bc16
+index 0000000000000000000000000000000000000000..0e61bc1670c4dd9ee8f31b6a1e5f1e191a8124b4
 --- /dev/null
 +++ b/libs/video/rsx_vk_ngx_mingw.cpp
 @@ -0,0 +1,117 @@
@@ -225,3 +224,6 @@ index 00000000..0e61bc16
 +void ngx_xlength_error(const char*) { abort(); }
 +
 +}
+-- 
+2.56.0
+

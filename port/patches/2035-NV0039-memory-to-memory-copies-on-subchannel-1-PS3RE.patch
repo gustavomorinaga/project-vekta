@@ -14,28 +14,28 @@ of 8); the source rows are read back from an engine surface first and the
 destination rows uploaded after. Off by default.
 
 ---
- libs/video/cellGcmSys.c                       | 128 ++++++++++++++++++
- libs/video/rsx_draw_engine.c                  |  13 ++
- libs/video/rsx_draw_engine.h                  |   2 +
- libs/video/tests/test_gcm_fifo_user_command.c |   1 +
- libs/video/tests/test_gcm_flip_stream.c       |   1 +
- libs/video/tests/test_gcm_flip_wrap.c         |   1 +
- libs/video/tests/test_gcm_get_on_jump.c       |   1 +
- libs/video/tests/test_gcm_get_on_release.c    |   1 +
- .../tests/test_gcm_legacy_state_filter.c      |   1 +
- libs/video/tests/test_gcm_nop_runs.c          |   1 +
- libs/video/tests/test_gcm_park_reuse.c        |   1 +
- libs/video/tests/test_gcm_resync_labels.c     |   1 +
- libs/video/tests/test_gcm_walker_prof.c       |   1 +
- libs/video/tests/test_nv3089_engine_read.c    |   1 +
+ libs/video/cellGcmSys.c                         | 128 ++++++++++++++++++++++++
+ libs/video/rsx_draw_engine.c                    |  13 +++
+ libs/video/rsx_draw_engine.h                    |   2 +
+ libs/video/tests/test_gcm_fifo_user_command.c   |   1 +
+ libs/video/tests/test_gcm_flip_stream.c         |   1 +
+ libs/video/tests/test_gcm_flip_wrap.c           |   1 +
+ libs/video/tests/test_gcm_get_on_jump.c         |   1 +
+ libs/video/tests/test_gcm_get_on_release.c      |   1 +
+ libs/video/tests/test_gcm_legacy_state_filter.c |   1 +
+ libs/video/tests/test_gcm_nop_runs.c            |   1 +
+ libs/video/tests/test_gcm_park_reuse.c          |   1 +
+ libs/video/tests/test_gcm_resync_labels.c       |   1 +
+ libs/video/tests/test_gcm_walker_prof.c         |   1 +
+ libs/video/tests/test_nv3089_engine_read.c      |   1 +
  14 files changed, 154 insertions(+)
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index f1647738..be8a2c8b 100644
+index 4e6dce30b839b00636ddbea9072f71a88add2c86..49e2438be6f718a2757732feff83519ea825736f 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -1163,6 +1163,130 @@ static void gcm_row_copy(u32 d, u32 s, u32 n)
-     spu_lockline_unlock();
+@@ -1341,6 +1341,130 @@ static u8* gcm_rows(u32 bytes)
+     return rows;
  }
  
 +/* NV0039 (memory to memory), on subchannel 1. PS3RECOMP_NV0039=1.
@@ -165,7 +165,7 @@ index f1647738..be8a2c8b 100644
  static void nv3089_blit(void)
  {
      u32 out_w = s_nv3089.out_sz & 0xFFFF, out_h = s_nv3089.out_sz >> 16;
-@@ -2599,6 +2723,10 @@ static void gcm_rsx_process_fifo_unlocked(void)
+@@ -2871,6 +2995,10 @@ static void gcm_rsx_process_fifo_unlocked(void)
                  s_fifo_getoff += 4 + count * 4;
                  continue;
              }
@@ -177,10 +177,10 @@ index f1647738..be8a2c8b 100644
              if (s1_2d < 0) { const char* e = getenv("GCM_SUBCH1_2D"); s1_2d = e ? atoi(e) : 0; }
              /* A run of 3D methods inside one 1 MB IO page, with no per-word
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 7895d9be..e083eceb 100644
+index 39a2911a19f501c73934fe9e5f80638e92f1ff4c..6754df21c3b7db1c8f05ac1b7237cea6a6c9205b 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -979,6 +979,19 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
+@@ -1099,6 +1099,19 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
      g.be->color_target_write(g.be->user, s->handle, x, y, w, h, rows, w * 4u);
  }
  
@@ -201,10 +201,10 @@ index 7895d9be..e083eceb 100644
   * CPU's and the SPUs' too, as on the console. At each label release (the
   * point a title syncs on before its PPU or SPUs read what the RSX drew) the
 diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
-index 73271cf9..e8cdff1f 100644
+index a69d36ba7eb03067e5d5986b849d796db4c6bc57..e8e05979f87cd09926f22c2c721aad62f83be56d 100644
 --- a/libs/video/rsx_draw_engine.h
 +++ b/libs/video/rsx_draw_engine.h
-@@ -365,6 +365,8 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
+@@ -369,6 +369,8 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
  /* A label release in the command stream: with PS3RECOMP_ENG_MAIN_COHERENCE,
   * the main-memory colour targets drawn since go to guest memory. */
  void rsx_draw_engine_label_released(void);
@@ -214,117 +214,9 @@ index 73271cf9..e8cdff1f 100644
  /* --- test hooks ---------------------------------------------------------- */
  
 diff --git a/libs/video/tests/test_gcm_fifo_user_command.c b/libs/video/tests/test_gcm_fifo_user_command.c
-index 427b1031..9cfde1e3 100644
+index edb012236130ace3645e7776d67e6c7891dee4e7..75b4110ae6abf1a633738bc3d98c9dfdc5058ff3 100644
 --- a/libs/video/tests/test_gcm_fifo_user_command.c
 +++ b/libs/video/tests/test_gcm_fifo_user_command.c
-@@ -44,6 +44,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
- void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
-index eeb427fa..832f0fbd 100644
---- a/libs/video/tests/test_gcm_flip_stream.c
-+++ b/libs/video/tests/test_gcm_flip_stream.c
-@@ -73,6 +73,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
- void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_flip_wrap.c b/libs/video/tests/test_gcm_flip_wrap.c
-index f028669e..b32f8137 100644
---- a/libs/video/tests/test_gcm_flip_wrap.c
-+++ b/libs/video/tests/test_gcm_flip_wrap.c
-@@ -47,6 +47,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
- void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
-index 47b8ee10..07e5a959 100644
---- a/libs/video/tests/test_gcm_get_on_jump.c
-+++ b/libs/video/tests/test_gcm_get_on_jump.c
-@@ -56,6 +56,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
- void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
-index df647c8f..830f6724 100644
---- a/libs/video/tests/test_gcm_get_on_release.c
-+++ b/libs/video/tests/test_gcm_get_on_release.c
-@@ -54,6 +54,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
- void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_legacy_state_filter.c b/libs/video/tests/test_gcm_legacy_state_filter.c
-index 2992d1fc..7fe49e37 100644
---- a/libs/video/tests/test_gcm_legacy_state_filter.c
-+++ b/libs/video/tests/test_gcm_legacy_state_filter.c
-@@ -47,6 +47,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
- void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_nop_runs.c b/libs/video/tests/test_gcm_nop_runs.c
-index 0bde8aab..b4713b87 100644
---- a/libs/video/tests/test_gcm_nop_runs.c
-+++ b/libs/video/tests/test_gcm_nop_runs.c
-@@ -51,6 +51,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
- void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_park_reuse.c b/libs/video/tests/test_gcm_park_reuse.c
-index 289cb825..1efb7a8c 100644
---- a/libs/video/tests/test_gcm_park_reuse.c
-+++ b/libs/video/tests/test_gcm_park_reuse.c
-@@ -60,6 +60,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
- void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_resync_labels.c b/libs/video/tests/test_gcm_resync_labels.c
-index 23f95fe8..5f99a3f2 100644
---- a/libs/video/tests/test_gcm_resync_labels.c
-+++ b/libs/video/tests/test_gcm_resync_labels.c
-@@ -59,6 +59,7 @@ void rsx_draw_engine_set_display_buffer(u32 id, u32 location, u32 offset, u32 pi
- { (void)id; (void)location; (void)offset; (void)pitch; (void)width; (void)height; }
- void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- void rsx_draw_engine_label_released(void) {}
-+u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
- void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
- int  rsx_live_draw_enabled(void) { return 0; }
- void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_gcm_walker_prof.c b/libs/video/tests/test_gcm_walker_prof.c
-index 6e267344..ba32a572 100644
---- a/libs/video/tests/test_gcm_walker_prof.c
-+++ b/libs/video/tests/test_gcm_walker_prof.c
 @@ -45,6 +45,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
  void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
  void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
@@ -333,15 +225,126 @@ index 6e267344..ba32a572 100644
  void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  int  rsx_live_draw_enabled(void) { return 0; }
  void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
-diff --git a/libs/video/tests/test_nv3089_engine_read.c b/libs/video/tests/test_nv3089_engine_read.c
-index 667fe26a..de9470d5 100644
---- a/libs/video/tests/test_nv3089_engine_read.c
-+++ b/libs/video/tests/test_nv3089_engine_read.c
-@@ -69,6 +69,7 @@ static int s_reads;
- 
- /* What the engine does for a transfer: the pixels of the surface in this rectangle, as 32-bit guest words. */
+diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
+index bcfe03c594ab40bca72bcf84453d4e10d435e462..c06475ba8addd2e846e4cf98074b65abd569ca41 100644
+--- a/libs/video/tests/test_gcm_flip_stream.c
++++ b/libs/video/tests/test_gcm_flip_stream.c
+@@ -82,6 +82,7 @@ rsx_backend* rsx_get_backend(void) { return NULL; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
  void rsx_draw_engine_label_released(void) {}
 +u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_flip_wrap.c b/libs/video/tests/test_gcm_flip_wrap.c
+index 5b5a41a15cace5c4b45d3da12c102a23895025fc..eea483e66a832a9a39a9d82e976492b0f31ae22c 100644
+--- a/libs/video/tests/test_gcm_flip_wrap.c
++++ b/libs/video/tests/test_gcm_flip_wrap.c
+@@ -48,6 +48,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_get_on_jump.c b/libs/video/tests/test_gcm_get_on_jump.c
+index e6e3e30fa2fe2c9c9de19f9bb895607d6093f559..be65eb482e0411e42dc8b44215dbf09034fb6872 100644
+--- a/libs/video/tests/test_gcm_get_on_jump.c
++++ b/libs/video/tests/test_gcm_get_on_jump.c
+@@ -60,6 +60,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_get_on_release.c b/libs/video/tests/test_gcm_get_on_release.c
+index 3637ab4e864737d155b3655afec5b9b924d4bc8b..e05fc617eb3619f570019836bfb6fe7d524b3f3c 100644
+--- a/libs/video/tests/test_gcm_get_on_release.c
++++ b/libs/video/tests/test_gcm_get_on_release.c
+@@ -58,6 +58,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_legacy_state_filter.c b/libs/video/tests/test_gcm_legacy_state_filter.c
+index 284804335bc87640becc873d99b371261b1f3a70..6570a44c774df6b81260ef67603cbd6faccb5d1c 100644
+--- a/libs/video/tests/test_gcm_legacy_state_filter.c
++++ b/libs/video/tests/test_gcm_legacy_state_filter.c
+@@ -51,6 +51,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_nop_runs.c b/libs/video/tests/test_gcm_nop_runs.c
+index 791878d3625dcad19073413768547df2a7df11a0..135f4bed834f1ca47593a46c702ed1ef07845255 100644
+--- a/libs/video/tests/test_gcm_nop_runs.c
++++ b/libs/video/tests/test_gcm_nop_runs.c
+@@ -55,6 +55,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_park_reuse.c b/libs/video/tests/test_gcm_park_reuse.c
+index 9511fcdcae1991201c80a904206f81c73a59ccf7..5d123ac76db13ed470f92ed286c721d071520727 100644
+--- a/libs/video/tests/test_gcm_park_reuse.c
++++ b/libs/video/tests/test_gcm_park_reuse.c
+@@ -64,6 +64,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_resync_labels.c b/libs/video/tests/test_gcm_resync_labels.c
+index 195a165ba4d772a144e0bc2a109c23705ca5f582..68105003a575e9b7bbabd05154f0754313cb54b6 100644
+--- a/libs/video/tests/test_gcm_resync_labels.c
++++ b/libs/video/tests/test_gcm_resync_labels.c
+@@ -63,6 +63,7 @@ void rsx_draw_engine_set_display_buffer(u32 id, u32 location, u32 offset, u32 pi
+ { (void)id; (void)location; (void)offset; (void)pitch; (void)width; (void)height; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_gcm_walker_prof.c b/libs/video/tests/test_gcm_walker_prof.c
+index c401f48b4ba6ba66d57865860ba092668cdbff29..a54be0fcf7040004d2e3e09055c6bbd6de92419e 100644
+--- a/libs/video/tests/test_gcm_walker_prof.c
++++ b/libs/video/tests/test_gcm_walker_prof.c
+@@ -66,6 +66,7 @@ void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
+ void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
+ void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
+ int  rsx_live_draw_enabled(void) { return 0; }
+ void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
+diff --git a/libs/video/tests/test_nv3089_engine_read.c b/libs/video/tests/test_nv3089_engine_read.c
+index b038696a187fdce673b76dc6be1cc0d941b0b508..19c137b4959ababb8954c07ab2df917a6f48fa5b 100644
+--- a/libs/video/tests/test_nv3089_engine_read.c
++++ b/libs/video/tests/test_nv3089_engine_read.c
+@@ -87,6 +87,7 @@ static int s_reads;
+ static u32 s_src_off = SRC_OFF;     /* the blit source's first pixel */
+ 
+ void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
+ /* What the engine does for a transfer: the pixels of the surface in this rectangle, as 32-bit guest words, as the
+  * RSX stores them (a main-memory source at its tiled addresses). */
  void rsx_draw_engine_guest_read(u32 loc, u32 off, u32 pitch, u32 w, u32 h)
- {
-     s_reads++;
+-- 
+2.56.0
+

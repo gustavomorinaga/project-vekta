@@ -20,18 +20,16 @@ dumps the buffer before and after. The device gets shaderInt64 when it has it.
  libs/video/cellGcmSys.c                  |   21 +-
  libs/video/rsx_draw_engine.c             |   43 +
  libs/video/rsx_draw_engine.h             |    6 +
- libs/video/rsx_vulkan_backend.c          |  123 +
- libs/video/vulkan/rsx_vk_mlaa.comp       |  519 ++++
- libs/video/vulkan/rsx_vk_mlaa_comp.spv.h | 2943 ++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c          |  123 ++
+ libs/video/vulkan/rsx_vk_mlaa.comp       |  519 ++++++
+ libs/video/vulkan/rsx_vk_mlaa_comp.spv.h | 2943 ++++++++++++++++++++++++++++++
  6 files changed, 3654 insertions(+), 1 deletion(-)
- create mode 100644 libs/video/vulkan/rsx_vk_mlaa.comp
- create mode 100644 libs/video/vulkan/rsx_vk_mlaa_comp.spv.h
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index be8a2c8b..56b09e86 100644
+index 49e2438be6f718a2757732feff83519ea825736f..4bc4256fe864bb30c524d19b9ff8ed004367144e 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -1183,6 +1183,17 @@ static int nv0039_enabled(void)
+@@ -1361,6 +1361,17 @@ static int nv0039_enabled(void)
      if (on < 0) { const char* e = getenv("PS3RECOMP_NV0039"); on = e ? atoi(e) : 0; }
      return on;
  }
@@ -49,7 +47,7 @@ index be8a2c8b..56b09e86 100644
  
  /* The engine surface a linear copy (pitch 0) starts at, as rows of its pitch. */
  static void nv0039_engine_sync(int to_guest, u32 loc, u32 off, u32 pitch, u32 len, u32 lines)
-@@ -1208,6 +1219,14 @@ static void nv0039_copy(const u32* r)
+@@ -1386,6 +1397,14 @@ static void nv0039_copy(const u32* r)
      }
      const u32 loc_in  = s_nv0039.dma_in  == 0xFEED0001u ? RSX_LOCATION_MAIN : RSX_LOCATION_LOCAL;
      const u32 loc_out = s_nv0039.dma_out == 0xFEED0001u ? RSX_LOCATION_MAIN : RSX_LOCATION_LOCAL;
@@ -64,7 +62,7 @@ index be8a2c8b..56b09e86 100644
      const u32 ea_in  = cellGcmResolveLocated(loc_in  == RSX_LOCATION_LOCAL, off_in);
      const u32 ea_out = cellGcmResolveLocated(loc_out == RSX_LOCATION_LOCAL, off_out);
      if (!ea_in || !ea_out) return;
-@@ -1263,7 +1282,7 @@ static void nv0039_copy(const u32* r)
+@@ -1441,7 +1460,7 @@ static void nv0039_copy(const u32* r)
  /* One subchannel-1 packet: 1 when it was NV0039's (handled, not for the 3D engine). */
  static int nv0039_packet(u32 method, u32 count, u32 io)
  {
@@ -74,10 +72,10 @@ index be8a2c8b..56b09e86 100644
      if (count > 8) return 0;
      for (u32 i = 0; i < count; i++) {
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index e083eceb..4bae11c7 100644
+index 6754df21c3b7db1c8f05ac1b7237cea6a6c9205b..3d9dc8e057f55860ba86e41c7a0e8f991bfebdc8 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -992,6 +992,49 @@ u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset)
+@@ -1112,6 +1112,49 @@ u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset)
      return 0;
  }
  
@@ -128,10 +126,10 @@ index e083eceb..4bae11c7 100644
   * CPU's and the SPUs' too, as on the console. At each label release (the
   * point a title syncs on before its PPU or SPUs read what the RSX drew) the
 diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
-index e8cdff1f..70649fd2 100644
+index e8e05979f87cd09926f22c2c721aad62f83be56d..e795d26d83c8d92a4de60275a0948d67771c263e 100644
 --- a/libs/video/rsx_draw_engine.h
 +++ b/libs/video/rsx_draw_engine.h
-@@ -300,6 +300,10 @@ typedef struct rsx_draw_backend {
+@@ -304,6 +304,10 @@ typedef struct rsx_draw_backend {
                                       float depth_value, u8 stencil,
                                       u32 x, u32 y, u32 w, u32 h);
  
@@ -142,7 +140,7 @@ index e8cdff1f..70649fd2 100644
  } rsx_draw_backend;
  
  /* ---- the engine --------------------------------------------------------- */
-@@ -367,6 +371,8 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
+@@ -371,6 +375,8 @@ void rsx_draw_engine_guest_wrote(u32 location, u32 offset, u32 pitch, u32 w, u32
  void rsx_draw_engine_label_released(void);
  /* The pitch of the colour surface based exactly at location:offset, or 0. */
  u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset);
@@ -152,7 +150,7 @@ index e8cdff1f..70649fd2 100644
  /* --- test hooks ---------------------------------------------------------- */
  
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 43c6d75d..cbb34ef2 100644
+index 43c6d75dbf32c38794248e8008243cb18d59c94e..cbb34ef2e1d871aaa86abf72d4b94dd348906116 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -53,6 +53,7 @@
@@ -315,7 +313,7 @@ index 43c6d75d..cbb34ef2 100644
        s_vk.aniso_max = dp.limits.maxSamplerAnisotropy >= 16.0f ? 16u : (u32)dp.limits.maxSamplerAnisotropy; }
 diff --git a/libs/video/vulkan/rsx_vk_mlaa.comp b/libs/video/vulkan/rsx_vk_mlaa.comp
 new file mode 100644
-index 00000000..617aea2b
+index 0000000000000000000000000000000000000000..617aea2b9f790918fe540d109f77d8199fd1d1fe
 --- /dev/null
 +++ b/libs/video/vulkan/rsx_vk_mlaa.comp
 @@ -0,0 +1,519 @@
@@ -840,7 +838,7 @@ index 00000000..617aea2b
 +}
 diff --git a/libs/video/vulkan/rsx_vk_mlaa_comp.spv.h b/libs/video/vulkan/rsx_vk_mlaa_comp.spv.h
 new file mode 100644
-index 00000000..677af81e
+index 0000000000000000000000000000000000000000..677af81e23691fa703cde9a3471910aef3406ed8
 --- /dev/null
 +++ b/libs/video/vulkan/rsx_vk_mlaa_comp.spv.h
 @@ -0,0 +1,2943 @@
@@ -3787,3 +3785,6 @@ index 00000000..677af81e
 +	0x00000cf8,0x00000cfa,0x0003003e,0x000000cb,0x00000cfc,0x000200f9,0x00000ced,0x000200f8,
 +	0x00000ced,0x000200f9,0x00000cb1,0x000200f8,0x00000cb1,0x000100fd,0x00010038
 +};
+-- 
+2.56.0
+

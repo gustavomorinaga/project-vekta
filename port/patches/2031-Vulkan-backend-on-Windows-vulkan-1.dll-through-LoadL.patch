@@ -6,12 +6,12 @@ Subject: [PATCH] Vulkan backend on Windows: vulkan-1.dll through
 
 ---
  CMakeLists.txt                  | 22 ++++++++++++++++++++--
- libs/input/cellPad.c            |  6 +++---
+ libs/input/cellPad.c            |  4 ++--
  libs/video/rsx_vulkan_backend.c | 23 ++++++++++++++++++-----
- 3 files changed, 41 insertions(+), 10 deletions(-)
+ 3 files changed, 40 insertions(+), 9 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 250d8d2c..ac810bc5 100644
+index d68ec3ee5cecc1f2cd10a0ac7afe076c5495fdce..25f86a9ba438a46a8685a33c041e28319e0eb920 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -50,8 +50,8 @@ list(FILTER HLE_SOURCES EXCLUDE REGEX "/tests/")
@@ -25,7 +25,7 @@ index 250d8d2c..ac810bc5 100644
      endif()
      find_path(PS3RECOMP_VULKAN_INCLUDE_DIR vulkan/vulkan.h)
      if(NOT PS3RECOMP_VULKAN_INCLUDE_DIR)
-@@ -179,6 +179,21 @@ if(PS3RECOMP_RSX_VULKAN)
+@@ -187,6 +187,21 @@ if(PS3RECOMP_RSX_VULKAN)
      target_include_directories(ps3recomp_runtime PRIVATE "${PS3RECOMP_VULKAN_INCLUDE_DIR}")
      # PUBLIC: ps3recomp_host selects its backend on this definition.
      target_compile_definitions(ps3recomp_runtime PUBLIC PS3RECOMP_RSX_VULKAN)
@@ -47,7 +47,7 @@ index 250d8d2c..ac810bc5 100644
      target_link_libraries(ps3recomp_runtime PUBLIC ${CMAKE_DL_LIBS})
      message(STATUS "  Vulkan:       RSX backend enabled (rsx_vulkan_backend.c, headers in ${PS3RECOMP_VULKAN_INCLUDE_DIR})")
  endif()
-@@ -290,6 +305,9 @@ endif()
+@@ -313,6 +328,9 @@ endif()
  # libs/video/rsx_shader_spirv.cpp is a stub and the Vulkan backend stays on
  # its fixed-function path.
  if(PS3RECOMP_RSX_VULKAN)
@@ -58,19 +58,10 @@ index 250d8d2c..ac810bc5 100644
          set_source_files_properties(
              "${CMAKE_CURRENT_SOURCE_DIR}/libs/video/rsx_shader_spirv.cpp"
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index b6225d74..6e758d34 100644
+index c7d7cf3766b81be0bdac2b9cf1f6ebbc797fe1e6..a1b68262b684edf2542c3202c73716f31548141e 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
-@@ -272,7 +272,7 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
-  * Arrows = d-pad, Z/X/A/S = cross/circle/square/triangle, Q/W = L1/R1,
-  * 1/2 = L2/R2, Enter = START, Tab = SELECT. The left stick mirrors the d-pad
-  * so a title that reads the stick instead is playable too. */
--#ifdef _WIN32
-+#if defined(_WIN32) && !PAD_BACKEND_SDL2
- static int pad_host_window_focused(void)
- {
-     HWND fg = GetForegroundWindow();
-@@ -840,7 +840,7 @@ static unsigned long long pad_now_ms(void)
+@@ -923,7 +923,7 @@ static unsigned long long pad_now_ms(void)
  #endif
  }
  
@@ -79,7 +70,7 @@ index b6225d74..6e758d34 100644
  /* Key map for the keyboard and mouse fallback. PAD_KEYMAP=<file> reads lines
   * "TARGET = input, input", '#' starts a comment and other lines are skipped
   * (the file may hold other settings). Targets: CROSS CIRCLE SQUARE TRIANGLE
-@@ -1150,7 +1150,7 @@ static void pad_poll_backend(void)
+@@ -1233,7 +1233,7 @@ static void pad_poll_backend(void)
  #elif defined(_WIN32)
      if (!s_host_state[0].connected) pad_poll_keyboard();
  #endif
@@ -89,7 +80,7 @@ index b6225d74..6e758d34 100644
      /* With a controller too: the mouse adds to whatever drives port 0. */
      if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus()) pad_poll_mouse(&s_host_state[0]);
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 358b8969..38cd9a5e 100644
+index 358b8969a8abe81bec6400269259af9d074549e6..38cd9a5e8897dc48f09b34d474a51b5624156985 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -38,8 +38,6 @@

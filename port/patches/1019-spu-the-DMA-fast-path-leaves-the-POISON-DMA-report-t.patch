@@ -15,7 +15,7 @@ names the variable the full path reads and hands those PUTs to it.
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
-index c80f63c..9ece7e0 100644
+index c80f63c23d22a0a33fcace29a32329c875869a08..9ece7e0488d64496e683e69e61d720aa6ded1033 100644
 --- a/runtime/spu/spu_dma.h
 +++ b/runtime/spu/spu_dma.h
 @@ -205,7 +205,7 @@ static int mfc_fast_ok(void)
@@ -36,3 +36,6 @@ index c80f63c..9ece7e0 100644
      if (size > MFC_MAX_DMA_SIZE) { *rc = -1; return 1; }
      lsa &= SPU_LS_MASK;
      if ((uint64_t)lsa + size > (uint64_t)SPU_LS_SIZE) { *rc = -1; return 1; }
+-- 
+2.56.0
+

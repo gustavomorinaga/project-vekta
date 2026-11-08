@@ -19,14 +19,14 @@ turns the recycle off for a title that never needs it.
  1 file changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 1814fb98..19bd2b50 100644
+index 036addab30671632c7db29bb4ea30312631ebc2e..d29695c05fd25e49feb14add80ff4a64fc7ee595 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -2886,7 +2886,15 @@ static void gcm_rsx_process_fifo_unlocked(void)
-      *
-      * ponytail: append the JUMP at `current` the way the SDK's own callback
+@@ -3161,7 +3161,15 @@ static void gcm_rsx_process_fifo_unlocked(void)
       * does, rather than tracking a second copy of the ring's geometry. */
--    if (s_gcm_ctx_out_ea) {
+     /* Not on a segmented ring: its `begin` is the current segment, and the
+      * segment callback (gcm_fifo_next_segment) keeps the title inside it. */
+-    if (s_gcm_ctx_out_ea && !(s_seg_size && vm_read32(s_gcm_ctx_out_ea) == s_gcm_context_ea)) {
 +    /* GCM_RING_RECYCLE=0: never. A title whose callback steps its context
 +     * through segments of a larger ring (Killzone HD: 64 KB at a time) can be
 +     * seen at `current == end` for the moment before its callback runs, and a
@@ -35,15 +35,15 @@ index 1814fb98..19bd2b50 100644
 +     * HD froze loading a level after "FIFO CALL to unmapped IO 0x0FEFEFFC"). */
 +    static int s_ring_recycle = -1;
 +    if (s_ring_recycle < 0) { const char* e = getenv("GCM_RING_RECYCLE"); s_ring_recycle = !(e && *e == '0'); }
-+    if (s_gcm_ctx_out_ea && s_ring_recycle) {
++    if (s_gcm_ctx_out_ea && s_ring_recycle && !(s_seg_size && vm_read32(s_gcm_ctx_out_ea) == s_gcm_context_ea)) {
          u32 ctx = vm_read32(s_gcm_ctx_out_ea);
          u32 begin = ctx ? vm_read32(ctx + 0x0) : 0;
          u32 end   = ctx ? vm_read32(ctx + 0x4) : 0;
-@@ -2934,7 +2942,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
+@@ -3209,7 +3217,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
           * and near-end recycling is enabled from then on. */
          static int s_title_overran = 0;
          if (s_fifo_recycle_waiting) head_consumed = 0;   /* its callback is recycling */
--        else if (begin && end > begin && cur >= end) { head_consumed = 1; s_title_overran = 1; }
+-        else if (begin && end > begin && cur > end) { head_consumed = 1; s_title_overran = 1; }   /* `end` is the last word: cur == end is full, not overrun */
 +        /* past `end`, not at it: at `end` the title's own callback may be
 +         * about to run */
 +        else if (begin && end > begin && cur > end) { head_consumed = 1; s_title_overran = 1; }

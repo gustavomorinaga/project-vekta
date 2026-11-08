@@ -28,7 +28,7 @@ process's first thread keeps its name: pgrep/pkill -x match it.
  5 files changed, 56 insertions(+), 9 deletions(-)
 
 diff --git a/include/ps3emu/thread_name.h b/include/ps3emu/thread_name.h
-index da9c5928..99a8d80c 100644
+index da9c59280ab4560a109dc73f44e7358c6fe29a37..99a8d80cce3e0601ad37785c6a4e1551bf77b152 100644
 --- a/include/ps3emu/thread_name.h
 +++ b/include/ps3emu/thread_name.h
 @@ -3,10 +3,13 @@
@@ -73,10 +73,10 @@ index da9c5928..99a8d80c 100644
  static inline void ps3_thread_name(const char* fmt, ...) { (void)fmt; }
  #endif
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 993243d2..76b282cc 100644
+index d89e55f527deed51dbb1825914a154925f0d04b3..d96e37c922cbd1845988d5eee60f4528c1051f92 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
-@@ -1795,8 +1795,10 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
+@@ -2063,8 +2063,10 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
          if (si->stopping && !slot->busy) break;
          ReleaseSRWLockExclusive(&si->lock);
          g_spurs_cur_wid = (int)slot->wid;   /* for a port's sampling profiler */
@@ -90,7 +90,7 @@ index 993243d2..76b282cc 100644
          extern SPU_THREAD_LOCAL volatile unsigned g_spurs_pm_polls;
          unsigned polls = g_spurs_pm_polls;
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index fc47be02..fff0c355 100644
+index fc47be021eeaf1f3a353f89313f26bb58fb9d9aa..fff0c3554c3365c2828a42a3123b0939ce3b8d4e 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -2422,7 +2422,7 @@ static void vk_fsr_record(u32 sw, u32 sh)
@@ -118,10 +118,10 @@ index fc47be02..fff0c355 100644
  static void vk_dump_ppm(const unsigned char* rgba)
  {
 diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
-index a1b7b04f..1e067c5b 100644
+index c729d7f27a24c5927354ee9092b2dbaaa6bf11dc..50fccd5fef92f7b47379635271d8be57d6eecead 100644
 --- a/runtime/ppu/ppu_sysprx.cpp
 +++ b/runtime/ppu/ppu_sysprx.cpp
-@@ -233,18 +233,22 @@ static int lwm_try(struct LwmSlot* sl)
+@@ -236,18 +236,22 @@ static int lwm_try(struct LwmSlot* sl)
  static int lwm_acquire(struct LwmSlot* sl, uint64_t timeout_us)
  {
      if (lwm_try(sl)) return 1;
@@ -147,7 +147,7 @@ index a1b7b04f..1e067c5b 100644
  static void lwm_release(struct LwmSlot* sl)
  {
 diff --git a/runtime/ps3_trace.h b/runtime/ps3_trace.h
-index c9d72f99..4e366445 100644
+index c9d72f99f9d53caf275d95182d2016816369d821..4e366445f8fb182f276be7290f981568eb6caa69 100644
 --- a/runtime/ps3_trace.h
 +++ b/runtime/ps3_trace.h
 @@ -16,8 +16,22 @@ uint64_t ps3_trace_now(void);
@@ -173,3 +173,6 @@ index c9d72f99..4e366445 100644
  #ifdef __cplusplus
  }
  #endif
+-- 
+2.56.0
+

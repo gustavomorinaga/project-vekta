@@ -4,24 +4,23 @@ Date: Wed, 14 Oct 2026 22:59:06 -0300
 Subject: [PATCH] spurs: g_spurs_cur_wid for the sampling profiler
 
 ---
- libs/spurs/cellSpurs.c | 5 +++++
- 1 file changed, 5 insertions(+)
+ libs/spurs/cellSpurs.c | 4 ++++
+ 1 file changed, 4 insertions(+)
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 0431a37c..8a4f73f5 100644
+index 8972011bb1060bce9959321e0259ccfc4a38ba46..a6f0d92c14b5a3f19880ff22bf8c644850111070 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
-@@ -1733,6 +1733,9 @@ static WklPm* spurs_resolve_pm(u32 wid)
-     return r->fn ? r : NULL;
+@@ -2001,6 +2001,8 @@ static u32 spurs_idle_max(void)
+     }
+     return (u32)s_max;
  }
- 
 +/* The workload this thread is running a module of, -1 between modules. */
 +__thread int g_spurs_cur_wid = -1;
-+
+ 
  /* One persistent worker for each configured virtual SPU. A waiting policy
   * occupies only its own slot; a later runnable producer can use another slot.
-  * Admission and lifecycle state are serialized per instance. Guest execution
-@@ -1752,8 +1755,10 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
+@@ -2021,8 +2023,10 @@ static DWORD WINAPI spurs_pm_worker(LPVOID p)
              SleepConditionVariableSRW(&si->wake, &si->lock, INFINITE, 0);
          if (si->stopping && !slot->busy) break;
          ReleaseSRWLockExclusive(&si->lock);

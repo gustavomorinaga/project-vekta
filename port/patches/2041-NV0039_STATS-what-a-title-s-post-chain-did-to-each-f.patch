@@ -5,22 +5,22 @@ Subject: [PATCH] NV0039_STATS: what a title's post chain did to each
  frame copied through NV0039 (block-mean change, Killzone HD's motion field)
 
 ---
- libs/video/cellGcmSys.c | 105 ++++++++++++++++++++++++++++++++++++++++
+ libs/video/cellGcmSys.c | 105 ++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 105 insertions(+)
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 22411b8b..7263d002 100644
+index 467b104823f58c0a605b26b00fdefcd4c6ddcf06..afc699b91219a2a9827b51f4ee1b0226d462e0e3 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -27,6 +27,7 @@ static u32 s_gcm_context_ea = 0;
+@@ -28,6 +28,7 @@ static u32 s_gcm_context_ea = 0;
  #include <string.h>
  #include <stdlib.h>
  #include <stdint.h>
 +#include <math.h>
  #include "ps3emu/log_first.h"
+ #include "../../runtime/ps3_log.h"   /* ps3_log_verbose: the per-call tile/zcull lines */
  
- #ifdef _WIN32
-@@ -1207,6 +1208,108 @@ static void nv0039_engine_sync(int to_guest, u32 loc, u32 off, u32 pitch, u32 le
+@@ -1385,6 +1386,108 @@ static void nv0039_engine_sync(int to_guest, u32 loc, u32 off, u32 pitch, u32 le
      else          rsx_draw_engine_guest_wrote(loc, off, sp, sp / 4u, rows);
  }
  
@@ -129,7 +129,7 @@ index 22411b8b..7263d002 100644
  static void nv0039_copy(const u32* r)
  {
      const u32 off_in = r[0], off_out = r[1], len = r[4], lines = r[5], fmt = r[6];
-@@ -1235,9 +1338,11 @@ static void nv0039_copy(const u32* r)
+@@ -1413,9 +1516,11 @@ static void nv0039_copy(const u32* r)
          fprintf(stderr, "[NV0039] %u:0x%08X -> %u:0x%08X, %u x %u bytes (pitch %u -> %u)\n",
                  loc_in, off_in, loc_out, off_out, lines, len, pitch_in, pitch_out); }
      nv0039_engine_sync(1, loc_in, off_in, pitch_in, len, lines);
@@ -141,3 +141,6 @@ index 22411b8b..7263d002 100644
      /* NV0039_DUMP=<dir>: while <dir>/go exists, the main-memory side of the next
       * 1280x720 copies as PPM (seq_dir_offset.ppm): the frame going to the SPUs
       * ("out") and the one coming back ("in"), so the post chain's effect on one
+-- 
+2.56.0
+

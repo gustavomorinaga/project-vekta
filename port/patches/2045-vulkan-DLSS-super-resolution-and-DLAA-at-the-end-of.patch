@@ -24,25 +24,19 @@ rsx_vk_dlss.cpp is a stub unless CMake gets PS3RECOMP_DLSS_SDK; the SDK
 and its library stay out of the repository.
 
 ---
- CMakeLists.txt                             |  21 +
+ CMakeLists.txt                             |  21 ++
  libs/video/cellGcmSys.c                    |   3 +
- libs/video/rsx_temporal.c                  |  67 +++
- libs/video/rsx_temporal.h                  |  49 ++
- libs/video/rsx_vk_dlss.cpp                 | 171 +++++++
- libs/video/rsx_vk_dlss.h                   |  58 +++
- libs/video/rsx_vulkan_backend.c            | 506 ++++++++++++++++++++-
+ libs/video/rsx_temporal.c                  |  67 ++++
+ libs/video/rsx_temporal.h                  |  49 +++
+ libs/video/rsx_vk_dlss.cpp                 | 171 ++++++++++
+ libs/video/rsx_vk_dlss.h                   |  58 ++++
+ libs/video/rsx_vulkan_backend.c            | 506 ++++++++++++++++++++++++++++-
  libs/video/vulkan/rsx_vk_motion.comp       |  34 ++
- libs/video/vulkan/rsx_vk_motion_comp.spv.h | 122 +++++
+ libs/video/vulkan/rsx_vk_motion_comp.spv.h | 122 +++++++
  9 files changed, 1014 insertions(+), 17 deletions(-)
- create mode 100644 libs/video/rsx_temporal.c
- create mode 100644 libs/video/rsx_temporal.h
- create mode 100644 libs/video/rsx_vk_dlss.cpp
- create mode 100644 libs/video/rsx_vk_dlss.h
- create mode 100644 libs/video/vulkan/rsx_vk_motion.comp
- create mode 100644 libs/video/vulkan/rsx_vk_motion_comp.spv.h
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ac810bc5..22aafc88 100644
+index 25f86a9ba438a46a8685a33c041e28319e0eb920..ca41f3b5b8f6e3df0ab43693484f695cf4633762 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -62,6 +62,8 @@ if(PS3RECOMP_RSX_VULKAN)
@@ -54,7 +48,7 @@ index ac810bc5..22aafc88 100644
  endif()
  
  # The Metal backend is Objective-C and Apple-only, so it is added explicitly
-@@ -196,6 +198,25 @@ if(PS3RECOMP_RSX_VULKAN)
+@@ -204,6 +206,25 @@ if(PS3RECOMP_RSX_VULKAN)
      endif()
      target_link_libraries(ps3recomp_runtime PUBLIC ${CMAKE_DL_LIBS})
      message(STATUS "  Vulkan:       RSX backend enabled (rsx_vulkan_backend.c, headers in ${PS3RECOMP_VULKAN_INCLUDE_DIR})")
@@ -81,10 +75,10 @@ index ac810bc5..22aafc88 100644
  
  # cellVdec decodes H.264 / MPEG-2 through FFmpeg when this is on. libavcodec
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index a9a11673..57dd8bea 100644
+index 9bd1567cfe4f0a4c34924d8805086c62e36bbaf4..ca0ebe5b02263df38166f1cab916bf3a15cc5233 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -129,6 +129,9 @@ static volatile int s_flip_pending = 0;
+@@ -141,6 +141,9 @@ static volatile int s_flip_pending = 0;
   * however many vblanks go by. */
  static volatile u32 s_fifo_flips_queued = 0, s_fifo_flips_reached = 0;
  static u32 s_fifo_flips_completed = 0;   /* reached count at the last completion */
@@ -96,7 +90,7 @@ index a9a11673..57dd8bea 100644
  static volatile int s_flip_direct_pending = 0;
 diff --git a/libs/video/rsx_temporal.c b/libs/video/rsx_temporal.c
 new file mode 100644
-index 00000000..634a3c95
+index 0000000000000000000000000000000000000000..634a3c956cfa41b843856637ce0ab6da00e6a04a
 --- /dev/null
 +++ b/libs/video/rsx_temporal.c
 @@ -0,0 +1,67 @@
@@ -169,7 +163,7 @@ index 00000000..634a3c95
 +}
 diff --git a/libs/video/rsx_temporal.h b/libs/video/rsx_temporal.h
 new file mode 100644
-index 00000000..88ccd104
+index 0000000000000000000000000000000000000000..88ccd104bc92bfee0d2be96e1a87669c222db45c
 --- /dev/null
 +++ b/libs/video/rsx_temporal.h
 @@ -0,0 +1,49 @@
@@ -224,7 +218,7 @@ index 00000000..88ccd104
 +#endif
 diff --git a/libs/video/rsx_vk_dlss.cpp b/libs/video/rsx_vk_dlss.cpp
 new file mode 100644
-index 00000000..133b96df
+index 0000000000000000000000000000000000000000..133b96dff2b950ac9ab35e5c5d2b027dce25b250
 --- /dev/null
 +++ b/libs/video/rsx_vk_dlss.cpp
 @@ -0,0 +1,171 @@
@@ -401,7 +395,7 @@ index 00000000..133b96df
 +#endif
 diff --git a/libs/video/rsx_vk_dlss.h b/libs/video/rsx_vk_dlss.h
 new file mode 100644
-index 00000000..2f761199
+index 0000000000000000000000000000000000000000..2f761199e36ce66eca067911f0328c4482b3efcb
 --- /dev/null
 +++ b/libs/video/rsx_vk_dlss.h
 @@ -0,0 +1,58 @@
@@ -464,7 +458,7 @@ index 00000000..2f761199
 +#endif
 +#endif
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 70c1166f..8516d87b 100644
+index 70c1166f73a60c14d9923723e54051a8b4c756d5..8516d87b4ed39929260d555914017b8b2de91edb 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -50,6 +50,9 @@
@@ -1128,7 +1122,7 @@ index 70c1166f..8516d87b 100644
                          VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
 diff --git a/libs/video/vulkan/rsx_vk_motion.comp b/libs/video/vulkan/rsx_vk_motion.comp
 new file mode 100644
-index 00000000..e7f0af59
+index 0000000000000000000000000000000000000000..e7f0af591dfb51d5c4f70523535eba82c7b34dcb
 --- /dev/null
 +++ b/libs/video/vulkan/rsx_vk_motion.comp
 @@ -0,0 +1,34 @@
@@ -1168,7 +1162,7 @@ index 00000000..e7f0af59
 +}
 diff --git a/libs/video/vulkan/rsx_vk_motion_comp.spv.h b/libs/video/vulkan/rsx_vk_motion_comp.spv.h
 new file mode 100644
-index 00000000..7d27b414
+index 0000000000000000000000000000000000000000..7d27b414f4b094316905499e8342eb86caccad97
 --- /dev/null
 +++ b/libs/video/vulkan/rsx_vk_motion_comp.spv.h
 @@ -0,0 +1,122 @@
@@ -1294,3 +1288,6 @@ index 00000000..7d27b414
 +	0x00070050,0x00000016,0x000000a1,0x0000009f,0x000000a0,0x00000039,0x00000039,0x00040063,
 +	0x0000009c,0x0000009d,0x000000a1,0x000100fd,0x00010038
 +};
+-- 
+2.56.0
+

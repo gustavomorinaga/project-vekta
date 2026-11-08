@@ -25,16 +25,16 @@ a frame here, so the driver's sleep has no queue to shorten; the latency
 is the guest's vblank pacing and the RSX thread's drain.
 
 ---
- libs/video/cellGcmSys.c         |  11 +-
- libs/video/rsx_vulkan_backend.c | 202 +++++++++++++++++++++++++++++++-
+ libs/video/cellGcmSys.c         |  11 ++-
+ libs/video/rsx_vulkan_backend.c | 202 +++++++++++++++++++++++++++++++++++++++-
  libs/video/rsx_vulkan_backend.h |   5 +
  3 files changed, 212 insertions(+), 6 deletions(-)
 
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index fe5cd586..22411b8b 100644
+index 6e6095d17ce3e6bc3754ec04eb5689ca1bd11901..467b104823f58c0a605b26b00fdefcd4c6ddcf06 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -4233,6 +4233,10 @@ s32 cellGcmSetDefaultFifoSize(u32 size)
+@@ -4590,6 +4590,10 @@ s32 cellGcmSetDefaultFifoSize(u32 size)
   * import-based flip (LBP: cellGcmSetFlip -> stub 0x7482FC(ctx, id)) landed
   * in the label getter and no flip was EVER issued: the intro-movie pump ran,
   * drew, "flipped" into the wrong function, and the screen stayed black. */
@@ -45,7 +45,7 @@ index fe5cd586..22411b8b 100644
  /* NID: 0x21397818 */
  s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
  {
-@@ -4256,9 +4260,10 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+@@ -4613,9 +4617,10 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
            }
            PS3_TRACE_END(_tr, "flip_wait", 0);
        } }
@@ -60,7 +60,7 @@ index fe5cd586..22411b8b 100644
  
  /* NID: 0xD8F88E1A */
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 7b33af01..0f9095b1 100644
+index 7b33af0171055f5928a09a7011ec8844a7bcdc07..0f9095b18a986c9065bf4d83265aae07ae367e88 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -263,6 +263,27 @@ typedef struct vk_state {
@@ -317,7 +317,7 @@ index 7b33af01..0f9095b1 100644
          vk_window_drop("the driver has no swapchain functions");
      pvkGetDeviceQueue(s_vk.device, s_vk.queue_family, 0, &s_vk.queue);
 diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
-index 02f62a8e..735c6968 100644
+index 02f62a8e92a2c0fbcd46b9653f2a9c1069791860..735c69688d3e9897614e8ef8674a63828f3ed9e7 100644
 --- a/libs/video/rsx_vulkan_backend.h
 +++ b/libs/video/rsx_vulkan_backend.h
 @@ -85,6 +85,11 @@ void rsx_vulkan_set_stretch(int on);
@@ -332,3 +332,6 @@ index 02f62a8e..735c6968 100644
  void rsx_vulkan_set_crop(float f);
  int  rsx_vulkan_output_size(int* w, int* h);
  
+-- 
+2.56.0
+

@@ -14,15 +14,15 @@ Diagnostics: RSX_ENGINE_PS_DEBUG=5 shows the output's alpha as grey,
 RSX_ENGINE_STATE_LOG=<pipeline> logs a pipeline's raw state registers.
 
 ---
- libs/video/rsx_draw_engine.c | 44 +++++++++++++++++++++++++++++++-----
+ libs/video/rsx_draw_engine.c | 44 ++++++++++++++++++++++++++++++++++++++------
  libs/video/rsx_draw_engine.h |  1 +
  2 files changed, 39 insertions(+), 6 deletions(-)
 
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index c1f5623b..c00a8cde 100644
+index 3dbeb049d6088d1313cdc47d879de2e20080fca3..199b2c1afc49924f0010b44743f09f6823a7d7b0 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -64,6 +64,7 @@ extern u32 ppu_vm_size;
+@@ -65,6 +65,7 @@ extern u32 ppu_vm_size;
  #define M_ALPHA_TEST_ENABLE   0x0304
  #define M_ALPHA_FUNC          0x0308
  #define M_ALPHA_REF           0x030C
@@ -30,7 +30,7 @@ index c1f5623b..c00a8cde 100644
  #define M_BLEND_ENABLE        0x0310
  #define M_BLEND_SFACTOR       0x0314
  #define M_BLEND_DFACTOR       0x0318
-@@ -319,9 +320,24 @@ void rsx_draw_engine_decode_render_state(const rsx_dispatch* rsx,
+@@ -426,9 +427,24 @@ void rsx_draw_engine_decode_render_state(const rsx_dispatch* rsx,
                                           rsx_be_render_state* rs)
  {
      memset(rs, 0, sizeof(*rs));
@@ -57,8 +57,8 @@ index c1f5623b..c00a8cde 100644
      rsx_dsp_surface sf;
      rsx_dsp_get_surface(rsx, &sf);
      rs->alpha_ref_format = sf.color_format;
-@@ -2122,16 +2138,18 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
-             fi = -1;
+@@ -2372,16 +2388,18 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+         }
      }
      /* RSX_ENGINE_PS_DEBUG: 1 magenta, 2 |tc0|, 3 the program's r0 unguarded,
 -     * 4 tc2 as colour -- where a guest pixel program's colour goes missing. */
@@ -79,7 +79,7 @@ index c1f5623b..c00a8cde 100644
                char tail[64]; snprintf(tail, sizeof tail, "%s", at);
                snprintf(at, sizeof s_ps_hlsl - (size_t)(at - s_ps_hlsl), "%s%s", k[m], tail);
            } } }
-@@ -3229,7 +3247,9 @@ static void sink_end(void* user, const rsx_dispatch* r)
+@@ -3490,7 +3508,9 @@ static void sink_end(void* user, const rsx_dispatch* r)
      if (g.fp_constants.count)
          memcpy(g.fp_cb, g.fp_constants.values, g.fp_constants.count * 16u);
      { float* alpha = (float*)(g.fp_cb + nslots * 16u);
@@ -90,8 +90,8 @@ index c1f5623b..c00a8cde 100644
        /* Window convention for WPOS (rsx_fp_decompiler.c, _rsx_wpos): SET_SHADER_WINDOW
         * height in bits 0-11, origin (1 = BOTTOM) in 12-15, pixel centers (1 = INTEGER)
         * in 16-19. */
-@@ -3239,6 +3259,18 @@ static void sink_end(void* user, const rsx_dispatch* r)
-       alpha[3] = 0.0f; }
+@@ -3501,6 +3521,18 @@ static void sink_end(void* user, const rsx_dispatch* r)
+       if (s_dbz.unit) { alpha[4] = s_dbz.mn; alpha[5] = s_dbz.mx; alpha[6] = alpha[7] = 0.0f; } }
  
      pd_note(targets, n_targets, zslot, &rs, pipeline, tex_mask);
 +    /* RSX_ENGINE_STATE_LOG=<pipeline>: the raw state registers of that
@@ -110,7 +110,7 @@ index c1f5623b..c00a8cde 100644
      if (s_pd.draws_log && pd_capturing()) {
          fprintf(s_pd.draws_log, "    verts %u:", dc.n_verts);
 diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
-index 77ec778f..3ddc1de2 100644
+index 46b8ec93308f4d8c07160a82d63d2cbd5a0f35f8..04d0b6d4d309eb2a0e3a3fb5021c431a99d5dbb2 100644
 --- a/libs/video/rsx_draw_engine.h
 +++ b/libs/video/rsx_draw_engine.h
 @@ -83,6 +83,7 @@ typedef struct rsx_be_sampler_desc {

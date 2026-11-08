@@ -12,17 +12,17 @@ Subject: [PATCH] Killzone port on v0.18.0: coherence marks dropped,
 Level 7 at the 144 Hz clock, no PGO: ~15 -> ~93 fps.
 
 ---
- libs/spurs/cellSpurs.c          |  24 +++++-
- libs/video/rsx_draw_engine.c    |   4 +
- libs/video/rsx_vulkan_backend.c | 140 ++++++++++++++++++++++++++------
- runtime/spu/spu_coherency.c     |  46 ++++++++++-
+ libs/spurs/cellSpurs.c          |  24 ++++++-
+ libs/video/rsx_draw_engine.c    |   4 ++
+ libs/video/rsx_vulkan_backend.c | 140 +++++++++++++++++++++++++++++++++-------
+ runtime/spu/spu_coherency.c     |  46 ++++++++++++-
  4 files changed, 188 insertions(+), 26 deletions(-)
 
 diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
-index 8eb57cec..d8c19d15 100644
+index 9a5b0ccb687627dae1d2cbcb23f0796f6ba72c85..b1d4a21a47392f00ca2a651fcf22fadb637e2e01 100644
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
-@@ -555,6 +555,19 @@ static s32 spurs_initialize_common(u32 spurs_ea, u32 nspus, const char* prefix)
+@@ -616,6 +616,19 @@ static s32 spurs_initialize_common(u32 spurs_ea, u32 nspus, const char* prefix,
      si->nspus = (nspus > 0 && nspus <= CELL_SPURS_MAX_SPU) ? nspus : 1;
      memset(si->prefix, 0, sizeof(si->prefix));
      if (prefix) memcpy(si->prefix, prefix, 15);
@@ -42,9 +42,9 @@ index 8eb57cec..d8c19d15 100644
  
      /* Real BE instance: zero it, then the few live fields. (The global
       * workload table is NOT wiped here — the title may init several SPURS
-@@ -1873,7 +1886,16 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
+@@ -2142,7 +2155,16 @@ static DWORD WINAPI spurs_kernel_thread(LPVOID p)
                      continue;
-                 if (!vm_read8(ea + SPURS_WKL_INFO1 + wid * SPURS_WKL_INFO_SZ + 0x18 + sn))
+                 if (!vm_read8(ea + wkl_info_off(wid) + 0x18 + sn))
                      continue; /* priority zero makes this physical lane ineligible */
 -                if (spurs_wid_off(wid)) continue;
 +                if (spurs_wid_off(wid)) {
@@ -57,14 +57,14 @@ index 8eb57cec..d8c19d15 100644
 +                    ef_line_end(ea);
 +                    continue;
 +                }
-                 u32 maxcont = vm_read8(ea + SPURS_WKL_MAXCONT + wid);
+                 u32 maxcont = wkl_count_get(ea, SPURS_WKL_MAXCONT, wid, si->is2);
                  if (!maxcont || si->active[wid] >= maxcont) continue;
                  WklPm* pm = spurs_resolve_pm(wid);
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 5ae936d3..6d066797 100644
+index 8235b8b9f5598bca1cccc2c6682ecbd4f4c68883..9c7e7c8b78c6e6f2bd16835ab6b3f3ee56352172 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -1123,6 +1123,10 @@ static u32 eng_zdepth_as_color(u32 slot, const rsx_dsp_texture* t)
+@@ -1244,6 +1244,10 @@ static u32 eng_zdepth_as_color(u32 slot, const rsx_dsp_texture* t)
      const int z16 = z->zfmt == 1u;      /* SURFACE_FORMAT Z16 */
      const int bytes = base_fmt == RSX_TEX_FMT_A8R8G8B8 && !z16 && !rsx_texture_argb_is_rgba();
      const int d16 = base_fmt == RSX_TEX_FMT_DEPTH16 && z16;
@@ -76,7 +76,7 @@ index 5ae936d3..6d066797 100644
          !z->handle || !(bytes || d16) || !(t->format & RSX_TEX_FMT_LINEAR) ||
          t->cubemap || t->dimension == 3 || t->mipmaps > 1)
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 432d1b01..d558851a 100644
+index 432d1b01bc6f1bd44c528df54b0657af010970df..d558851aa6d919807c655b26f90214feec2a997a 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -2334,6 +2334,8 @@ typedef struct vk_eng_obj {
@@ -277,10 +277,10 @@ index 432d1b01..d558851a 100644
      /* Uploads are recorded into the open batch behind a barrier, after the
       * draws that sampled the old bytes. */
 diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
-index 1d96244f..cbcaedf9 100644
+index 4aad1e6c732c4dcd70df178085fc04fae6d1f83f..52ac3fe74dc75bfa00f49ae966f16f04bf212130 100644
 --- a/runtime/spu/spu_coherency.c
 +++ b/runtime/spu/spu_coherency.c
-@@ -344,9 +344,46 @@ int spu_coh_reserve_fast(spu_context* ctx, uint32_t ea)
+@@ -362,9 +362,46 @@ int spu_coh_reserve_fast(spu_context* ctx, uint32_t ea)
      __atomic_store_n(&ctx->resv_ea, ea, __ATOMIC_RELAXED);
      __atomic_store_n(&ctx->resv_valid, 1, __ATOMIC_RELAXED);
      __atomic_thread_fence(__ATOMIC_SEQ_CST);
@@ -327,7 +327,7 @@ index 1d96244f..cbcaedf9 100644
  void spu_coh_notify_write_except(uint32_t ea, const void* self)
  {
      uint32_t line = ea & ~127u;
-@@ -363,6 +400,7 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self)
+@@ -383,6 +420,7 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self)
              spu_ch_wake(c);
          }
      }
@@ -335,7 +335,7 @@ index 1d96244f..cbcaedf9 100644
  }
  
  void spu_coh_notify_write(uint32_t ea)
-@@ -393,6 +431,7 @@ void spu_coh_notify_write(uint32_t ea)
+@@ -415,6 +453,7 @@ void spu_coh_notify_write(uint32_t ea)
              spu_ch_wake(c);
          }
      }
@@ -343,7 +343,7 @@ index 1d96244f..cbcaedf9 100644
  }
  
  #ifdef __cplusplus
-@@ -400,11 +439,14 @@ void spu_coh_notify_write(uint32_t ea)
+@@ -422,11 +461,14 @@ void spu_coh_notify_write(uint32_t ea)
  #endif
  
  /* A line a host agent updates under the lock-line lock with plain stores
