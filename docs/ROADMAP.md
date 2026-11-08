@@ -189,6 +189,9 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [ ] Dynamic resolution scale
 - [ ] FSR Frame Generation
 - [x] Debug menu: `KZ_DEBUG_MENU=1` turns on the game's own Debug Options in the pause menu (God Mode, Next Level, ...)
+- [x] Weapons for testing: `KZ_DEBUG_GIVE` gives the player weapons and grenades through the game's own
+  `AddWeapon`/`PickupAmmo` ([dev/testing.md](dev/testing.md)).
+- [ ] Weapons on the ground for testing pickups and swaps (the game drops them from enemies, `AddWeaponPickup`).
 - [ ] Postponed: DLSS Frame Generation (needs an RTX 40 or newer), Intel XeSS (SDK for Windows only)
 
 ## The trilogy
