@@ -43,6 +43,7 @@
 #include "ppu_recomp.h"
 #include "view.h"
 #include "view_flat.h"   /* when the picture goes 16:9 */
+#include "lua_states.h"  /* the Lua states given the PC script */
 #include "route.h"
 
 extern "C" {
@@ -1176,11 +1177,10 @@ static void lua_run(ppu_context* ctx, uint32_t L, const std::string& src, const 
 
 static void lua_binding(ppu_context* ctx)
 {
-    static uint32_t tried[16]; static unsigned n_tried; static bool busy;
+    static struct lua_states tried; static bool busy;   /* lua_states.h */
     const uint32_t L = (uint32_t)ctx->gpr[3];
     if (!busy) {
-        bool seen = false;
-        for (unsigned i = 0; i < n_tried; i++) if (tried[i] == L) seen = true;
+        const bool seen = lua_states_seen(&tried, L) != 0;
         /* Each new state gets the script; after that, every 50th call, a
          * one-line probe asks whether a menu script it changes has loaded
          * and is still unchanged (the pause menu is made with the level:
@@ -1189,7 +1189,7 @@ static void lua_binding(ppu_context* ctx)
          * ~4% of the game's thread in play. */
         static unsigned calls;
         if (!seen || ++calls % 50 == 0) {
-            if (!seen && n_tried < 16) tried[n_tried++] = L;
+            if (!seen) lua_states_add(&tried, L);
             busy = true;
             kz_pc_inject_attrs(ctx);
             static const std::string probe =

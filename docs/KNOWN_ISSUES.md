@@ -11,9 +11,6 @@ are linked.
   affected. A first fix (the SPURS policy module's `selectWorkload` answer, after Project Helghast) removed the more
   common case where single weapon parts jumped. Workarounds: play at 60 Hz, or set `KZ_JM_SKIP_US=10` (about 15 %
   slower in Level 7). Investigation: [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md).
-- **Slower in the second half of Level 3 (2026-11-08).** In a long session at 144 Hz, from Level 3's mid-level movie
-  to its end, and in the level played after it, the game ran at about 66 to 75 fps instead of about 140, all the
-  way through rather than in spikes. Not profiled yet: that stretch can only be reached by playing.
 - **Levels 2 to 11 not each played to their end.** All load and reach gameplay, and parts were played by hand; a
   problem late in a level may still be found. The lighting at the start of level 11 (Hope) is to be checked.
 - **Slow memory growth** of about 0.24 MB per minute standing still in Level 1 (15 minutes, 2026-10-17). Not a
