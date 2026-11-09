@@ -17,6 +17,11 @@ are linked.
   loads, so it is not a steady leak. If a very long session ever crashes or stutters while a level loads, look
   at it first: `KZ_STATS=1` (on in `tools/play.sh`) logs it every 2 s as `heap=` in the `[kz-stats]` lines of
   `play.log`.
+- **White and black blotches on some foliage (2026-11-09).** In Level 6 (after its midpoint movie), at 3440x1440
+  with the field of view at 120, the palm leaves at the screen's far left showed white and black blotches instead of
+  their edges, as if their alpha test or blending went wrong. Seen once in a player's screenshot; not yet
+  investigated (whether it also happens at 16:9 and the game's FOV, and which draws). Low priority. To look into it:
+  an F12 capture where it shows, and the leaves' draws in its `draws.txt` (blend, alpha test, texture format).
 - **Levels 2 to 11 not each played to their end.** All load and reach gameplay, and parts were played by hand; a
   problem late in a level may still be found. The lighting at the start of level 11 (Hope) is to be checked.
 - **Slow memory growth** of about 0.24 MB per minute standing still in Level 1 (15 minutes, 2026-10-17). Not a
