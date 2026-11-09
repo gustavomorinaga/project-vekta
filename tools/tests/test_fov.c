@@ -53,6 +53,17 @@ int main(void)
         /* the game's own 16:9 corner depth margin is kept */
         near("sky near ratio", corner_depth / n, (1.68 / sqrt(1.0 + ty0 * ty0 * FOV_ASPECT * FOV_ASPECT + ty0 * ty0)) / 1.0, 1e-9);
     }
+    /* the weapon (fov_weapon): the game's 60 / aspect / 0.75 is 45 at 16:9; on a widened 21:9 camera it was 30.7, and
+     * comes back to 45; on a camera the port did not widen it is left alone; the setting scales it like the world's */
+    {
+        const double a21 = 3440.0 / 1440.0, game169 = 60.0 / FOV_ASPECT / 0.75, game21 = 60.0 / a21 / 0.75;
+        near("weapon 16:9", fov_weapon(game169, FOV_ASPECT, 1, 1.0), 45.0, 1e-9);
+        near("weapon 21:9 widened", fov_weapon(game21, a21, 1, 1.0), 45.0, 1e-9);
+        near("weapon 21:9 not ours", fov_weapon(game21, a21, 0, 1.0), game21, 1e-9);
+        near("weapon at 100 (16:9 horizontal)",
+             2.0 * atan(tan(fov_weapon(game169, FOV_ASPECT, 1, fov_scale(100.0)) * 0.5 * FOV_DEG) * FOV_ASPECT) / FOV_DEG,
+             2.0 * atan(tan(45.0 * 0.5 * FOV_DEG) * FOV_ASPECT * fov_scale(100.0)) / FOV_DEG, 1e-9);
+    }
     /* menu rows */
     near("row 0", fov_row_value(0), 0.0, 0.0);
     near("row 1", fov_row_value(1), 70.0, 0.0);

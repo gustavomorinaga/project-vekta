@@ -173,8 +173,8 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
       (`kz1hd_keys.ini`)
 - [x] Mouse in dialogs and options
 - [ ] An in-game key remapping page
-- [x] Field of view: a row on the PC page (70 to 120 degrees horizontal at 16:9; the game's is 87); zoom keeps
-      its magnification and the first-person weapon keeps the game's framing
+- [x] Field of view: rows on the PC page for the world and the first-person weapon (70 to 120 degrees
+      horizontal at 16:9; the game's is 87); zoom keeps its magnification
 - [ ] Post-processing toggles (motion blur, grain, depth of field, lens flare, where the game has them)
 - [x] HUD size and position on the PC page
 - [x] Widescreen (21:9, 32:9 and wider): Hor+ picture at the window's size, menus, movies and text in the middle 16:9,

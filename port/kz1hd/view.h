@@ -8,6 +8,7 @@ extern "C" {
 struct KzView {
     float aspect;      /* the cameras' aspect (the window's); 0 = the game's 16:9 */
     float fov_scale;   /* the world's tan(fov/2) multiplier (fov.h); 1 = the game's */
+    float weapon_scale;   /* the first-person weapon's (fov.h); 1 = the game's */
     float hud_scale;   /* the HUD's size, 1 = the game's */
     float hud_pos;     /* 0 = the HUD in the 16:9 middle of the screen, 1 = at the screen's edges */
 };
