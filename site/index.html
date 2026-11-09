@@ -201,6 +201,7 @@
 <ul class="rlist">
 <li><span class="sec">Changed</span>Field of view: the PC page&#x27;s Field of View row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game&#x27;s is 87), with a second row, Weapon Field of View, for the first-person weapon; a wider window still shows more at the sides. A setting from an older version (vertical) is carried over.</li>
 <li><span class="sec">Changed</span>ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch series was re-applied: 1006 dropped (now upstream), 1017 smaller, 0006 to 0008 new; the Vulkan backend stays the port&#x27;s. Levels 1 to 8 replay to their end; speed the same or better (levels 3, 4 and 8 faster) (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/ps3recomp-v019-migration.md">docs/dev/ps3recomp-v019-migration.md</a>).</li>
+<li><span class="sec">Fixed</span>Installing over an earlier version no longer fails at the link with undefined symbols (seen from the 0.3.1 test build to 0.4.0&#x27;s: <code>ppu_thread_register_main_priority</code>, <code>ppu_thread_set_main_stack</code>, issue #18). The setup program and the release archives give every source file one fixed date, older than the objects the earlier build left, so Ninja took those objects as up to date and kept the earlier version&#x27;s code; removing only CMake&#x27;s cache did not change that. A build folder made from another version or patch set is now emptied and compiled again in full (<code>firstrun.py</code>). Workaround for an install that already failed: delete <code>work\build-win</code> (Linux folder: <code>work/build</code>) in the install folder and run <code>run.cmd</code> (<code>run.sh</code>) again.</li>
 <li><span class="sec">Fixed</span>Ultrawide and wide FOV: the sky&#x27;s fog band (Level 6) is no longer cut off at the screen&#x27;s sides with hard grey edges: the sky camera&#x27;s near plane now comes closer for a view wider than the game&#x27;s.</li>
 <li><span class="sec">Fixed</span>Ultrawide: the first-person weapon is no longer drawn half as large again as on a 16:9 screen (its FOV came from the camera&#x27;s aspect, which the port widens).</li>
 <li><span class="sec">Fixed</span>The field of view setting widens the world: before, it reached only the sky&#x27;s camera, so the world stayed at the game&#x27;s FOV and the sky and far mountains slid against it when turning.</li>
@@ -276,12 +277,12 @@
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> Field of view: the PC page&#x27;s Field of View row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game&#x27;s is...</span></li>
 <li><time>next</time><span><b>Unreleased</b> ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Installing over an earlier version no longer fails at the link with undefined symbols (seen from the 0.3.1 test build...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Ultrawide and wide FOV: the sky&#x27;s fog band (Level 6) is no longer cut off at the screen&#x27;s sides with hard grey edges...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Ultrawide: the first-person weapon is no longer drawn half as large again as on a 16:9 screen (its FOV came from the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The field of view setting widens the world: before, it reached only the sky&#x27;s camera, so the world stayed at the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The pause menu&#x27;s items no longer come back empty after opening one of its screens (Audio, Controls...) and going back...</span></li>
 <li><time>next</time><span><b>Unreleased</b> VICTORY with the mouse: the statistics no longer darken under the pointer (the game keeps that list inactive), and...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Button prompts no longer turn back into PlayStation glyphs after a while (picking up and swapping weapons): the game...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

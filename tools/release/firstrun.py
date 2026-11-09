@@ -39,8 +39,9 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
             --dlss decline to change the choice (the Windows setup passes its checkbox's answer)
   compile   work/build/KZ1HD, on Windows work/build-win/KZ1HD.exe (kzbuild.py build; every run: Ninja itself
             skips what is up to date). When the build stamp names another version or patch set than this tree (an
-            install over an earlier release), the build folder's CMakeCache.txt is removed first, so CMake
-            configures it afresh
+            install over an earlier release), the build folder in work/ is emptied first and everything is
+            compiled again: the release files all carry one fixed date, older than the objects an earlier build
+            left, so Ninja would take those objects as up to date (outside work/ only CMakeCache.txt is removed)
   stamp     work/build-stamp.json: the version, the patch set and the inputs this build was made from
 
 After a build, --desktop (or a yes to --interactive's question) writes the applications-menu entry
@@ -64,6 +65,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -297,9 +299,14 @@ def build_dir(c):
 
 def before_compile(c):
     """A CMake folder left by another version or patch set (an install over an earlier release, the stamp of the
-    build it holds says which) loses its cache, so nothing that version configured or cached carries over; Ninja
-    then rebuilds what the new configuration changes. A folder without a stamp is treated the same."""
-    cache = os.path.join(build_dir(c), "CMakeCache.txt")
+    build it holds says which) is emptied, so nothing that version compiled, configured or cached carries over. A
+    folder without a stamp is treated the same. Removing only the cache is not enough: the setup program and the
+    release archives give every source file the same fixed date (2026-01-01, for the same bytes from the same
+    commit), older than any object a build made, so Ninja kept the earlier version's objects and the link failed
+    on functions the new sources call (0.3.1 to 0.4.0, issue #18). A build folder outside work/ (KZ_BUILD set by
+    hand) only loses its cache."""
+    bdir = build_dir(c)
+    cache = os.path.join(bdir, "CMakeCache.txt")
     if not os.path.isfile(cache):
         return None
     stamp = read_stamp(c.work) or {}
@@ -307,6 +314,10 @@ def before_compile(c):
     old = {k: stamp.get(k) for k in want}
     if old == want:
         return None
+    inside = os.path.normcase(os.path.abspath(bdir)).startswith(os.path.normcase(os.path.abspath(c.work)) + os.sep)
+    if inside:
+        shutil.rmtree(bdir)
+        return f"a clean build: the build folder was made from {old}, this tree is {want}"
     os.remove(cache)
     return f"a fresh CMake configuration: the build folder was made from {old}, this tree is {want}"
 

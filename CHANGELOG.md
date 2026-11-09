@@ -17,6 +17,13 @@ program and folder that build it. Until a release that calls itself playable
   ([docs/dev/ps3recomp-v019-migration.md](docs/dev/ps3recomp-v019-migration.md)).
 
 ### Fixed
+- Installing over an earlier version no longer fails at the link with undefined symbols (seen from the 0.3.1 test
+  build to 0.4.0's: `ppu_thread_register_main_priority`, `ppu_thread_set_main_stack`, issue #18). The setup program
+  and the release archives give every source file one fixed date, older than the objects the earlier build left, so
+  Ninja took those objects as up to date and kept the earlier version's code; removing only CMake's cache did not
+  change that. A build folder made from another version or patch set is now emptied and compiled again in full
+  (`firstrun.py`). Workaround for an install that already failed: delete `work\build-win` (Linux folder:
+  `work/build`) in the install folder and run `run.cmd` (`run.sh`) again.
 - Ultrawide and wide FOV: the sky's fog band (Level 6) is no longer cut off at the screen's sides with hard grey
   edges: the sky camera's near plane now comes closer for a view wider than the game's.
 - Ultrawide: the first-person weapon is no longer drawn half as large again as on a 16:9 screen (its FOV came
