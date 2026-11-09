@@ -58,6 +58,23 @@ static inline double fov_apply(double cam_fov, double scale)
     return 2.0 * atan(tan(cam_fov * 0.5 * FOV_DEG) * scale) / FOV_DEG;
 }
 
+/* The sky camera's near plane (call site 0x2B81DC: near 1, far 2000) for a
+ * view wider than the game's. Level 6's fog band is a ring about 2 units
+ * around that camera (radius 1.68 to 2.22 in an F12 capture of 2026-11-09);
+ * a point of it seen at an angle a off the view axis is cos(a) * r deep, so
+ * at the screen's corners of a wide view it came closer than the near plane
+ * and was clipped: hard grey edges at the sides (field_of_view 120 at
+ * 3440x1440, and a little already at 87 on 21:9). The near plane shrinks by
+ * how much nearer the corner rays' depth is than at the game's 16:9 view
+ * (tangents tx, ty: the half view's, horizontal and vertical); it is never
+ * moved further. */
+static inline double fov_sky_near(double near, double tx, double ty)
+{
+    const double ty0 = tan(FOV_GAME_V * 0.5 * FOV_DEG), tx0 = ty0 * FOV_ASPECT;
+    const double k = sqrt(1.0 + tx0 * tx0 + ty0 * ty0) / sqrt(1.0 + tx * tx + ty * ty);
+    return k < 1.0 ? near * k : near;
+}
+
 /* Which setting a projection built by func_001A9FC8 takes, by its call
  * site (the return address; native_ppu/camera.cpp has how they were found):
  * the world's (the view 0x21A190, the sky and backdrop 0x2B81DC, and

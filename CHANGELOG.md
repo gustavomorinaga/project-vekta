@@ -17,6 +17,8 @@ program and folder that build it. Until a release that calls itself playable
   ([docs/dev/ps3recomp-v019-migration.md](docs/dev/ps3recomp-v019-migration.md)).
 
 ### Fixed
+- Ultrawide and wide FOV: the sky's fog band (Level 6) is no longer cut off at the screen's sides with hard grey
+  edges: the sky camera's near plane now comes closer for a view wider than the game's.
 - The field of view setting widens the world: before, it reached only the sky's camera, so the world stayed at the
   game's FOV and the sky and far mountains slid against it when turning.
 - The pause menu's items no longer come back empty after opening one of its screens (Audio, Controls...) and

@@ -40,6 +40,19 @@ int main(void)
     near("site sky", fov_site_world(0x002B81DCu), 1.0, 0.0);
     near("site shadows", fov_site_world(0x001B53E8u), 1.0, 0.0);
     near("site other", fov_site_world(0x0024DE04u), 0.0, 0.0);
+    /* the sky's near plane: unchanged at the game's 16:9 view, never moved further, and at 120 on 3440x1440 the
+     * corner ray's depth of the fog ring (radius 1.68, the nearest) stays in front of it */
+    {
+        const double ty0 = tan(FOV_GAME_V * 0.5 * FOV_DEG);
+        near("sky near 16:9", fov_sky_near(1.0, ty0 * FOV_ASPECT, ty0), 1.0, 1e-12);
+        near("sky near narrower", fov_sky_near(1.0, 0.5, 0.3), 1.0, 0.0);
+        const double ty = tan(fov_apply(FOV_GAME_V, fov_scale(120.0)) * 0.5 * FOV_DEG), tx = ty * 3440.0 / 1440.0;
+        const double n = fov_sky_near(1.0, tx, ty), corner_depth = 1.68 / sqrt(1.0 + tx * tx + ty * ty);
+        if (!(n < corner_depth)) { fprintf(stderr, "FAIL: sky near %.4f not in front of %.4f\n", n, corner_depth); fails++; }
+        else printf("ok   sky near %.4f in front of the ring's corner depth %.4f\n", n, corner_depth);
+        /* the game's own 16:9 corner depth margin is kept */
+        near("sky near ratio", corner_depth / n, (1.68 / sqrt(1.0 + ty0 * ty0 * FOV_ASPECT * FOV_ASPECT + ty0 * ty0)) / 1.0, 1e-9);
+    }
     /* menu rows */
     near("row 0", fov_row_value(0), 0.0, 0.0);
     near("row 1", fov_row_value(1), 70.0, 0.0);

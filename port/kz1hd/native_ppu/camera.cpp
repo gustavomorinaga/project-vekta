@@ -133,14 +133,16 @@ void func_001A9FC8(ppu_context* ctx)
     if (aspect > 0.0f && fabs(ldf(cam + 0x74) - kGameAspect) < 0.01) stf(cam + 0x74, aspect);
     kz_view_3d++;   /* a 3D picture is being drawn (pcoptions.cpp: no crop) */
     const double scale = site_scale(ret);
-    if (scale != 1.0 && scale > 0.0 && !vm_read8(cam + 0x80)) {
-        /* the game sets the FOV every frame; it gets its own back after the build */
-        const uint32_t fov_bits = vm_read32(cam + 0x70);
-        stf(cam + 0x70, (float)fov_apply(ldf(cam + 0x70), scale));
-        func_001A9FC8_lifted(ctx);
-        vm_write32(cam + 0x70, fov_bits);
-    } else {
-        func_001A9FC8_lifted(ctx);
+    const bool vfov = !vm_read8(cam + 0x80);   /* +0x70 is vertical */
+    /* the game sets FOV and near every frame; they get their own back after the build */
+    const uint32_t fov_bits = vm_read32(cam + 0x70), near_bits = vm_read32(cam + 0x68);
+    if (scale != 1.0 && scale > 0.0 && vfov) stf(cam + 0x70, (float)fov_apply(ldf(cam + 0x70), scale));
+    if (ret == kSkyRet && vfov) {   /* the sky's near plane for a wider view (fov.h, fov_sky_near) */
+        const double ty = tan(ldf(cam + 0x70) * 0.5 * FOV_DEG), tx = ty * ldf(cam + 0x74);
+        stf(cam + 0x68, (float)fov_sky_near(ldf(cam + 0x68), tx, ty));
     }
+    func_001A9FC8_lifted(ctx);
+    vm_write32(cam + 0x70, fov_bits);
+    vm_write32(cam + 0x68, near_bits);
     if (ret == kSkyRet || ret == kViewRet) jitter_frustum(out, ret == kSkyRet);
 }
