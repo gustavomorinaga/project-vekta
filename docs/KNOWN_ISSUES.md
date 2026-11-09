@@ -1,6 +1,6 @@
 # Known issues
 
-Last checked 2026-11-02. Each item says what happens, where, and what to do about it today. Details for developers
+Last checked 2026-11-09. Each item says what happens, where, and what to do about it today. Details for developers
 are linked.
 
 ## Game
@@ -17,6 +17,11 @@ are linked.
   loads, so it is not a steady leak. If a very long session ever crashes or stutters while a level loads, look
   at it first: `KZ_STATS=1` (on in `tools/play.sh`) logs it every 2 s as `heap=` in the `[kz-stats]` lines of
   `play.log`.
+- **White and black blotches on some foliage (2026-11-09).** In Level 6 (after its midpoint movie), at 3440x1440
+  with the field of view at 120, the palm leaves at the screen's far left showed white and black blotches instead of
+  their edges, as if their alpha test or blending went wrong. Seen once in a player's screenshot; not yet
+  investigated (whether it also happens at 16:9 and the game's FOV, and which draws). Low priority. To look into it:
+  an F12 capture where it shows, and the leaves' draws in its `draws.txt` (blend, alpha test, texture format).
 - **Levels 2 to 11 not each played to their end.** All load and reach gameplay, and parts were played by hand; a
   problem late in a level may still be found. The lighting at the start of level 11 (Hope) is to be checked.
 - **Slow memory growth** of about 0.24 MB per minute standing still in Level 1 (15 minutes, 2026-10-17). Not a
@@ -41,7 +46,8 @@ are linked.
 - **Stutter in the opening movies and the menus, and slow menu input** (AMD Radeon 8060S, issue #18), while play
   itself holds 60 fps. With V-Sync (FIFO, the only present mode that driver offers) the menus ran 400 to 650 frames
   ahead of the screen, because `PS3_GCM_MAX_QUEUED_FLIPS`'s wait ended at once on Windows; reproduced with the
-  Windows build under Wine (2026-11-07). Fixed after 0.3.0 (patch 2055), not yet confirmed on an AMD card.
+  Windows build under Wine (2026-11-07). Fixed after 0.3.0 (patch 2055; since patch 2058 the wait also naps 100 us
+  between its checks instead of at least 1 ms), not yet confirmed on an AMD card.
 - **A fullscreen window that loses the focus goes headless** in 0.3.0 (issue #17): the game keeps running with no
   picture. Fixed after 0.3.0 (patch 2054), not yet tried on Windows; since patch 2057 no failure to recreate the
   swapchain closes the window (the frames are skipped and the presents try again). Workaround: borderless or a

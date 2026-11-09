@@ -8,9 +8,9 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Changed
-- Field of view: the PC page's row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game's is 87),, with a
-  second row for the first-person weapon; a wider window still shows more at the sides. A setting from an older
-  version (vertical) is carried over.
+- Field of view: the PC page's Field of View row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game's
+  is 87), with a second row, Weapon Field of View, for the first-person weapon; a wider window still shows more at
+  the sides. A setting from an older version (vertical) is carried over.
 - ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch
   series was re-applied: 1006 dropped (now upstream), 1017 smaller, 0006 to 0008 new; the Vulkan backend stays the
   port's. Levels 1 to 8 replay to their end; speed the same or better (levels 3, 4 and 8 faster)

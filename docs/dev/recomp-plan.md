@@ -129,7 +129,7 @@ layer.
 | Option | Type | Decision |
 |---|---|---|
 | Texture quality | N | **Replace** with "Textures: original / external pack". The games have one texture level; HD packs would be mods. |
-| Field of view 70 to 100 | M | Keep, as horizontal FOV at 16:9, the original as default. A camera override per game. |
+| Field of view 70 to 120 | M | Keep, as horizontal FOV at 16:9, the original as default, with its own row for the first-person weapon. A camera override per game (done in Killzone HD: `port/kz1hd/fov.h`). |
 | Film grain, chromatic aberration, depth of field, lens flare | M | Keep, each option shown only for the game that has the effect (Killzone HD has less post-processing than 2 and 3). |
 | Motion blur: off, reduced, original | M | Keep with these names, because "high" is the original. |
 | Shadows (local, cascade, distant) | M | **Merge** into "Shadow resolution: original / high / ultra" and "Shadow distance: original / long". The games do not have that many separate kinds. |

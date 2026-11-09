@@ -60,7 +60,8 @@ All optional, set in a **PC** page inside the game's own Options and Pause menus
 - AMD FSR 1 upscaling and RCAS sharpening, anisotropic filtering (the game's own or 2x to 16x)
 - temporal upscaling on Linux and Windows: AMD FSR 3.1 in every build, and NVIDIA DLSS (Super Resolution and DLAA)
   when you choose to download it at install ([docs/dev/upscalers.md](docs/dev/upscalers.md))
-- widescreen (Hor+ for 21:9, 32:9 and wider, with the menus and movies kept 16:9), field of view, HUD size and position
+- widescreen (Hor+ for 21:9, 32:9 and wider, with the menus and movies kept 16:9), field of view for the world and,
+  apart, the first-person weapon (70 to 120 degrees at 16:9), HUD size and position
 - presets: Original (PS3), Performance, Balanced, Quality
 - keyboard and mouse (direct mouse look, mouse in menus, remappable keys), Xbox, PlayStation, Nintendo and generic
   controllers through SDL, with button prompts that follow the device in use
