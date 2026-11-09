@@ -148,8 +148,9 @@ with tempfile.TemporaryDirectory() as tmp:
     check(r.fail_inputs == {"eboot"}, f"a failed check names the inputs: {r.fail_inputs}")
     check("REASON MISSING" in pathlib.Path(status).read_text(), "the status file has the reasons")
 
-    # an install over an earlier release: a CMake cache from another version or patch set is dropped before the
-    # compile, one from this tree is kept
+    # an install over an earlier release: a build folder from another version or patch set is emptied before the
+    # compile (its objects are newer than the release's fixed-date sources, so Ninja would keep them), one from this
+    # tree is kept
     bdir = pathlib.Path(firstrun.build_dir(ctx(root, game)))
     bdir.mkdir(parents=True, exist_ok=True)
     (bdir / "CMakeCache.txt").write_text("PS3RECOMP_FFX_DIR:PATH=/old\n")
@@ -158,20 +159,35 @@ with tempfile.TemporaryDirectory() as tmp:
           "a cache from this tree's own build is kept")
     (root / "work/ps3recomp-patched").mkdir(parents=True, exist_ok=True)
     (root / "work/ps3recomp-patched/.patchset").write_text("new-series\n")
+    (bdir / "sys_ppu_thread.c.obj").write_text("an object of the earlier version")
     rc, out, calls, _, _ = run(root, game)
-    check(rc == 0 and not (bdir / "CMakeCache.txt").exists() and "a fresh CMake configuration" in out,
-          f"another patch set drops the cache before the compile: {out[-300:]}")
+    check(rc == 0 and not (bdir / "CMakeCache.txt").exists() and not (bdir / "sys_ppu_thread.c.obj").exists()
+          and "a clean build" in out, f"another patch set empties the build folder before the compile: {out[-300:]}")
     stamp = firstrun.read_stamp(str(root / "work"))
     check(stamp.get("patchset") == "new-series", f"the stamp then names the new patch set: {stamp}")
+    bdir.mkdir(parents=True, exist_ok=True)
     (bdir / "CMakeCache.txt").write_text("x\n")
     stamp["version"] = "0.1.0"
     (root / "work/build-stamp.json").write_text(firstrun.json.dumps(stamp))
     rc, out, calls, _, _ = run(root, game)
-    check(not (bdir / "CMakeCache.txt").exists(), "another version drops the cache before the compile")
+    check(not bdir.exists(), "another version empties the build folder before the compile")
+    bdir.mkdir(parents=True, exist_ok=True)
     (bdir / "CMakeCache.txt").write_text("x\n")
     (root / "work/build-stamp.json").unlink()
-    check(firstrun.before_compile(ctx(root, game)) and not (bdir / "CMakeCache.txt").exists(),
-          "a build folder without a stamp is configured afresh")
+    check(firstrun.before_compile(ctx(root, game)) and not bdir.exists(),
+          "a build folder without a stamp is built afresh")
+    # a build folder outside work/ (KZ_BUILD set by hand) only loses its cache
+    outside = tmp / "own-build"
+    outside.mkdir()
+    (outside / "CMakeCache.txt").write_text("x\n")
+    (outside / "keep.obj").write_text("x")
+    os.environ["KZ_BUILD"] = str(outside)
+    try:
+        msg = firstrun.before_compile(ctx(root, game))
+    finally:
+        del os.environ["KZ_BUILD"]
+    check(msg and not (outside / "CMakeCache.txt").exists() and (outside / "keep.obj").exists(),
+          f"a build folder outside work/ keeps its objects: {msg}")
     run(root, game)
 
     # tools/env.sh reads paths.env; a variable already set wins; odd characters survive
