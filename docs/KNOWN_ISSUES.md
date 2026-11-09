@@ -1,6 +1,6 @@
 # Known issues
 
-Last checked 2026-11-02. Each item says what happens, where, and what to do about it today. Details for developers
+Last checked 2026-11-09. Each item says what happens, where, and what to do about it today. Details for developers
 are linked.
 
 ## Game
@@ -46,7 +46,8 @@ are linked.
 - **Stutter in the opening movies and the menus, and slow menu input** (AMD Radeon 8060S, issue #18), while play
   itself holds 60 fps. With V-Sync (FIFO, the only present mode that driver offers) the menus ran 400 to 650 frames
   ahead of the screen, because `PS3_GCM_MAX_QUEUED_FLIPS`'s wait ended at once on Windows; reproduced with the
-  Windows build under Wine (2026-11-07). Fixed after 0.3.0 (patch 2055), not yet confirmed on an AMD card.
+  Windows build under Wine (2026-11-07). Fixed after 0.3.0 (patch 2055; since patch 2058 the wait also naps 100 us
+  between its checks instead of at least 1 ms), not yet confirmed on an AMD card.
 - **A fullscreen window that loses the focus goes headless** in 0.3.0 (issue #17): the game keeps running with no
   picture. Fixed after 0.3.0 (patch 2054), not yet tried on Windows; since patch 2057 no failure to recreate the
   swapchain closes the window (the frames are skipped and the presents try again). Workaround: borderless or a

@@ -40,6 +40,12 @@ an existing profile changes the menu flow.
   `tools/ppm_sheet.py` makes a contact sheet.
 - F12 (or `PS3RECOMP_CAPTURE_TRIGGER=<file>`) captures the next frames' passes, textures and draws.
 - `RSX_ENGINE_PASS_DUMP*`, `RSX_ENGINE_PS_DEBUG` and `RSX_ENGINE_STATE_LOG` dump passes and state per draw.
+- `KZ_POKE=<file>` is re-read every second: a line `capture` takes an F12 capture from a script; `wv <value> <n>` logs
+  the next stores of a value with guest stacks (also `PPU_WVAL=<0xvalue>`, with `PPU_WVAL_LO`/`_HI`/`_GATE`; the
+  watches make the game about three times slower). The other commands are listed where it is read, in
+  `port/kz1hd/main.cpp`.
+- `KZ_CAM_LOG=1` logs each camera projection site once (`[kz-cam]`: near, far, FOV, aspect); the sites and what each
+  draws are in `port/kz1hd/fov.h`.
 
 ## Speed
 

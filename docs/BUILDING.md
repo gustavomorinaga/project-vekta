@@ -108,7 +108,9 @@ tools/build.sh               # work/build/KZ1HD
   `work/toolchain-cache/dlss-sdk` (the option says you accept NVIDIA's licence). See
   [dev/upscalers.md](dev/upscalers.md).
 - After changing `port/patches/`, run `tools/ps3recomp-patched.sh` and `tools/lift.sh` again (the lifters are
-  patched too), then `tools/build.sh`.
+  patched too), then `tools/build.sh`. The same after an update that adds or removes a function in
+  `port/kz1hd/native_ppu/` (the lift is told which functions are native, and emits the others' lifted bodies), as
+  the weapon field of view did: run `tools/lift.sh`, then `tools/build.sh`.
 - Optional, about 15 minutes: `tools/pgo.sh` plays an instrumented build into Level 1 for ten minutes and rebuilds
   `work/build` with the profile (about 10 % faster in the maintainer's runs). Run it again after every lift: a profile
   of other code is silently ignored. It plays from `work/vfs-test` (a copy of `work/vfs`, so your saves are safe).

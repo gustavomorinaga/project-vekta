@@ -4,7 +4,7 @@ Native PC versions (Linux and Windows, Vulkan) of the PS3 Killzone games by stat
 [ps3recomp](https://github.com/sp00nznet/ps3recomp), starting with Killzone HD. Technical plan:
 [dev/recomp-plan.md](dev/recomp-plan.md). The port's journal: [dev/port-journal.md](dev/port-journal.md).
 
-Updated 2026-11-06 (0.3.0: the temporal upscalers and the Linux release folder; the installer shipped in 0.2.0). Tick items as they are done; each phase's
+Updated 2026-11-09 (after 0.3.0: ps3recomp v0.19.0, long-session fixes, the field of view for the world and the weapon). Tick items as they are done; each phase's
 percentage comes from its items and its weight.
 
 ## Principles
@@ -87,6 +87,7 @@ state, what was ruled out and what is left: [dev/performance.md](dev/performance
 - [x] The `jm_post` WWS job manager documented ([dev/wws-jm-post.md](dev/wws-jm-post.md)) and run on the PC
 - [x] Rare hang entering Level 1: no longer reproduces with `jm_post` on the PC (0 in 22 loads of the 11 levels, 2026-10-17)
 - [ ] Slow memory growth: about 0.24 MB/min in Level 1 standing still (15 min, 2026-10-17). Low priority
+- [ ] White and black blotches on some foliage in Level 6 at 3440x1440 and FOV 120 (2026-11-09). Low priority
 
 ### Phase 4. RSX on Vulkan
 - [x] Menus, movies and Level 1's 3D right on Linux
