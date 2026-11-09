@@ -38,20 +38,28 @@ are linked.
 
 ## Windows
 
-- **Large black blocks over the frame whenever it has bars** (AMD Radeon 8060S, issue #17): the menus and the
-  opening movie are partly covered in a 1280×800 window and in borderless 1920×1200 or 1920×1080 on a 1920×1200
-  desktop, and not in fullscreen 1920×1080. The present cleared the bars and copied the frame with no barrier between
-  the two, which the Vulkan validation layer reports on any GPU (2026-11-07). Fixed after 0.3.0 (patch 2053), not yet
-  confirmed on an AMD card. Workaround in 0.3.0: fullscreen at a 16:9 resolution.
+- **Large black blocks over the frame whenever it has bars** (AMD Radeon 8060S, issue #17): the menus and the opening
+  movie are partly covered in a 1280×800 window and in borderless 1920×1200 or 1920×1080 on a 1920×1200 desktop, and
+  not in fullscreen 1920×1080. The present cleared the bars and copied the frame with no barrier between the two,
+  which the Vulkan validation layer reports on any GPU (2026-11-07). Fixed in 0.4.0 (patch 2053), confirmed on that
+  card in borderless 1920×1200 and a 1280×800 window with the 0.3.1 test build (2026-11-08). Workaround in 0.3.0:
+  fullscreen at a 16:9 resolution.
 - **Stutter in the opening movies and the menus, and slow menu input** (AMD Radeon 8060S, issue #18), while play
   itself holds 60 fps. With V-Sync (FIFO, the only present mode that driver offers) the menus ran 400 to 650 frames
-  ahead of the screen, because `PS3_GCM_MAX_QUEUED_FLIPS`'s wait ended at once on Windows; reproduced with the
-  Windows build under Wine (2026-11-07). Fixed after 0.3.0 (patch 2055; since patch 2058 the wait also naps 100 us
-  between its checks instead of at least 1 ms), not yet confirmed on an AMD card.
+  ahead of the screen, because `PS3_GCM_MAX_QUEUED_FLIPS`'s wait ended at once on Windows; reproduced with the Windows
+  build under Wine (2026-11-07). Fixed in 0.4.0 (patch 2055; since patch 2058 the wait also naps 100 us between its
+  checks instead of at least 1 ms), confirmed on that card with the 0.3.1 test build: smooth movies and menus,
+  `queued` 0 to 1 (2026-11-08).
 - **A fullscreen window that loses the focus goes headless** in 0.3.0 (issue #17): the game keeps running with no
-  picture. Fixed after 0.3.0 (patch 2054), not yet tried on Windows; since patch 2057 no failure to recreate the
-  swapchain closes the window (the frames are skipped and the presents try again). Workaround: borderless or a
-  window.
+  picture. Fixed in 0.4.0 (patch 2054): the picture came back after Alt+Tab on Windows 11 with an NVIDIA card
+  (2026-11-07); since patch 2057 no failure to recreate the swapchain closes the window (the frames are skipped and
+  the presents try again). Workaround in 0.3.0: borderless or a window.
+- **Borderless and fullscreen draw at a lower resolution when Windows scales the desktop** (seen on a 1920×1200
+  display, likely at Windows' 150 %, by issue #18's tester, 2026-11-09): the port does not tell Windows it handles DPI
+  scaling, so Windows gives it a desktop of 1280×800 and stretches the picture; the log shows `window swapchain
+  1280x800` whatever size the PC page asks for, in borderless and fullscreen. Not seen on Linux or at 100 %.
+  Workarounds: set the display's scale to 100 %, or in the Properties of `KZ1HD.exe` (in `work\build-win`),
+  Compatibility, "Change high DPI settings", tick "Override high DPI scaling behavior" with "Application".
 - **A controller that is detected but gives no input** (a OneXPlayer X2 Mini Pro's built-in Xbox-style pad, issue
   #19). Fixed in 0.3.0 (patch 4012), not yet confirmed on that machine; in 0.2.0 set `SDL_JOYSTICK_RAWINPUT=0`
   before `play.cmd`.

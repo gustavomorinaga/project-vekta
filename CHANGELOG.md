@@ -7,6 +7,14 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09 (pre-release)
+
+### Added
+- Developer switches for testing ([docs/dev/testing.md](docs/dev/testing.md)): `KZ_DEBUG_GOD=1` keeps the game's own
+  God mode on, `KZ_DEBUG_GIVE` gives the player weapons and grenades once per level through the game's own
+  `PLAYER:AddWeapon`, and `KZ_PROF=key,<seconds>,<file>` records a CPU profile each time F11 is pressed in the game's
+  window. All are off unless set.
+
 ### Changed
 - Field of view: the PC page's Field of View row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game's
   is 87), with a second row, Weapon Field of View, for the first-person weapon; a wider window still shows more at
