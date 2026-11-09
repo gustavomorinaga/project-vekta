@@ -27,6 +27,8 @@ an existing profile changes the menu flow.
 - `KZ_DEBUG_GIVE="ChainGun:731:0,HandGrenade:3"` gives the player weapons once per level through the game's own
   `PLAYER:AddWeapon(name, ammo, secondary)` (the last one is held) and grenades after them with
   `PLAYER:PickupAmmo(name, count, 0)` (`port/kz1hd/debug_give.h`). `ChainGun` is Rico's M224-A3.
+- `KZ_DEBUG_GOD=1` keeps the player from taking damage with the game's own God mode (Debug Options, Overrides), set
+  every frame (`port/kz1hd/debug_god.h`), for camera and view checks in a fight.
 - `KZ_HUD_SITES=1` logs each HUD drawing site once per third of the screen (`[kz-hud-site]`, `[kz-hud-site2]`),
   HUD text (`[kz-hud-text]`) and who builds the menus' 512x448 layout (`[kz-menu-ortho]`).
 - `KZ_UNLOCK_LEVELS=1` makes every level selectable: START, X (GAME), X (Campaign), X (select level), DOWN × (level −
