@@ -14,6 +14,10 @@ program and folder that build it. Until a release that calls itself playable
   ([docs/dev/ps3recomp-v019-migration.md](docs/dev/ps3recomp-v019-migration.md)).
 
 ### Fixed
+- The pause menu's items no longer come back empty after opening one of its screens (Audio, Controls...) and
+  going back: the PC item's list is made again with the game's own text format.
+- VICTORY with the mouse: the statistics no longer darken under the pointer (the game keeps that list
+  inactive), and Quit and Continue can be pointed at and clicked (also FAILED's Retry and Quit).
 - Button prompts no longer turn back into PlayStation glyphs after a while (picking up and swapping weapons): the
   game reloads its button atlas over the same memory, and that copy now gets the player's glyphs again (patch 2060).
 - Ultrawide: Rico's grenade icons stay next to his M224-A3's ammo panel instead of near the middle of the screen.
