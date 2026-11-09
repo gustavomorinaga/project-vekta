@@ -45,6 +45,7 @@
 #include "view_flat.h"   /* when the picture goes 16:9 */
 #include "lua_states.h"  /* the Lua states given the PC script */
 #include "debug_give.h"  /* KZ_DEBUG_GIVE */
+#include "menu_box.h"    /* the list box the mouse drives */
 #include "route.h"
 
 extern "C" {
@@ -741,6 +742,10 @@ static std::string kz_lua(void)
     " end\n"
     " gPauseMenu.InitMenuItems = function(self)\n"
     "  local b = self.ListBox\n"
+    /* the text format the game's own menu set once in Init (MenuScript.Pause):
+     * remade on Entry, back from a submenu the items took the submenu's and
+     * came out empty */
+    "  gMenu:SetTextFormat(gTypefaces.ItemList, CENTER, CENTER)\n"
     /* once per list box, whoever calls it and however often: pausing and
      * unpausing fast could make the items twice */
     "  b:Clear()\n"
@@ -985,15 +990,24 @@ static bool hover_one(uint32_t sel, float vx, float vy, Goal* g)
     }
     if (!shown_n) return false;
     const bool column = (cy1 - cy0) >= (cx1 - cx0);   /* items stacked, not side by side */
+    /* Side by side, items can overlap (each is as wide as the bar drawn
+     * behind it: VICTORY's Continue spans x 168..556 and Quit -44..344), so
+     * of the items under the pointer the one whose middle is nearest wins. */
+    int best = -1; float best_d = 1e9f;
     for (int i = 0; i < n && i < 256; i++) {
         const uint32_t w = rd32(rd32(grp + 8) + 8u * i);
         if (!shown(w)) continue;
         const bool hit = column
             ? vy >= rdf(w + 0x54) && vy < rdf(w + 0x5C) && vx >= x0 - 120 && vx < x1 + 120
             : vx >= rdf(w + 0x50) - 40 && vx < rdf(w + 0x58) + 40 && vy >= y0 && vy < y1 + 15;
-        if (hit) { *g = { sel, grp, 0, i, 0 }; return true; }
+        if (!hit) continue;
+        if (column) { best = i; break; }
+        const float d = std::fabs(vx - (rdf(w + 0x50) + rdf(w + 0x58)) * 0.5f);
+        if (d < best_d) { best_d = d; best = i; }
     }
-    return false;
+    if (best < 0) return false;
+    *g = { sel, grp, 0, best, 0 };
+    return true;
 }
 
 struct OptRow { uint32_t w; bool slider; };
@@ -1107,11 +1121,13 @@ static void menu_mouse(void)
     else if (w * 9 > h * 16) { fw = h * 16.0f / 9.0f; fx0 = ((float)w - fw) * 0.5f; }
     else { fh = w * 9.0f / 16.0f; fy0 = ((float)h - fh) * 0.5f; }
     const float vx = (x - fx0) * 512.0f / fw, vy = (y - fy0) * 450.0f / fh;
-    /* The box shown most recently made is the one in front. */
+    /* The box shown most recently made is the one in front, if the game
+     * drives it (active: menu_box.h); an inactive one (VICTORY's statistics)
+     * leaves the pointer to the selections. */
     uint32_t box = 0;
     for (unsigned i = 0; i < 64 && i < s_nboxes; i++) {
         const uint32_t lb = s_boxes[(s_nboxes - 1 - i) % 64];
-        if (lb && rd32(lb) == 0x00567340 && rdf(lb + 0x38) == 1.0f) { box = lb; break; }
+        if (lb && menu_box_drivable(rd32(lb), rdf(lb + 0x38), vm_base[lb + 0x41])) { box = lb; break; }
     }
     static const bool fake_pos = getenv("PAD_MOUSE_POS") != nullptr;   /* tests: hover every tick */
     const bool moved = x != prev_x || y != prev_y;
