@@ -12,6 +12,7 @@
 KZ_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 . "$KZ_ROOT/tools/env.sh"
 bin="${KZ_BIN:-$KZ_WORK/build/KZ1HD}"   # KZ_BIN: another build (work/build-win/KZ1HD.exe)
+bin=$(readlink -m "$bin")   # a relative KZ_BIN is from where the script was started (it then changes to the VFS directory)
 [ -d "$KZ_VFS" ] || { echo "play.sh: no $KZ_VFS yet: run tools/setup-vfs.sh first (docs/BUILDING.md)" >&2; exit 1; }
 [ -f "$bin" ] || { echo "play.sh: no $bin yet: run tools/ps3recomp-patched.sh, tools/lift.sh and tools/build.sh first (docs/BUILDING.md)" >&2; exit 1; }
 cd "$KZ_VFS" || exit 1
