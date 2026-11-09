@@ -684,7 +684,7 @@ static std::string kz_lua(void)
     "  b:SetItem(1, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Display|0.0;1.0;2.0|Window;Borderless;Fullscreen', 'Display Mode'))\n"
     "  b:SetItem(2, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Resolution|" + rv + "|" + rl + "', 'Resolution'))\n"
     "  b:SetItem(3, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Widescreen|true;false|$Conditions.On$;$Conditions.Off$', 'Widescreen'))\n"
-    "  b:SetItem(4, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Field of View (16:9)'))\n"
+    "  b:SetItem(4, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Field of View'))\n"
     "  b:SetItem(5, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDSize', 'HUD Size'))\n"
     "  b:SetItem(6, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDPosition', 'HUD Position'))\n"
     "  b:SetItem(7, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.VSync|0.0;1.0;2.0;3.0|On;Off;Adaptive;FIFO (VRR)', 'V-Sync'))\n"
