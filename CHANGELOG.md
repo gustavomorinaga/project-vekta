@@ -8,8 +8,8 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Changed
-- Field of view: the PC page's row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game's is 87),; a wider
-  window still shows more at the sides, and the first-person weapon keeps the game's framing. A setting from an older
+- Field of view: the PC page's row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game's is 87),, with a
+  second row for the first-person weapon; a wider window still shows more at the sides. A setting from an older
   version (vertical) is carried over.
 - ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch
   series was re-applied: 1006 dropped (now upstream), 1017 smaller, 0006 to 0008 new; the Vulkan backend stays the
@@ -19,6 +19,8 @@ program and folder that build it. Until a release that calls itself playable
 ### Fixed
 - Ultrawide and wide FOV: the sky's fog band (Level 6) is no longer cut off at the screen's sides with hard grey
   edges: the sky camera's near plane now comes closer for a view wider than the game's.
+- Ultrawide: the first-person weapon is no longer drawn half as large again as on a 16:9 screen (its FOV came
+  from the camera's aspect, which the port widens).
 - The field of view setting widens the world: before, it reached only the sky's camera, so the world stayed at the
   game's FOV and the sky and far mountains slid against it when turning.
 - The pause menu's items no longer come back empty after opening one of its screens (Audio, Controls...) and

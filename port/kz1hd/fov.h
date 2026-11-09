@@ -11,8 +11,9 @@
  * cameras' FOV, 56.25 to 28.125) keeps its magnification.
  *
  *   field_of_view = 70-120, or 0: the game's (the world, its sky and the
- *                   view's culling and shadows; the first-person weapon keeps
- *                   the game's framing: its projection is made elsewhere)
+ *                   view's culling and shadows)
+ *   weapon_fov    = 70-120, or 0: the game's (the first-person weapon: 45
+ *                   degrees vertical, 72 horizontal at 16:9; fov_weapon)
  *
  * Older settings files have `fov`, the vertical FOV at 16:9 (40-90,
  * 56.25 the game's); it becomes field_of_view (fov_from_vertical).
@@ -86,6 +87,21 @@ static inline int fov_site_world(unsigned ret)
     case 0x0021A190u: case 0x002B81DCu: case 0x001CEC28u: case 0x001EE3D0u: case 0x001B53E8u: case 0x000DF734u: return 1;
     default: return 0;
     }
+}
+
+/* The first-person weapon's projection (func_001F7F10, at 0x1F8524 calling
+ * func_0005C368, found 2026-11-09 from the weapon draws' vertex constants in
+ * an F12 capture): vertical FOV = 60 / the view camera's aspect (+0x74) / a
+ * factor (+0x430; 0.75 in Level 1), 45 degrees at 16:9. The port gives that
+ * camera the window's aspect (Hor+), which took the weapon's FOV down with
+ * it: 30.7 degrees at 3440x1440, the weapon half as large again as the game
+ * draws it. Here the FOV is first taken back to what the game's 16:9 gives
+ * (`aspect` the camera's, `wide` 1 when it is the port's widened one), then
+ * scaled by the weapon's setting. */
+static inline double fov_weapon(double fov, double aspect, int wide, double scale)
+{
+    if (wide && aspect > FOV_ASPECT) fov *= aspect / FOV_ASPECT;
+    return fov_apply(fov, scale);
 }
 
 /* The menu's rows: index 0 is the game's (87), then 70, 75, ... 120 */

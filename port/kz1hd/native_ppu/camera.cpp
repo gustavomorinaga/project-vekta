@@ -23,7 +23,7 @@
  * 0xDF734 nothing visible (culling and shadows, it seems). The setting goes to
  * all of them: before, it went to the sky alone (taken for the world), which
  * moved the backdrop against the world. The first-person weapon is projected
- * elsewhere (none of these changes it) and keeps the game's framing.
+ * elsewhere, with its own setting (func_0005C368 below).
  */
 #include "native_ppu.h"
 #include "../view.h"
@@ -145,4 +145,20 @@ void func_001A9FC8(ppu_context* ctx)
     vm_write32(cam + 0x70, fov_bits);
     vm_write32(cam + 0x68, near_bits);
     if (ret == kSkyRet || ret == kViewRet) jitter_frustum(out, ret == kSkyRet);
+}
+
+/* func_0005C368(out r3, vertical FOV in degrees f1, aspect f2, near f3, far
+ * f4): a perspective projection. From 0x1F8524 (func_001F7F10) it is the
+ * first-person weapon's, its FOV made from the view camera's aspect (fov.h,
+ * fov_weapon): kept at the game's 16:9 framing on a wider window, and scaled
+ * by the weapon's setting. */
+void func_0005C368(ppu_context* ctx)
+{
+    constexpr uint32_t kWeaponRet = 0x001F8528;
+    if ((uint32_t)ctx->lr == kWeaponRet) {
+        const double aspect = ctx->fpr[2];
+        const int wide = kz_view.aspect > 0.0f && fabs(aspect - kz_view.aspect) < 0.01;
+        ctx->fpr[1] = (double)(float)fov_weapon(ctx->fpr[1], aspect, wide, kz_view.weapon_scale);
+    }
+    func_0005C368_lifted(ctx);
 }
