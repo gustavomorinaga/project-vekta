@@ -6,6 +6,7 @@ KZ_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 . "$KZ_ROOT/tools/env.sh"
 secs=${1:-60}; log=$(readlink -m "${2:-$KZ_WORK/run.log}")
 bin="${KZ_BIN:-$KZ_WORK/build/KZ1HD}"
+bin=$(readlink -m "$bin")   # a relative KZ_BIN is from where the script was started (it then changes to the VFS directory)
 cd "$KZ_VFS" || exit 1   # KZ_VFS: another VFS root (tests keep their own saves)
 libdir="$(dirname "$bin")/lib"   # the pinned Linux toolchain's build keeps its FFmpeg there (tools/play.sh)
 [ -d "$libdir" ] && export LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

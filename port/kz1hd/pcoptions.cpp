@@ -42,6 +42,7 @@
 
 #include "ppu_recomp.h"
 #include "view.h"
+#include "fov.h"
 #include "view_flat.h"   /* when the picture goes 16:9 */
 #include "lua_states.h"  /* the Lua states given the PC script */
 #include "debug_give.h"  /* KZ_DEBUG_GIVE */
@@ -133,7 +134,8 @@ static void ini_save(void)
  *                                             next start)
  *   widescreen = on | off   (on: the picture widens to the window's aspect, the 2D in the
  *                            16:9 middle; off: a 16:9 picture with bars at the sides)
- *   fov        = the vertical field of view in degrees, 40-90 (the game's is 56.25)
+ *   field_of_view = the world's horizontal FOV at 16:9 in degrees, 70-120 (87: the game's;
+ *                   a wider window shows more at the sides; fov.h)
  *   hud_size   = 0.5-1.5   (1: the game's)
  *   hud_position = 0-1     (0: the HUD in the 16:9 middle, 1: at the screen's edges)
  *   overlay    = off | mangohud   (MangoHUD's statistics over the game; at the next
@@ -167,7 +169,7 @@ static const char* present_mode(const std::string& v);   /* below, with the PC s
 static const struct { const char* key; const char* def; } kVideo[] = {
     { "display", "window" }, { "resolution", "1280x720" }, { "refresh", "0" },
     { "vsync", "on" }, { "fps_limit", "60" }, { "controllers", "merged" }, { "scale", "100" },
-    { "overlay", "off" }, { "widescreen", "on" }, { "fov", "56.25" }, { "hud_size", "1" },
+    { "overlay", "off" }, { "widescreen", "on" }, { "field_of_view", "87" }, { "hud_size", "1" },
     { "hud_position", "1" }, { "intro", "on" }, { "anisotropic", "game" },
     { "upscaler", "linear" }, { "sharpness", "0.2" }, { "temporal", "off" }, { "speakers", "2" }, { "language", "system" },
     { "reflex", "off" }, { "motion_blur", "on" },
@@ -208,8 +210,7 @@ static bool s_widescreen = true;
 static void view_load(void)
 {
     s_widescreen = s_ini["widescreen"] != "off";
-    kz_view.fov = std::clamp((float)atof(s_ini["fov"].c_str()), 40.0f, 90.0f);
-    if (fabsf(kz_view.fov - 56.25f) < 0.01f) kz_view.fov = 0.0f;   /* the game's own */
+    kz_view.fov_scale = (float)fov_scale(fov_setting(atof(s_ini["field_of_view"].c_str())));
     kz_view.hud_scale = std::clamp((float)atof(s_ini["hud_size"].c_str()), 0.5f, 1.5f);
     kz_view.hud_pos = std::clamp((float)atof(s_ini["hud_position"].c_str()), 0.0f, 1.0f);
 }
@@ -240,6 +241,16 @@ extern "C" void kz_pc_settings_env(void)
 {
     ini_read();
     bool added = false;
+    /* an older file's `fov`, the vertical FOV at 16:9, becomes field_of_view (fov.h) */
+    if (s_ini.count("fov")) {
+        if (!s_ini.count("field_of_view")) {
+            const double h = fov_from_vertical(atof(s_ini["fov"].c_str()));
+            char b[32]; snprintf(b, sizeof b, "%g", h > 0.0 ? h : 87.0);
+            s_ini["field_of_view"] = b;
+        }
+        s_ini.erase("fov");
+        added = true;
+    }
     for (auto& d : kVideo) if (!s_ini.count(d.key)) { s_ini[d.key] = d.def; added = true; }
     if (added) ini_write();
     setenv("PS3RECOMP_VK_DISPLAY", s_ini["display"].c_str(), 0);
@@ -503,7 +514,7 @@ static void set_reflex(ppu_context* c) { attr_log("set_reflex", c); if ((int32_t
  * PS3's: 30 fps, 16:9 with bars, its FOV and HUD, no upscaler; the others
  * keep the picture widescreen. */
 static const struct { const char* name; const char* kv[8][2]; } kPresets[] = {
-    { "original",    { { "fps_limit", "30" }, { "widescreen", "off" }, { "fov", "56.25" }, { "hud_size", "1" },
+    { "original",    { { "fps_limit", "30" }, { "widescreen", "off" }, { "field_of_view", "87" }, { "hud_size", "1" },
                        { "scale", "100" }, { "anisotropic", "game" }, { "upscaler", "linear" }, { "motion_blur", "on" } } },
     { "performance", { { "fps_limit", "60" }, { "widescreen", "on" }, { "scale", "75" }, { "upscaler", "fsr" }, { "sharpness", "0.2" },
                        { "anisotropic", "game" }, { nullptr, nullptr } } },
@@ -537,12 +548,14 @@ static void set_mblur(ppu_context* c) { attr_log("set_mblur", c); if ((int32_t)c
 static void get_wide(ppu_context* c) { attr_log("get_wide", c); vm_base[(uint32_t)c->gpr[4]] = s_widescreen; }
 static void set_wide(ppu_context* c) { attr_log("set_wide", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["widescreen"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); view_load(); }
-/* The sliders' positions, 0..1: FOV 40-90 degrees, HUD size 0.5-1.5, HUD position as is. */
+/* The FOV rows (fov.h): 0 the game's 87, then 70 to 120 by 5. The sliders'
+ * positions, 0..1: HUD size 0.5-1.5, HUD position as is. */
 static void set_num(const char* key, float v) { char b[32]; snprintf(b, sizeof b, "%.4g", v); s_ini[key] = b; ini_write(); view_load(); }
 static void get_fov(ppu_context* c) { attr_log("get_fov", c);
-    wrf((uint32_t)c->gpr[4], (std::clamp((float)atof(s_ini["fov"].c_str()), 40.0f, 90.0f) - 40.0f) / 50.0f); }
+    wrf((uint32_t)c->gpr[4], (float)fov_row_of(fov_setting(atof(s_ini["field_of_view"].c_str())))); }
 static void set_fov(ppu_context* c) { attr_log("set_fov", c); if ((int32_t)c->gpr[5] != 2) return;
-    set_num("fov", 40.0f + 50.0f * std::clamp(in_f(c), 0.0f, 1.0f)); }
+    const double v = fov_row_value((int)lroundf(in_f(c)));
+    set_num("field_of_view", v > 0.0 ? (float)v : 87.0f); }
 static void get_hud_size(ppu_context* c) { attr_log("get_hud_size", c); wrf((uint32_t)c->gpr[4], kz_view.hud_scale - 0.5f); }
 static void set_hud_size(ppu_context* c) { attr_log("set_hud_size", c); if ((int32_t)c->gpr[5] != 2) return;
     set_num("hud_size", 0.5f + std::clamp(in_f(c), 0.0f, 1.0f)); }
@@ -671,7 +684,7 @@ static std::string kz_lua(void)
     "  b:SetItem(1, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Display|0.0;1.0;2.0|Window;Borderless;Fullscreen', 'Display Mode'))\n"
     "  b:SetItem(2, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Resolution|" + rv + "|" + rl + "', 'Resolution'))\n"
     "  b:SetItem(3, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Widescreen|true;false|$Conditions.On$;$Conditions.Off$', 'Widescreen'))\n"
-    "  b:SetItem(4, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.FOV', 'Field of View'))\n"
+    "  b:SetItem(4, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Field of View'))\n"
     "  b:SetItem(5, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDSize', 'HUD Size'))\n"
     "  b:SetItem(6, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDPosition', 'HUD Position'))\n"
     "  b:SetItem(7, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.VSync|0.0;1.0;2.0;3.0|On;Off;Adaptive;FIFO (VRR)', 'V-Sync'))\n"

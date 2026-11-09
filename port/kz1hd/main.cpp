@@ -40,6 +40,7 @@
 #include "win32_compat.h"
 #include "../ps3_trace.h"   /* runtime/, via the runtime/ppu include directory */
 #include "ps3emu/thread_name.h"
+#include "debug_god.h"   /* KZ_DEBUG_GOD */
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
 #include <sanitizer/lsan_interface.h>
@@ -426,6 +427,9 @@ static DWORD WINAPI frame_clock(LPVOID)
               }
           } }
         kz_view_update();   /* pcoptions.cpp: the cameras follow the window's aspect */
+        /* KZ_DEBUG_GOD=1 (testing; debug_god.h): the game's own God mode, every frame */
+        { static const int god = debug_god_on(getenv("KZ_DEBUG_GOD"));
+          if (god) if (const uint32_t f = debug_god_flag(vm_read32(DEBUG_GOD_SETTINGS))) vm_write8(f, 1); }
         /* KZ_POKE=<file> (reverse engineering), re-read every second:
          *   <hex addr> <hex u32>   written into guest RAM every frame
          *   rw|ww <hex addr> <hex len>   move the runtime's dynamic read/write watch

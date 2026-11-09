@@ -8,12 +8,19 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Changed
+- Field of view: the PC page's row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game's is 87),; a wider
+  window still shows more at the sides, and the first-person weapon keeps the game's framing. A setting from an older
+  version (vertical) is carried over.
 - ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch
   series was re-applied: 1006 dropped (now upstream), 1017 smaller, 0006 to 0008 new; the Vulkan backend stays the
   port's. Levels 1 to 8 replay to their end; speed the same or better (levels 3, 4 and 8 faster)
   ([docs/dev/ps3recomp-v019-migration.md](docs/dev/ps3recomp-v019-migration.md)).
 
 ### Fixed
+- Ultrawide and wide FOV: the sky's fog band (Level 6) is no longer cut off at the screen's sides with hard grey
+  edges: the sky camera's near plane now comes closer for a view wider than the game's.
+- The field of view setting widens the world: before, it reached only the sky's camera, so the world stayed at the
+  game's FOV and the sky and far mountains slid against it when turning.
 - The pause menu's items no longer come back empty after opening one of its screens (Audio, Controls...) and
   going back: the PC item's list is made again with the game's own text format.
 - VICTORY with the mouse: the statistics no longer darken under the pointer (the game keeps that list

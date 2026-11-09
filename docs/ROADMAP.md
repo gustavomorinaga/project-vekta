@@ -173,8 +173,8 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
       (`kz1hd_keys.ini`)
 - [x] Mouse in dialogs and options
 - [ ] An in-game key remapping page
-- [x] Field of view: a slider on the PC page (40 to 90 degrees vertical; the game's is 56.25); zoom keeps its
-      magnification and the first-person weapon keeps the game's framing
+- [x] Field of view: a row on the PC page (70 to 120 degrees horizontal at 16:9; the game's is 87); zoom keeps
+      its magnification and the first-person weapon keeps the game's framing
 - [ ] Post-processing toggles (motion blur, grain, depth of field, lens flare, where the game has them)
 - [x] HUD size and position on the PC page
 - [x] Widescreen (21:9, 32:9 and wider): Hor+ picture at the window's size, menus, movies and text in the middle 16:9,
@@ -191,6 +191,7 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] Debug menu: `KZ_DEBUG_MENU=1` turns on the game's own Debug Options in the pause menu (God Mode, Next Level, ...)
 - [x] Weapons for testing: `KZ_DEBUG_GIVE` gives the player weapons and grenades through the game's own
   `AddWeapon`/`PickupAmmo` ([dev/testing.md](dev/testing.md)).
+- [x] No damage for testing: `KZ_DEBUG_GOD=1` keeps the game's own God mode on ([dev/testing.md](dev/testing.md)).
 - [ ] Weapons on the ground for testing pickups and swaps (the game drops them from enemies, `AddWeaponPickup`).
 - [ ] Postponed: DLSS Frame Generation (needs an RTX 40 or newer), Intel XeSS (SDK for Windows only)
 
