@@ -54,7 +54,7 @@ are off by default; display and input improvements may be on.
 | Anisotropic filtering: the game's own, off, 2x to 16x | the game's | `anisotropic` |
 | Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA | off | `temporal` (on restart); DLSS only when downloaded at install with NVIDIA's licence accepted, else "(not built)"; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer's private build) DLSS Quality 135.7 fps |
 | Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9 | on | `widescreen` |
-| Field of view, 40 to 90 degrees vertical (the game's is 56.25) | the game's | `fov`; zoom and the first-person weapon keep the game's framing |
+| Field of view, 70 to 120 degrees horizontal at 16:9 (the game's is 87), for the world (the first-person weapon keeps the game's framing) | the game's | `field_of_view`; a scope's zoom keeps its magnification; an older `fov` (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it |
 | HUD size and position | the game's | `hud_size`, `hud_position` |
 | Presets: Original (PS3), Performance, Balanced, Quality | Custom when nothing matches | |
 | Keyboard and mouse: direct mouse look with its own sensitivity and invert, mouse in menus and dialogs | on | `mouse_yaw`, `mouse_pitch`, `mouse_invert`; keys in `kz1hd_keys.ini` (written on the first run; edit to remap) |

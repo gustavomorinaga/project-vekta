@@ -166,7 +166,7 @@
 <tr><td>Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td>the game&#x27;s</td><td><code>anisotropic</code></td></tr>
 <tr><td>Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer&#x27;s private build) DLSS Quality 135.7 fps</td></tr>
 <tr><td>Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code></td></tr>
-<tr><td>Field of view, 40 to 90 degrees vertical (the game&#x27;s is 56.25)</td><td>the game&#x27;s</td><td><code>fov</code>; zoom and the first-person weapon keep the game&#x27;s framing</td></tr>
+<tr><td>Field of view, 70 to 120 degrees horizontal at 16:9 (the game&#x27;s is 87), for the world (the first-person weapon keeps the game&#x27;s framing)</td><td>the game&#x27;s</td><td><code>field_of_view</code>; a scope&#x27;s zoom keeps its magnification; an older <code>fov</code> (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it</td></tr>
 <tr><td>HUD size and position</td><td>the game&#x27;s</td><td><code>hud_size</code>, <code>hud_position</code></td></tr>
 <tr><td>Presets: Original (PS3), Performance, Balanced, Quality</td><td>Custom when nothing matches</td><td></td></tr>
 <tr><td>Keyboard and mouse: direct mouse look with its own sensitivity and invert, mouse in menus and dialogs</td><td>on</td><td><code>mouse_yaw</code>, <code>mouse_pitch</code>, <code>mouse_invert</code>; keys in <code>kz1hd_keys.ini</code> (written on the first run; edit to remap)</td></tr>
@@ -199,7 +199,9 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Changed</span>Field of view: the PC page&#x27;s row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game&#x27;s is 87),; a wider window still shows more at the sides, and the first-person weapon keeps the game&#x27;s framing. A setting from an older version (vertical) is carried over.</li>
 <li><span class="sec">Changed</span>ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch series was re-applied: 1006 dropped (now upstream), 1017 smaller, 0006 to 0008 new; the Vulkan backend stays the port&#x27;s. Levels 1 to 8 replay to their end; speed the same or better (levels 3, 4 and 8 faster) (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/ps3recomp-v019-migration.md">docs/dev/ps3recomp-v019-migration.md</a>).</li>
+<li><span class="sec">Fixed</span>The field of view setting widens the world: before, it reached only the sky&#x27;s camera, so the world stayed at the game&#x27;s FOV and the sky and far mountains slid against it when turning.</li>
 <li><span class="sec">Fixed</span>The pause menu&#x27;s items no longer come back empty after opening one of its screens (Audio, Controls...) and going back: the PC item&#x27;s list is made again with the game&#x27;s own text format.</li>
 <li><span class="sec">Fixed</span>VICTORY with the mouse: the statistics no longer darken under the pointer (the game keeps that list inactive), and Quit and Continue can be pointed at and clicked (also FAILED&#x27;s Retry and Quit).</li>
 <li><span class="sec">Fixed</span>Button prompts no longer turn back into PlayStation glyphs after a while (picking up and swapping weapons): the game reloads its button atlas over the same memory, and that copy now gets the player&#x27;s glyphs again (patch 2060).</li>
@@ -270,14 +272,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> Field of view: the PC page&#x27;s row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game&#x27;s is 87),; a wider...</span></li>
 <li><time>next</time><span><b>Unreleased</b> ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The field of view setting widens the world: before, it reached only the sky&#x27;s camera, so the world stayed at the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The pause menu&#x27;s items no longer come back empty after opening one of its screens (Audio, Controls...) and going back...</span></li>
 <li><time>next</time><span><b>Unreleased</b> VICTORY with the mouse: the statistics no longer darken under the pointer (the game keeps that list inactive), and...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Button prompts no longer turn back into PlayStation glyphs after a while (picking up and swapping weapons): the game...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Ultrawide: Rico&#x27;s grenade icons stay next to his M224-A3&#x27;s ammo panel instead of near the middle of the screen.</span></li>
 <li><time>next</time><span><b>Unreleased</b> The background of the VICTORY, FAILED and pause screens no longer turns into green static after a few levels in a long...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The main menu no longer stays black after quitting from the pause menu late in a long session: every movie leaked one...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Widescreen: the picture no longer shrinks to 16:9 with bars and stretches back during gameplay. A frame that took over...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

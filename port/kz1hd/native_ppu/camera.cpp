@@ -12,13 +12,22 @@
  * divided by it (56.25 vertical at 16:9). Here a perspective camera with the
  * 16:9 aspect gets the window's aspect instead (the frame is rendered
  * anamorphic and stretched to the window), keeping its vertical FOV: the
- * picture widens (Hor+) and nothing is stretched. The world camera also takes
- * the FOV setting, while the first-person model is drawn, as a scale of the
- * game's own FOV, so zooming keeps its magnification; the model keeps the
- * game's FOV so the weapon is framed as the game made it.
+ * picture widens (Hor+) and nothing is stretched.
+ *
+ * The FOV settings (fov.h) scale tan(fov/2) of the game's own FOV, so a
+ * scope's zoom (the cameras' FOV halved) keeps its magnification. One camera
+ * makes most of a frame's projections, told apart by their call sites
+ * (fov_site_world; found 2026-11-09 by doubling each one's frustum in Level 1
+ * and comparing the frames): 0x21A190 the world, 0x2B81DC the sky and the far
+ * backdrop (near 1, far 2000), 0x1CEC28, 0x1EE3D0, 0x1B53E8 (six a frame) and
+ * 0xDF734 nothing visible (culling and shadows, it seems). The setting goes to
+ * all of them: before, it went to the sky alone (taken for the world), which
+ * moved the backdrop against the world. The first-person weapon is projected
+ * elsewhere (none of these changes it) and keeps the game's framing.
  */
 #include "native_ppu.h"
 #include "../view.h"
+#include "../fov.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -30,11 +39,13 @@ void rsx_temporal_set_view(const float vp[16], float jitter_x, float jitter_y,
 
 namespace {
 
-constexpr uint32_t kWorldRet = 0x002B81DC, kModelRet = 0x0021A190;
-constexpr float kGameAspect = 16.0f / 9.0f, kGameFov = 56.25f;
-constexpr double kDeg = 3.14159265358979323846 / 180.0;
+/* the temporal upscalers' jitter: the frame's from the sky's call (0x2B81DC),
+ * the same for the world's (0x21A190) */
+constexpr uint32_t kSkyRet = 0x002B81DC, kViewRet = 0x0021A190;
+constexpr float kGameAspect = 16.0f / 9.0f;
 
-unsigned s_world_n, s_model_n;   // world projections built, and the count when the model's last was
+/* the FOV scale for a call site (fov.h): the world's, or 1 */
+double site_scale(uint32_t ret) { return fov_site_world(ret) ? kz_view.fov_scale : 1.0; }
 
 void log_camera(uint32_t cam, uint32_t ret)
 {
@@ -114,7 +125,6 @@ void func_001A9FC8(ppu_context* ctx)
 {
     const uint32_t cam = (uint32_t)ctx->gpr[4], ret = (uint32_t)ctx->lr, out = (uint32_t)ctx->gpr[3];
     log_camera(cam, ret);
-    if (ret == kModelRet) s_model_n = s_world_n;
     if (!vm_read8(cam + 0x78)) {   /* orthographic */
         func_001A9FC8_lifted(ctx);
         return;
@@ -122,17 +132,15 @@ void func_001A9FC8(ppu_context* ctx)
     const float aspect = kz_view.aspect;
     if (aspect > 0.0f && fabs(ldf(cam + 0x74) - kGameAspect) < 0.01) stf(cam + 0x74, aspect);
     kz_view_3d++;   /* a 3D picture is being drawn (pcoptions.cpp: no crop) */
-    if (ret != kWorldRet || !(kz_view.fov > 0.0f) || s_world_n++ - s_model_n > 2 || vm_read8(cam + 0x80)) {
+    const double scale = site_scale(ret);
+    if (scale != 1.0 && scale > 0.0 && !vm_read8(cam + 0x80)) {
+        /* the game sets the FOV every frame; it gets its own back after the build */
+        const uint32_t fov_bits = vm_read32(cam + 0x70);
+        stf(cam + 0x70, (float)fov_apply(ldf(cam + 0x70), scale));
         func_001A9FC8_lifted(ctx);
-        if (ret == kWorldRet || ret == kModelRet) jitter_frustum(out, ret == kWorldRet);
-        return;
+        vm_write32(cam + 0x70, fov_bits);
+    } else {
+        func_001A9FC8_lifted(ctx);
     }
-    /* tan(fov/2) scales with the setting, so a zoomed FOV keeps its magnification */
-    const uint32_t fov_bits = vm_read32(cam + 0x70);
-    const double fov = ldf(cam + 0x70);
-    const double t = tan(fov * 0.5 * kDeg) * tan(kz_view.fov * 0.5 * kDeg) / tan(kGameFov * 0.5 * kDeg);
-    stf(cam + 0x70, 2.0 * atan(t) / kDeg);
-    func_001A9FC8_lifted(ctx);
-    vm_write32(cam + 0x70, fov_bits);
-    jitter_frustum(out, true);
+    if (ret == kSkyRet || ret == kViewRet) jitter_frustum(out, ret == kSkyRet);
 }
