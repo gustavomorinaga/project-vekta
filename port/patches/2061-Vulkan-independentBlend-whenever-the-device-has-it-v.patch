@@ -1,0 +1,160 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 9 Nov 2026 15:32:44 -0300
+Subject: [PATCH] Vulkan: independentBlend whenever the device has it; velocity
+ pipelines need it
+
+The validation layer reported, on a run without a temporal upscaler:
+VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605, "If the
+independentBlend feature is not enabled, all elements of pAttachments
+must be identical". The device enabled independentBlend only under
+PS3RECOMP_TEMPORAL (patch 2048), where the engine adds a velocity
+target to its pipelines with a blend state of its own (no blending,
+written only by opaque draws). But the pipeline list on disk
+(pipelines.list, patch 2056) keeps every pipeline a run made, velocity
+ones included, and a later run without an upscaler built them ahead on
+its workers, on a device created without the feature.
+
+Now:
+- independentBlend is enabled whenever the device reports it (every
+  desktop GPU does), as the RSX has per-target blend state;
+- the velocity variant is made only under an upscaler, with per-object
+  motion on and on a device with the feature (rsx_vk_vel_on); without
+  the feature the upscaler keeps the camera's motion and says so once;
+- the pipeline list skips velocity records in a run that makes no
+  velocity pipelines (rsx_vk_plist_rec_wanted), which also spares their
+  build time;
+- vk_eng_build refuses a pipeline whose attachments differ on a device
+  without the feature (rsx_vk_blend_attachments_ok), instead of handing
+  the driver an invalid create info.
+
+The decisions are in rsx_blend_state.h, Vulkan-free, for the host test
+tools/tests/test_blend_state.sh. Written from the Vulkan specification.
+---
+ libs/video/rsx_blend_state.h    | 51 +++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c | 16 +++++++++--
+ 2 files changed, 65 insertions(+), 2 deletions(-)
+ create mode 100644 libs/video/rsx_blend_state.h
+
+diff --git a/libs/video/rsx_blend_state.h b/libs/video/rsx_blend_state.h
+new file mode 100644
+index 0000000..aea3488
+--- /dev/null
++++ b/libs/video/rsx_blend_state.h
+@@ -0,0 +1,51 @@
++/*
++ * The colour blend attachments of one Vulkan pipeline and the
++ * independentBlend device feature.
++ *
++ * Without that feature every VkPipelineColorBlendAttachmentState of a
++ * pipeline must be the same (VUID-VkPipelineColorBlendStateCreateInfo-
++ * pAttachments-00605). The title's targets share target A's blend and mask
++ * (rsx_draw_engine.h), but the velocity target a temporal upscaler adds to a
++ * pipeline has a state of its own: no blending, written only by opaque
++ * draws. So a velocity pipeline needs the feature, and is never built
++ * without it: not by the engine, not from the pipeline list on disk (whose
++ * records a run with an upscaler wrote, and a run without one read back).
++ *
++ * Vulkan-free, so tools/tests/test_blend_state.c can run it on a host with
++ * no GPU.
++ */
++#ifndef RSX_BLEND_STATE_H
++#define RSX_BLEND_STATE_H
++
++#include <stddef.h>
++#include <string.h>
++
++/* The velocity variant of the engine's pipelines: only under a temporal
++ * upscaler (tm_want), with per-object motion on (tv_on), on a device that
++ * enabled independentBlend (indep). */
++static inline int rsx_vk_vel_on(int tm_want, int tv_on, int indep)
++{
++    return tm_want && tv_on && indep;
++}
++
++/* A pipeline list record (its `pad` bit 0 marks the velocity variant) is
++ * built ahead only when this run makes velocity pipelines at all. */
++static inline int rsx_vk_plist_rec_wanted(unsigned pad, int vel_on)
++{
++    return !(pad & 1u) || vel_on;
++}
++
++/* Whether n attachment states of `stride` bytes each, at `a`, may go in one
++ * pipeline on a device with (indep != 0) or without independentBlend. The
++ * states are compared byte for byte; callers build them from zeroed
++ * compound literals, so there is no padding to tell apart. */
++static inline int rsx_vk_blend_attachments_ok(const void* a, size_t stride, unsigned n, int indep)
++{
++    if (indep || n < 2u) return 1;
++    const unsigned char* p = (const unsigned char*)a;
++    for (unsigned i = 1; i < n; i++)
++        if (memcmp(p, p + (size_t)i * stride, stride) != 0) return 0;
++    return 1;
++}
++
++#endif /* RSX_BLEND_STATE_H */
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 1d6524a..8e85030 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -53,6 +53,7 @@
+ #include "rsx_present_steps.h"
+ #include "rsx_vk_cache_key.h"   /* the caches' keys hold the translator's id */
+ #include "rsx_temporal.h"
++#include "rsx_blend_state.h"   /* independentBlend and the velocity target */
+ #include "rsx_vk_dlss.h"
+ #include "rsx_vk_fsr3.h"
+ #include "vulkan/rsx_vk_motion_comp.spv.h"
+@@ -245,6 +246,7 @@ typedef struct vk_state {
+     int              bc_ok;           /* textureCompressionBC enabled       */
+     int              aniso_ok;        /* samplerAnisotropy enabled          */
+     int              int64_ok;        /* shaderInt64 enabled (the MLAA pass) */
++    int              indep_blend_ok;  /* independentBlend enabled (rsx_blend_state.h) */
+     u32              aniso_max;       /* maxSamplerAnisotropy, at most 16   */
+     u32              max_dim;         /* maxImageDimension2D of the device  */
+     int              windowed;
+@@ -5264,7 +5266,7 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
+     P->rt_count = rt_count;
+     P->rt_fmt = cf;
+     P->cube_mask = vk_eng_cube_units(ps_hlsl);
+-    if (s_tm.want && vk_tv_on()) {   /* the velocity variant, when its programs translate */
++    if (rsx_vk_vel_on(s_tm.want, vk_tv_on(), s_vk.indep_blend_ok)) {   /* the velocity variant, when its programs translate */
+         /* the rows the program reads: by number, and every one when it indexes them */
+         for (const char* q = vs_hlsl; (q = strstr(q, "vp_c[")); q += 5) {
+             if (q[5] == '(') { memset(P->vrows, 0xFF, sizeof P->vrows); break; }
+@@ -5412,6 +5414,8 @@ static VkResult vk_eng_build(const vk_plist_rec* R, VkShaderModule vs, VkShaderM
+     VkPipelineColorBlendStateCreateInfo cb = {
+         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+         .attachmentCount = R->rt_count + (vel ? 1u : 0u), .pAttachments = cba };
++    if (!rsx_vk_blend_attachments_ok(cba, sizeof cba[0], cb.attachmentCount, s_vk.indep_blend_ok))
++        return VK_ERROR_FEATURE_NOT_PRESENT;   /* VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605 */
+     VkDynamicState dyn[3] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR,
+                               VK_DYNAMIC_STATE_STENCIL_REFERENCE };
+     VkPipelineDynamicStateCreateInfo dy = {
+@@ -5571,6 +5575,8 @@ static void vk_plist_start(void)
+             if (r.version != VK_PLIST_VERSION) continue;
+             const u64 key = vk_plist_key(&r);
+             if (vk_plist_find(key)) continue;
++            /* a velocity pipeline from a run with an upscaler: none in this one */
++            if (!rsx_vk_plist_rec_wanted(r.pad, rsx_vk_vel_on(s_tm.want, vk_tv_on(), s_vk.indep_blend_ok))) continue;
+             /* everything it needs that only the RSX thread may create */
+             if (!vk_eng_render_pass((VkFormat)r.rt_fmt, r.rt_count, r.pad & 1u)) continue;
+             if (r.cube_mask && !vk_eng_split_layout()) continue;
+@@ -6476,8 +6482,14 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+         want.shaderInt16 = s_tm.want == 2 ? have.shaderInt16 : VK_FALSE;
+         want.shaderStorageImageWriteWithoutFormat = have.shaderStorageImageWriteWithoutFormat;
+         want.shaderStorageImageReadWithoutFormat = have.shaderStorageImageReadWithoutFormat;
+-        want.independentBlend = have.independentBlend;
+     }
++    /* independentBlend whenever the device has it (every desktop GPU): the
++     * velocity target blends apart from the title's, and pipelines listed by
++     * a run with an upscaler are built ahead by one without (2061) */
++    want.independentBlend = have.independentBlend;
++    s_vk.indep_blend_ok = have.independentBlend ? 1 : 0;
++    if (!s_vk.indep_blend_ok && s_tm.want)
++        VK_LOG("temporal: no independentBlend on this device, camera motion only\n");
+     { VkPhysicalDeviceProperties dp; pvkGetPhysicalDeviceProperties(s_vk.phys, &dp);
+       s_vk.aniso_max = dp.limits.maxSamplerAnisotropy >= 16.0f ? 16u : (u32)dp.limits.maxSamplerAnisotropy; }
+     VkDeviceCreateInfo dci = { .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+-- 
+2.47.0
