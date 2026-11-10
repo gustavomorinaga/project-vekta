@@ -53,7 +53,11 @@ def parse(log):
             if f[0] == "t": cur = (float(f[1]), {}); snaps.append(cur)
             elif cur and len(f) >= 2: cur[1][f[0]] = (int(f[1]), f[2].strip() if len(f) > 2 else "")
         if len(snaps) >= 3:
-            (t0, a), (t1, b) = snaps[1], snaps[-1]   # from the second sample: the first may precede the window
+            # from the second sample (the first may precede the window) to the last one that still has nearly all
+            # threads (the very last can catch the process exiting, with only the main thread left)
+            most = max(len(x[1]) for x in snaps)
+            last = max(i for i, x in enumerate(snaps) if len(x[1]) >= 0.9 * most)
+            (t0, a), (t1, b) = snaps[1], snaps[last]
             hz = os.sysconf("SC_CLK_TCK"); ms_per_frame = r["secs"] * 1000.0 / r["frames"]
             groups = {"main": 0.0, "rsx": 0.0, "spu": 0.0, "rest": 0.0}
             for tid, (ticks, nm) in b.items():
