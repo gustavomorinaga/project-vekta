@@ -50,7 +50,9 @@ an existing profile changes the menu flow.
 ## Speed
 
 Compare only in alternating A/B on the same executable; drift between sessions reaches ±3 fps
-([performance.md](performance.md)). At 144 Hz use `KZ_TICK_HZ=144 KZ_GUEST_VBLANK_HZ=144`. Profiles: `KZ_PROF`,
+([performance.md](performance.md)), and much more on a desktop in use. `tools/perf/ab.sh` runs two builds alternately
+on a recorded route and reports the paired difference; routes recorded by playing must be replayed with their own
+`kz1hd_pc.ini` and rebased first (`KZ_ROUTE_REBASE`): [perf-bench.md](perf-bench.md). At 144 Hz use `KZ_TICK_HZ=144 KZ_GUEST_VBLANK_HZ=144`. Profiles: `KZ_PROF`,
 `KZ_PROF_STACK=1`, `tools/prof_report.py` (`KZ_PROF=key,<seconds>,<file>` records when F11 is pressed in the game's
 window or the file `KZ_PROF_TRIGGER`, default `<file>.start`, appears; each press makes another file, `<file>.2`...); timelines: `PS3_TRACE` and `tools/trace_frames.py`; stack samples:
 `KZ_PTRACER=1` and `tools/stack_sample.sh`.
