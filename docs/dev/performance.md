@@ -101,6 +101,16 @@ Each item was measured in alternating A/B on the same executable, unless noted, 
     emits the translated body as `<name>_lifted`.
   - `KZ_NATIVE_VERIFY=1` runs both versions and compares them.
   - `vm_block_plain()` says whether a block may be stored to directly.
+  - Functions with wide effects (PSGL) are checked with the guest store journal (ps3recomp patch 3034): build with
+    `-DKZ_STORE_JOURNAL=ON` in a folder of its own (`work/build-verify`; the option routes the lifted stores to the
+    runtime while a journal is on, so it is for correctness runs only), and run with `KZ_NATIVE_VERIFY=1`.
+    `native_ppu/verify.h` runs the native body with the journal on, undoes it, runs the lifted one with the journal on,
+    and compares every byte either stored (above the entry stack pointer, without the caller's CR/LR save slots), r3
+    and the registers a callee keeps; the lifted result stays. The counts (checked, mismatched, fallbacks) are printed
+    at quit. `KZ_NATIVE_VERIFY_SELF=1` compares the lifted body with itself: the floor of the check (what the journal
+    cannot undo, such as another thread's stores or state outside guest memory).
+  - `KZ_NATIVE_PSGL=0` turns the native PSGL functions off (their lifted bodies run): the A side of an A/B on one
+    executable (`tools/perf/ab.sh` with `A_ENV=KZ_NATIVE_PSGL=0`, [perf-bench.md](perf-bench.md)).
 
 ## What is left
 
