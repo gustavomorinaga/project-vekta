@@ -1,0 +1,303 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 9 Nov 2026 22:36:15 -0300
+Subject: [PATCH] ppu: a journal of one thread's guest stores
+ (PS3RECOMP_STORE_JOURNAL)
+
+For checking a hand-written replacement of a lifted function against the
+lifted body: run one with the journal on, undo what it wrote, run the other,
+and compare what each changed. Compiled in only with PS3RECOMP_STORE_JOURNAL
+(a port's build option, off by default); without it the store paths and the
+lifted code are what they were (PPU_DCBZ expands to the same memset, and
+PPU_ST_DIAG to the same two globals).
+
+While a thread journals (ppu_journal_begin), each guest store it makes is
+noted before it lands, with the bytes it overwrites: vm_write8/16/32/64
+through VM_WRITE_COH, ppu_stwcx32/ppu_stdcx64, and the lifted code's dcbz
+(now emitted as PPU_DCBZ). The lifted code's inline stores reach vm_write*
+while any thread journals: the store window and each function's store
+snapshot close, as they do for the store watches (g_store_journal is folded
+into the snapshot's key). Other threads' stores take the slow path too but
+are not noted. Not covered: runtime code that writes guest memory with host
+stores of its own (HLE, DMA, the RSX).
+
+ppu_store_journal.h is header-only, so a host test builds it on its own
+(the port's tools/tests/test_store_journal.sh). Written for the port; not
+specific to the title (a candidate for upstream).
+---
+ runtime/ppu/ppu_loader.cpp      |  30 +++++++-
+ runtime/ppu/ppu_store_journal.h | 118 ++++++++++++++++++++++++++++++++
+ tools/ppu_lifter.py             |  20 ++++--
+ 3 files changed, 161 insertions(+), 7 deletions(-)
+ create mode 100644 runtime/ppu/ppu_store_journal.h
+
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index 70401a0..76e9254 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -36,6 +36,7 @@
+ #define PPU_NO_INLINE_LOADS   /* this file defines the out-of-line accessors */
+ #include "ppu_recomp.h"
+ #include "../spu/spu_coh_bitmap.h"   /* spu_coh_line_reserved, for the stores */
++#include "ppu_store_journal.h"       /* PS3RECOMP_STORE_JOURNAL: PPU_JOURNAL_NOTE */
+ #include "ps3emu/ps3_ftrace.h"   /* PS3_FTRACE timeline */
+ #include "ps3emu/milestone.h"   /* ps3_ms / ps3_msf -- boot milestone log */     /* ppu_context, func decls, ppu_recomp_register */
+ #include "../memory/vm.h"   /* vm_commit -- sys_mmapper_search_and_map maps for real */
+@@ -1082,6 +1083,7 @@ static inline void resv_line_commit(uint32_t ea) { __atomic_add_fetch(&g_line_ve
+ 
+ extern "C" int ppu_stwcx32(uint64_t ea, uint32_t expected, uint32_t val)
+ {
++    PPU_JOURNAL_NOTE((uint32_t)ea, 4);   /* the old word, even if the store fails: undoing it restores the same */
+     uint32_t exp_raw = __builtin_bswap32(expected);
+     uint32_t new_raw = __builtin_bswap32(val);
+     if (resv_off())
+@@ -1175,6 +1177,7 @@ extern "C" int ppu_stwcx32(uint64_t ea, uint32_t expected, uint32_t val)
+ }
+ extern "C" int ppu_stdcx64(uint64_t ea, uint64_t expected, uint64_t val)
+ {
++    PPU_JOURNAL_NOTE((uint32_t)ea, 8);
+     uint64_t exp_raw = __builtin_bswap64(expected);
+     uint64_t new_raw = __builtin_bswap64(val);
+     if (resv_off())
+@@ -1625,10 +1628,12 @@ extern "C" int* ps3_ppu_vcall_sp_slot(void) { return &g_vcall_sp; }
+     do {                                                                      \
+         if (spu_coh_line_reserved((uint32_t)(a))) {                           \
+             spu_lockline_lock();                                              \
++            PPU_JOURNAL_NOTE((uint32_t)(a), (n));                             \
+             memcpy(vm_base + (uint32_t)(a), (src), (n));                      \
+             spu_coh_notify_write((uint32_t)(a));                              \
+             spu_lockline_unlock();                                            \
+         } else {                                                              \
++            PPU_JOURNAL_NOTE((uint32_t)(a), (n));                             \
+             memcpy(vm_base + (uint32_t)(a), (src), (n));                      \
+         }                                                                     \
+     } while (0)
+@@ -2150,9 +2155,16 @@ static __attribute__((noinline, cold)) void vm_store_coh(uint32_t ea, uint64_t r
+  * address. One test, then the store; the diagnostics live in the _slow
+  * halves, so this half needs no stack frame. */
+ static const int s_st_watch_env = (getenv("PPU_WVAL") || getenv("PPU_WWATCH")) ? 1 : 0;
++/* PS3RECOMP_STORE_JOURNAL: a thread journaling its stores (ppu_store_journal.h)
++ * sends every store to the slow half, where VM_WRITE_COH notes it. */
++#ifdef PS3RECOMP_STORE_JOURNAL
++#define PPU_ST_JOURNAL g_store_journal
++#else
++#define PPU_ST_JOURNAL 0u
++#endif
+ static inline int vm_st_plain(uint32_t a, uint32_t n)
+ {
+-    return __builtin_expect((g_barrier_sync_watch | g_null_sweep_hi | (uint32_t)s_st_watch_env) == 0, 1) &&
++    return __builtin_expect((g_barrier_sync_watch | g_null_sweep_hi | (uint32_t)s_st_watch_env | PPU_ST_JOURNAL) == 0, 1) &&
+            a >= 0x1000u && (ppu_vm_size == 0 || (uint64_t)a + n <= ppu_vm_size);
+ }
+ /* The store window: stores to [0x1000, 0x1000 + g_st_span) need only the
+@@ -2170,10 +2182,22 @@ extern "C" uint32_t g_stk_span = 0;
+ extern "C" void vm_st_window_refresh(void)
+ {
+     const uint32_t top = (ppu_vm_size && ppu_vm_size < SPU_RAW_BASE) ? ppu_vm_size : SPU_RAW_BASE;
+-    g_stk_span = (vm_inline_st_ok && !g_barrier_sync_watch) ? top - 0x10000u - 8u : 0;
+-    if (g_barrier_sync_watch | g_null_sweep_hi | (uint32_t)s_st_watch_env) { g_st_span = 0; return; }
++    g_stk_span = (vm_inline_st_ok && !(g_barrier_sync_watch | PPU_ST_JOURNAL)) ? top - 0x10000u - 8u : 0;
++    if (g_barrier_sync_watch | g_null_sweep_hi | (uint32_t)s_st_watch_env | PPU_ST_JOURNAL) { g_st_span = 0; return; }
+     g_st_span = top - 0x1000u - 8u;   /* room for the widest store */
+ }
++#ifdef PS3RECOMP_STORE_JOURNAL
++extern "C" {
++volatile uint32_t g_store_journal = 0;
++volatile uint64_t g_store_journal_foreign = 0;
++thread_local ppu_store_journal* t_store_journal = nullptr;
++/* The store window closes; the next store that misses it recomputes it, and
++ * it stays closed while any thread journals. */
++void ppu_journal_window_close(void) { g_st_span = 0; g_stk_span = 0; }
++/* The lifted code's dcbz (PPU_DCBZ in ppu_recomp.h): the line before it is zeroed. */
++void ppu_journal_dcbz(uint32_t ea) { ppu_journal_note(ea, 128); }
++}
++#endif
+ #define VM_STORE_WINDOW(ea, val, n, bswap)                                    \
+     do {                                                                      \
+         if (__builtin_expect((ea) - 0x1000u < g_st_span, 1)) {                \
+diff --git a/runtime/ppu/ppu_store_journal.h b/runtime/ppu/ppu_store_journal.h
+new file mode 100644
+index 0000000..421143e
+--- /dev/null
++++ b/runtime/ppu/ppu_store_journal.h
+@@ -0,0 +1,118 @@
++/*
++ * ppu_store_journal.h -- a journal of the guest stores one thread makes, for
++ * checking a native (hand-written) replacement of a lifted function against
++ * the lifted body: run one with the journal on, undo it, run the other,
++ * compare what each changed.
++ *
++ * Compiled in only with PS3RECOMP_STORE_JOURNAL (a port's build option, off by
++ * default: without it nothing here exists and the store paths are unchanged).
++ *
++ * While a thread journals (ppu_journal_begin), every guest store it makes is
++ * noted before it lands: the address, the size and the bytes it overwrites.
++ * That covers the runtime's vm_write8/16/32/64 (through VM_WRITE_COH), the
++ * store-conditionals ppu_stwcx32/ppu_stdcx64 and the lifted code's dcbz
++ * (PPU_DCBZ); the lifted code's inline stores are routed to vm_write* for as
++ * long as any thread journals (the store window and each function's store
++ * snapshot close, as for the store watches). Not covered: runtime code that
++ * writes guest memory with host stores of its own (HLE functions, DMA,
++ * the RSX) -- compare such output directly.
++ *
++ * Other threads' stores take the slow path too while a journal is on, but are
++ * not noted. Header-only so that a host test can build it on its own; the
++ * globals are defined in ppu_loader.cpp.
++ */
++#ifndef PPU_STORE_JOURNAL_H
++#define PPU_STORE_JOURNAL_H
++
++#ifdef PS3RECOMP_STORE_JOURNAL
++#include <stdint.h>
++#include <string.h>
++
++#ifdef __cplusplus
++#define PPU_JOURNAL_TLS thread_local
++extern "C" {
++#else
++#define PPU_JOURNAL_TLS _Thread_local
++#endif
++
++extern uint8_t* vm_base;
++
++/* The journal: entries (address, size, offset of the old bytes) and the old
++ * bytes themselves, in caller-provided arrays. A store that does not fit sets
++ * overflow (the journal then cannot be undone completely: the caller must not
++ * trust that comparison). */
++typedef struct ppu_store_journal {
++    uint32_t* ea;
++    uint32_t* n;
++    uint32_t* off;
++    uint32_t cap, count;
++    uint8_t* old;
++    uint32_t old_cap, used;
++    int overflow;
++} ppu_store_journal;
++
++/* Nonzero while any thread journals: the store paths test it. */
++extern volatile uint32_t g_store_journal;
++/* Stores by threads that do not journal, made while some thread does: a
++ * verifier reads it before and after a run to see whether another thread
++ * stored meanwhile (what the journal cannot undo). */
++extern volatile uint64_t g_store_journal_foreign;
++/* This thread's journal, or NULL. */
++extern PPU_JOURNAL_TLS ppu_store_journal* t_store_journal;
++/* ppu_loader.cpp: closes the store window so inline stores reach vm_write*. */
++void ppu_journal_window_close(void);
++
++/* Before a store of n bytes at ea: note what it overwrites. */
++static inline void ppu_journal_note(uint32_t ea, uint32_t n)
++{
++    ppu_store_journal* j = t_store_journal;
++    if (!j) { __atomic_add_fetch(&g_store_journal_foreign, 1, __ATOMIC_RELAXED); return; }
++    if (j->count >= j->cap || j->used + n > j->old_cap) { j->overflow = 1; return; }
++    j->ea[j->count] = ea;
++    j->n[j->count] = n;
++    j->off[j->count] = j->used;
++    memcpy(j->old + j->used, vm_base + ea, n);
++    j->used += n;
++    j->count++;
++}
++
++/* Start journaling this thread's stores into j (emptied first). */
++static inline void ppu_journal_begin(ppu_store_journal* j)
++{
++    j->count = 0; j->used = 0; j->overflow = 0;
++    t_store_journal = j;
++    __atomic_add_fetch(&g_store_journal, 1, __ATOMIC_SEQ_CST);
++    ppu_journal_window_close();
++}
++
++/* Stop journaling this thread's stores. */
++static inline void ppu_journal_end(void)
++{
++    if (!t_store_journal) return;
++    t_store_journal = 0;
++    __atomic_sub_fetch(&g_store_journal, 1, __ATOMIC_SEQ_CST);
++}
++
++/* Put back every byte the journal noted, newest first. */
++static inline void ppu_journal_undo(const ppu_store_journal* j)
++{
++    for (uint32_t i = j->count; i-- > 0;) memcpy(vm_base + j->ea[i], j->old + j->off[i], j->n[i]);
++}
++
++/* Whether [ea, ea + n) was written: the first entry that touches it, or -1. */
++static inline int64_t ppu_journal_find(const ppu_store_journal* j, uint32_t ea, uint32_t n)
++{
++    for (uint32_t i = 0; i < j->count; i++)
++        if (j->ea[i] < ea + n && ea < j->ea[i] + j->n[i]) return (int64_t)i;
++    return -1;
++}
++
++#ifdef __cplusplus
++}
++#endif
++#define PPU_JOURNAL_NOTE(ea, n) do { if (__builtin_expect(g_store_journal != 0, 0)) ppu_journal_note((ea), (n)); } while (0)
++#else
++#define PPU_JOURNAL_NOTE(ea, n) do { } while (0)
++#endif
++
++#endif
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index b844844..225c535 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -188,6 +188,18 @@ extern uint32_t ppu_hle_inject_base;
+ extern uint32_t             g_barrier_sync_watch;
+ extern uint32_t             g_null_sweep_hi;
+ extern const unsigned char* g_spu_coh_bits;   /* SPU-reserved lines, NULL until the first */
++/* PS3RECOMP_STORE_JOURNAL (a port's build option, off by default): a thread
++ * journaling its stores (runtime/ppu/ppu_store_journal.h) closes the inline
++ * store range like a store diagnostic, and dcbz is noted before it zeroes. */
++#ifdef PS3RECOMP_STORE_JOURNAL
++extern volatile uint32_t g_store_journal;
++void ppu_journal_dcbz(uint32_t ea);
++#define PPU_ST_DIAG (g_barrier_sync_watch | g_null_sweep_hi | g_store_journal)
++#define PPU_DCBZ(ea) do { const uint32_t ea_ = (uint32_t)(ea); if (g_store_journal) ppu_journal_dcbz(ea_); memset(vm_base + ea_, 0, 128); } while (0)
++#else
++#define PPU_ST_DIAG (g_barrier_sync_watch | g_null_sweep_hi)
++#define PPU_DCBZ(ea) memset(vm_base + (uint32_t)(ea), 0, 128)
++#endif
+ #ifdef __cplusplus
+ }
+ #endif
+@@ -221,7 +233,7 @@ static inline __attribute__((always_inline)) ppu_mm ppu_mm_compute(void)
+      * reloaded after every store. A watch armed, or the first SPU line
+      * reserved, while a function runs reaches that function's stores only
+      * from its next call. */
+-    if (g_barrier_sync_watch | g_null_sweep_hi) m.st_span = 0;
++    if (PPU_ST_DIAG) m.st_span = 0;
+     m.bits = g_spu_coh_bits;
+ #else
+     m.bits = 0;
+@@ -238,7 +250,7 @@ inline uint32_t g_ppu_mm_cache_key = ~0u;
+ inline const unsigned char* g_ppu_mm_cache_bits;
+ static inline __attribute__((always_inline)) ppu_mm ppu_mm_take(void)
+ {
+-    const uint32_t key = g_barrier_sync_watch | g_null_sweep_hi;
++    const uint32_t key = PPU_ST_DIAG;
+     if (__builtin_expect(key == g_ppu_mm_cache_key && g_spu_coh_bits == g_ppu_mm_cache_bits, 1))
+         return g_ppu_mm_cache;
+     const ppu_mm m = ppu_mm_compute();
+@@ -267,7 +279,7 @@ static inline __attribute__((always_inline)) int vm_mm_st_ok(const ppu_mm* m, ui
+     return 1;
+ #endif
+     if (!__builtin_expect(vm_mm_in(m->st_span, ea, n), 1) ||
+-        __builtin_expect((g_barrier_sync_watch | g_null_sweep_hi) != 0, 0))
++        __builtin_expect(PPU_ST_DIAG != 0, 0))
+         return 0;
+     const unsigned char* bits = g_spu_coh_bits;
+     if (bits) { const uint32_t line = ea >> 7; if ((bits[line >> 3] >> (line & 7)) & 1u) return 0; }
+@@ -3009,7 +3021,7 @@ class PPULifter:
+             ra = _reg_idx(ops[0])
+             rb = _reg_idx(ops[1])
+             return (f"{{ uint64_t ea = ({_xea(ra,rb)}) & ~0x7FULL; "
+-                    f"memset(vm_base + (uint32_t)ea, 0, 128); }}")
++                    f"PPU_DCBZ(ea); }}")
+ 
+         if mn in ("dcbt", "dcbtst", "dcbf", "dcbst", "dcba", "icbi"):
+             return f"/* {mn}: cache hint, no-op */;"
+-- 
+2.56.0
+
