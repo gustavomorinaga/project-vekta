@@ -148,6 +148,16 @@ extern "C" void ps3_load_prx_modules(void)
      * to the kernel after every job and in busy 144 Hz scenes built the
      * first-person weapon from last frame's bones (docs/dev/ps3recomp-v018-migration.md). */
     setenv("PS3_SPURS_PM_SELECT", "1", 0);
+    /* PS3_SPURS_WANTED=2 (default here; PS3_SPURS_WANTED=0 restores the probes):
+     * the SPURS kernel admits only workloads the game kicked or that asked for
+     * idle SPUs, with no idle probes (ps3recomp patch 1017, after Project
+     * Helghast's 1074). Measured 2026-11-10 (rebased routes, 6 pairs each, the
+     * same executable): whole-process CPU per frame -4.6 % [-5.0, -4.2] in
+     * Level 7 and -6.0 % [-8.5, -3.5] in Level 1, frame rate +0.85 % [+0.19,
+     * +1.5] in Level 7; standing still, the SPURS threads 19 -> 15 % and
+     * 34 -> 27 % of a core at 60 Hz, 45 -> 37 % and 71 -> 59 % at 144 Hz;
+     * replays identical, presents unchanged. */
+    setenv("PS3_SPURS_WANTED", "2", 0);
     /* KZ_UNLOCK_LEVELS=1 (testing): every level selectable. The chapter
      * select asks IsLevelUnlocked (func_00298578) through its script binding,
      * an indirect call, which this replaces. */
