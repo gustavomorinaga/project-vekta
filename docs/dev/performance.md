@@ -66,6 +66,11 @@ Each item was measured in alternating A/B on the same executable, unless noted, 
 - ThinLTO across the translated files: −2 %.
 - PGO redone after the changes: no change (2026-10-21) and −0.8 % (2026-10-27, 136.1 against 137.2). The profile in
   use stayed the one of 2026-10-20.
+  On ps3recomp v0.19.0 (2026-11-09; a Level 1 combat route replayed loose as timedemo, headless, alternating A/B,
+  4 runs each): `tools/pgo.sh`'s default play gave +2.2 % (201.7 against 206.2 fps; main thread 4.538 against
+  4.415 ms per frame), and +1.5 % in a second, noisier session where a profile trained on four other combat routes
+  (`KZ_PGO_ROUTES`) gave +3.8 % (faster in all four rounds). The 1 % lows were the same once the first 30 frames
+  after the level loads are left out; no spike repeated at the same frame.
 - Large memory pages: the kernel already uses them (THP `always`; about 430 of about 600 MB of anonymous memory in
   2 MB pages).
 

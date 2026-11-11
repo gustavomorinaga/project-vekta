@@ -20,6 +20,12 @@ program and folder that build it. Until a release that calls itself playable
   (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test
   routes the RSX thread uses 0.5-0.6 ms less per frame (about 13-15 %), the whole game about 4-7 % less; frame
   rates the same. `PS3RECOMP_ENG_VCACHE=0` turns it off (after ps3recomp pull request #718).
+- `tools/pgo.sh` (optional profile-guided build): it makes its own play folder (`work/vfs-test`) from `work/vfs`
+  instead of failing on a fresh clone, ends with a check that the profile matches the lifted code (a stale profile
+  was silently ignored), shows a failing step's log instead of hiding it, and can train on recorded routes
+  (`KZ_PGO_ROUTES`). An instrumented build now writes its profile when the game quits, so a route replay that ends
+  on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about
+  +4 % trained on combat routes ([docs/BUILDING.md](docs/BUILDING.md)).
 
 ### Fixed
 - Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler's pipelines ahead, which
