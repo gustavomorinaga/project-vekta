@@ -54,3 +54,8 @@ Compare only in alternating A/B on the same executable; drift between sessions r
 `KZ_PROF_STACK=1`, `tools/prof_report.py` (`KZ_PROF=key,<seconds>,<file>` records when F11 is pressed in the game's
 window or the file `KZ_PROF_TRIGGER`, default `<file>.start`, appears; each press makes another file, `<file>.2`...); timelines: `PS3_TRACE` and `tools/trace_frames.py`; stack samples:
 `KZ_PTRACER=1` and `tools/stack_sample.sh`.
+
+The draw engine keeps the converted vertices of repeated draws in GPU memory (patches 2062 and 2063, on by default):
+`PS3RECOMP_ENG_VCACHE=0` converts every draw again, as before; `PS3RECOMP_ENG_VCACHE_STATS=1` prints the hit rate
+every 300 frames; `PS3RECOMP_ENG_VCACHE_VERIFY=1` converts every hit anyway and compares it with the stored copy byte
+for byte (`vertex cache verify: N hits checked, M differed`; a copy that differs is not drawn).

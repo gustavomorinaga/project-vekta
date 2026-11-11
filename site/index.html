@@ -199,6 +199,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Changed</span>Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test routes the RSX thread uses 0.5-0.6 ms less per frame (about 13-15 %), the whole game about 4-7 % less; frame rates the same. <code>PS3RECOMP_ENG_VCACHE=0</code> turns it off (after ps3recomp pull request #718).</li>
 <li><span class="sec">Fixed</span>Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the Vulkan validation layer reported as an error (<code>VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605</code>); <code>independentBlend</code> is now on whenever the GPU has it (patch 2061).</li>
 </ul>
 </article>
@@ -258,8 +259,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 135 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 135 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 137 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 137 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -268,6 +269,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Developer switches for testing (docs/dev/testing.md): KZ_DEBUG_GOD=1 keeps the game&#x27;s own God mode on, KZ_DEBUG_GIVE...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Field of view: the PC page&#x27;s Field of View row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game&#x27;s is...</span></li>
@@ -275,7 +277,6 @@
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Installing over an earlier version no longer fails at the link with undefined symbols (seen from the 0.3.1 test build...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Ultrawide and wide FOV: the sky&#x27;s fog band (Level 6) is no longer cut off at the screen&#x27;s sides with hard grey edges...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Ultrawide: the first-person weapon is no longer drawn half as large again as on a 16:9 screen (its FOV came from the...</span></li>
-<li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> The field of view setting widens the world: before, it reached only the sky&#x27;s camera, so the world stayed at the...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

@@ -1,0 +1,1730 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 11 Nov 2026 00:22:13 -0300
+Subject: [PATCH] draw engine: a converted-vertex cache; a repeated draw is not
+ fetched, converted and staged again
+
+After ps3recomp pull request #718 by n0madic (MIT), the engine side and its
+bookkeeping as proposed there; the Metal backend's half is left out (the
+Vulkan one is patch 2063). The draw call itself is merged by hand around
+set_draw_key, which this tree has and upstream does not.
+
+Killzone HD repeats 66-71% of its ~750 draws a frame byte for byte from this
+frame or the last (index bytes, layout, attribute state and vertex bytes),
+and converting them costs the RSX thread 1.1-1.4 ms a frame on the rebased
+Level 1 and Level 7 routes. A draw's compact vertices and rebuilt indices
+are kept in GPU-readable chunks, keyed by a 128-bit hash of everything they
+are made from; a changed byte is another key, so nothing is invalidated, and
+entries nobody uses age out. A block is handed out again only after the
+submission that last read it has completed (the backend's commit_serial).
+Draws the key cannot describe (immediate or inline vertices, per-instance
+attributes, sparse ranges) are staged as before. PS3RECOMP_ENG_VCACHE=0
+turns the cache off; PS3RECOMP_ENG_VCACHE_STATS=1 prints its hit rate.
+Added here: PS3RECOMP_ENG_VCACHE_VERIFY=1 converts every hit again, compares
+it with the stored copy byte for byte (vertices, indices, counts, topology)
+and draws the fresh conversion when they differ, counting and logging it
+(rsx_vc_chunk_cpu reads a stored copy back).
+
+Tests: libs/video/tests/test_vertex_cache.c (hash, buddy allocator, deferred
+reuse, eviction) and test_engine_vertex_cache.c (the engine through a stub
+backend: hits, a changed vertex byte, index or format converts again, the
+switch and a backend without the hooks stage as before; the verify mode
+passes an equal copy and catches a corrupted one), both run by
+tools/test_rsx_vertex_cache.py.
+---
+ CMakeLists.txt                              |   8 +
+ libs/video/rsx_draw_engine.c                | 356 ++++++++++++++++++-
+ libs/video/rsx_draw_engine.h                |  21 ++
+ libs/video/rsx_vertex_compact.c             | 507 ++++++++++++++++++++++++++++
+ libs/video/rsx_vertex_compact.h             |  89 +++++
+ libs/video/tests/test_engine_vertex_cache.c | 305 +++++++++++++++++
+ libs/video/tests/test_vertex_cache.c        | 243 +++++++++++++
+ tools/test_rsx_vertex_cache.py              |  30 ++
+ 8 files changed, 1547 insertions(+), 12 deletions(-)
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index def5e22..46714f1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -601,6 +601,14 @@ if(PS3RECOMP_BUILD_TESTS)
+     target_include_directories(test_vertex_current_color PRIVATE include libs/video)
+     add_test(NAME vertex_current_color COMMAND test_vertex_current_color)
+ 
++    # The converted-vertex cache's bookkeeping, without a GPU.
++    add_executable(test_vertex_cache
++        libs/video/tests/test_vertex_cache.c
++        libs/video/rsx_vertex_compact.c
++        libs/video/rsx_dispatch.c)
++    target_include_directories(test_vertex_cache PRIVATE include libs/video)
++    add_test(NAME vertex_cache COMMAND test_vertex_cache)
++
+ 
+     find_package(Python3 3.10 COMPONENTS Interpreter QUIET)
+     if(Python3_Interpreter_FOUND)
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index a9e9e16..ddc2181 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -230,6 +230,14 @@ static struct {
+     u32 index_cap;
+ 
+     rsx_fp_constant_block fp_constants;
++
++    /* The converted-vertex cache, when the backend offers one. */
++    rsx_vertex_cache* vc;
++    int vc_stats;
++    int vc_verify;                        /* PS3RECOMP_ENG_VCACHE_VERIFY */
++    u64 vc_verified, vc_mismatches;
++    u64 vc_bypass, vc_stats_frame;
++    u64 vc_new_indices, vc_new_vertices;  /* misses: indices not seen, or bytes/state changed */
+ } g;
+ 
+ /* The decompilers' HLSL. The VP decompiler builds bodies up to 192 KB. */
+@@ -3674,6 +3682,231 @@ static void eng_log_rect_clear(const char* what, const u32 rc[4], u32 w, u32 h)
+                 what, rc[0], rc[1], rc[2], rc[3], w, h);
+ }
+ 
++/* ---- converted-vertex cache ------------------------------------------------
++ *
++ * A draw's compact vertices and rebuilt indices are a function of its index
++ * bytes, topology, layout, attribute state and the vertex bytes it reads. The
++ * first key (ikey) covers everything but the vertex bytes; it also finds the
++ * element range the indices span, remembered from the draw's first
++ * conversion, so a repeated draw hashes the vertex bytes it reads without
++ * reading its indices one by one. The second key (vkey) adds those bytes and
++ * finds the converted copy. */
++
++#define ENG_VC_CHUNK_BYTES (32u << 20)
++
++/* Draws whose vertex range is this much larger than what they use (sparse
++ * indices into a big buffer), plus ENG_VC_SPAN_MIN_BYTES, are not cached:
++ * hashing the range would cost more than converting the vertices. */
++#define ENG_VC_SPAN_SLACK 4u
++#define ENG_VC_SPAN_MIN_BYTES (64u << 10)
++
++/* PS3RECOMP_ENG_VCACHE_STATS=1 prints the hit rate this often. */
++#define ENG_VC_STATS_FRAMES 300u
++
++static int eng_vc_index_key(u32 prim, const rsx_vertex_layout_plan* layout,
++                            rsx_vc_key* out)
++{
++    if (!g.vc || dc.n_immediate || dc.inl || dc.inl_bytes) return 0;
++    rsx_vc_key k = { 0x52535856ull ^ prim, (u64)dc.n_arr << 32 | dc.n_idx };
++    k = rsx_vc_mix(k, (u64)layout->mask << 32 | layout->stride);
++    k = rsx_vc_hash(layout->attrs, layout->count, k);
++    if (dc.n_arr) k = rsx_vc_hash(dc.arr, (size_t)dc.n_arr * sizeof dc.arr[0], k);
++    if (dc.n_idx) {
++        rsx_dsp_index_array ia;
++        rsx_dsp_get_index_array(&g.rsx, &ia);
++        const u32 esz = ia.is_u32 ? 4u : 2u;
++        const u32 ia_loc = ia.location ? RSX_LOCATION_MAIN : RSX_LOCATION_LOCAL;
++        k = rsx_vc_mix(k, (u64)rsx_dsp_vertex_data_base_index(&g.rsx) << 32 | esz);
++        k = rsx_vc_mix(k, (u64)rsx_dsp_restart_index_enabled(&g.rsx, ia.is_u32) << 32 |
++                          rsx_dsp_restart_index(&g.rsx));
++        for (u32 b = 0; b < dc.n_idx; b++) {
++            const u32 first = dc.idx[b].first, count = dc.idx[b].count;
++            const u64 start = (u64)ia.offset + (u64)first * esz;
++            const u64 bytes = (u64)count * esz;
++            k = rsx_vc_mix(k, (u64)first << 32 | count);
++            if (!count) continue;
++            if (start + bytes > 0x100000000ull) return 0;
++            const u8* run = eng_fetch_ptr(NULL, ia_loc, (u32)start, (u32)bytes);
++            if (!run) return 0;
++            k = rsx_vc_hash(run, (size_t)bytes, k);
++        }
++    }
++    *out = k;
++    return 1;
++}
++
++typedef struct { u32 location; u64 start, end; u32 slot; } eng_vc_span;
++
++/* vkey from ikey, the fetch plan's attribute state and the bytes of
++ * elements first..last of every enabled attribute. Addresses are not part of
++ * it: the converted vertices depend on the bytes and on where each attribute
++ * sits among them, and a title that writes the same vertices to alternating
++ * buffers draws one copy. 0 when the draw cannot be keyed: an attribute
++ * fetched per instance or by divider, a range that does not resolve to host
++ * memory, or one far wider than `used_bytes`. */
++static int eng_vc_vertex_key(rsx_vc_key ikey, const rsx_vertex_layout_plan* layout,
++                             u32 first, u32 last, u64 used_bytes, rsx_vc_key* out)
++{
++    const rsx_vertex_fetch_plan* plan = &dc.fetch_plan;
++    rsx_vc_key k = rsx_vc_mix(ikey, plan->divider_mask);
++    eng_vc_span spans[RSX_DSP_NUM_VERTEX_ATTR];
++    u32 n = 0;
++    for (u32 slot = 0; slot < layout->count; slot++) {
++        const u32 attr = layout->attrs[slot];
++        const rsx_vertex_fetch_attr* fa = &plan->attr[attr];
++        const u32 d[6] = { fa->desc.type, fa->desc.size, fa->desc.stride, fa->desc.frequency,
++                           fa->stride, fa->elem_size };
++        k = rsx_vc_hash(d, sizeof d, k);
++        /* The current value (the attribute's default) reaches a vertex only
++         * when the attribute has no array or one of a type the decoder does
++         * not know; an enabled array's vertices never see it. Keying it
++         * always made 15-20% of Haven's draws miss: the game sets current
++         * values between draws whose arrays override them. */
++        static const u8 probe[16];
++        float scratch[4];
++        if (!fa->desc.type || !fa->desc.size || !fa->elem_size ||
++            !rsx_vertex_decode_element(fa->desc.type, fa->desc.size, probe, scratch))
++            k = rsx_vc_hash(fa->default_value, sizeof fa->default_value, k);
++        if (!fa->desc.type || !fa->desc.size || !fa->elem_size) continue;
++        if (!rsx_vertex_freq_plain(fa->desc.frequency, (plan->divider_mask >> attr) & 1u))
++            return 0;
++        const u64 prefix = rsx_dsp_resolve_vertex_offset(plan->base_offset, fa->desc.offset);
++        spans[n].location = fa->desc.location;
++        spans[n].start = prefix + (u64)first * fa->stride;
++        spans[n].end = prefix + (u64)last * fa->stride + fa->elem_size;
++        spans[n].slot = slot;
++        n++;
++    }
++    for (u32 i = 1; i < n; i++)
++        for (u32 j = i; j > 0 && (spans[j - 1].location > spans[j].location ||
++                                  (spans[j - 1].location == spans[j].location &&
++                                   spans[j - 1].start > spans[j].start)); j--) {
++            const eng_vc_span t = spans[j]; spans[j] = spans[j - 1]; spans[j - 1] = t;
++        }
++    /* Interleaved attributes read one buffer: hash each byte once, and key
++     * each attribute by its group and its offset in it. */
++    u64 total = 0;
++    u32 group = 0;
++    for (u32 i = 0; i < n; group++) {
++        const u32 g0 = i;
++        u64 gs = spans[i].start, ge = spans[i].end;
++        const u32 loc = spans[i].location;
++        i++;
++        while (i < n && spans[i].location == loc && spans[i].start <= ge) {
++            if (spans[i].end > ge) ge = spans[i].end;
++            i++;
++        }
++        if (ge > 0x100000000ull || ge <= gs) return 0;
++        total += ge - gs;
++        if (total > ENG_VC_SPAN_SLACK * used_bytes + ENG_VC_SPAN_MIN_BYTES) return 0;
++        const u8* p = eng_fetch_ptr(NULL, loc, (u32)gs, (u32)(ge - gs));
++        if (!p) return 0;
++        for (u32 a = g0; a < i; a++)
++            k = rsx_vc_mix(k, (u64)spans[a].slot << 48 | (u64)group << 32 |
++                              (u32)(spans[a].start - gs));
++        k = rsx_vc_hash(p, (size_t)(ge - gs), k);
++    }
++    *out = k;
++    return 1;
++}
++
++/* Bytes of guest vertex data one element of this layout reads. */
++static u64 eng_vc_element_bytes(const rsx_vertex_layout_plan* layout)
++{
++    u64 bytes = 0;
++    for (u32 slot = 0; slot < layout->count; slot++) {
++        const rsx_vertex_fetch_attr* fa = &dc.fetch_plan.attr[layout->attrs[slot]];
++        if (fa->desc.type && fa->desc.size) bytes += fa->elem_size;
++    }
++    return bytes ? bytes : 1u;
++}
++
++/* The converted copy of a draw whose indices were converted before: their
++ * element range is known, so the vertex key is formed without reading them.
++ * *ranged: the indices were known; *keyed: *vkey was formed (a miss then
++ * inserts under it). The key covers the layout, the primitive and the
++ * indices, so a copy under it has this draw's stride, topology and counts. */
++static rsx_vc_entry* eng_vc_lookup(rsx_vc_key ikey, const rsx_vertex_layout_plan* layout,
++                                   rsx_vc_key* vkey, int* keyed, int* ranged)
++{
++    u32 first, last;
++    *keyed = *ranged = 0;
++    if (!rsx_vc_range_find(g.vc, ikey, &first, &last)) return NULL;
++    *ranged = 1;
++    rsx_vertex_fetch_plan_init(&dc.fetch_plan, &g.rsx, layout, eng_fetch_ptr, NULL);
++    rsx_vertex_fetch_plan_set_inline(&dc.fetch_plan, &g.rsx, NULL, 0);
++    const u64 used = ((u64)last - first + 1u) * eng_vc_element_bytes(layout);
++    *keyed = eng_vc_vertex_key(ikey, layout, first, last, used, vkey);
++    return *keyed ? rsx_vc_find(g.vc, *vkey) : NULL;
++}
++
++/* A hit converted again from the guest bytes as a miss would be, and
++ * compared with the stored copy: counts, topology, stride, every vertex byte
++ * and every index. 1 when they are the same. The fresh conversion is left in
++ * dc and g.indices, so a mismatch is drawn from it. */
++static int eng_vc_verify(const rsx_vc_entry* e, u32 prim, const rsx_vertex_layout_plan* layout,
++                         int rebuild)
++{
++    dc_fetch(layout, rebuild);
++    if (!dc.n_verts || !dc.fetch_ok) return 0;   /* the miss path drops it too */
++    int indexed = 0;
++    u32 n_draw = dc.n_source_refs;
++    rsx_topology topology = RSX_TOPOLOGY_TRIANGLES;
++    if (rebuild) {
++        if (!eng_topology_rebuild(prim, dc.refs_remapped, &indexed)) return 0;
++        n_draw = indexed
++            ? rsx_draw_engine_topology_index_count(prim, dc.n_source_refs, dc.cuts, dc.n_cuts)
++            : dc.n_source_refs - dc.n_source_refs % 3u;
++    } else {
++        topology = rsx_primitive_topology(prim);
++    }
++    const u32 uploaded = indexed ? dc.n_verts : n_draw;
++    const u8* cpu = rsx_vc_chunk_cpu(g.vc, e);
++    int same = cpu && e->n_verts == uploaded && e->n_draw == n_draw &&
++               e->indexed == (u8)indexed && e->stride == layout->stride &&
++               e->topology == (u32)topology;
++    if (same && layout->stride)
++        same = memcmp(cpu + e->offset, dc.verts, (size_t)uploaded * layout->stride) == 0;
++    if (same && indexed && n_draw) {
++        if (!dc_reserve_indices(n_draw)) return 0;
++        rsx_draw_engine_write_topology_indices(
++            prim, dc.n_source_refs, dc.cuts, dc.n_cuts,
++            dc.refs_remapped ? dc.ref_remap.occurrence_to_unique : NULL, g.indices);
++        same = memcmp(cpu + e->ib_off, g.indices, (size_t)n_draw * 4u) == 0;
++    }
++    g.vc_verified++;
++    if (!same) {
++        g.vc_mismatches++;
++        static u32 logs;
++        if (PS3_LOG_FIRST(logs, 16))
++            fprintf(stderr, "[rsx engine] vertex cache: a stored copy differs from a fresh conversion "
++                    "(prim %u, %u/%u vertices, %u/%u drawn, stride %u/%u)\n", prim, e->n_verts,
++                    uploaded, e->n_draw, n_draw, e->stride, layout->stride);
++    }
++    return same;
++}
++
++static void eng_vc_stats_tick(void)
++{
++    if (!g.vc || !g.vc_stats || g.frames - g.vc_stats_frame < ENG_VC_STATS_FRAMES) return;
++    rsx_vc_stats st;
++    rsx_vc_get_stats(g.vc, &st);
++    const u64 looked = st.hits + st.misses;
++    fprintf(stderr, "[rsx engine] vertex cache: %.1f%% hits (%llu of %llu), %llu bypassed, "
++            "misses: %llu new indices, %llu changed vertices; "
++            "%llu inserts, %llu failed, %llu evicted, %.1f MB in use\n",
++            looked ? 100.0 * (double)st.hits / (double)looked : 0.0,
++            (unsigned long long)st.hits, (unsigned long long)looked,
++            (unsigned long long)g.vc_bypass, (unsigned long long)g.vc_new_indices,
++            (unsigned long long)g.vc_new_vertices, (unsigned long long)st.inserts,
++            (unsigned long long)st.insert_failures, (unsigned long long)st.evictions,
++            (double)st.bytes_in_use / 1048576.0);
++    if (g.vc_verify)
++        fprintf(stderr, "[rsx engine] vertex cache verify: %llu hits checked, %llu differed\n",
++                (unsigned long long)g.vc_verified, (unsigned long long)g.vc_mismatches);
++    g.vc_stats_frame = g.frames;
++}
++
+ static void sink_end(void* user, const rsx_dispatch* r)
+ {
+     (void)user; (void)r;
+@@ -3704,17 +3937,66 @@ static void sink_end(void* user, const rsx_dispatch* r)
+ 
+     rsx_vertex_layout_plan layout;
+     eng_vertex_layout(&layout);
+-    dc_fetch(&layout, rebuild);
+-    if (!dc.n_verts || !dc.fetch_ok) return;
++
++    /* The converted-vertex cache: a hit skips reading the indices, fetching
++     * and converting the vertices and rebuilding the topology. */
++    rsx_vc_key vc_ikey, vc_vkey;
++    int vc_keyed = 0, vc_ranged = 0;
++    rsx_vc_entry* vc_hit = NULL;
++    const int vc_try = eng_vc_index_key(prim, &layout, &vc_ikey);
++    if (!vc_try && g.vc) g.vc_bypass++;
++    if (vc_try) {
++        vc_hit = eng_vc_lookup(vc_ikey, &layout, &vc_vkey, &vc_keyed, &vc_ranged);
++        if (vc_keyed && !vc_hit) g.vc_new_vertices++;
++    }
+ 
+     int indexed = 0;
+-    u32 n_draw = dc.n_source_refs;
+-    if (rebuild) {
+-        if (!eng_topology_rebuild(prim, dc.refs_remapped, &indexed)) return;
+-        n_draw = indexed
+-            ? rsx_draw_engine_topology_index_count(prim, dc.n_source_refs,
+-                                                   dc.cuts, dc.n_cuts)
+-            : dc.n_source_refs - dc.n_source_refs % 3u;
++    u32 n_draw;
++    /* PS3RECOMP_ENG_VCACHE_VERIFY=1: a hit is converted anyway and checked
++     * against the stored copy, byte for byte; a copy that differs is counted,
++     * logged and not drawn (the fresh conversion is). */
++    const int vc_fresh = vc_hit && g.vc_verify;   /* converted already, in dc */
++    if (vc_fresh && !eng_vc_verify(vc_hit, prim, &layout, rebuild))
++        vc_hit = NULL;
++    if (vc_hit) {
++        dc.n_verts = vc_hit->n_verts;
++        indexed = vc_hit->indexed;
++        n_draw = vc_hit->n_draw;
++        topology = (rsx_topology)vc_hit->topology;
++    } else {
++        if (!vc_fresh) dc_fetch(&layout, rebuild);   /* dc_fetch appends: once a draw */
++        if (!dc.n_verts || !dc.fetch_ok) return;
++
++        n_draw = dc.n_source_refs;
++        if (rebuild) {
++            if (!eng_topology_rebuild(prim, dc.refs_remapped, &indexed)) return;
++            n_draw = indexed
++                ? rsx_draw_engine_topology_index_count(prim, dc.n_source_refs,
++                                                       dc.cuts, dc.n_cuts)
++                : dc.n_source_refs - dc.n_source_refs % 3u;
++        }
++        /* First conversion of these indices: remember the elements they span
++         * (the unique references are all there is to look at), then key the
++         * vertex bytes the same way a later lookup will. */
++        if (vc_try && !vc_keyed) {
++            if (!vc_ranged) g.vc_new_indices++;
++            u32 first = UINT32_MAX, last = 0;
++            for (u32 i = 0; i < dc.n_refs; i++) {
++                const u32 e = rsx_vertex_element_index(dc.refs[i].vertex_id,
++                                                       dc.refs[i].base_index, 0, 0);
++                if (e < first) first = e;
++                if (e > last) last = e;
++            }
++            const u64 used = (u64)dc.n_refs * eng_vc_element_bytes(&layout);
++            if (dc.n_refs &&
++                eng_vc_vertex_key(vc_ikey, &layout, first, last, used, &vc_vkey)) {
++                vc_keyed = 1;
++                if (!vc_ranged) rsx_vc_range_put(g.vc, vc_ikey, first, last);
++                /* The range was forgotten but the copy may not be: draw it
++                 * rather than store it twice. */
++                vc_hit = rsx_vc_find(g.vc, vc_vkey);
++            }
++        }
+     }
+     if (!n_draw) return;
+ 
+@@ -3772,7 +4054,7 @@ static void sink_end(void* user, const rsx_dispatch* r)
+     const u32 vtex_mask = sink_bind_vertex_textures(eng_vtex_mask(), vtextures,
+                                                     vsamplers);
+ 
+-    if (indexed) {
++    if (indexed && !vc_hit) {
+         if (!dc_reserve_indices(n_draw)) return;
+         rsx_draw_engine_write_topology_indices(
+             prim, dc.n_source_refs, dc.cuts, dc.n_cuts,
+@@ -3931,8 +4213,39 @@ static void sink_end(void* user, const rsx_dispatch* r)
+         u32 k[4] = { pipeline, n_draw, (u32)topology, layout.count ? layout.attrs[0] : 0u };
+         g.be->set_draw_key(g.be->user, eng_fnv1a(k, sizeof k, 1469598103934665603ull));
+     }
+-    g.be->draw(g.be->user, topology, dc.verts, uploaded, layout.stride,
+-               indexed ? g.indices : NULL, indexed ? n_draw : 0);
++    rsx_vc_entry* vc_e = vc_hit;
++    if (!vc_e && vc_keyed) {
++        /* Convert once, into memory the GPU reads from now on. */
++        const u64 vb_bytes = ((u64)uploaded * layout.stride + 255u) & ~255ull;
++        const u64 total = vb_bytes + (indexed ? (u64)n_draw * 4u : 0u);
++        u64 completed = 0;
++        g.be->commit_serial(g.be->user, &completed);
++        u8* cpu = NULL;
++        if (total <= 0xFFFFFFFFull)
++            vc_e = rsx_vc_insert(g.vc, vc_vkey, (u32)total, completed, g.frames, &cpu);
++        if (vc_e) {
++            memcpy(cpu, dc.verts, (size_t)uploaded * layout.stride);
++            if (indexed) memcpy(cpu + vb_bytes, g.indices, (size_t)n_draw * 4u);
++            vc_e->n_verts = uploaded;
++            vc_e->n_draw = n_draw;
++            vc_e->indexed = (u8)indexed;
++            vc_e->stride = layout.stride;
++            vc_e->topology = (u32)topology;
++            vc_e->ib_off = indexed ? vc_e->offset + (u32)vb_bytes : 0;   /* < a chunk */
++        }
++    }
++    if (vc_e) {
++        g.be->draw_cached(g.be->user, topology, vc_e->chunk, vc_e->offset,
++                          vc_e->n_verts, vc_e->stride, vc_e->ib_off,
++                          vc_e->indexed ? vc_e->n_draw : 0);
++        /* Read after the draw: recording it may have submitted the frame so
++         * far, and the draw then belongs to the next submission. */
++        u64 completed = 0;
++        rsx_vc_touch(vc_e, g.be->commit_serial(g.be->user, &completed), g.frames);
++    } else {
++        g.be->draw(g.be->user, topology, dc.verts, uploaded, layout.stride,
++                   indexed ? g.indices : NULL, indexed ? n_draw : 0);
++    }
+     /* Counted only when the draw ran the guest's OWN programs, which is what
+      * the test hook means: a draw through the built-in pair is a draw, not
+      * evidence that the decompile-translate-compile path worked. */
+@@ -4097,6 +4410,7 @@ static void eng_present(u32 buffer_id)
+     g.last_present_surface = target;
+     g.be->present(g.be->user, g.surfaces[target].handle);
+     g.frames++;
++    eng_vc_stats_tick();
+     g.last_guest_draws = g.guest_draws;
+     g.guest_draws = 0;
+ }
+@@ -4154,6 +4468,22 @@ int rsx_draw_engine_init(u32 width, u32 height)
+         free(g.vp_cb); g.vp_cb = NULL;
+         return -1;
+     }
++    /* PS3RECOMP_ENG_VCACHE=0 converts every draw as before; ..._STATS=1
++     * prints the hit rate every ENG_VC_STATS_FRAMES frames. */
++    { const char* e = getenv("PS3RECOMP_ENG_VCACHE");
++      const int off = e && *e && strcmp(e, "0") == 0;
++      const char* st = getenv("PS3RECOMP_ENG_VCACHE_STATS");
++      g.vc_stats = st && *st && strcmp(st, "0") != 0;
++      const char* vf = getenv("PS3RECOMP_ENG_VCACHE_VERIFY");
++      g.vc_verify = vf && *vf && strcmp(vf, "0") != 0;
++      if (g.vc_verify) g.vc_stats = 1;
++      if (!off && g.be->vcache_chunk_create && g.be->vcache_chunk_release &&
++          g.be->draw_cached && g.be->commit_serial) {
++          const rsx_vc_chunks chunks = { g.be->user, g.be->vcache_chunk_create,
++                                         g.be->vcache_chunk_release };
++          g.vc = rsx_vc_create(&chunks, (u64)RSX_DRAW_ENGINE_VCACHE_MB << 20,
++                               ENG_VC_CHUNK_BYTES);
++      } }
+     rsx_dispatch_sink sink;
+     memset(&sink, 0, sizeof sink);
+     sink.clear            = sink_clear;
+@@ -4191,6 +4521,8 @@ void rsx_draw_engine_shutdown(void)
+         if (g.zdepths[i].dbz_copy) g.be->texture_release(g.be->user, g.zdepths[i].dbz_copy);
+         if (g.zdepths[i].handle) g.be->depth_target_release(g.be->user, g.zdepths[i].handle);
+     }
++    rsx_vc_destroy(g.vc);
++    g.vc = NULL;
+     if (g.ready && g.be->shutdown) g.be->shutdown(g.be->user);
+ 
+     rsx_draw_engine_set_guest_memory(NULL, NULL);
+diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
+index bbad090..b7c9e59 100644
+--- a/libs/video/rsx_draw_engine.h
++++ b/libs/video/rsx_draw_engine.h
+@@ -125,6 +125,13 @@ typedef struct rsx_be_render_state {
+  * where the boundary is rather than assuming a number. */
+ #define RSX_DRAW_ENGINE_TEXTURE_CACHE 1024
+ 
++/* GPU memory the converted-vertex cache may hold, in MB, when the backend
++ * offers one (rsx_draw_backend.vcache_chunk_create). The Haven firefight in
++ * Resistance 3 keeps ~40 MB of converted vertices in use a frame. */
++#ifndef RSX_DRAW_ENGINE_VCACHE_MB
++#define RSX_DRAW_ENGINE_VCACHE_MB 256
++#endif
++
+ /* ---- the backend interface ---------------------------------------------- */
+ 
+ #define RSX_BE_HAS_COLOR_SNAPSHOT 1
+@@ -315,6 +322,20 @@ typedef struct rsx_draw_backend {
+      * frame before by key and order (temporal upscaling: per-object motion). */
+     void (*set_draw_key)(void* user, u64 key);
+ 
++    /* Optional, all four or none: the converted-vertex cache
++     * (rsx_vertex_compact.h). A chunk is memory the GPU reads and the CPU
++     * writes through *cpu, and stays put until released. draw_cached is draw
++     * with the vertices and the indices already in a chunk, at byte offsets
++     * from its start (index_count 0: not indexed). commit_serial returns the
++     * serial of the submission the next recorded draw goes into and stores
++     * in *completed the newest one the GPU has finished; serials only grow.
++     * Without them every draw is converted and staged as before. */
++    u32  (*vcache_chunk_create)(void* user, u32 bytes, u8** cpu);
++    void (*vcache_chunk_release)(void* user, u32 chunk);
++    void (*draw_cached)(void* user, rsx_topology topology, u32 chunk,
++                        u32 vb_off, u32 vertex_count, u32 stride,
++                        u32 ib_off, u32 index_count);
++    u64  (*commit_serial)(void* user, u64* completed);
+ } rsx_draw_backend;
+ 
+ /* ---- the engine --------------------------------------------------------- */
+diff --git a/libs/video/rsx_vertex_compact.c b/libs/video/rsx_vertex_compact.c
+index 62f59c3..cd799e5 100644
+--- a/libs/video/rsx_vertex_compact.c
++++ b/libs/video/rsx_vertex_compact.c
+@@ -675,3 +675,510 @@ int rsx_vertex_topology_plan(
+         return 0;
+     }
+ }
++
++/* ---- converted-vertex cache ---------------------------------------------- */
++
++/* The hash: four independent lanes, each folding 16 bytes per step with a
++ * 64x64->128 multiply whose halves are xor-ed together, the "mum" step of
++ * wyhash (Wang Yi, public domain / Unlicense). The constants are wyhash's
++ * default secret. Lanes keep the multiplies independent, so a frame's tens of
++ * megabytes of vertex data hash at memory speed. The key is 128 bits, but a
++ * difference in the input reaches it through one 64-bit lane: two different
++ * inputs share a key with a probability of about 2^-64. */
++#define VC_S0 0xa0761d6478bd642full
++#define VC_S1 0xe7037ed1a0b428dbull
++#define VC_S2 0x8ebc6af09c88c6e3ull
++#define VC_S3 0x589965cc75374cc3ull
++
++#if defined(_MSC_VER) && !defined(__clang__)
++#include <intrin.h>
++static u64 vc_mum(u64 a, u64 b)
++{
++#if defined(_M_X64)
++    u64 hi;
++    const u64 lo = _umul128(a, b, &hi);
++    return lo ^ hi;
++#else
++    return (a * b) ^ __umulh(a, b);
++#endif
++}
++#else
++static u64 vc_mum(u64 a, u64 b)
++{
++    const __uint128_t r = (__uint128_t)a * b;
++    return (u64)r ^ (u64)(r >> 64);
++}
++#endif
++
++static u64 vc_rd64(const u8* p)
++{
++    u64 v;
++    memcpy(&v, p, sizeof v);
++    return v;
++}
++
++rsx_vc_key rsx_vc_hash(const void* data, size_t n, rsx_vc_key seed)
++{
++    const u8* p = (const u8*)data;
++    const u64 len = (u64)n;
++    u64 a = seed.lo ^ VC_S0, b = seed.hi ^ VC_S1;
++    u64 c = seed.lo ^ VC_S2 ^ len, d = seed.hi ^ VC_S3;
++    while (n >= 64) {
++        a = vc_mum(vc_rd64(p)      ^ VC_S0, vc_rd64(p + 8)  ^ a);
++        b = vc_mum(vc_rd64(p + 16) ^ VC_S1, vc_rd64(p + 24) ^ b);
++        c = vc_mum(vc_rd64(p + 32) ^ VC_S2, vc_rd64(p + 40) ^ c);
++        d = vc_mum(vc_rd64(p + 48) ^ VC_S3, vc_rd64(p + 56) ^ d);
++        p += 64;
++        n -= 64;
++    }
++    while (n >= 16) {
++        a = vc_mum(vc_rd64(p) ^ VC_S1, vc_rd64(p + 8) ^ a);
++        p += 16;
++        n -= 16;
++    }
++    u8 tail[16] = {0};
++    if (n) memcpy(tail, p, n);
++    b = vc_mum(vc_rd64(tail) ^ VC_S2, vc_rd64(tail + 8) ^ b ^ (u64)n);
++    rsx_vc_key out;
++    const u64 x = vc_mum(a ^ VC_S1, b ^ len ^ VC_S3);
++    const u64 y = vc_mum(c ^ VC_S0, d ^ VC_S2);
++    out.lo = vc_mum(x ^ VC_S2, y ^ VC_S1);
++    out.hi = vc_mum(x ^ VC_S3, y ^ seed.hi ^ VC_S0) ^ out.lo;
++    return out;
++}
++
++rsx_vc_key rsx_vc_mix(rsx_vc_key k, u64 v)
++{
++    return rsx_vc_hash(&v, sizeof v, k);
++}
++
++/* Blocks are multiples of 256 bytes, so every offset is aligned for any
++ * vertex or index buffer a host API binds. */
++#define VC_MIN_SHIFT   8u
++#define VC_MIN_CHUNK   (64u << 10)
++#define VC_TAG_FREE    0x80u
++#define VC_MAX_ENTRIES 32768u
++/* Ranges: 4-way sets, the least recently stored way replaced. A firefight
++ * frame has ~7800 distinct index keys; direct-mapped at 16K slots a fifth of
++ * them collided every frame and their draws converted again. */
++#define VC_RANGES      65536u
++#define VC_RANGE_WAYS  4u
++/* Entries unused for this many frames go first when memory runs out; past
++ * that, anything not used this frame or the last. */
++#define VC_AGE_OLD     30u
++#define VC_AGE_MIN     2u
++
++typedef struct {
++    u32 handle;
++    u8* cpu;
++    u8* tag;           /* per granule at a block start: order + 1 | FREE */
++} vc_chunk;
++
++typedef struct {
++    u32 chunk, granule;
++    u8 order;
++    u64 serial;
++} vc_deferred;
++
++typedef struct {
++    rsx_vc_key key;
++    u32 first, last;
++    u64 stamp;          /* 0 = empty */
++} vc_range;
++
++struct rsx_vertex_cache {
++    rsx_vc_chunks be;
++    u32 chunk_bytes, max_chunks, max_order;
++    vc_chunk* chunks;
++    u32 n_chunks;
++
++    /* Free blocks per order, as (chunk << 32 | granule). An entry is only a
++     * hint: it stands for a free block while the tag there still says so. */
++    u64** free_list;
++    u32* free_n;
++    u32* free_cap;
++
++    vc_deferred* deferred;
++    u32 n_deferred, cap_deferred;
++    u64 deferred_min;        /* smallest serial among them, while there are any */
++
++    rsx_vc_entry* entries;   /* VC_MAX_ENTRIES */
++    u8* live;
++    u32* entry_free;
++    u32 n_entry_free;
++    u32* slots;              /* 2 * VC_MAX_ENTRIES; entry index + 1, 0 empty */
++    u32 slot_mask;
++
++    vc_range* ranges;
++    u64 range_stamp;
++    u64 last_failed_scan_frame;
++    rsx_vc_stats stats;
++};
++
++static int vc_push_free(rsx_vertex_cache* c, u32 order, u32 chunk, u32 granule)
++{
++    if (c->free_n[order] == c->free_cap[order]) {
++        const u32 cap = c->free_cap[order] ? c->free_cap[order] * 2u : 64u;
++        u64* p = (u64*)realloc(c->free_list[order], (size_t)cap * sizeof(u64));
++        if (!p) return 0;
++        c->free_list[order] = p;
++        c->free_cap[order] = cap;
++    }
++    c->free_list[order][c->free_n[order]++] = ((u64)chunk << 32) | granule;
++    return 1;
++}
++
++static int vc_chunk_add(rsx_vertex_cache* c)
++{
++    if (c->n_chunks >= c->max_chunks || !c->be.create) return 0;
++    const u32 granules = c->chunk_bytes >> VC_MIN_SHIFT;
++    u8* tag = (u8*)calloc(granules, 1);
++    if (!tag) return 0;
++    u8* cpu = NULL;
++    const u32 handle = c->be.create(c->be.user, c->chunk_bytes, &cpu);
++    if (!handle || !cpu) { free(tag); return 0; }
++    vc_chunk* ch = &c->chunks[c->n_chunks];
++    ch->handle = handle;
++    ch->cpu = cpu;
++    ch->tag = tag;
++    tag[0] = (u8)(VC_TAG_FREE | (c->max_order + 1u));
++    if (!vc_push_free(c, c->max_order, c->n_chunks, 0)) {
++        if (c->be.release) c->be.release(c->be.user, handle);
++        free(tag);
++        return 0;
++    }
++    c->n_chunks++;
++    return 1;
++}
++
++/* Pop a block of exactly `order` that is still free, or -1. */
++static int vc_pop_free(rsx_vertex_cache* c, u32 order, u32* chunk, u32* granule)
++{
++    const u8 want = (u8)(VC_TAG_FREE | (order + 1u));
++    while (c->free_n[order]) {
++        const u64 v = c->free_list[order][--c->free_n[order]];
++        const u32 ci = (u32)(v >> 32), g = (u32)v;
++        if (c->chunks[ci].tag[g] == want) {
++            /* Mark it taken now: a stale duplicate of this entry further
++             * down the list must not hand the same block out twice. */
++            c->chunks[ci].tag[g] = (u8)(order + 1u);
++            *chunk = ci;
++            *granule = g;
++            return 0;
++        }
++    }
++    return -1;
++}
++
++static int vc_alloc(rsx_vertex_cache* c, u32 order, u32* chunk, u32* granule)
++{
++    for (int pass = 0; pass < 2; pass++) {
++        for (u32 o = order; o <= c->max_order; o++) {
++            u32 ci, g;
++            if (vc_pop_free(c, o, &ci, &g) != 0) continue;
++            u8* tag = c->chunks[ci].tag;
++            while (o > order) {
++                o--;
++                const u32 buddy = g + (1u << o);
++                /* Tagged free even when its list cannot take it: vc_free
++                 * merges by the tags, so the block comes back when its
++                 * buddy is freed. */
++                tag[buddy] = (u8)(VC_TAG_FREE | (o + 1u));
++                vc_push_free(c, o, ci, buddy);
++            }
++            tag[g] = (u8)(order + 1u);
++            *chunk = ci;
++            *granule = g;
++            return 1;
++        }
++        if (pass == 0 && !vc_chunk_add(c)) break;
++    }
++    return 0;
++}
++
++static void vc_free(rsx_vertex_cache* c, u32 ci, u32 g, u32 order)
++{
++    u8* tag = c->chunks[ci].tag;
++    tag[g] = 0;
++    while (order < c->max_order) {
++        const u32 buddy = g ^ (1u << order);
++        if (tag[buddy] != (u8)(VC_TAG_FREE | (order + 1u))) break;
++        tag[buddy] = 0;
++        if (buddy < g) g = buddy;
++        order++;
++    }
++    tag[g] = (u8)(VC_TAG_FREE | (order + 1u));
++    vc_push_free(c, order, ci, g);
++}
++
++static void vc_reclaim(rsx_vertex_cache* c, u64 completed)
++{
++    /* Every insert asks; a walk only pays once the oldest reader is done. */
++    if (!c->n_deferred || completed < c->deferred_min) return;
++    u32 keep = 0;
++    u64 min = ~0ull;
++    for (u32 i = 0; i < c->n_deferred; i++) {
++        const vc_deferred d = c->deferred[i];
++        if (d.serial <= completed) {
++            vc_free(c, d.chunk, d.granule, d.order);
++        } else {
++            c->deferred[keep++] = d;
++            if (d.serial < min) min = d.serial;
++        }
++    }
++    c->n_deferred = keep;
++    c->deferred_min = min;
++}
++
++static u32 vc_slot_of(const rsx_vertex_cache* c, rsx_vc_key key)
++{
++    return (u32)(key.lo ^ (key.hi >> 17)) & c->slot_mask;
++}
++
++static int vc_key_eq(rsx_vc_key a, rsx_vc_key b)
++{
++    return a.lo == b.lo && a.hi == b.hi;
++}
++
++/* Remove the table slot holding entry index `ei` (linear probing, backward
++ * shift so no tombstones are left). */
++static void vc_slot_remove(rsx_vertex_cache* c, u32 ei)
++{
++    u32 s = vc_slot_of(c, c->entries[ei].key);
++    while (c->slots[s] != ei + 1u) s = (s + 1u) & c->slot_mask;
++    for (;;) {
++        c->slots[s] = 0;
++        u32 n = s;
++        for (;;) {
++            n = (n + 1u) & c->slot_mask;
++            if (!c->slots[n]) return;
++            const u32 home = vc_slot_of(c, c->entries[c->slots[n] - 1u].key);
++            /* Move n back into the hole at s unless its home lies in (s, n]. */
++            const int in_range = s <= n ? (home > s && home <= n)
++                                        : (home > s || home <= n);
++            if (!in_range) break;
++        }
++        c->slots[s] = c->slots[n];
++        s = n;
++    }
++}
++
++/* Drop one entry: its block is freed now when the GPU is done with it, or
++ * once it is. */
++static void vc_evict(rsx_vertex_cache* c, u32 ei, u64 completed)
++{
++    rsx_vc_entry* e = &c->entries[ei];
++    vc_slot_remove(c, ei);
++    c->live[ei] = 0;
++    c->entry_free[c->n_entry_free++] = ei;
++    c->stats.evictions++;
++    c->stats.bytes_in_use -= (u64)1 << (e->order + VC_MIN_SHIFT);
++    u32 ci = 0;
++    while (ci < c->n_chunks && c->chunks[ci].handle != e->chunk) ci++;
++    if (ci == c->n_chunks) return;
++    const u32 g = e->offset >> VC_MIN_SHIFT;
++    if (e->last_serial <= completed) {
++        vc_free(c, ci, g, e->order);
++        return;
++    }
++    if (c->n_deferred == c->cap_deferred) {
++        const u32 cap = c->cap_deferred ? c->cap_deferred * 2u : 256u;
++        vc_deferred* p = (vc_deferred*)realloc(c->deferred, (size_t)cap * sizeof(*p));
++        if (!p) return;   /* the block leaks; better than a GPU reading reused memory */
++        c->deferred = p;
++        c->cap_deferred = cap;
++    }
++    c->deferred[c->n_deferred].chunk = ci;
++    c->deferred[c->n_deferred].granule = g;
++    c->deferred[c->n_deferred].order = e->order;
++    c->deferred[c->n_deferred].serial = e->last_serial;
++    if (!c->n_deferred || e->last_serial < c->deferred_min) c->deferred_min = e->last_serial;
++    c->n_deferred++;
++}
++
++static u32 vc_evict_older(rsx_vertex_cache* c, u64 frame, u32 age, u64 completed)
++{
++    u32 n = 0;
++    for (u32 i = 0; i < VC_MAX_ENTRIES; i++)
++        if (c->live[i] && frame >= c->entries[i].last_frame + age) {
++            vc_evict(c, i, completed);
++            n++;
++        }
++    return n;
++}
++
++rsx_vertex_cache* rsx_vc_create(const rsx_vc_chunks* chunks, u64 budget,
++                                u32 chunk_bytes)
++{
++    if (!chunks || !chunks->create || chunk_bytes < VC_MIN_CHUNK ||
++        (chunk_bytes & (chunk_bytes - 1u)) || chunk_bytes > (1u << 30))
++        return NULL;
++    rsx_vertex_cache* c = (rsx_vertex_cache*)calloc(1, sizeof *c);
++    if (!c) return NULL;
++    c->be = *chunks;
++    /* A budget under one chunk gets smaller chunks, not one past it. */
++    while (chunk_bytes > budget && chunk_bytes > VC_MIN_CHUNK) chunk_bytes >>= 1;
++    c->chunk_bytes = chunk_bytes;
++    c->max_chunks = (u32)(budget / chunk_bytes);
++    if (!c->max_chunks) c->max_chunks = 1;
++    u32 order = 0;
++    while ((1u << (order + VC_MIN_SHIFT)) < chunk_bytes) order++;
++    c->max_order = order;
++    c->chunks = (vc_chunk*)calloc(c->max_chunks, sizeof(vc_chunk));
++    c->free_list = (u64**)calloc(order + 1u, sizeof(u64*));
++    c->free_n = (u32*)calloc(order + 1u, sizeof(u32));
++    c->free_cap = (u32*)calloc(order + 1u, sizeof(u32));
++    c->entries = (rsx_vc_entry*)calloc(VC_MAX_ENTRIES, sizeof(rsx_vc_entry));
++    c->live = (u8*)calloc(VC_MAX_ENTRIES, 1);
++    c->entry_free = (u32*)malloc(VC_MAX_ENTRIES * sizeof(u32));
++    c->slots = (u32*)calloc(2u * VC_MAX_ENTRIES, sizeof(u32));
++    c->ranges = (vc_range*)calloc(VC_RANGES, sizeof(vc_range));
++    if (!c->chunks || !c->free_list || !c->free_n || !c->free_cap || !c->entries ||
++        !c->live || !c->entry_free || !c->slots || !c->ranges) {
++        rsx_vc_destroy(c);
++        return NULL;
++    }
++    c->slot_mask = 2u * VC_MAX_ENTRIES - 1u;
++    for (u32 i = 0; i < VC_MAX_ENTRIES; i++)
++        c->entry_free[i] = VC_MAX_ENTRIES - 1u - i;
++    c->n_entry_free = VC_MAX_ENTRIES;
++    c->last_failed_scan_frame = ~0ull;
++    return c;
++}
++
++void rsx_vc_destroy(rsx_vertex_cache* c)
++{
++    if (!c) return;
++    for (u32 i = 0; i < c->n_chunks; i++) {
++        if (c->be.release) c->be.release(c->be.user, c->chunks[i].handle);
++        free(c->chunks[i].tag);
++    }
++    if (c->free_list)
++        for (u32 o = 0; o <= c->max_order; o++) free(c->free_list[o]);
++    free(c->free_list); free(c->free_n); free(c->free_cap);
++    free(c->chunks); free(c->deferred);
++    free(c->entries); free(c->live); free(c->entry_free); free(c->slots);
++    free(c->ranges);
++    free(c);
++}
++
++u8* rsx_vc_chunk_cpu(const rsx_vertex_cache* c, const rsx_vc_entry* e)
++{
++    if (!c || !e) return NULL;
++    for (u32 ci = 0; ci < c->n_chunks; ci++)
++        if (c->chunks[ci].handle == e->chunk) return c->chunks[ci].cpu;
++    return NULL;
++}
++
++rsx_vc_entry* rsx_vc_find(rsx_vertex_cache* c, rsx_vc_key key)
++{
++    if (!c) return NULL;
++    for (u32 s = vc_slot_of(c, key); c->slots[s]; s = (s + 1u) & c->slot_mask) {
++        rsx_vc_entry* e = &c->entries[c->slots[s] - 1u];
++        if (vc_key_eq(e->key, key)) {
++            c->stats.hits++;
++            return e;
++        }
++    }
++    c->stats.misses++;
++    return NULL;
++}
++
++void rsx_vc_touch(rsx_vc_entry* e, u64 serial, u64 frame)
++{
++    if (!e) return;
++    if (serial > e->last_serial) e->last_serial = serial;
++    e->last_frame = frame;
++}
++
++rsx_vc_entry* rsx_vc_insert(rsx_vertex_cache* c, rsx_vc_key key, u32 bytes,
++                            u64 completed, u64 frame, u8** cpu)
++{
++    if (!c || !bytes || bytes > c->chunk_bytes || !cpu) return NULL;
++    u32 order = 0;
++    while ((1ull << (order + VC_MIN_SHIFT)) < bytes) order++;
++
++    /* An entry already under this key (the caller missed it) goes first. */
++    for (u32 s = vc_slot_of(c, key); c->slots[s]; s = (s + 1u) & c->slot_mask)
++        if (vc_key_eq(c->entries[c->slots[s] - 1u].key, key)) {
++            vc_evict(c, c->slots[s] - 1u, completed);
++            break;
++        }
++
++    vc_reclaim(c, completed);
++    u32 ci = 0, g = 0;
++    int ok = c->n_entry_free && vc_alloc(c, order, &ci, &g);
++    if (!ok && c->last_failed_scan_frame != frame) {
++        static const u32 ages[2] = { VC_AGE_OLD, VC_AGE_MIN };
++        for (u32 a = 0; a < 2 && !ok; a++) {
++            if (!vc_evict_older(c, frame, ages[a], completed)) continue;
++            vc_reclaim(c, completed);
++            ok = c->n_entry_free && vc_alloc(c, order, &ci, &g);
++        }
++        /* Nothing more can be had until the frame changes: do not scan
++         * every entry again on each miss of this frame. */
++        if (!ok) c->last_failed_scan_frame = frame;
++    }
++    if (!ok) {
++        c->stats.insert_failures++;
++        return NULL;
++    }
++
++    const u32 ei = c->entry_free[--c->n_entry_free];
++    rsx_vc_entry* e = &c->entries[ei];
++    memset(e, 0, sizeof *e);
++    e->key = key;
++    e->chunk = c->chunks[ci].handle;
++    e->offset = g << VC_MIN_SHIFT;
++    e->order = (u8)order;
++    e->last_frame = frame;
++    c->live[ei] = 1;
++    u32 s = vc_slot_of(c, key);
++    while (c->slots[s]) s = (s + 1u) & c->slot_mask;
++    c->slots[s] = ei + 1u;
++    c->stats.inserts++;
++    c->stats.bytes_in_use += (u64)1 << (order + VC_MIN_SHIFT);
++    *cpu = c->chunks[ci].cpu + e->offset;
++    return e;
++}
++
++static vc_range* vc_range_set(rsx_vertex_cache* c, rsx_vc_key key)
++{
++    return &c->ranges[((key.lo ^ key.hi) & (VC_RANGES / VC_RANGE_WAYS - 1u)) * VC_RANGE_WAYS];
++}
++
++int rsx_vc_range_find(rsx_vertex_cache* c, rsx_vc_key key, u32* first, u32* last)
++{
++    if (!c) return 0;
++    vc_range* set = vc_range_set(c, key);
++    for (u32 w = 0; w < VC_RANGE_WAYS; w++)
++        if (set[w].stamp && vc_key_eq(set[w].key, key)) {
++            set[w].stamp = ++c->range_stamp;
++            *first = set[w].first;
++            *last = set[w].last;
++            return 1;
++        }
++    return 0;
++}
++
++void rsx_vc_range_put(rsx_vertex_cache* c, rsx_vc_key key, u32 first, u32 last)
++{
++    if (!c) return;
++    vc_range* set = vc_range_set(c, key);
++    vc_range* r = &set[0];
++    for (u32 w = 0; w < VC_RANGE_WAYS; w++) {
++        if (set[w].stamp && vc_key_eq(set[w].key, key)) { r = &set[w]; break; }
++        if (set[w].stamp < r->stamp) r = &set[w];
++    }
++    r->key = key;
++    r->first = first;
++    r->last = last;
++    r->stamp = ++c->range_stamp;
++}
++
++void rsx_vc_get_stats(const rsx_vertex_cache* c, rsx_vc_stats* out)
++{
++    if (!out) return;
++    if (!c) { memset(out, 0, sizeof *out); return; }
++    *out = c->stats;
++}
+diff --git a/libs/video/rsx_vertex_compact.h b/libs/video/rsx_vertex_compact.h
+index ce06281..b6cab30 100644
+--- a/libs/video/rsx_vertex_compact.h
++++ b/libs/video/rsx_vertex_compact.h
+@@ -162,6 +162,95 @@ int rsx_vertex_topology_plan(
+ int rsx_vertex_decode_element(
+     u32 type, u32 size, const u8* source, float out[4]);
+ 
++/* ---- converted-vertex cache ----------------------------------------------
++ *
++ * A draw engine converts a draw's vertices to compact float4 vertices and
++ * rebuilds its topology into an index buffer, on the CPU, every time. A game
++ * repeats most of its draws unchanged: in Resistance 3's Haven firefight 95-97%
++ * of ~7800 draws a frame had the same indices, layout and vertex bytes as a draw
++ * of this frame or the last, and their conversion was a third of the RSX
++ * thread. This cache keeps the converted vertices and indices of a draw in
++ * memory the GPU reads, keyed by a hash of everything they were made from:
++ * index bytes, layout, attribute state and the vertex bytes themselves. A
++ * changed byte is a different key, so nothing is ever invalidated; entries
++ * nobody uses age out.
++ *
++ * The cache only does bookkeeping. Memory comes from the backend as chunks
++ * (a GPU buffer and a CPU pointer to its contents); blocks are handed out
++ * from them by a buddy allocator. A block the GPU may still read is not
++ * reused: the engine tags every use with the serial of the submission it
++ * goes into and passes in the serial the GPU has completed. */
++
++typedef struct rsx_vc_key {
++    u64 lo, hi;
++} rsx_vc_key;
++
++/* 128-bit key of n bytes, chained on seed. Not cryptographic, and a 64-bit
++ * margin: two different inputs share a key with a probability of about
++ * 2^-64. */
++rsx_vc_key rsx_vc_hash(const void* data, size_t n, rsx_vc_key seed);
++rsx_vc_key rsx_vc_mix(rsx_vc_key k, u64 v);
++
++typedef struct rsx_vc_chunks {
++    void* user;
++    /* A chunk of `bytes` the GPU can read; *cpu gets its contents. Returns a
++     * handle > 0, or 0 when it cannot. */
++    u32 (*create)(void* user, u32 bytes, u8** cpu);
++    void (*release)(void* user, u32 chunk);
++} rsx_vc_chunks;
++
++typedef struct rsx_vc_entry {
++    rsx_vc_key key;
++    u32 chunk;          /* backend chunk handle                              */
++    u32 offset;         /* of the block in the chunk; vertices start here    */
++    u32 ib_off;         /* indices, from the start of the chunk; 0 = none    */
++    u32 n_verts;        /* compact vertices stored                           */
++    u32 n_draw;         /* indices to draw, or vertices when not indexed     */
++    u32 stride;
++    u32 topology;       /* the engine's own topology value                   */
++    u8  indexed;
++    u8  order;          /* buddy order of the block                          */
++    u64 last_serial;    /* submission that last read it                      */
++    u64 last_frame;
++} rsx_vc_entry;
++
++typedef struct rsx_vc_stats {
++    u64 hits, misses, inserts, insert_failures, evictions, bytes_in_use;
++} rsx_vc_stats;
++
++typedef struct rsx_vertex_cache rsx_vertex_cache;
++
++/* budget: total bytes of chunks; chunk_bytes: a power of two >= 64 KB,
++ * halved (down to 64 KB) while it is larger than the budget. */
++rsx_vertex_cache* rsx_vc_create(const rsx_vc_chunks* chunks, u64 budget,
++                                u32 chunk_bytes);
++void rsx_vc_destroy(rsx_vertex_cache* c);
++
++/* The entry for key, or NULL. The pointer stays valid until the next insert. */
++rsx_vc_entry* rsx_vc_find(rsx_vertex_cache* c, rsx_vc_key key);
++/* Record that the entry is read by submission `serial` in `frame`. */
++void rsx_vc_touch(rsx_vc_entry* e, u64 serial, u64 frame);
++
++/* A new entry with a block of `bytes`; *cpu points at the block. `completed`
++ * is the newest submission serial the GPU has finished, `frame` the current
++ * frame: entries unused for a while are evicted when memory runs out. NULL
++ * when the block cannot be had (larger than a chunk, or every byte is in use
++ * by the GPU or by this frame); the caller then draws uncached. */
++rsx_vc_entry* rsx_vc_insert(rsx_vertex_cache* c, rsx_vc_key key, u32 bytes,
++                            u64 completed, u64 frame, u8** cpu);
++
++/* The element range [first, last] a draw's indices span, remembered by a
++ * hash of those indices, so a repeated draw finds its vertex range without
++ * reading every index. */
++int rsx_vc_range_find(rsx_vertex_cache* c, rsx_vc_key key, u32* first, u32* last);
++void rsx_vc_range_put(rsx_vertex_cache* c, rsx_vc_key key, u32 first, u32 last);
++
++void rsx_vc_get_stats(const rsx_vertex_cache* c, rsx_vc_stats* out);
++
++/* The CPU address of an entry's chunk (its start: entry offsets are from
++ * there), or NULL. For checking a stored copy against a fresh conversion. */
++u8* rsx_vc_chunk_cpu(const rsx_vertex_cache* c, const rsx_vc_entry* e);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/libs/video/tests/test_engine_vertex_cache.c b/libs/video/tests/test_engine_vertex_cache.c
+new file mode 100644
+index 0000000..7ab4ed7
+--- /dev/null
++++ b/libs/video/tests/test_engine_vertex_cache.c
+@@ -0,0 +1,305 @@
++/* The draw engine's converted-vertex cache through a stub backend: a repeated
++ * draw reuses the converted copy, and any change to what it was made from --
++ * a vertex byte, an index, the vertex format -- converts again and draws the
++ * new data. Every use is tagged with the submission it goes into. A draw the
++ * key cannot describe (a per-instance attribute), PS3RECOMP_ENG_VCACHE=0 and
++ * a backend without the hooks keep the staged path; PS3RECOMP_ENG_VCACHE_VERIFY
++ * catches a stored copy that differs from a fresh conversion. Built like
++ * test_color_feedback_engine.c. */
++#define main engine_tests_main
++#include "test_rsx_draw_engine.c"
++#undef main
++#include "rsx_draw_engine.c"
++
++#define M_IDXBUF_ADDR   0x181Cu
++#define M_IDXBUF_FMT    0x1820u
++#define M_IDX_BATCH     0x1824u
++
++static rsx_draw_backend vc_backend;
++static u8* vc_mem[8];
++static u32 vc_chunks;
++static u64 vc_committed, vc_done;   /* submissions committed / completed by the "GPU" */
++static int n_cached;
++static float cached_v0[4];       /* ATTR0 of the first vertex drawn */
++static u32 cached_idx[8], cached_vcount, cached_icount;
++static u32 cached_chunk, cached_off;
++
++static u32 vc_create(void* u, u32 bytes, u8** cpu)
++{
++    (void)u;
++    if (vc_chunks >= 8) return 0;
++    vc_mem[vc_chunks] = (u8*)calloc(1, bytes);
++    *cpu = vc_mem[vc_chunks];
++    return ++vc_chunks;
++}
++
++static void vc_release(void* u, u32 chunk)
++{
++    (void)u;
++    free(vc_mem[chunk - 1]);
++    vc_mem[chunk - 1] = NULL;
++}
++
++static void vc_draw_cached(void* u, rsx_topology t, u32 chunk, u32 vb_off,
++                           u32 vcount, u32 stride, u32 ib_off, u32 icount)
++{
++    (void)u; (void)t; (void)stride;
++    n_cached++;
++    cached_chunk = chunk;
++    cached_off = vb_off;
++    cached_vcount = vcount;
++    cached_icount = icount;
++    memcpy(cached_v0, vc_mem[chunk - 1] + vb_off, sizeof cached_v0);
++    memset(cached_idx, 0xFF, sizeof cached_idx);
++    if (icount)
++        memcpy(cached_idx, vc_mem[chunk - 1] + ib_off,
++               (icount < 8 ? icount : 8) * sizeof(u32));
++}
++
++static u64 vc_commit_serial(void* u, u64* completed)
++{
++    (void)u;
++    *completed = vc_done;
++    return vc_committed + 1u;        /* the submission being recorded */
++}
++
++/* What the backend's submit does: the draws so far go to the GPU, which
++ * finishes them. */
++static void commit(void) { vc_done = ++vc_committed; }
++
++static void be_f32(u8* p, float f)
++{
++    u32 w;
++    memcpy(&w, &f, 4);
++    p[0] = (u8)(w >> 24); p[1] = (u8)(w >> 16); p[2] = (u8)(w >> 8); p[3] = (u8)w;
++}
++
++static void set_vertex(u32 i, float x)
++{
++    u8* p = vm_base + VTX_OFFSET + i * 16u;
++    be_f32(p, x); be_f32(p + 4, 0.5f); be_f32(p + 8, 0.0f); be_f32(p + 12, 1.0f);
++}
++
++static void up(int hooks)
++{
++    for (u32 i = 0; i < vc_chunks; i++) { free(vc_mem[i]); vc_mem[i] = NULL; }
++    vc_chunks = 0;
++    vc_committed = vc_done = 0;
++    n_cached = 0;
++    vc_backend = g_stub_backend;
++    if (hooks) {
++        vc_backend.vcache_chunk_create = vc_create;
++        vc_backend.vcache_chunk_release = vc_release;
++        vc_backend.draw_cached = vc_draw_cached;
++        vc_backend.commit_serial = vc_commit_serial;
++    }
++    engine_up_with(&vc_backend);
++}
++
++static void draw_indexed(u32 count)
++{
++    m(M_IDXBUF_ADDR, IDX_OFFSET);
++    m(M_IDXBUF_FMT, 1u | (1u << 4));  /* main memory, u16 */
++    m(M_BEGIN_END, RSX_PRIMITIVE_TRIANGLES);
++    m(M_IDX_BATCH, 0u | ((count - 1u) << 24));
++    m(M_BEGIN_END, 0u);
++}
++
++static void set_index(u32 i, u16 v)
++{
++    u8* p = vm_base + IDX_OFFSET + i * 2u;
++    p[0] = (u8)(v >> 8); p[1] = (u8)v;
++}
++
++/* The cache entry the last triangle draw used, found as sink_end finds it. */
++static rsx_vc_entry* last_entry(void)
++{
++    rsx_vertex_layout_plan layout;
++    eng_vertex_layout(&layout);
++    rsx_vc_key ik, vk;
++    int keyed, ranged;
++    if (!eng_vc_index_key(RSX_PRIMITIVE_TRIANGLES, &layout, &ik)) return NULL;
++    return eng_vc_lookup(ik, &layout, &vk, &keyed, &ranged);
++}
++
++static rsx_vc_stats stats(void)
++{
++    rsx_vc_stats st;
++    rsx_vc_get_stats(g.vc, &st);
++    return st;
++}
++
++int main(void)
++{
++    vm_base = calloc(1, GUEST_BYTES);
++    if (!vm_base) return 2;
++    ppu_vm_size = GUEST_BYTES;
++    for (u32 i = 0; i < 8; i++) set_vertex(i, (float)i);
++
++    /* Arrays: the second identical draw reuses the first one's copy. */
++    up(1);
++    CHECK(g.vc != NULL, "the cache is on with the hooks");
++    draw_triangle();
++    const u32 chunk0 = cached_chunk, off0 = cached_off;
++    CHECK(n_cached == 1 && stub.n_draw == 0, "a cacheable draw goes through draw_cached");
++    CHECK(cached_v0[0] == 0.0f && cached_v0[1] == 0.5f && cached_v0[3] == 1.0f,
++          "converted vertex 0 in the chunk (%g %g %g %g)",
++          cached_v0[0], cached_v0[1], cached_v0[2], cached_v0[3]);
++    draw_triangle();
++    rsx_vc_stats st = stats();
++    CHECK(n_cached == 2 && st.inserts == 1 && st.hits == 1,
++          "the repeat is a hit (inserts %llu hits %llu)",
++          (unsigned long long)st.inserts, (unsigned long long)st.hits);
++    CHECK(cached_chunk == chunk0 && cached_off == off0, "the repeat draws the same block");
++
++    /* A use is tagged with the submission the draw goes into, not with what
++     * the GPU has finished: the block stays the GPU's until that is done. */
++    rsx_vc_entry* e0 = last_entry();
++    CHECK(e0 && e0->last_serial == vc_committed + 1u,
++          "touched with the pending submission (%llu, pending %llu)",
++          e0 ? (unsigned long long)e0->last_serial : 0ull,
++          (unsigned long long)vc_committed + 1ull);
++    commit();
++    draw_triangle();
++    CHECK(e0 && e0->last_serial == vc_committed + 1u && e0->last_serial == 2u,
++          "a hit in the next submission moves it on (%llu)",
++          e0 ? (unsigned long long)e0->last_serial : 0ull);
++
++    /* One vertex byte changes: converted again, new data drawn. */
++    set_vertex(0, 9.0f);
++    draw_triangle();
++    st = stats();
++    CHECK(st.inserts == 2 && cached_v0[0] == 9.0f,
++          "a changed vertex converts again (inserts %llu, x %g)",
++          (unsigned long long)st.inserts, cached_v0[0]);
++    draw_triangle();
++    CHECK(stats().inserts == 2 && cached_v0[0] == 9.0f, "and that copy is reused");
++    set_vertex(0, 0.0f);
++    draw_triangle();
++    CHECK(stats().inserts == 2 && cached_v0[0] == 0.0f && cached_off == off0,
++          "the old bytes find the old copy again");
++
++    /* The same vertices in another buffer (a title alternating two): the
++     * address is not part of the key, the copy is shared. */
++    memcpy(vm_base + VTX_OFFSET + 0x1000u, vm_base + VTX_OFFSET, 8u * 16u);
++    m(M_VTXBUF_OFFSET, 0x80000000u | (VTX_OFFSET + 0x1000u));
++    draw_triangle();
++    CHECK(stats().inserts == 2 && cached_off == off0, "same bytes at another address: a hit");
++    vm_base[VTX_OFFSET + 0x1000u] ^= 0x01u;
++    draw_triangle();
++    CHECK(stats().inserts == 3, "and a changed byte there is not");
++    vm_base[VTX_OFFSET + 0x1000u] ^= 0x01u;
++    m(M_VTXBUF_OFFSET, 0x80000000u | VTX_OFFSET);
++
++    /* The current value of ATTR3 (colour) reaches the vertices only while
++     * ATTR3 has no array: with one, changing it is still a hit. */
++    rsx_vertex_layout_plan lp;
++    eng_vertex_layout(&lp);
++    if (lp.mask & (1u << 3)) {
++        m(M_VTXFMT + 12u, 2u | (4u << 4) | (16u << 8));
++        m(M_VTXBUF_OFFSET + 12u, 0x80000000u | VTX_OFFSET);
++        draw_triangle();
++        const u64 base = stats().inserts;
++        m(0x1C30, 0x3F000000u);          /* current colour r = 0.5 */
++        draw_triangle();
++        CHECK(stats().inserts == base, "an array's attribute ignores its current value");
++        m(M_VTXFMT + 12u, 2u);           /* ATTR3 array off */
++        draw_triangle();
++        const u64 off = stats().inserts;
++        CHECK(off == base + 1, "turning the array off is another key");
++        m(0x1C30, 0x3E800000u);          /* r = 0.25 */
++        draw_triangle();
++        CHECK(stats().inserts == off + 1, "without an array the current value is keyed");
++    } else {
++        CHECK(0, "the built-in program reads ATTR3 (mask %X)", lp.mask);
++    }
++    m(M_VTXFMT + 12u, 2u);
++    const u64 before_fmt = stats().inserts;
++
++    /* A different vertex format is a different key. */
++    m(M_VTXFMT, 2u | (3u << 4) | (16u << 8));    /* float32 x3 */
++    draw_triangle();
++    CHECK(stats().inserts == before_fmt + 1 && cached_v0[3] == 1.0f, "a format change converts again");
++    m(M_VTXFMT, 2u | (4u << 4) | (16u << 8));
++
++    /* An attribute fetched per instance (frequency 1 with its modulo bit:
++     * element 0 for every vertex) reads outside the range the key covers:
++     * such a draw is staged as before, never cached. */
++    {
++        const u64 ins = stats().inserts;
++        const int cached = n_cached, staged = (int)stub.n_draw;
++        m(0x1FC0, 1u);                                   /* ATTR0: modulo */
++        m(M_VTXFMT, 2u | (4u << 4) | (16u << 8) | (1u << 16));
++        draw_triangle();
++        draw_triangle();
++        CHECK(n_cached == cached && (int)stub.n_draw == staged + 2 && stats().inserts == ins,
++              "a per-instance attribute is staged (cached %d->%d, staged %d->%d)",
++              cached, n_cached, staged, (int)stub.n_draw);
++        m(0x1FC0, 0u);
++        m(M_VTXFMT, 2u | (4u << 4) | (16u << 8));
++    }
++
++    /* Indexed: indices are part of the key, and the rebuilt index list is
++     * stored with the vertices. */
++    set_index(0, 2); set_index(1, 1); set_index(2, 0);
++    set_index(3, 2); set_index(4, 1); set_index(5, 0);
++    draw_indexed(6);
++    const u64 ins = stats().inserts;
++    CHECK(n_cached > 0 && cached_icount == 6 && cached_vcount == 3,
++          "indexed: 3 unique vertices, 6 indices (%u, %u)", cached_vcount, cached_icount);
++    CHECK(cached_v0[0] == 2.0f, "first unique vertex is index 2 (%g)", cached_v0[0]);
++    draw_indexed(6);
++    CHECK(stats().inserts == ins && cached_icount == 6, "indexed repeat is a hit");
++    set_index(5, 3);
++    draw_indexed(6);
++    CHECK(stats().inserts == ins + 1 && cached_vcount == 4,
++          "a changed index converts again (%u unique)", cached_vcount);
++    engine_down();
++
++    /* PS3RECOMP_ENG_VCACHE_VERIFY=1: a hit is converted again and checked;
++     * an equal copy is still drawn from the chunk, and a copy that differs
++     * (corrupted here by hand) is counted and replaced by the fresh one. */
++    setenv("PS3RECOMP_ENG_VCACHE_VERIFY", "1", 1);
++    up(1);
++    draw_triangle();
++    draw_triangle();
++    CHECK(g.vc_verify && g.vc_verified == 1 && g.vc_mismatches == 0 && n_cached == 2,
++          "verify: an equal copy passes (checked %llu, differed %llu)",
++          (unsigned long long)g.vc_verified, (unsigned long long)g.vc_mismatches);
++    {
++        rsx_vc_entry* e = last_entry();
++        u8* cpu = e ? rsx_vc_chunk_cpu(g.vc, e) : NULL;
++        CHECK(cpu != NULL, "verify: the entry's chunk is found");
++        if (cpu) {
++            const float bad = 42.0f;
++            memcpy(cpu + e->offset, &bad, sizeof bad);
++        }
++        draw_triangle();
++        CHECK(g.vc_mismatches == 1 && cached_v0[0] == 0.0f,
++              "verify: a differing copy is caught and the fresh conversion drawn (%llu, x %g)",
++              (unsigned long long)g.vc_mismatches, cached_v0[0]);
++        draw_triangle();
++        CHECK(g.vc_mismatches == 1 && cached_v0[0] == 0.0f, "verify: the replaced copy passes");
++    }
++    engine_down();
++    unsetenv("PS3RECOMP_ENG_VCACHE_VERIFY");
++
++    /* PS3RECOMP_ENG_VCACHE=0: staged as before. */
++    setenv("PS3RECOMP_ENG_VCACHE", "0", 1);
++    up(1);
++    draw_triangle();
++    CHECK(g.vc == NULL && n_cached == 0 && stub.n_draw == 1, "the switch turns the cache off");
++    engine_down();
++    unsetenv("PS3RECOMP_ENG_VCACHE");
++
++    /* A backend without the hooks: staged as before. */
++    up(0);
++    draw_triangle();
++    CHECK(g.vc == NULL && n_cached == 0 && stub.n_draw == 1, "no hooks, no cache");
++    engine_down();
++
++    for (u32 i = 0; i < vc_chunks; i++) free(vc_mem[i]);
++    free(vm_base);
++    printf("engine vertex cache: %s (%d failures)\n", g_failures ? "FAIL" : "ok", g_failures);
++    return g_failures ? 1 : 0;
++}
+diff --git a/libs/video/tests/test_vertex_cache.c b/libs/video/tests/test_vertex_cache.c
+new file mode 100644
+index 0000000..c5253f4
+--- /dev/null
++++ b/libs/video/tests/test_vertex_cache.c
+@@ -0,0 +1,243 @@
++/* The converted-vertex cache (rsx_vertex_compact.h) without a GPU: the hash,
++ * lookups, the buddy allocator under its chunks, eviction by age and the rule
++ * that a block the GPU may still read is not handed out again.
++ *
++ * clang -std=gnu17 -O2 -Wall -Wextra -I include -I libs/video \
++ *   libs/video/tests/test_vertex_cache.c libs/video/rsx_vertex_compact.c libs/video/rsx_dispatch.c */
++#include "rsx_vertex_compact.h"
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++static int g_failures;
++#define CHECK(cond, ...)                                                       \
++    do {                                                                       \
++        if (!(cond)) { printf("[FAIL] " __VA_ARGS__); printf("\n"); g_failures++; } \
++    } while (0)
++
++#define CHUNK (64u << 10)
++
++typedef struct { int created, released; u32 bytes; u8* mem[16]; } Chunks;
++static Chunks g_ch;
++
++static u32 ch_create(void* u, u32 bytes, u8** cpu)
++{
++    Chunks* c = (Chunks*)u;
++    if (c->created >= 16) return 0;
++    u8* p = (u8*)calloc(1, bytes);
++    if (!p) return 0;
++    c->bytes = bytes;
++    c->mem[c->created] = p;
++    *cpu = p;
++    return (u32)++c->created;
++}
++
++static void ch_release(void* u, u32 chunk)
++{
++    Chunks* c = (Chunks*)u;
++    c->released++;
++    free(c->mem[chunk - 1]);
++    c->mem[chunk - 1] = NULL;
++}
++
++static const rsx_vc_chunks k_chunks = { &g_ch, ch_create, ch_release };
++
++static rsx_vc_key key_of(u32 v)
++{
++    const rsx_vc_key zero = { 0, 0 };
++    return rsx_vc_hash(&v, sizeof v, zero);
++}
++
++static void test_hash(void)
++{
++    const rsx_vc_key s = { 1, 2 };
++    u8 a[200], b[200];
++    for (u32 i = 0; i < sizeof a; i++) a[i] = b[i] = (u8)(i * 7u);
++    for (u32 n = 0; n <= sizeof a; n++) {
++        const rsx_vc_key x = rsx_vc_hash(a, n, s), y = rsx_vc_hash(b, n, s);
++        CHECK(x.lo == y.lo && x.hi == y.hi, "same bytes, same key (n=%u)", n);
++        if (n) {
++            b[n - 1] ^= 1u;
++            const rsx_vc_key z = rsx_vc_hash(b, n, s);
++            CHECK(z.lo != x.lo && z.hi != x.hi, "a flipped last bit changes both halves (n=%u)", n);
++            b[n - 1] ^= 1u;
++            b[0] ^= 0x80u;
++            const rsx_vc_key w = rsx_vc_hash(b, n, s);
++            CHECK(w.lo != x.lo && w.hi != x.hi, "a flipped first bit changes both halves (n=%u)", n);
++            b[0] ^= 0x80u;
++        }
++    }
++    /* Zero bytes of different lengths and different seeds are different keys. */
++    const u8 zero[64] = {0};
++    const rsx_vc_key z1 = rsx_vc_hash(zero, 32, s), z2 = rsx_vc_hash(zero, 33, s);
++    CHECK(z1.lo != z2.lo, "length is part of the key");
++    const rsx_vc_key s2 = { 1, 3 };
++    const rsx_vc_key z3 = rsx_vc_hash(zero, 32, s2);
++    CHECK(z1.lo != z3.lo, "seed is part of the key");
++    const rsx_vc_key m1 = rsx_vc_mix(s, 5), m2 = rsx_vc_mix(s, 6);
++    CHECK(m1.lo != m2.lo, "mix of different values differs");
++}
++
++static void test_find_insert(void)
++{
++    memset(&g_ch, 0, sizeof g_ch);
++    rsx_vertex_cache* c = rsx_vc_create(&k_chunks, 2u * CHUNK, CHUNK);
++    CHECK(c != NULL, "create");
++    CHECK(rsx_vc_find(c, key_of(1)) == NULL, "empty cache misses");
++    u8* cpu = NULL;
++    rsx_vc_entry* e = rsx_vc_insert(c, key_of(1), 1000, 0, 0, &cpu);
++    CHECK(e && cpu, "insert");
++    CHECK(e && e->offset % 256u == 0, "blocks are 256-byte aligned");
++    memset(cpu, 0xAB, 1000);
++    rsx_vc_entry* f = rsx_vc_find(c, key_of(1));
++    CHECK(f == e, "inserted entry is found");
++    CHECK(g_ch.mem[0] && g_ch.mem[0][f->offset] == 0xAB, "the block is the chunk's memory");
++    CHECK(rsx_vc_find(c, key_of(2)) == NULL, "another key misses");
++    CHECK(rsx_vc_insert(c, key_of(3), CHUNK + 1u, 0, 0, &cpu) == NULL, "larger than a chunk: refused");
++    /* Inserting a key again replaces the entry. */
++    rsx_vc_entry* g2 = rsx_vc_insert(c, key_of(1), 300, 0, 0, &cpu);
++    CHECK(g2 && rsx_vc_find(c, key_of(1)) == g2, "re-insert replaces");
++    rsx_vc_stats st;
++    rsx_vc_get_stats(c, &st);
++    CHECK(st.inserts == 2 && st.evictions == 1, "stats count inserts/evictions (%llu/%llu)",
++          (unsigned long long)st.inserts, (unsigned long long)st.evictions);
++    /* Ranges. */
++    u32 a, b;
++    CHECK(!rsx_vc_range_find(c, key_of(9), &a, &b), "unknown range misses");
++    rsx_vc_range_put(c, key_of(9), 5, 77);
++    CHECK(rsx_vc_range_find(c, key_of(9), &a, &b) && a == 5 && b == 77, "range found");
++    rsx_vc_destroy(c);
++    CHECK(g_ch.created == g_ch.released, "destroy releases every chunk");
++}
++
++/* One chunk, filled; nothing may be reused while the GPU still reads it. */
++static void test_deferred_reuse(void)
++{
++    memset(&g_ch, 0, sizeof g_ch);
++    rsx_vertex_cache* c = rsx_vc_create(&k_chunks, CHUNK, CHUNK);
++    u8* cpu;
++    rsx_vc_entry* e = rsx_vc_insert(c, key_of(1), CHUNK, 0, 0, &cpu);
++    CHECK(e != NULL, "whole-chunk insert");
++    rsx_vc_touch(e, 5, 0);                     /* read by submission 5 */
++    CHECK(rsx_vc_insert(c, key_of(2), 256, 0, 0, &cpu) == NULL,
++          "used this frame: not evicted");
++    CHECK(rsx_vc_insert(c, key_of(2), 256, 4, 10, &cpu) == NULL,
++          "old but submission 5 not complete: block not reused");
++    CHECK(rsx_vc_find(c, key_of(1)) == NULL, "the old entry is gone from the table");
++    CHECK(rsx_vc_insert(c, key_of(2), 256, 4, 10, &cpu) == NULL,
++          "same frame: no rescan, still refused");
++    CHECK(rsx_vc_insert(c, key_of(2), 256, 5, 11, &cpu) != NULL,
++          "submission 5 complete: block reused");
++    CHECK(g_ch.created == 1, "never more than the budget (%d chunks)", g_ch.created);
++    rsx_vc_destroy(c);
++}
++
++/* Small blocks merge back into the chunk they were split from. */
++static void test_coalesce(void)
++{
++    memset(&g_ch, 0, sizeof g_ch);
++    rsx_vertex_cache* c = rsx_vc_create(&k_chunks, CHUNK, CHUNK);
++    u8* cpu;
++    const u32 n = CHUNK / 256u;
++    u32 ok = 0;
++    for (u32 i = 0; i < n; i++) ok += rsx_vc_insert(c, key_of(100 + i), 200, 0, 0, &cpu) != NULL;
++    CHECK(ok == n, "a chunk holds %u 256-byte blocks (%u)", n, ok);
++    CHECK(rsx_vc_insert(c, key_of(7), 200, 0, 0, &cpu) == NULL, "and no more");
++    /* All unused for 40 frames, GPU idle: the whole chunk comes back. */
++    CHECK(rsx_vc_insert(c, key_of(8), CHUNK, 0, 40, &cpu) != NULL, "freed blocks coalesce");
++    CHECK(g_ch.created == 1, "within one chunk");
++    rsx_vc_destroy(c);
++}
++
++/* A budget under one chunk is kept: the chunks shrink to fit it. */
++static void test_small_budget(void)
++{
++    memset(&g_ch, 0, sizeof g_ch);
++    rsx_vertex_cache* c = rsx_vc_create(&k_chunks, 100u << 10, 4u * CHUNK);
++    u8* cpu;
++    CHECK(c && rsx_vc_insert(c, key_of(1), 1000, 0, 0, &cpu) != NULL, "small budget: insert");
++    CHECK(g_ch.created == 1 && g_ch.bytes == CHUNK,
++          "one chunk of 64 KB for a 100 KB budget (%d of %u bytes)", g_ch.created, g_ch.bytes);
++    CHECK(rsx_vc_insert(c, key_of(2), CHUNK + 1u, 0, 0, &cpu) == NULL,
++          "a draw past the smaller chunk is refused");
++    rsx_vc_destroy(c);
++}
++
++/* Random sizes, frames and GPU latency: live blocks never overlap and no
++ * block is reused before its last reader completed. */
++static void test_stress(void)
++{
++    memset(&g_ch, 0, sizeof g_ch);
++    rsx_vertex_cache* c = rsx_vc_create(&k_chunks, 4u * CHUNK, CHUNK);
++    enum { N = 4000 };
++    static u32 live_key[N];
++    u32 nlive = 0;
++    /* The workload's own hits: the overlap check below looks entries up
++     * too, and rsx_vc_find counts those in the cache's stats. */
++    u32 hits = 0, lookups = 0;
++    /* Per chunk granule: the serial of the newest submission that may read it. */
++    static u64 reader[4][CHUNK / 256u];
++    memset(reader, 0, sizeof reader);
++    u32 seed = 12345;
++    u64 serial = 1, completed = 0;
++    int overlaps = 0, early = 0;
++    for (u32 frame = 1; frame < 400; frame++) {
++        for (u32 d = 0; d < 40; d++) {
++            /* Four draws in five repeat one of a few hot keys (a frame's
++             * steady geometry), the rest come from many more than fit. */
++            seed = seed * 1103515245u + 12345u;
++            const u32 r = seed >> 8;
++            const u32 k = (r % 5u) ? r % 8u : 8u + (r >> 4) % 600u;
++            rsx_vc_entry* e = rsx_vc_find(c, key_of(k));
++            lookups++;
++            if (e) hits++;
++            if (!e) {
++                seed = seed * 1103515245u + 12345u;
++                const u32 bytes = 1u + (seed >> 8) % (CHUNK / 3u);
++                u8* cpu;
++                e = rsx_vc_insert(c, key_of(k), bytes, completed, frame, &cpu);
++                if (!e) continue;
++                const u32 ci = e->chunk - 1u, g0 = e->offset / 256u;
++                const u32 gn = (u32)(((u64)1 << e->order));
++                for (u32 g = g0; g < g0 + gn; g++)
++                    if (reader[ci][g] > completed) early++;
++                /* Overlap with any other live entry? */
++                for (u32 i = 0; i < nlive; i++) {
++                    rsx_vc_entry* o = rsx_vc_find(c, key_of(live_key[i]));
++                    if (!o || o == e || o->chunk != e->chunk) continue;
++                    const u32 oa = o->offset, ob = oa + (256u << o->order);
++                    const u32 ea = e->offset, eb = ea + (256u << e->order);
++                    if (oa < eb && ea < ob) overlaps++;
++                }
++                if (nlive < N) live_key[nlive++] = k;
++            }
++            rsx_vc_touch(e, serial, frame);
++            const u32 ci = e->chunk - 1u, g0 = e->offset / 256u;
++            for (u32 g = g0; g < g0 + (1u << e->order); g++) reader[ci][g] = serial;
++        }
++        serial++;                         /* one submission per frame       */
++        if (serial > 3) completed = serial - 3;   /* GPU two frames behind */
++    }
++    CHECK(overlaps == 0, "live blocks never overlap (%d)", overlaps);
++    CHECK(early == 0, "no block reused before its reader completed (%d)", early);
++    rsx_vc_stats st;
++    rsx_vc_get_stats(c, &st);
++    CHECK(hits > lookups / 2 && st.evictions > 0,
++          "the hot keys stay cached (%u hits of %u) while others are evicted (%llu)",
++          hits, lookups, (unsigned long long)st.evictions);
++    CHECK(g_ch.created <= 4, "budget kept (%d chunks)", g_ch.created);
++    rsx_vc_destroy(c);
++}
++
++int main(void)
++{
++    test_hash();
++    test_find_insert();
++    test_deferred_reuse();
++    test_coalesce();
++    test_small_budget();
++    test_stress();
++    printf("vertex cache: %s (%d failures)\n", g_failures ? "FAIL" : "ok", g_failures);
++    return g_failures ? 1 : 0;
++}
+diff --git a/tools/test_rsx_vertex_cache.py b/tools/test_rsx_vertex_cache.py
+new file mode 100644
+index 0000000..50635a6
+--- /dev/null
++++ b/tools/test_rsx_vertex_cache.py
+@@ -0,0 +1,30 @@
++"""Run the converted-vertex cache's C tests: its bookkeeping alone, and the draw engine with a stub backend."""
++import os
++from pathlib import Path
++import subprocess
++import tempfile
++
++
++def main():
++    if os.name == "nt":
++        print("SKIP: neutral C fixture requires the POSIX toolchain; run on macOS/Linux")
++        return
++    root = Path(__file__).resolve().parents[1]
++    builds = {
++        "test_vertex_cache": ["tests/test_vertex_cache.c", "rsx_vertex_compact.c", "rsx_dispatch.c"],
++        "test_engine_vertex_cache": ["tests/test_engine_vertex_cache.c", "rsx_dispatch.c",
++                                     "rsx_vertex_compact.c", "rsx_texture_layout.c",
++                                     "rsx_vp_decompiler.c", "rsx_fp_decompiler.c",
++                                     "../../runtime/ps3_trace.c", "../../runtime/memory/vm_wtrack.c"],
++    }
++    with tempfile.TemporaryDirectory(prefix="rsx-vcache-") as directory:
++        for name, sources in builds.items():
++            binary = Path(directory) / name
++            subprocess.run([os.environ.get("CC", "cc"), "-std=gnu17", "-O1",
++                            "-Iinclude", "-Ilibs/video", "-Ilibs/video/tests", "-o", str(binary),
++                            *["libs/video/" + s for s in sources], "-lpthread"], cwd=root, check=True)
++            subprocess.run([str(binary)], cwd=root, check=True)
++
++
++if __name__ == "__main__":
++    main()
