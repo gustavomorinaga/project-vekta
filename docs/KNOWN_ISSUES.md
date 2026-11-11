@@ -1,6 +1,6 @@
 # Known issues
 
-Last checked 2026-11-09. Each item says what happens, where, and what to do about it today. Details for developers
+Last checked 2026-11-11. Each item says what happens, where, and what to do about it today. Details for developers
 are linked.
 
 ## Game
@@ -11,6 +11,10 @@ are linked.
   affected. A first fix (the SPURS policy module's `selectWorkload` answer, after Project Helghast) removed the more
   common case where single weapon parts jumped. Workarounds: play at 60 Hz, or set `KZ_JM_SKIP_US=10` (about 15 %
   slower in Level 7). Investigation: [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md).
+- **One crash when a rocket exploded in Level 11 (2026-11-11).** At 144 Hz in `11.SDDockingBay` the game closed
+  once when a rocket launcher shot exploded: an SPU job's host stack was 8 bytes off alignment. Not seen again in two
+  full plays of the chapter. If it happens, keep `play.log` and the core and play on with the stack tripwire build
+  (`[stackwatch]` lines): [dev/spu-stack-misalignment.md](dev/spu-stack-misalignment.md).
 - **The guest heap to watch in long sessions (2026-11-08).** Not a known fault: in a 41-minute session at 144 Hz (the
   end of Level 3 to the start of Level 5) the game's heap rose and fell with each level load, between 63 and
   188 MB, and ended at its highest, 188 MB; earlier sessions that day ended at 164 to 180 MB. It drops at several
