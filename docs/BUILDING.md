@@ -112,8 +112,13 @@ tools/build.sh               # work/build/KZ1HD
   `port/kz1hd/native_ppu/` (the lift is told which functions are native, and emits the others' lifted bodies), as
   the weapon field of view did: run `tools/lift.sh`, then `tools/build.sh`.
 - Optional, about 15 minutes: `tools/pgo.sh` plays an instrumented build into Level 1 for ten minutes and rebuilds
-  `work/build` with the profile (about 10 % faster in the maintainer's runs). Run it again after every lift: a profile
-  of other code is silently ignored. It plays from `work/vfs-test` (a copy of `work/vfs`, so your saves are safe).
+  `work/build` with the profile. Measured on ps3recomp v0.19.0 (2026-11-09, a Level 1 combat route as timedemo,
+  alternating A/B, 4 runs each): +1.5 to +2.2 % average fps with this play, about +3.8 % with a profile trained on
+  other combat routes (`KZ_PGO_ROUTES="<route> ..."`: recorded routes replayed instead, see the script), the 1 % lows
+  the same. Run it again after every lift: it ends with a check that the profile matches the lifted code and fails
+  when it does not. `KZ_BUILD` names another build directory; it has to be one `tools/build.sh` configured (a copy of
+  one cannot be reconfigured). It plays from `work/vfs-test`, which it makes from `work/vfs` (with its own copy of
+  every file the game writes, so your saves are safe).
 
 ## 5. Play
 

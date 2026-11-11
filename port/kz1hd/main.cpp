@@ -41,6 +41,7 @@
 #include "../ps3_trace.h"   /* runtime/, via the runtime/ppu include directory */
 #include "ps3emu/thread_name.h"
 #include "debug_god.h"   /* KZ_DEBUG_GOD */
+#include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
 #include <sanitizer/lsan_interface.h>
@@ -307,6 +308,8 @@ extern "C" void kz_quit(const char* why)
     __lsan_do_recoverable_leak_check();
 #endif
 #endif
+    /* an instrumented build (KZ_PGO_GEN): _exit skips the profile runtime's atexit writer (pgo_write.h) */
+    if (kz_pgo_write()) fprintf(stderr, "[kz-pgo] profile written at quit\n");
     fflush(NULL);
     _exit(0);
 }
@@ -580,9 +583,9 @@ static void harness_guest_caller(uint32_t opd, uint64_t a0, uint64_t a1,
 extern "C" void kz_prof_start(void);
 extern "C" void kz_perf_init(void);
 
-/* KZ_PGO_DUMP=<seconds>: an instrumented build (KZ_PGO_GEN) writes its profile
- * then (LLVM_PROFILE_FILE names it); the run is killed, never exits cleanly. */
-extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
+/* KZ_PGO_DUMP=<seconds> (default unset): an instrumented build (KZ_PGO_GEN) writes its profile
+ * then (LLVM_PROFILE_FILE names it), for a run that is killed rather than quit. A run that quits
+ * (kz_quit) writes it again at the end, with every count (pgo_write.h). */
 static void kz_pgo_dump_start(void)
 {
     const char* e = getenv("KZ_PGO_DUMP");
@@ -590,8 +593,7 @@ static void kz_pgo_dump_start(void)
     const int secs = atoi(e);
     std::thread([secs] {
         std::this_thread::sleep_for(std::chrono::seconds(secs));
-        __llvm_profile_write_file();
-        fprintf(stderr, "[kz-pgo] profile written\n");
+        if (kz_pgo_write()) fprintf(stderr, "[kz-pgo] profile written\n");
     }).detach();
 }
 

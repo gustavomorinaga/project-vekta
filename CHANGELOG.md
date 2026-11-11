@@ -7,6 +7,14 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- `tools/pgo.sh` (optional profile-guided build): it makes its own play folder (`work/vfs-test`) from `work/vfs`
+  instead of failing on a fresh clone, ends with a check that the profile matches the lifted code (a stale profile
+  was silently ignored), shows a failing step's log instead of hiding it, and can train on recorded routes
+  (`KZ_PGO_ROUTES`). An instrumented build now writes its profile when the game quits, so a route replay that ends
+  on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about
+  +4 % trained on combat routes ([docs/BUILDING.md](docs/BUILDING.md)).
+
 ## [0.4.0] - 2026-11-09 (pre-release)
 
 ### Added
