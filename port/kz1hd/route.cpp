@@ -18,6 +18,10 @@
  *                         Each time ends with its own summary
  *   KZ_ROUTE_PACE=1       replay no faster than the recording (each frame
  *                         waits for the time it started at when recorded)
+ *   KZ_ROUTE_REBASE=<file> with KZ_ROUTE_PLAY: also write what this replay
+ *                         gave the game and found as a new route (rebasing a
+ *                         played recording onto this build; route_rebase.h).
+ *                         Replay the result loose, as it was made (God mode).
  *   KZ_ROUTE_SHOTS=<file>,<n>  every n frames of the route, create <file>
  *                         for one frame: with PS3RECOMP_VK_DUMP_TRIGGER=<file>
  *                         the frames dumped are the same ones in every run
@@ -73,6 +77,7 @@
 
 #include "ppu_recomp.h"
 #include "route.h"
+#include "route_rebase.h"
 
 extern "C" void kz_perf_begin(void);             /* perf.cpp */
 extern "C" void kz_perf_report(const char* tag);
@@ -90,7 +95,7 @@ extern "C" { volatile unsigned kz_route_frame; }
 
 namespace {
 
-constexpr uint32_t kPadBytes = 0x24;
+constexpr uint32_t kPadBytes = KZ_ROUTE_PAD_BYTES;
 /* the player's position: the controller's player (+0x18), the translation
  * row of its world matrix (+0xA0) at +0xD0 (measured: x and y follow the
  * walk, z the ground) */
@@ -136,6 +141,9 @@ bool s_armed;                  /* from the player's first tick */
 const bool s_audio_clock = !getenv("KZ_ROUTE_AUDIO_CLOCK") || atoi(getenv("KZ_ROUTE_AUDIO_CLOCK"));
 std::mutex s_lock;
 FILE* s_out;
+kz_route_writer s_w;           /* the recording's writer (s_out), or the rebase's (KZ_ROUTE_REBASE) */
+bool s_rebase;                 /* a replay that also writes s_w */
+std::string s_rebase_path;
 std::string s_path;
 std::vector<Event> s_ev;
 size_t s_at;
@@ -183,6 +191,7 @@ void summary(const char* how)
 void stop_replay(const char* how, int status)
 {
     summary(how);
+    if (s_rebase) { fclose(s_w.f); s_rebase = false; }
     s_mode = OFF;
     ps3_audio_set_clock_ms(-1.0);
     static int exit_on = -1;
@@ -339,21 +348,17 @@ void pad_read(ppu_context* ctx)
     func_003D48F0(ctx);
     std::lock_guard<std::mutex> g(s_lock);
     if (!s_armed) return;
-    if (s_mode == REC) {
-        uint8_t b[kPadBytes];
-        for (uint32_t i = 0; i < kPadBytes; i++) b[i] = vm_read8(out + i);
-        fprintf(s_out, "P %d ", (int)(int32_t)ctx->gpr[3]);
-        if (s_have_last && !memcmp(b, s_last_pad, kPadBytes)) fputs("=\n", s_out);
-        else {
-            for (uint32_t i = 0; i < kPadBytes; i++) fprintf(s_out, "%02x", b[i]);
-            fputc('\n', s_out);
-            memcpy(s_last_pad, b, kPadBytes); s_have_last = true;
-        }
-    } else if (s_mode == PLAY) {
+    if (s_mode == PLAY) {
         if (Event* e = expect('P')) {
             for (uint32_t i = 0; i < kPadBytes; i++) vm_write8(out + i, e->pad[i]);
             ctx->gpr[3] = (uint64_t)(int64_t)e->a;
         }
+    }
+    /* a recording, or a rebase: what the game got, read back */
+    if (s_mode == REC || (s_mode == PLAY && s_rebase)) {
+        uint8_t b[kPadBytes];
+        for (uint32_t i = 0; i < kPadBytes; i++) b[i] = vm_read8(out + i);
+        kz_route_w_pad(&s_w, (int32_t)ctx->gpr[3], b);
     }
 }
 
@@ -398,6 +403,8 @@ extern "C" int kz_route_clock(uint32_t clock, int32_t* n, int32_t* now, int32_t*
     if (e->has_frng2 && !said2 && rng2() != e->frng2) { said2 = true;
         fprintf(stderr, "[route] second random state differs as frame %u starts (line %d): recorded %08x, now %08x\n",
                 s_frames - 1, e->line, e->frng2, rng2()); }
+    /* the frame as replayed, the generators where they are compared above */
+    if (s_rebase) kz_route_w_frame(&s_w, e->a, e->b, e->c, e->ms, rd32(kRng[0]), rng2());
     /* KZ_ROUTE_PACE=1: no faster than the recording */
     static int pace = getenv("KZ_ROUTE_PACE") ? 1 : 0;
     if (pace && e->ms > 0) while (ms_since(s_t0) < e->ms) std::this_thread::sleep_for(std::chrono::microseconds(200));
@@ -409,12 +416,11 @@ extern "C" void kz_route_clock_done(uint32_t clock)
     if (s_mode != REC || !s_armed) return;
     std::lock_guard<std::mutex> g(s_lock);
     if (!s_frames) s_t0 = std::chrono::steady_clock::now();
-    fprintf(s_out, "F %d %d %d %.2f %08x %08x\n", (int32_t)rd32(clock + 0x68), (int32_t)rd32(clock + 0x6C), (int32_t)rd32(clock + 0x70),
-            ms_since(s_t0), rd32(kRng[0]), rng2());
+    kz_route_w_frame(&s_w, (int32_t)rd32(clock + 0x68), (int32_t)rd32(clock + 0x6C), (int32_t)rd32(clock + 0x70),
+                     ms_since(s_t0), rd32(kRng[0]), rng2());
     kz_route_frame = s_frames;
     shots();
     s_frames++;
-    fflush(s_out);   /* a frame at a time: a run killed outright keeps all but the last */
 }
 
 extern "C" void kz_route_tick_begin(void)
@@ -423,8 +429,7 @@ extern "C" void kz_route_tick_begin(void)
     std::lock_guard<std::mutex> g(s_lock);
     const int hz = g_kz_tick_hz > 0 ? g_kz_tick_hz : 30;
     if (s_mode == REC) {
-        fprintf(s_out, "# kz-route 1: KZ_ROUTE_PLAY=%s replays it from the same start\nH tick_hz %d\nH rng %08x\nH rng2 %08x\n",
-                s_path.c_str(), hz, rd32(kRng[0]), rng2());
+        kz_route_w_header(&s_w, s_path.c_str(), nullptr, hz, rd32(kRng[0]), rng2());
         fprintf(stderr, "[route] recording to %s from the player's first tick (%d Hz)\n", s_path.c_str(), hz);
     } else {
         if (s_hz && s_hz != hz) {
@@ -437,6 +442,10 @@ extern "C" void kz_route_tick_begin(void)
         if (s_have_rng0) vm_write32(kRng[0], s_rng0);
         if (s_have_rng2 && rng2_ea()) vm_write32(rng2_ea(), s_rng2);
         fprintf(stderr, "[route] replaying from the player's first tick\n");
+        if (s_rebase) {
+            const std::string note = "rebased (KZ_ROUTE_REBASE) from a loose replay of " + s_path + ": replay it with KZ_ROUTE_LOOSE=1";
+            kz_route_w_header(&s_w, s_rebase_path.c_str(), note.c_str(), hz, rd32(kRng[0]), rng2());
+        }
     }
     s_sound_rng = 0x4B5A0001;   /* any fixed value: the same in the recording and the replay */
     s_armed = true;
@@ -446,12 +455,11 @@ extern "C" void kz_route_mouse(int* dx, int* dy)
 {
     if (s_mode == OFF || !s_armed) return;
     std::lock_guard<std::mutex> g(s_lock);
-    if (s_mode == REC) {
-        if (*dx || *dy) fprintf(s_out, "M %d %d\n", *dx, *dy);
-    } else {
+    if (s_mode == PLAY) {
         *dx = *dy = 0;
         if (s_at < s_ev.size() && s_ev[s_at].type == 'M') { *dx = s_ev[s_at].a; *dy = s_ev[s_at].b; s_at++; }
     }
+    if (s_mode == REC || s_rebase) kz_route_w_mouse(&s_w, *dx, *dy);
 }
 
 extern "C" void kz_route_tick_end(uint32_t controller)
@@ -461,9 +469,9 @@ extern "C" void kz_route_tick_end(uint32_t controller)
     const uint32_t player = rd32(controller + kPlayer);
     uint32_t pos[3] = {0, 0, 0};
     if (player) for (int i = 0; i < 3; i++) pos[i] = rd32(player + kPos + 4 * i);
-    if (s_mode == REC) {
-        fprintf(s_out, "S %08x %08x %08x %08x\n", pos[0], pos[1], pos[2], rd32(kRng[0]));
-    } else if (Event* e = expect('S')) {
+    if (s_mode == REC || s_rebase) kz_route_w_pos(&s_w, pos, rd32(kRng[0]));
+    if (s_mode != PLAY) return;
+    if (Event* e = expect('S')) {
         static bool said[kNRng];
         for (int i = 0; i < e->nrng; i++)
             if (!said[i] && rd32(kRng[i]) != e->rng[i]) { said[i] = true;
@@ -499,12 +507,19 @@ extern "C" void kz_route_register(void)
     if (rec && *rec) {
         s_out = fopen(rec, "w");
         if (!s_out) { fprintf(stderr, "[route] cannot write %s\n", rec); return; }
+        s_w.f = s_out;
         s_path = rec;
         s_mode = REC;
     } else if (play && *play) {
         if (!load(play)) return;
         s_path = play;
         s_mode = PLAY;
+        /* KZ_ROUTE_REBASE=<file>: this replay written out as a new route */
+        if (const char* rb = getenv("KZ_ROUTE_REBASE"); rb && *rb) {
+            if (s_loops > 1) fprintf(stderr, "[route] KZ_ROUTE_REBASE: not with KZ_ROUTE_LOOP; no rebase\n");
+            else if (!(s_w.f = fopen(rb, "w"))) fprintf(stderr, "[route] cannot write %s; no rebase\n", rb);
+            else { s_rebase = true; s_rebase_path = rb; fprintf(stderr, "[route] rebasing into %s\n", rb); }
+        }
     } else return;
     ppu_register_function(0x003D48F0, pad_read);
     ppu_register_function(0x001A5380, sound_variant);

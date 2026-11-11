@@ -382,6 +382,17 @@ set(KZ_PGO_USE "" CACHE FILEPATH "Merged .profdata to optimize the lifted PPU co
 # store no longer makes it reload ctx->fpr/vr/lr (Level 7 route as timedemo,
 # alternated runs: see docs/dev/performance.md).
 set(KZ_PPU_FLAGS "${KZ_PPU_OPT}" -DPPU_STORE_SNAP -DPPU_CTX_RESTRICT=__restrict)
+# KZ_STORE_JOURNAL=ON (off by default): the guest store journal of patch 3034
+# (runtime/ppu/ppu_store_journal.h), for checking native PPU functions against
+# their lifted bodies under KZ_NATIVE_VERIFY. It routes the lifted code's
+# stores to the runtime while a journal is on, so build it in a folder of its
+# own (e.g. work/build-verify): it is for correctness runs, not for play.
+option(KZ_STORE_JOURNAL "Guest store journal for KZ_NATIVE_VERIFY (patch 3034)" OFF)
+if(KZ_STORE_JOURNAL)
+    list(APPEND KZ_PPU_FLAGS -DPS3RECOMP_STORE_JOURNAL)
+    target_compile_definitions(ps3recomp_runtime PUBLIC PS3RECOMP_STORE_JOURNAL)
+    message(STATUS "Store journal:   on (KZ_NATIVE_VERIFY builds only)")
+endif()
 set(KZ_PGO_FLAGS "")
 if(KZ_PGO_GEN)
     set(KZ_PGO_FLAGS -fprofile-instr-generate -mllvm -disable-vp=true)

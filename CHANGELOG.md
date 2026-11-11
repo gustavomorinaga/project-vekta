@@ -7,6 +7,14 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- Developer tools for performance work ([docs/dev/perf-bench.md](docs/dev/perf-bench.md),
+  [docs/dev/performance.md](docs/dev/performance.md)): `KZ_ROUTE_REBASE` writes a route replay out as a route of the
+  current build, so that later replays follow it exactly; `tools/perf/ab.sh` compares two builds in alternating runs
+  on a route and reports the paired difference; ps3recomp patch 3034 (a guest store journal, built only with
+  `-DKZ_STORE_JOURNAL=ON`) lets `KZ_NATIVE_VERIFY` check native functions with wide effects against their lifted
+  bodies. Off unless used; the game itself is unchanged.
+
 ### Changed
 - Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged
   (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test
