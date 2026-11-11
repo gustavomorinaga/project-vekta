@@ -12,11 +12,59 @@
  *
  * KZ_SCRIPT_EVERY_FRAME=1 (default 0): OnUpdate every frame again, as before
  * this fix (scripted events then run at the frame rate's pace above 30 fps).
+ *
+ * func_004940B0(r3 object, f1..f3 x, y, z) is the objects' SetTranslation:
+ * it stores the position at +0x50..+0x58 and calls the object's virtual at
+ * vtable +0x5C (the transform changed). Calls made inside those OnUpdates
+ * go through script_smooth.h, and every frame slides the objects it holds.
+ * KZ_SCRIPT_SMOOTH=0 (default 1): objects jump once per 1/30 s instead.
  */
 #include "native_ppu.h"
 #include "../script_rate.h"
+#include "../script_smooth.h"
 #include <stdio.h>
 #include <stdlib.h>
+
+extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+
+static struct smooth_state s_smooth;
+static int s_in_update;     /* inside a gated OnUpdate: its SetTranslation calls are smoothed */
+static int64_t s_step = -1; /* the current 1/30 s step, while smoothing applies */
+static float s_frac;        /* how far through it */
+
+static int smooth_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char* e = getenv("KZ_SCRIPT_SMOOTH"); on = !(e && *e == '0'); }
+    return on;
+}
+
+/* SetTranslation through the lifted body, the caller's registers kept */
+static void set_translation(ppu_context* ctx, uint32_t obj, const float p[3])
+{
+    const uint64_t r3 = ctx->gpr[3], r4 = ctx->gpr[4], lr = ctx->lr;
+    const double f1 = ctx->fpr[1], f2 = ctx->fpr[2], f3 = ctx->fpr[3];
+    ctx->gpr[3] = obj; ctx->fpr[1] = p[0]; ctx->fpr[2] = p[1]; ctx->fpr[3] = p[2];
+    ctx->lr = 0x00069A3C;   /* any guest address: the body returns to the host */
+    func_004940B0_lifted(ctx);
+    while (g_trampoline_fn) { void (*t)(void*) = g_trampoline_fn; g_trampoline_fn = 0; t(ctx); }
+    ctx->gpr[3] = r3; ctx->gpr[4] = r4; ctx->lr = lr; ctx->fpr[1] = f1; ctx->fpr[2] = f2; ctx->fpr[3] = f3;
+}
+
+static void smooth_move(uint32_t obj, const float p[3], void* user)
+{
+    set_translation((ppu_context*)user, obj, p);
+}
+
+void func_004940B0(ppu_context* ctx)
+{
+    if (!s_in_update || s_step < 0) { func_004940B0_lifted(ctx); return; }
+    const float p[3] = {(float)ctx->fpr[1], (float)ctx->fpr[2], (float)ctx->fpr[3]};
+    float out[3];
+    smooth_set(&s_smooth, (uint32_t)ctx->gpr[3], p, s_step, s_frac, out);
+    ctx->fpr[1] = out[0]; ctx->fpr[2] = out[1]; ctx->fpr[3] = out[2];
+    func_004940B0_lifted(ctx);
+}
 
 void func_00069A3C(ppu_context* ctx)
 {
@@ -31,7 +79,18 @@ void func_00069A3C(ppu_context* ctx)
             const int hz = script_rate_clock_hz((float)ldf(game + 0x54));
             const uint32_t q = vm_read32(game + 0xB4);   /* the script message queue */
             const int pending = q && q < 0xF0000000u && (int32_t)vm_read32(q + 0x8) > 0;
-            if (!script_rate_due(&rate[site], vm_read32(game + 0x6C), hz, pending)) return;
+            const uint32_t ticks = vm_read32(game + 0x6C);
+            if (site == 0) {   /* once a frame: slide the objects of the last OnUpdates */
+                const int64_t step = (int64_t)ticks * SCRIPT_RATE_HZ / hz;
+                if (hz <= SCRIPT_RATE_HZ || !smooth_on()) { s_step = -1; smooth_reset(&s_smooth); }
+                else {
+                    if (step < s_step) smooth_reset(&s_smooth);   /* a new clock */
+                    s_step = step;
+                    s_frac = (float)((int64_t)ticks * SCRIPT_RATE_HZ - step * hz) / (float)hz;
+                    smooth_frame(&s_smooth, step, s_frac, smooth_move, ctx);
+                }
+            }
+            if (!script_rate_due(&rate[site], ticks, hz, pending)) return;
             static int said;
             if (hz > SCRIPT_RATE_HZ && !said++)
                 fprintf(stderr, "[kz] mission scripts' OnUpdate at %d a second of game time (clock at %d Hz)\n",
@@ -52,6 +111,12 @@ void func_00069A3C(ppu_context* ctx)
                 n = 1; t0 = t;
             }
         }
+    }
+    if (site >= 0 && (uint32_t)ctx->gpr[4] == 0x005436D4u) {
+        s_in_update = 1;
+        func_00069A3C_lifted(ctx);
+        s_in_update = 0;
+        return;
     }
     func_00069A3C_lifted(ctx);
 }

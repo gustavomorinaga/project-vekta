@@ -35,7 +35,8 @@ an existing profile changes the menu flow.
   1), X, DOWN (Normal), X, X (character).
 - `KZ_SCRIPT_LOG=1` logs, every 300 calls, how often the level scripts' `OnUpdate` ran per second of game time
   (`[kz-script]`; 30 on the PS3 and at every clock rate); `KZ_SCRIPT_EVERY_FRAME=1` calls it once per frame again, as
-  before the fix (`port/kz1hd/native_ppu/script_update.cpp`).
+  before the fix, and `KZ_SCRIPT_SMOOTH=0` lets objects the scripts move jump once per 1/30 s instead of sliding
+  (`port/kz1hd/native_ppu/script_update.cpp`).
 
 ## Pictures
 
