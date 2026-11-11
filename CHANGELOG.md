@@ -28,6 +28,11 @@ program and folder that build it. Until a release that calls itself playable
   +4 % trained on combat routes ([docs/BUILDING.md](docs/BUILDING.md)).
 
 ### Fixed
+- Scripted events at 60 and 144 fps: the level scripts' update ran once per frame, so above 30 fps everything they
+  count in updates ran 2 to 5 times too fast. In the last level the platform ride to the main station took about
+  12 s instead of about 49 s, the story events timed in seconds fell behind it and the section never ended. The
+  update now runs 30 times per second of game time, as on the PS3, at every frame rate (`KZ_SCRIPT_EVERY_FRAME=1`
+  goes back to the old way).
 - Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler's pipelines ahead, which
   the Vulkan validation layer reported as an error (`VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605`);
   `independentBlend` is now on whenever the GPU has it (patch 2061).
