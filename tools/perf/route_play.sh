@@ -59,7 +59,7 @@ for _ in $(seq 180); do grep -aq "^\[route\] replaying" "$log" && break; kill -0
     top -b -n 2 -d 3 -w 200 | awk '/^top -/{n++} n==2' | awk 'f && $9+0 >= 3 {print "top " $9 " " $12} /PID/{f=1}' |
         grep -v " KZ1HD-perf$" | head -6 >> "$out.env"
 ) &
-for _ in $(seq 1800); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+for _ in $(seq "${ROUTE_MAX:-1800}"); do kill -0 $pid 2>/dev/null || break; sleep 1; done   # ROUTE_MAX: seconds a replay may take
 kill -9 $pid 2>/dev/null
 wait $pid 2>/dev/null
 echo "loadavg_end $(cut -d' ' -f1-3 /proc/loadavg)" >> "$out.env"
