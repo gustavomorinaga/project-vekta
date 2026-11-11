@@ -43,8 +43,11 @@ each phase's estimated relative effort.
 
 ## Next steps
 
-Performance work has been paused since 2026-10-21 at about 131 to 134 frames per second in the 144 Hz mode; its
-state, what was ruled out and what is left: [dev/performance.md](dev/performance.md). Recommended order:
+Performance work has been paused since 2026-10-21 at about 131 to 134 frames per second in the 144 Hz mode. Picked up
+on 2026-11-09/10 on v0.19.0 and stopped again: PSGL is 26 to 28 % of the main thread, two routines rewritten in C++
+gave no measurable gain, and skipping the redundant commands PSGL emits would give about 2 % at most; the tools made
+for it (rebased routes, alternating A/B, the store journal for checking native code) stay. State, what was ruled out
+and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 
 1. **Finish Killzone HD's campaign (phase 6).** Play levels 2 to 11 to their end and fix what shows up; check a save
    made at a checkpoint end to end.
@@ -165,7 +168,8 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 ### Phase 8. The game's map
 - [x] Game logic at 60 Hz, a steady 60 fps by default
 - [x] Optional 144 Hz mode (about 131 to 134 fps in Level 1 since 2026-10-21)
-- [ ] A steady 144 fps (about 10 % short on the main thread; paused since 2026-10-21)
+- [ ] A steady 144 fps (about 10 % short on the main thread in Level 7; PSGL rewrites and redundant commands measured
+      on 2026-11-10 and set aside, the next place to look is the engine's own code: [dev/performance.md](dev/performance.md))
 - [ ] Frame map (RenderDoc): HDR scene, depth, tone mapping, post passes, HUD, camera
 - [x] Direct mouse look, with its own horizontal and vertical sensitivity and invert in the game's menu (Pause >
       Controls > Advanced Settings)

@@ -33,6 +33,8 @@ tools/tests/test_nv0039_route.sh
 tools/tests/test_audio_notify.sh
 tools/tests/test_view_flat.sh
 tools/tests/test_prof_trigger.sh
+tools/tests/test_route_rebase.sh
+tools/tests/test_store_journal.sh
 tools/tests/test_lua_states.sh
 tools/tests/test_debug_give.sh
 tools/tests/test_debug_god.sh
@@ -40,3 +42,4 @@ tools/tests/test_fov.sh
 tools/tests/test_hud_sites.sh
 tools/tests/test_menu_box.sh
 tools/tests/test_pgo_write.sh
+tools/tests/test_blend_state.sh

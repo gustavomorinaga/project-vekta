@@ -7,13 +7,30 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- Developer tools for performance work ([docs/dev/perf-bench.md](docs/dev/perf-bench.md),
+  [docs/dev/performance.md](docs/dev/performance.md)): `KZ_ROUTE_REBASE` writes a route replay out as a route of the
+  current build, so that later replays follow it exactly; `tools/perf/ab.sh` compares two builds in alternating runs
+  on a route and reports the paired difference; ps3recomp patch 3034 (a guest store journal, built only with
+  `-DKZ_STORE_JOURNAL=ON`) lets `KZ_NATIVE_VERIFY` check native functions with wide effects against their lifted
+  bodies. Off unless used; the game itself is unchanged.
+
 ### Changed
+- Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged
+  (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test
+  routes the RSX thread uses 0.5-0.6 ms less per frame (about 13-15 %), the whole game about 4-7 % less; frame
+  rates the same. `PS3RECOMP_ENG_VCACHE=0` turns it off (after ps3recomp pull request #718).
 - `tools/pgo.sh` (optional profile-guided build): it makes its own play folder (`work/vfs-test`) from `work/vfs`
   instead of failing on a fresh clone, ends with a check that the profile matches the lifted code (a stale profile
   was silently ignored), shows a failing step's log instead of hiding it, and can train on recorded routes
   (`KZ_PGO_ROUTES`). An instrumented build now writes its profile when the game quits, so a route replay that ends
   on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about
   +4 % trained on combat routes ([docs/BUILDING.md](docs/BUILDING.md)).
+
+### Fixed
+- Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler's pipelines ahead, which
+  the Vulkan validation layer reported as an error (`VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605`);
+  `independentBlend` is now on whenever the GPU has it (patch 2061).
 
 ## [0.4.0] - 2026-11-09 (pre-release)
 

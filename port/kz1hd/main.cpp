@@ -296,11 +296,13 @@ static void kz_tick_rate(void)
  * operations in progress finish first (a half-written save is one the game
  * may refuse), the logs are flushed, and nothing else is torn down. */
 extern "C" int cellSaveData_quiesce(unsigned max_ms);
+void kz_native_report_all(void);   /* native_ppu/native_ppu.cpp */
 extern "C" void kz_quit(const char* why)
 {
     static volatile int once;
     if (__atomic_exchange_n(&once, 1, __ATOMIC_ACQ_REL)) return;
     fprintf(stderr, "[kz] quitting (%s)\n", why);
+    kz_native_report_all();   /* KZ_NATIVE_VERIFY: the final counts (native_ppu.cpp) */
     if (!cellSaveData_quiesce(5000)) fprintf(stderr, "[kz] a save was still being written after 5 s\n");
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)

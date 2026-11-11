@@ -26,6 +26,12 @@ extern int kz_native_verify;
 void kz_native_check(const char* name, const void* mine, const void* lifted, size_t n);
 /* Under KZ_NATIVE_VERIFY: counts a call the native code left to the lifted body. */
 void kz_native_fallback(const char* name);
+/* Under KZ_NATIVE_VERIFY: counts a call that could not be compared (its inputs changed during the check). */
+void kz_native_skip(const char* name);
+/* Prints every function's counts (at quit). */
+void kz_native_report_all(void);
+/* Registers a function kz_native_report_all calls at quit (up to 8). */
+void kz_native_at_quit(void (*fn)(void));
 
 /* Round to single, as the guest's single-precision instructions do. */
 static inline double S(double x) { return (double)(float)x; }

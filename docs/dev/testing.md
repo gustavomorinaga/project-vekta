@@ -50,7 +50,27 @@ an existing profile changes the menu flow.
 ## Speed
 
 Compare only in alternating A/B on the same executable; drift between sessions reaches ±3 fps
-([performance.md](performance.md)). At 144 Hz use `KZ_TICK_HZ=144 KZ_GUEST_VBLANK_HZ=144`. Profiles: `KZ_PROF`,
+([performance.md](performance.md)), and much more on a desktop in use. `tools/perf/ab.sh` runs two builds alternately
+on a recorded route and reports the paired difference; routes recorded by playing must be replayed with their own
+`kz1hd_pc.ini` and rebased first (`KZ_ROUTE_REBASE`): [perf-bench.md](perf-bench.md).
+
+- `KZ_ROUTE_REBASE=<file>` next to `KZ_ROUTE_PLAY` (and `KZ_ROUTE_LOOSE=1`): the replay also writes what it gave the
+  game and found as a new route of this build, which later replays follow exactly.
+- `tools/perf/route_play.sh <binary> <route> <level n> <out>`: one headless replay from a saved profile's level list
+  (`ROUTE_SAVE`, a test `KZ_VFS`; it refuses `work/vfs`); `tools/perf/ab.sh <A> <B> <route> <n> <pairs> <out dir>`: A and
+  B alternately, each run under `BENCH_LOCK` (`A_ENV`/`B_ENV` for a switch on one binary), then
+  `tools/perf/ab_report.py`: per run fps, lows, p50/p99, the main thread's CPU per frame and the machine's load, and
+  B − A with a 95 % interval.
+- Native PPU functions: `KZ_NATIVE_VERIFY=1` checks them against their lifted bodies (with a `-DKZ_STORE_JOURNAL=ON`
+  build for those with wide effects), `KZ_NATIVE_PSGL=0` turns the native PSGL ones off
+  ([performance.md](performance.md)).
+
+At 144 Hz use `KZ_TICK_HZ=144 KZ_GUEST_VBLANK_HZ=144`. Profiles: `KZ_PROF`,
 `KZ_PROF_STACK=1`, `tools/prof_report.py` (`KZ_PROF=key,<seconds>,<file>` records when F11 is pressed in the game's
 window or the file `KZ_PROF_TRIGGER`, default `<file>.start`, appears; each press makes another file, `<file>.2`...); timelines: `PS3_TRACE` and `tools/trace_frames.py`; stack samples:
 `KZ_PTRACER=1` and `tools/stack_sample.sh`.
+
+The draw engine keeps the converted vertices of repeated draws in GPU memory (patches 2062 and 2063, on by default):
+`PS3RECOMP_ENG_VCACHE=0` converts every draw again, as before; `PS3RECOMP_ENG_VCACHE_STATS=1` prints the hit rate
+every 300 frames; `PS3RECOMP_ENG_VCACHE_VERIFY=1` converts every hit anyway and compares it with the stored copy byte
+for byte (`vertex cache verify: N hits checked, M differed`; a copy that differs is not drawn).
