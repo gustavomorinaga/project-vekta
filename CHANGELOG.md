@@ -7,6 +7,12 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged
+  (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test
+  routes the RSX thread uses 0.5-0.6 ms less per frame (about 13-15 %), the whole game about 4-7 % less; frame
+  rates the same. `PS3RECOMP_ENG_VCACHE=0` turns it off (after ps3recomp pull request #718).
+
 ### Fixed
 - Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler's pipelines ahead, which
   the Vulkan validation layer reported as an error (`VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605`);
