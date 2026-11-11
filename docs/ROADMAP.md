@@ -158,7 +158,10 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] Voice and subtitle language: System, English (US/UK), French, Spanish (the game uses one language for voice,
       subtitles and menus; System follows the PC's language, with English for languages the game lacks)
 - [x] Skip the opening movie (the logos at start stay)
-- [ ] Colour precision (16-bit render targets, experimental)
+- [ ] ~~Colour precision (16-bit render targets, experimental)~~ investigated, no visible gain (2026-11-11): the game
+      draws its whole scene straight into the display buffers and its own film grain already hides banding; 16-bit
+      targets with dithering made no difference in a Level 1 A/B or a full playthrough. Not merged; the work and
+      measurements are kept on the branch `color-precision`.
 - [x] In-game PC page (Options and Pause), applied at once, kept in `kz1hd_pc.ini`
 - [x] Presets: Original (PS3), Performance, Balanced, Quality; Custom when nothing matches
 - [x] Quitting: Quit Game in the Options sub-menu; closing the window, SIGTERM and Ctrl+C also quit (waiting for a
