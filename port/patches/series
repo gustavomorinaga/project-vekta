@@ -137,3 +137,5 @@
 3033-cellAudio-a-notify-queue-key-holds-one-slot-movies-.patch
 2060-draw-engine-the-texture-hook-sees-new-bytes-in-a-tex.patch
 2061-Vulkan-independentBlend-whenever-the-device-has-it-v.patch
+2062-draw-engine-a-converted-vertex-cache-a-repeated-draw-.patch
+2063-Vulkan-the-converted-vertex-cache-s-hooks-chunks-cach.patch

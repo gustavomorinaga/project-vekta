@@ -1,0 +1,213 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 11 Nov 2026 00:22:13 -0300
+Subject: [PATCH] Vulkan: the converted-vertex cache's hooks (chunks, cached
+ draws, submission serials)
+
+The backend half of patch 2062, written for this backend's batch model. A
+chunk is a host-visible, coherent buffer usable as vertex and index buffer,
+kept mapped. draw_cached is the ordinary engine draw with nothing staged: it
+binds the chunk at the entry's offsets instead of copying into the batch
+ring. commit_serial counts submissions of the recording command buffer: each
+vkQueueSubmit of it takes the next serial, a recording slot remembers the
+serial it carries while in flight, and the completed serial moves on only
+when a fence is waited on (vk_submit_and_wait, or the other slot waited for
+by vk_submit_async), so a block is never rewritten while the GPU may still
+read it. Releasing a chunk waits for the GPU, as every buffer destroy here
+does.
+---
+ libs/video/rsx_vulkan_backend.c | 99 +++++++++++++++++++++++++++++++++++------
+ 1 file changed, 86 insertions(+), 13 deletions(-)
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 1d6524a..5abd08a 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -757,6 +757,13 @@ static struct {
+ static struct { VkCommandBuffer cmd; VkFence fence; vk_buffer ring; VkDescriptorPool pool; int inflight; } s_slot[2];
+ static int s_cur;
+ static void vk_slot_wait_other(void);
++/* Submission serials for the draw engine's converted-vertex cache
++ * (rsx_draw_backend.commit_serial): s_ser.next is the serial of the command
++ * buffer being recorded, taken by each vkQueueSubmit of it; s_ser.slot[] the
++ * serial a recording slot carries while it is in flight, and s_ser.done the
++ * newest one known to have completed (a fence waited on). A block of the
++ * cache is written again only after the serial of its last reader is done. */
++static struct { u64 next, done, slot[2]; } s_ser = { 1, 0, { 0, 0 } };
+ /* The render pass the batch's last draw left open. Consecutive draws into the
+  * same framebuffer share it, with no barrier between them, unless a draw
+  * samples one of its attachments; anything else recorded into the batch
+@@ -813,10 +820,13 @@ static int vk_submit_and_wait(void)
+                         .commandBufferCount = 1, .pCommandBuffers = &s_vk.cmd };
+     VK_CHECK(pvkResetFences(s_vk.device, 1, &s_vk.fence), "vkResetFences");
+     VK_CHECK(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.fence), "vkQueueSubmit");
++    const u64 serial = s_ser.next++;
+     { PS3_TRACE_BEGIN(_tr);
+       VK_CHECK(pvkWaitForFences(s_vk.device, 1, &s_vk.fence, VK_TRUE, UINT64_MAX), "vkWaitForFences");
+       vk_slot_wait_other();
+       PS3_TRACE_END(_tr, "gpu_wait", 0); }
++    /* Everything submitted so far is done: this one and the slot in flight. */
++    if (serial > s_ser.done) s_ser.done = serial;
+     /* RSX_VK_WAIT_STATS: submissions and the wall time spent waiting on them. */
+     static int on = -1;
+     if (on < 0) on = getenv("RSX_VK_WAIT_STATS") ? 1 : 0;
+@@ -841,6 +851,7 @@ static void vk_slot_wait_other(void)
+     if (!s_slot[o].inflight) return;
+     pvkWaitForFences(s_vk.device, 1, &s_slot[o].fence, VK_TRUE, UINT64_MAX);
+     s_slot[o].inflight = 0;
++    if (s_ser.slot[o] > s_ser.done) s_ser.done = s_ser.slot[o];
+ }
+ 
+ /* Submits the open batch without waiting, and moves recording to the other
+@@ -871,11 +882,13 @@ static int vk_submit_async(void)
+                         .commandBufferCount = 1, .pCommandBuffers = &s_vk.cmd };
+     VK_CHECK(pvkResetFences(s_vk.device, 1, &s_vk.fence), "vkResetFences");
+     VK_CHECK(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.fence), "vkQueueSubmit");
++    s_ser.slot[s_cur] = s_ser.next++;
+     if (!s_slot[s_cur].cmd) { s_slot[s_cur].cmd = s_vk.cmd; s_slot[s_cur].fence = s_vk.fence; }
+     if (s_slot[o].inflight) {   /* the slot recorded into next: its last frame done */
+         PS3_TRACE_BEGIN(_tr);
+         pvkWaitForFences(s_vk.device, 1, &s_slot[o].fence, VK_TRUE, UINT64_MAX);
+         s_slot[o].inflight = 0;
++        if (s_ser.slot[o] > s_ser.done) s_ser.done = s_ser.slot[o];
+         PS3_TRACE_END(_tr, "gpu_wait", 0);
+     }
+     s_slot[s_cur].inflight = 1;
+@@ -6163,21 +6176,24 @@ static void vk_draw_why(int why)
+     }
+ }
+ 
++/* A draw's vertices and indices already in GPU memory (the converted-vertex
++ * cache, vk_eng_draw_cached): the buffer and the byte offsets in it. */
++typedef struct { VkBuffer buf; VkDeviceSize voff, ioff; } vk_eng_src;
+ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vertices, u32 vertex_count,
+-                        u32 stride, const u32* indices, u32 index_count);
++                        u32 stride, const u32* indices, u32 index_count, const vk_eng_src* cached);
+ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices, u32 vertex_count,
+                         u32 stride, const u32* indices, u32 index_count)
+ 
+ {
+     PS3_TRACE_BEGIN(_tr);
+-    vk_eng_draw_body(user, topology, vertices, vertex_count, stride, indices, index_count);
++    vk_eng_draw_body(user, topology, vertices, vertex_count, stride, indices, index_count, NULL);
+     PS3_TRACE_END(_tr, "vk_draw", 0);
+ }
+ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vertices, u32 vertex_count,
+-                        u32 stride, const u32* indices, u32 index_count)
++                        u32 stride, const u32* indices, u32 index_count, const vk_eng_src* cached)
+ {
+     (void)user;
+-    if (!s_e2.pipeline || !vertices || !vertex_count || !stride) { vk_draw_why(1); return; }
++    if (!s_e2.pipeline || !(vertices || cached) || !vertex_count || !stride) { vk_draw_why(1); return; }
+     if (topology < RSX_TOPOLOGY_POINTS || topology > RSX_TOPOLOGY_TRIANGLE_STRIP) { vk_draw_why(2); return; }
+     vk_eng_pipe* P = &s_epipe[s_e2.pipeline - 1];
+     if (!P->used || stride != P->stride) { vk_draw_why(3); return; }
+@@ -6213,19 +6229,24 @@ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vert
+     VkFramebuffer fb = vk_eng_framebuffer(rp, s_eng_bound.rt, n, dview, dkey, w, h, velv);
+     if (!pipe || !rp || !fb) { vk_draw_why(9); return; }
+ 
+-    const VkDeviceSize vbytes = (VkDeviceSize)vertex_count * stride;
+-    const VkDeviceSize ibytes = indices && index_count ? (VkDeviceSize)index_count * 4u : 0;
++    /* A cached draw stages nothing: its vertices and indices are in a chunk. */
++    const VkDeviceSize vbytes = cached ? 0 : (VkDeviceSize)vertex_count * stride;
++    const VkDeviceSize ibytes = cached ? 0 : indices && index_count ? (VkDeviceSize)index_count * 4u : 0;
++    const int has_idx = cached ? index_count != 0 : ibytes != 0;
+     const VkDeviceSize ubytes = s_g.ubo.size + 2u * s_bat.ubo_align;
+     /* The dummy cube is made (and uploaded, which submits the batch) on first
+      * use; do it before the reserve so nothing submits between that and the
+      * draw being recorded. */
+     if (P->cube_mask && !vk_eng_dummy_cube_view()) { vk_draw_why(12); return; }
+     if (vk_batch_reserve_keep(vbytes + ibytes + ubytes + 64u)) { vk_draw_why(13); return; }
+-    const VkDeviceSize voff = vk_batch_alloc(vbytes, 16u);
+-    const VkDeviceSize ioff = ibytes ? vk_batch_alloc(ibytes, 16u) : 0;
++    const VkDeviceSize voff = cached ? cached->voff : vk_batch_alloc(vbytes, 16u);
++    const VkDeviceSize ioff = cached ? cached->ioff : ibytes ? vk_batch_alloc(ibytes, 16u) : 0;
+     if (voff == ~0ull || ioff == ~0ull) { vk_draw_why(10); return; }
+-    memcpy((u8*)s_bat.ring.ptr + voff, vertices, (size_t)vbytes);
+-    if (ibytes) memcpy((u8*)s_bat.ring.ptr + ioff, indices, (size_t)ibytes);
++    if (!cached) {
++        memcpy((u8*)s_bat.ring.ptr + voff, vertices, (size_t)vbytes);
++        if (ibytes) memcpy((u8*)s_bat.ring.ptr + ioff, indices, (size_t)ibytes);
++    }
++    const VkBuffer vbuf = cached ? cached->buf : s_bat.ring.buf;
+     const VkDescriptorSet set = vk_eng_write_descriptors(P);
+     if (!set) { vk_draw_why(12); return; }
+ 
+@@ -6294,9 +6315,9 @@ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vert
+     pvkCmdBindDescriptorSets(s_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              P->cube_mask ? s_e2.split_pipe_layout : s_g.pipe_layout,
+                              0, 1, &set, 0, NULL);
+-    pvkCmdBindVertexBuffers(s_vk.cmd, 0, 1, &s_bat.ring.buf, &voff);
+-    if (ibytes) {
+-        pvkCmdBindIndexBuffer(s_vk.cmd, s_bat.ring.buf, ioff, VK_INDEX_TYPE_UINT32);
++    pvkCmdBindVertexBuffers(s_vk.cmd, 0, 1, &vbuf, &voff);
++    if (has_idx) {
++        pvkCmdBindIndexBuffer(s_vk.cmd, vbuf, ioff, VK_INDEX_TYPE_UINT32);
+         pvkCmdDrawIndexed(s_vk.cmd, index_count, 1, 0, 0, 0);
+     } else {
+         pvkCmdDraw(s_vk.cmd, vertex_count, 1, 0, 0);
+@@ -6305,6 +6326,54 @@ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vert
+     vk_draw_why(0);
+ }
+ 
++/* ---- the converted-vertex cache's chunks (rsx_vertex_compact.h) ----------
++ * Host-visible, coherent buffers the engine writes converted vertices and
++ * indices into once and draws from as long as their source bytes stay the
++ * same. The engine's bookkeeping hands a block out again only after the
++ * serial of its last reader is done (commit_serial). */
++#define VK_VC_MAX_CHUNKS 64u
++static vk_buffer s_vcc[VK_VC_MAX_CHUNKS];
++
++static u32 vk_eng_vcache_chunk_create(void* user, u32 bytes, u8** cpu)
++{
++    (void)user;
++    for (u32 i = 0; i < VK_VC_MAX_CHUNKS; i++) {
++        if (s_vcc[i].buf) continue;
++        if (vk_create_host_buffer(&s_vcc[i], bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
++                                                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT) ||
++            !s_vcc[i].coherent) {   /* no vkFlushMappedMemoryRanges: writes need coherent */
++            vk_destroy_buffer(&s_vcc[i]);
++            return 0;
++        }
++        *cpu = (u8*)s_vcc[i].ptr;
++        return i + 1u;
++    }
++    return 0;
++}
++
++static void vk_eng_vcache_chunk_release(void* user, u32 chunk)
++{
++    (void)user;
++    if (chunk && chunk <= VK_VC_MAX_CHUNKS) vk_destroy_buffer(&s_vcc[chunk - 1u]);   /* waits */
++}
++
++static void vk_eng_draw_cached(void* user, rsx_topology topology, u32 chunk, u32 vb_off,
++                               u32 vertex_count, u32 stride, u32 ib_off, u32 index_count)
++{
++    if (!chunk || chunk > VK_VC_MAX_CHUNKS || !s_vcc[chunk - 1u].buf) { vk_draw_why(14); return; }
++    const vk_eng_src src = { s_vcc[chunk - 1u].buf, vb_off, ib_off };
++    PS3_TRACE_BEGIN(_tr);
++    vk_eng_draw_body(user, topology, NULL, vertex_count, stride, NULL, index_count, &src);
++    PS3_TRACE_END(_tr, "vk_draw", 0);
++}
++
++static u64 vk_eng_commit_serial(void* user, u64* completed)
++{
++    (void)user;
++    *completed = s_ser.done;
++    return s_ser.next;
++}
++
+ static const rsx_draw_backend s_vk_engine_backend = {
+     .user                 = NULL,
+     .init                 = vk_eng_init,
+@@ -6340,6 +6409,10 @@ static const rsx_draw_backend s_vk_engine_backend = {
+     .depth_as_color       = vk_eng_depth_as_color,
+     .mlaa                 = vk_eng_mlaa,
+     .set_draw_key         = vk_eng_set_draw_key,
++    .vcache_chunk_create  = vk_eng_vcache_chunk_create,
++    .vcache_chunk_release = vk_eng_vcache_chunk_release,
++    .draw_cached          = vk_eng_draw_cached,
++    .commit_serial        = vk_eng_commit_serial,
+     .color_target_write   = vk_eng_color_target_write,
+     /* Uploads are recorded into the open batch behind a barrier, after the
+      * draws that sampled the old bytes. */
