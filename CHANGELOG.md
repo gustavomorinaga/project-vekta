@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler's pipelines ahead, which
+  the Vulkan validation layer reported as an error (`VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605`);
+  `independentBlend` is now on whenever the GPU has it (patch 2061).
+
 ## [0.4.0] - 2026-11-09 (pre-release)
 
 ### Added

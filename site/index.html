@@ -196,6 +196,13 @@
 </article>
 <div id="news">
 <article class="news rel">
+<h2>Unreleased</h2>
+<p class="meta">not released yet</p>
+<ul class="rlist">
+<li><span class="sec">Fixed</span>Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the Vulkan validation layer reported as an error (<code>VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605</code>); <code>independentBlend</code> is now on whenever the GPU has it (patch 2061).</li>
+</ul>
+</article>
+<article class="news rel">
 <h2>0.4.0</h2>
 <p class="meta">9 Nov 2026 · pre-release</p>
 <ul class="rlist">
@@ -247,27 +254,12 @@
 <li><span class="sec">Fixed</span>GitHub shows the licence as MIT again (it read &quot;Other&quot;, issue #27): <code>LICENSE</code> holds the MIT text alone, and the note that it covers only the port, not the game, moved to <code>NOTICE.md</code> and the README. Same terms as before.</li>
 </ul>
 </article>
-<article class="news rel">
-<h2>0.2.0</h2>
-<p class="meta">1 Nov 2026 · pre-release</p>
-<ul class="rlist">
-<li><span class="sec">Added</span>The Windows release folder (<code>tools/release/assemble_payload.py</code>): the port&#x27;s sources, the patched ps3recomp and the pinned Windows toolchain, with no Git or MSYS needed. <code>run.cmd</code> asks for your files and builds <code>KZ1HD.exe</code> there, and <code>play.cmd</code> starts it (<code>tools/release/launch.py</code>).</li>
-<li><span class="sec">Added</span>The Windows setup program (<code>installer/vekta.iss</code>, Inno Setup, per-user install) and the launcher <code>Project Vekta.exe</code> with the project&#x27;s icon, which builds on its first start and then plays (<code>tools/release/build_launcher.py</code>, <code>build_setup.py</code>).</li>
-<li><span class="sec">Added</span>Releases carry the Windows setup program and the Windows folder as a zip beside the source archive, each with a <code>.sha256</code>. <code>.github/workflows/release.yml</code> builds both from the tag: the folder on Linux, the setup program on Windows, where it is also installed, checked against the folder&#x27;s <code>manifest.json</code> and uninstalled (<code>tools/release/check_install.py</code>); <code>tools/release/release_check.py</code> checks the five files.</li>
-<li><span class="sec">Added</span>The build steps are one Python tool, <code>tools/kzbuild.py</code> (<code>patch</code>, <code>lift</code>, <code>vfs</code>, <code>build</code>), so the same code builds on Windows with the pinned toolchain; <code>tools/ps3recomp-patched.sh</code>, <code>tools/lift.sh</code>, <code>tools/setup-vfs.sh</code>, <code>tools/build.sh</code> and <code>tools/build-win.sh</code> run it and their output is unchanged. Where links cannot be made the game folder gets copies of the EBOOT and the archive.</li>
-<li><span class="sec">Added</span>The Windows build&#x27;s toolchain is pinned in the repository (<code>tools/release/toolchain.json</code>): llvm-mingw, SDL2, zlib, glslang, the Vulkan headers and FFmpeg 9 (its DLLs go beside the exe for the movies), fetched and checked by SHA-256 (<code>tools/release/fetch_toolchain.py</code>), zlib and glslang built with that compiler (<code>tools/release/build_win_deps.py</code>); <code>tools/build-win.sh</code> uses it, so the cross build needs no MinGW packages (<code>KZ_WIN_TOOLCHAIN=system</code> keeps the old route). The Windows setup program carries the same pins.</li>
-<li><span class="sec">Added</span>An applications-menu entry with the project&#x27;s own icon (<code>assets/icon.svg</code>): <code>tools/install.sh</code> offers it after a build (<code>firstrun.py --desktop</code>, <code>--remove-desktop</code>).</li>
-<li><span class="sec">Added</span><code>tools/install.sh</code>: one command asks where your files are, checks them, then patches, lifts and builds with one progress bar, and keeps the paths in <code>work/paths.env</code> for every script (<code>tools/release/firstrun.py</code>, after Project Pyrrhus&#x27;s and Project Helghast&#x27;s first-run builder); a stopped or failed run resumes at that step.</li>
-<li><span class="sec">Added</span><code>KZ_JOBS</code> sets the lift&#x27;s and the compile&#x27;s parallel jobs (the installer picks it from free memory).</li>
-<li><span class="sec">Fixed</span><code>tools/play.sh</code> names the missing step when there is no <code>work/vfs</code> or no build yet.</li>
-</ul>
-</article>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">The whole changelog<span aria-hidden="true"> &gt;</span></a></p>
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 134 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 134 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 135 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 135 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -276,6 +268,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Developer switches for testing (docs/dev/testing.md): KZ_DEBUG_GOD=1 keeps the game&#x27;s own God mode on, KZ_DEBUG_GIVE...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Field of view: the PC page&#x27;s Field of View row is now the horizontal FOV at 16:9, 70 to 120 degrees (the game&#x27;s is...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> ps3recomp moved from v0.18.0 to v0.19.0: its SPURS, GCM, lv2 and file system fixes (81 pull requests). The patch...</span></li>
@@ -283,7 +276,6 @@
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Ultrawide and wide FOV: the sky&#x27;s fog band (Level 6) is no longer cut off at the screen&#x27;s sides with hard grey edges...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Ultrawide: the first-person weapon is no longer drawn half as large again as on a 16:9 screen (its FOV came from the...</span></li>
 <li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> The field of view setting widens the world: before, it reached only the sky&#x27;s camera, so the world stayed at the...</span></li>
-<li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> The pause menu&#x27;s items no longer come back empty after opening one of its screens (Audio, Controls...) and going back...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

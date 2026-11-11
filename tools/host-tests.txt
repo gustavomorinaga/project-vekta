@@ -39,3 +39,4 @@ tools/tests/test_debug_god.sh
 tools/tests/test_fov.sh
 tools/tests/test_hud_sites.sh
 tools/tests/test_menu_box.sh
+tools/tests/test_blend_state.sh

@@ -35,6 +35,12 @@ are linked.
 - **Aspect ratios narrower than 16:9** (16:10, 4:3) show 16:9 with bars.
 - **The internal resolution scale applies on the next start**, not at once.
 - **Surround sound** (5.1, 7.1) was checked channel by channel, not yet heard on a real surround system.
+- **A Vulkan validation error after turning DLSS or FSR 3.1 off** (2026-11-09): the next start built the upscaler's
+  pipelines ahead from the pipeline list on disk, on a device created without `independentBlend`, which the
+  validation layer reports as `VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605` (10 errors for a list of
+  203 pipelines, 113 of them the upscaler's, from a Level 1 run with FSR 3.1). No picture fault was seen. Fixed after
+  0.4.0 (patch 2061): the same start built the other 90 and the layer reported nothing; with FSR 3.1, all 203 and
+  nothing reported.
 
 ## Windows
 
