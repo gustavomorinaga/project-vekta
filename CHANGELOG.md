@@ -27,7 +27,16 @@ program and folder that build it. Until a release that calls itself playable
   on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about
   +4 % trained on combat routes ([docs/BUILDING.md](docs/BUILDING.md)).
 
+- Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and
+  stayed about 99 % busy; it now sleeps until shortly before the next tick of the game clock and takes the tick
+  exactly as before, about half a core less (`KZ_FRAME_WAIT_SPIN=1` goes back to spinning). The SPURS scheduler now
+  runs only the work the game asked for, without probing idle SPUs, which used 4.6 to 6 % less CPU for the whole game
+  on the Level 7 and Level 1 test routes with the same frame rates (`PS3_SPURS_WANTED=0` goes back to the old way;
+  after Project Helghast's patch 1074) ([docs/dev/performance.md](docs/dev/performance.md)).
+
 ### Fixed
+- Reservations: after many thread starts a thread could stop being told when another one broke its
+  reservation (ps3recomp patch 3037, after upstream pull request #758).
 - Scripted events at 60 and 144 fps: the level scripts' update ran once per frame, so above 30 fps everything they
   count in updates ran 2 to 5 times too fast. In the last level the platform ride to the main station took about
   12 s instead of about 49 s, the story events timed in seconds fell behind it and the section never ended. The

@@ -176,6 +176,33 @@ thread up to about a fifth of its time, but it does not limit.
   - `KZ_NATIVE_PSGL=0` turns the native PSGL functions off (their lifted bodies run): the A side of an A/B on one
     executable (`tools/perf/ab.sh` with `A_ENV=KZ_NATIVE_PSGL=0`, [perf-bench.md](perf-bench.md)).
 
+## Lower CPU use, and the reference projects' optimisations, 2026-11-10/11
+
+Goal: the most frames with the least CPU. Every result is from `tools/perf/ab.sh` (6 alternating pairs per level on the
+rebased Level 7 and Level 1 routes, headless, 144 Hz, paired B - A with a 95 % interval; [perf-bench.md](perf-bench.md)),
+with the whole process's CPU per frame from `route_play.sh`'s per-second `/proc` samples. Standing still at the default
+60 Hz, the main thread was about 99 % busy although it needs about 40 % of each frame: it waits for the game clock's
+next tick by spinning in `func_0021C0F8` (66.6 % of its time, Level 7).
+
+Kept:
+
+| Change | Measured |
+|---|---|
+| The frame clock sleeps until about 2 ms before the next tick, then the game's own loop spins the rest and takes the tick as before (`native_ppu/clock.cpp`, `frame_wait.h`; `KZ_FRAME_WAIT_SPIN=1` restores) | standing still at 60 Hz, the main thread 98.6 to 43.7 % busy (Level 7) and 99.0 to 49.0 % (Level 1), about half a core less for the process; 144 Hz unchanged (it never waits there) |
+| SPURS admits only workloads the game kicked or that asked for idle SPUs (`PS3_SPURS_WANTED=2`, patch 1017's mode 2 after Project Helghast's 1074; `PS3_SPURS_WANTED=0` restores) | process CPU per frame -4.6 % [-5.0, -4.2] (Level 7) and -6.0 % [-8.5, -3.5] (Level 1); fps +0.85 % [+0.19, +1.5] (Level 7), +1.45 % [-1.2, +4.2] (Level 1); standing still, the SPURS threads 19 to 15 % and 34 to 27 % of a core at 60 Hz |
+| Each reservation context registered once (patch 3037, upstream #758): a correctness fix, after about 127 thread starts a thread could stop being told of reservation breaks | neutral: process -0.24 % [-1.1, +0.6] (Level 7), -0.24 % [-3.6, +3.1] (Level 1) |
+
+Tried and not kept (local branches, no measurable gain):
+
+| Change | Measured |
+|---|---|
+| An inline cache for indirect calls (`bctrl`), after infamous2-pc (indirect calls were 3.5 % of the main thread, self) | fps -0.80 % [-2.2, +0.6] (Level 7), +0.07 % [-4.0, +4.1] (Level 1) |
+| 16-byte stores for the lifter's vector writes (functions using VMX are 18.5 to 22 % of the main thread; parts written in 4 and 8 bytes cannot be store-forwarded) | fps -0.66 % [-2.5, +1.2] (Level 7), +0.25 % [-3.4, +3.9] (Level 1) |
+| SPURS changes of upstream #756, on top of `PS3_SPURS_WANTED=2` | process CPU +0.08 % [-0.65, +0.81] (Level 7), -0.87 % [-2.9, +1.1] (Level 1); one run left the route's path |
+
+Upstream #732 and #731 (reservation and lock-line paths) were not tried: what they speed up is below 0.5 % of the main
+thread here. The draw engine's vertex cache of upstream #718 became patches 2062 and 2063.
+
 ## What is left
 
 1. ~~Rewrite PSGL in C++, routine by routine.~~ Two steps measured (above): no gain within the A/B's resolution
