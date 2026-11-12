@@ -45,3 +45,4 @@ tools/tests/test_menu_box.sh
 tools/tests/test_pgo_write.sh
 tools/tests/test_blend_state.sh
 tools/tests/test_script_rate.sh
+tools/tests/test_move_vel.sh
