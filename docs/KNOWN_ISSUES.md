@@ -5,12 +5,20 @@ are linked.
 
 ## Game
 
-- **First-person weapon "ghosting" in the 144 Hz mode.** In busy places (the concrete yard with the Helghast
-  dropships in an early level), on rare frames the whole first-person weapon shows its previous frame's pose while the
-  world moves; the PS3's motion blur then doubles it. Only with the game clock at 144 Hz; the default 60 Hz is not
-  affected. A first fix (the SPURS policy module's `selectWorkload` answer, after Project Helghast) removed the more
-  common case where single weapon parts jumped. Workarounds: play at 60 Hz, or set `KZ_JM_SKIP_US=10` (about 15 %
-  slower in Level 7). Investigation: [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md).
+- **First-person weapon "ghosting" in the 144 Hz mode.** In busy places (the concrete yard with the Helghast dropships
+  in chapter 9, "Hidden Pasts", identified by the maintainer on 2026-11-12), on rare frames the whole first-person
+  weapon shows its previous frame's pose while the world moves; the PS3's motion blur then doubles it. Only with the
+  game clock at 144 Hz; the default 60 Hz is not affected. A first fix (the SPURS policy module's `selectWorkload`
+  answer, after Project Helghast) removed the more common case where single weapon parts jumped. Workarounds: play at
+  60 Hz, or set `KZ_JM_SKIP_US=10` (about 15 % slower in Level 7). Investigation:
+  [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md).
+- **First-person weapon shaking in the 144 Hz mode (2026-11-12).** In the same yard of chapter 9, "Hidden Pasts",
+  looking towards the rock face and the crashed dropship, the first-person weapon shakes strongly while the character
+  model looks right. Three F12 captures (3 frames each) show the weapon moving in uneven steps (for example about 0.20
+  and then 0.04 units in two frames that follow each other) with every part moving together and no frame repeating the
+  previous pose, so it is not the ghosting above; with motion blur a large step looks doubled. Seen with the main
+  branch's build too, and the same with `PS3_SPURS_WANTED=0` and with `KZ_FRAME_WAIT_SPIN=1`: not caused by the SPURS
+  default or the frame clock wait. Cause not known yet.
 - **One crash when a rocket exploded in Level 11 (2026-11-11).** At 144 Hz in `11.SDDockingBay` the game closed
   once when a rocket launcher shot exploded: an SPU job's host stack was 8 bytes off alignment. Not seen again in two
   full plays of the chapter. If it happens, keep `play.log` and the core and play on with the stack tripwire build

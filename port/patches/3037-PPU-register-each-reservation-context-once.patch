@@ -1,0 +1,356 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 11 Nov 2026 00:15:16 -0300
+Subject: [PATCH] PPU: register each reservation context once
+
+Upstream ps3recomp pull request #758 (MIT, sp00nznet/ps3recomp#758), ported
+onto this series: one hunk (the count read in ppu_resv_break) applied by hand
+where our patches moved it; its test test_ppu_resv_registry passes.
+
+ppu_resv_register took a new registry entry on every guest thread start,
+and a thread slot's context is reused by every thread that starts in it, so
+after ~127 starts the 128 entries held duplicates and a context registered
+later was never scanned by the reservation breaks: a store by another thread
+no longer broke its reservation, and its stwcx. could commit over that
+update. Now a context is added only once (registrations serialized on a small
+spin lock), the count is published with release and read with acquire, and a
+129th distinct context stops the process with a message.
+---
+ runtime/ppu/ppu_loader.cpp                   |  39 ++++-
+ runtime/ppu/tests/test_ppu_resv_registry.cpp | 156 +++++++++++++++++++
+ tools/test_ppu_resv_registry.py              |  62 ++++++++
+ 3 files changed, 249 insertions(+), 8 deletions(-)
+ create mode 100644 runtime/ppu/tests/test_ppu_resv_registry.cpp
+ create mode 100755 tools/test_ppu_resv_registry.py
+
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+index 76e9254..0d28782 100644
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -902,7 +902,17 @@ extern "C" PPU_THREAD_LOCAL ppu_context* g_active_ctx;   /* fwd (defined below)
+ #define PPU_RESV_MAX 128
+ #define PPU_RESV_INVALID 0x100000000ull   /* out of (uint32_t) ea range */
+ static ppu_context* g_resv_ctxs[PPU_RESV_MAX];
++/* One entry per distinct context. A ppu_thread_info slot (and its ctx) is
++ * reused by every thread that later starts in it, so registration must be
++ * idempotent: counting every start filled the 128 entries after ~127 thread
++ * starts, and a context first registered after that was never scanned -- a
++ * store by another thread no longer broke its reservation. Registrations
++ * serialize on g_resv_reg_lock; the count is published with a release store
++ * after the entry is written, and readers load it with acquire, so every entry
++ * below the count they see is initialized. Bound: PPU_THREAD_MAX (64) table
++ * slots + the main thread = 65 distinct contexts, well under PPU_RESV_MAX. */
+ static volatile LONG g_resv_ctx_n = 0;
++static volatile LONG g_resv_reg_lock = 0;
+ /* Sharded by address: a single global lock convoyed all stwcx (workers spinning
+  * on a descheduled holder -> loader too slow to finish jobs). Shard by the
+  * 16-byte-block of ea so unrelated structures never serialize; same-structure
+@@ -919,8 +929,21 @@ extern "C" int g_resv_store_active = -1;   /* -1 uninit, 0 off, 1 on */
+ extern "C" void ppu_resv_register(ppu_context* c)
+ {
+     if (g_resv_store_active < 0) g_resv_store_active = getenv("PPU_RESV_STORE") ? 1 : 0;
+-    long i = _InterlockedExchangeAdd(&g_resv_ctx_n, 1);
+-    if (i < PPU_RESV_MAX) g_resv_ctxs[i] = c;
++    while (_InterlockedExchange(&g_resv_reg_lock, 1)) { while (g_resv_reg_lock) YieldProcessor(); }
++    const long n = __atomic_load_n(&g_resv_ctx_n, __ATOMIC_RELAXED);   /* only writers change it */
++    for (long i = 0; i < n; i++)
++        if (g_resv_ctxs[i] == c) { _InterlockedExchange(&g_resv_reg_lock, 0); return; }
++    if (n == PPU_RESV_MAX) {
++        /* A context left out would silently lose cross-thread reservation
++         * breaks (lost updates in the guest's lock-free code): stop instead. */
++        fprintf(stderr, "[ppu] FATAL: reservation registry exhausted: capacity=%d distinct contexts\n",
++                PPU_RESV_MAX);
++        fflush(stderr);
++        abort();
++    }
++    g_resv_ctxs[n] = c;
++    __atomic_store_n(&g_resv_ctx_n, (LONG)(n + 1), __ATOMIC_RELEASE);
++    _InterlockedExchange(&g_resv_reg_lock, 0);
+ }
+ /* Where every guest thread is, as a GUEST address.
+  *
+@@ -947,7 +970,7 @@ extern "C" void ppu_resv_register(ppu_context* c)
+  * last DIRECT call site and nothing more. */
+ extern "C" void ppu_report_guest_lrs(void)
+ {
+-    long n = g_resv_ctx_n; if (n > PPU_RESV_MAX) n = PPU_RESV_MAX;
++    long n = __atomic_load_n(&g_resv_ctx_n, __ATOMIC_ACQUIRE);
+     for (long i = 0; i < n; i++) {
+         ppu_context* c = g_resv_ctxs[i];
+         if (!c) continue;
+@@ -972,7 +995,7 @@ extern "C" void ppu_report_guest_lrs(void)
+ extern "C" void ppu_resv_break_store(uint64_t ea)
+ {
+     uint32_t a = (uint32_t)ea & ~3u;
+-    long n = g_resv_ctx_n; if (n > PPU_RESV_MAX) n = PPU_RESV_MAX;
++    long n = __atomic_load_n(&g_resv_ctx_n, __ATOMIC_ACQUIRE);
+     for (long i = 0; i < n; i++) {
+         ppu_context* c = g_resv_ctxs[i];
+         if (c && c->reserve_addr < PPU_RESV_INVALID && ((uint32_t)c->reserve_addr & ~3u) == a)
+@@ -990,7 +1013,7 @@ extern "C" void ppu_resv_break_line(uint32_t ea)
+ {
+     const uint32_t line = ea & ~127u;
+     ppu_context* self = g_active_ctx;
+-    long n = g_resv_ctx_n; if (n > PPU_RESV_MAX) n = PPU_RESV_MAX;
++    long n = __atomic_load_n(&g_resv_ctx_n, __ATOMIC_ACQUIRE);
+     for (long i = 0; i < n; i++) {
+         ppu_context* c = g_resv_ctxs[i];
+         if (c && c != self && c->reserve_addr < PPU_RESV_INVALID &&
+@@ -1008,7 +1031,7 @@ static inline void resv_unlock(volatile LONG* L) { _InterlockedExchange(L, 0); }
+ extern "C" void ppu_resv_break(uint64_t addr)   /* MUST hold g_resv_lock */
+ {
+     uint64_t a = (uint32_t)addr;   /* match the inline guard: reserve_addr holds (uint32_t)ea */
+-    long n = g_resv_ctx_n; if (n > PPU_RESV_MAX) n = PPU_RESV_MAX;
++    long n = __atomic_load_n(&g_resv_ctx_n, __ATOMIC_ACQUIRE);
+     for (long i = 0; i < n; i++) {
+         ppu_context* c = g_resv_ctxs[i];
+         if (c && c->reserve_addr == a) c->reserve_addr = PPU_RESV_INVALID;
+@@ -1020,13 +1043,13 @@ extern "C" void ppu_resv_break(uint64_t addr)   /* MUST hold g_resv_lock */
+ static inline int resv_diag() { static int v = -1; if (v < 0) v = getenv("RESV_DIAG") ? 1 : 0; return v; }
+ static void resv_check_reg(ppu_context* self)
+ {
+-    long n = g_resv_ctx_n; if (n > PPU_RESV_MAX) n = PPU_RESV_MAX;
++    long n = __atomic_load_n(&g_resv_ctx_n, __ATOMIC_ACQUIRE);
+     for (long i = 0; i < n; i++) if (g_resv_ctxs[i] == self) return;
+     static ppu_context* seen[64]; static long sn = 0;
+     for (long i = 0; i < sn; i++) if (seen[i] == self) return;
+     if (sn < 64) seen[sn++] = self;
+     fprintf(stderr, "[RESV-UNREG] stwcx/stdcx by UNREGISTERED ctx=%p tid=%llu (n_reg=%ld)\n",
+-            (void*)self, (unsigned long long)self->thread_id, g_resv_ctx_n);
++            (void*)self, (unsigned long long)self->thread_id, n);
+     fflush(stderr);
+ }
+ 
+diff --git a/runtime/ppu/tests/test_ppu_resv_registry.cpp b/runtime/ppu/tests/test_ppu_resv_registry.cpp
+new file mode 100644
+index 0000000..5b584db
+--- /dev/null
++++ b/runtime/ppu/tests/test_ppu_resv_registry.cpp
+@@ -0,0 +1,156 @@
++// The reservation registry keeps one entry per distinct ppu_context.
++//
++// A guest thread that starts in a reused ppu_thread_info slot registers the
++// same ctx again. Each case below registers one context many times and then
++// checks that a context registered AFTER that is still reached by the three
++// reservation breaks: a store-conditional (ppu_stwcx32 -> ppu_resv_break), a
++// plain store (ppu_resv_break_store) and a write to the line
++// (ppu_resv_break_line). A victim left reserved is a stwcx. that would commit
++// over another thread's update.
++//
++// The registry is process-global and has no reset, so every case is its own
++// process: tools/test_ppu_resv_registry.py runs each mode below in turn.
++//   baseline    one registration per context (passes with or without the fix)
++//   churn       256 registrations of one reused context before the victim
++//   concurrent  8 threads: 256 registrations of a shared ctx + one victim each
++//   capacity    128 distinct contexts, registered three times, all reachable
++//   overflow    a 129th distinct context must stop the process with a message
++#include "ppu_recomp.h"
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <cstdint>
++#include <atomic>
++#include <thread>
++#include <vector>
++#include "win32_compat.h"
++
++extern "C" {
++uint8_t* vm_base;
++uint32_t ppu_hle_inject_base = 0x20000000;
++int spu_coh_is_reserved(uint32_t) { return 0; }
++void spu_coh_notify_write(uint32_t) { std::abort(); }
++void spu_lockline_lock(void) { std::abort(); }
++void spu_lockline_unlock(void) { std::abort(); }
++int spu_raw_reg_load(uint32_t, uint32_t*) { std::abort(); }
++void spu_raw_reg_store(uint32_t, uint32_t, unsigned) { std::abort(); }
++void cellGcm_ref_on_poll(void) { std::abort(); }
++HANDLE CreateThread(void*, SIZE_T, PS3_THREAD_FN, LPVOID, DWORD, DWORD*) { std::abort(); }
++BOOL CloseHandle(HANDLE) { std::abort(); }
++DWORD GetFileAttributesA(const char*) { return INVALID_FILE_ATTRIBUTES; }
++uint64_t ppu_thread_register_main(void) { return 1; }
++void (*g_ppu_thread_entry_trampoline)(uint32_t, uint64_t, uint32_t, uint64_t);
++const func_entry function_table[1] = {{0, nullptr, nullptr}};
++const uint64_t function_table_count = 0;
++uint32_t ps3_hle_count(void) { return 0; }
++extern PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++void ppu_resv_register(ppu_context* c);
++void ppu_resv_break_store(uint64_t ea);
++void ppu_resv_break_line(uint32_t ea);
++int ppu_stwcx32(uint64_t ea, uint32_t expected, uint32_t val);
++}
++
++enum { CAPACITY = 128, REPEATS = 256, THREADS = 8 };
++static const uint64_t INVALID = 0x100000000ull;   // PPU_RESV_INVALID
++static const uint32_t RESV_LINE = 0x1800, RESV_WORD = RESV_LINE + 4;
++
++// Registered contexts must outlive the process: the registry keeps them.
++static ppu_context writer, reused, victim, unrelated;
++static ppu_context victims[THREADS];
++static ppu_context many[CAPACITY + 1];
++
++// Break every reservation on RESV_WORD the way `how` does, as `writer`.
++static void break_as_writer(const char* how)
++{
++    g_active_ctx = &writer;
++    if (!std::strcmp(how, "stwcx")) {
++        writer.reserve_addr = RESV_WORD;
++        if (!ppu_stwcx32(RESV_WORD, 0, 1)) { std::printf("FAIL: writer's own stwcx did not commit\n"); std::exit(1); }
++    } else if (!std::strcmp(how, "store")) {
++        ppu_resv_break_store(RESV_WORD);
++    } else {
++        ppu_resv_break_line(RESV_WORD);
++    }
++}
++
++static int churn_case(unsigned repeats)
++{
++    ppu_resv_register(&writer);
++    ppu_resv_register(&unrelated);
++    for (unsigned n = 0; n < repeats; n++) ppu_resv_register(&reused);
++    ppu_resv_register(&victim);
++    int fails = 0;
++    for (const char* how : {"stwcx", "store", "line"}) {
++        std::memset(vm_base + RESV_LINE, 0, 128);
++        victim.reserve_addr = RESV_WORD;
++        unrelated.reserve_addr = RESV_LINE + 128;   // another line: must survive
++        reused.reserve_addr = INVALID;
++        break_as_writer(how);
++        const bool ok = victim.reserve_addr == INVALID && unrelated.reserve_addr == RESV_LINE + 128;
++        std::printf("[%s] %s break after %u registrations of one reused context: victim %s\n",
++                    ok ? "PASS" : "FAIL", how, repeats,
++                    victim.reserve_addr == INVALID ? "invalidated" : "STILL RESERVED");
++        fails += !ok;
++    }
++    return fails;
++}
++
++static int concurrent_case()
++{
++    ppu_resv_register(&writer);
++    std::atomic<unsigned> ready{0};
++    std::atomic<bool> go{false};
++    std::vector<std::thread> threads;
++    for (unsigned i = 0; i < THREADS; i++) {
++        threads.emplace_back([&, i] {
++            ready.fetch_add(1);
++            while (!go.load(std::memory_order_acquire)) std::this_thread::yield();
++            for (unsigned n = 0; n < REPEATS; n++) ppu_resv_register(&reused);
++            ppu_resv_register(&victims[i]);
++        });
++    }
++    while (ready.load() != THREADS) std::this_thread::yield();
++    go.store(true, std::memory_order_release);
++    for (auto& t : threads) t.join();
++    for (auto& v : victims) v.reserve_addr = RESV_WORD;
++    break_as_writer("line");
++    unsigned broken = 0;
++    for (auto& v : victims) broken += v.reserve_addr == INVALID;
++    std::printf("[%s] concurrent duplicate registration: %u of %d victims invalidated\n",
++                broken == THREADS ? "PASS" : "FAIL", broken, THREADS);
++    return broken != THREADS;
++}
++
++static int capacity_case()
++{
++    for (unsigned r = 0; r < 3; r++)
++        for (unsigned i = 0; i < CAPACITY; i++) ppu_resv_register(&many[i]);
++    for (unsigned i = 0; i < CAPACITY; i++) many[i].reserve_addr = RESV_WORD;
++    g_active_ctx = nullptr;
++    ppu_resv_break_line(RESV_WORD);
++    unsigned broken = 0;
++    for (unsigned i = 0; i < CAPACITY; i++) broken += many[i].reserve_addr == INVALID;
++    std::printf("[%s] %d distinct contexts registered three times: %u invalidated\n",
++                broken == CAPACITY ? "PASS" : "FAIL", CAPACITY, broken);
++    return broken != CAPACITY;
++}
++
++static int overflow_case()
++{
++    for (unsigned i = 0; i <= CAPACITY; i++) ppu_resv_register(&many[i]);
++    std::printf("FAIL: a %dth distinct context was accepted without a slot\n", CAPACITY + 1);
++    return 1;
++}
++
++int main(int argc, char** argv)
++{
++    vm_base = (uint8_t*)std::calloc(1, 0x10000);
++    const char* mode = argc > 1 ? argv[1] : "";
++    if (!std::strcmp(mode, "baseline"))   return churn_case(1) ? 1 : 0;
++    if (!std::strcmp(mode, "churn"))      return churn_case(REPEATS) ? 1 : 0;
++    if (!std::strcmp(mode, "concurrent")) return concurrent_case() ? 1 : 0;
++    if (!std::strcmp(mode, "capacity"))   return capacity_case() ? 1 : 0;
++    if (!std::strcmp(mode, "overflow"))   return overflow_case();
++    std::fprintf(stderr, "usage: %s baseline|churn|concurrent|capacity|overflow\n", argv[0]);
++    return 2;
++}
+diff --git a/tools/test_ppu_resv_registry.py b/tools/test_ppu_resv_registry.py
+new file mode 100755
+index 0000000..c5b89a0
+--- /dev/null
++++ b/tools/test_ppu_resv_registry.py
+@@ -0,0 +1,62 @@
++#!/usr/bin/env python3
++"""The PPU reservation registry keeps one entry per distinct context.
++
++Builds the real runtime/ppu/ppu_loader.cpp with
++runtime/ppu/tests/test_ppu_resv_registry.cpp and runs each case in its own
++process (the registry is process-global): a context registered after another
++context was registered 256 times -- a thread slot reused by many thread starts --
++must still have its reservation broken by a store-conditional, a plain store
++and a line write; the same holds with eight threads registering at once; 128
++distinct contexts fit; a 129th stops the process with a message instead of
++running unregistered.
++"""
++import os
++import signal
++import subprocess
++import sys
++import tempfile
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from check_ppu_scaffold import stub_header  # noqa: E402
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def main():
++    if os.name == 'nt':
++        print('SKIP: fixture builds with the POSIX toolchain flags')
++        return
++    with tempfile.TemporaryDirectory(prefix='ppu-resv-registry-') as tmp:
++        tmp = Path(tmp)
++        (tmp / 'ppu_recomp.h').write_text(stub_header())
++        binary = tmp / 'test'
++        flags = ['-Wl,-dead_strip'] if sys.platform == 'darwin' else ['-Wl,--gc-sections', '-ldl']
++        subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1', '-w', '-pthread',
++                        '-ffunction-sections', '-fdata-sections',
++                        '-I' + str(tmp), '-I' + str(ROOT / 'include'), '-I' + str(ROOT / 'runtime/platform'),
++                        str(ROOT / 'runtime/ppu/ppu_loader.cpp'),
++                        str(ROOT / 'runtime/ppu/tests/test_ppu_resv_registry.cpp'),
++                        *flags, '-o', str(binary)], check=True)
++        env = {k: v for k, v in os.environ.items() if not k.startswith(('PPU_', 'PS3_', 'PS3RECOMP_', 'SPU_', 'RESV_'))}
++        failed = []
++        for mode in ('baseline', 'churn', 'concurrent', 'capacity'):
++            r = subprocess.run([str(binary), mode], env=env, capture_output=True, text=True, timeout=60)
++            print(r.stdout, end='')
++            if r.returncode:
++                sys.stderr.write(r.stderr[-2000:])
++                failed.append(mode)
++        r = subprocess.run([str(binary), 'overflow'], env=env, capture_output=True, text=True, timeout=60)
++        print(r.stdout, end='')
++        if r.returncode == -signal.SIGABRT and 'reservation registry exhausted: capacity=128' in r.stderr:
++            print('[PASS] a 129th distinct context stops the process with a message')
++        else:
++            print(f'[FAIL] a 129th distinct context: exit {r.returncode}, stderr {r.stderr.strip()[-300:]!r}')
++            failed.append('overflow')
++        if failed:
++            raise SystemExit('FAIL: reservation registry: ' + ', '.join(failed))
++        print('PASS: every distinct context stays reachable by reservation breaks')
++
++
++if __name__ == '__main__':
++    main()
+-- 
+2.56.0
+

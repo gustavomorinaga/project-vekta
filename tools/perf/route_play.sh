@@ -40,13 +40,26 @@ sleep 5
 for k in $keys; do case $k in *@*) w=${k#*@}; k=${k%@*} ;; *_*) w=2 ;; *) w=9 ;; esac; echo "${k/_/ }" > "$pad"; sleep "$w"; done
 for _ in $(seq 180); do grep -aq "^\[route\] replaying" "$log" && break; kill -0 $pid 2>/dev/null || break; sleep 1; done
 { echo "replay_start $(date +%s)"; echo "loadavg_start $(cut -d' ' -f1-3 /proc/loadavg)"; } > "$out.env"
+(   # every thread's CPU time once a second while the replay runs: "t <monotonic s>" then "<tid> <utime+stime ticks> <name>"
+    : > "$out.cpu"
+    while kill -0 $pid 2>/dev/null; do
+        { echo "t $(cut -d' ' -f1 /proc/uptime)"
+          for t in /proc/$pid/task/*; do
+              s=$(cat "$t/stat" 2>/dev/null) || continue
+              rest=${s##*) }
+              read -r -a f <<< "$rest"
+              echo "${t##*/} $(( f[11] + f[12] )) $(cat "$t/comm" 2>/dev/null)"
+          done; } >> "$out.cpu"
+        sleep 1
+    done
+) &
 (   # the other processes' CPU over 3 s (top's second sample is an instant reading, not a lifetime average)
     sleep "${TOP_AT:-40}"; kill -0 $pid 2>/dev/null || exit 0
     echo "loadavg_mid $(cut -d' ' -f1-3 /proc/loadavg)" >> "$out.env"
     top -b -n 2 -d 3 -w 200 | awk '/^top -/{n++} n==2' | awk 'f && $9+0 >= 3 {print "top " $9 " " $12} /PID/{f=1}' |
         grep -v " KZ1HD-perf$" | head -6 >> "$out.env"
 ) &
-for _ in $(seq 1800); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+for _ in $(seq "${ROUTE_MAX:-1800}"); do kill -0 $pid 2>/dev/null || break; sleep 1; done   # ROUTE_MAX: seconds a replay may take
 kill -9 $pid 2>/dev/null
 wait $pid 2>/dev/null
 echo "loadavg_end $(cut -d' ' -f1-3 /proc/loadavg)" >> "$out.env"

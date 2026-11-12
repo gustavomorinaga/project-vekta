@@ -14,11 +14,47 @@
  */
 #include "native_ppu.h"
 #include "../route.h"
+#include "frame_wait.h"
+#include <stdlib.h>
+#include <time.h>
 
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #ifdef KZ_TRACY
 #include "tracy/TracyC.h"
 #endif
+
+/* The wait for the next tick, slept instead of spun (frame_wait.h): sleeps of
+ * at most 1 ms while more than 2 ms is left (one step of the game's 1 ms timer and the wake-up), the lifted loop then spins the
+ * rest. KZ_FRAME_WAIT_SPIN=1 leaves the whole wait to the lifted loop (the
+ * old way). */
+static void wait_for_tick(ppu_context* ctx, uint32_t clk)
+{
+    static const bool spin = getenv("KZ_FRAME_WAIT_SPIN") && atoi(getenv("KZ_FRAME_WAIT_SPIN"));
+    if (spin) return;
+    uint64_t fbits = vm_read64(0x0021C0F0);
+    double factor;
+    memcpy(&factor, &fbits, sizeof factor);
+    const int32_t last = (int32_t)vm_read32(clk + 0x6C);
+    const ppu_context saved = *ctx;   /* the timer calls may change LR, CTR, CR and volatile registers: put all back */
+    static double rate = 1.0;   /* game ms per host ms (PS3_TIMEBASE_SCALE), learned from the sleeps */
+    func_0001CC20(ctx);                                      /* the game's millisecond timer, as the loop reads it */
+    int64_t g = (int64_t)ctx->gpr[3];
+    for (int i = 0; i < 1000; i++) {
+        const double left = kz_frame_wait_left_ms(last, factor, g);
+        const uint32_t us = kz_frame_wait_sleep_us(left, 2.0, 1000, rate);
+        if (!us) break;
+        struct timespec a, b;
+        clock_gettime(CLOCK_MONOTONIC, &a);
+        const struct timespec ts = {0, (long)us * 1000L};
+        nanosleep(&ts, nullptr);
+        clock_gettime(CLOCK_MONOTONIC, &b);
+        func_0001CC20(ctx);
+        const int64_t g2 = (int64_t)ctx->gpr[3];
+        rate = kz_frame_wait_rate(rate, (double)(g2 - g), (b.tv_sec - a.tv_sec) * 1e3 + (b.tv_nsec - a.tv_nsec) / 1e6);
+        g = g2;
+    }
+    *ctx = saved;
+}
 
 void func_0021C0F8(ppu_context* ctx)
 {
@@ -28,6 +64,7 @@ void func_0021C0F8(ppu_context* ctx)
     TracyCFrameMarkNamed("game frame");   /* the game's main loop starts a frame */
 #endif
     if (!kz_route_clock(clk, &n, &now, &prev)) {
+        wait_for_tick(ctx, clk);
 #ifdef KZ_TRACY
         /* the game's own clock: waits for at least one whole tick */
         TracyCZoneN(tz, "frame clock", 1);
