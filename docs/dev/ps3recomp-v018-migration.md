@@ -54,9 +54,10 @@ frame, the main thread is about 2 % idle (against about 0 on the base), and ther
 
 ## First-person weapon parts jumping (144 Hz mode): reduced, on hold since 2026-10-28
 
-Reported on 2026-10-27, with a video. In busy areas (the concrete yard with the Helghast dropships), parts of the
-first-person weapon (body, sight housing, rail) appear each frame in a different pose from the others. Decision of
-2026-10-28: left as is for now. To play without it, use the 60 Hz mode or `KZ_JM_SKIP_US=10`.
+Reported on 2026-10-27, with a video. In busy areas (the concrete yard with the Helghast dropships, in chapter 9,
+"Hidden Pasts": the maintainer's identification of 2026-11-12), parts of the first-person weapon (body, sight housing,
+rail) appear each frame in a different pose from the others. Decision of 2026-10-28: left as is for now. To play
+without it, use the 60 Hz mode or `KZ_JM_SKIP_US=10`.
 
 **What is known:**
 - It is a v0.18 regression: the v0.14 build is normal in the same place.

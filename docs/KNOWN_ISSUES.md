@@ -5,12 +5,13 @@ are linked.
 
 ## Game
 
-- **First-person weapon "ghosting" in the 144 Hz mode.** In busy places (the concrete yard with the Helghast
-  dropships in an early level), on rare frames the whole first-person weapon shows its previous frame's pose while the
-  world moves; the PS3's motion blur then doubles it. Only with the game clock at 144 Hz; the default 60 Hz is not
-  affected. A first fix (the SPURS policy module's `selectWorkload` answer, after Project Helghast) removed the more
-  common case where single weapon parts jumped. Workarounds: play at 60 Hz, or set `KZ_JM_SKIP_US=10` (about 15 %
-  slower in Level 7). Investigation: [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md).
+- **First-person weapon "ghosting" in the 144 Hz mode.** In busy places (the concrete yard with the Helghast dropships
+  in chapter 9, "Hidden Pasts", identified by the maintainer on 2026-11-12), on rare frames the whole first-person
+  weapon shows its previous frame's pose while the world moves; the PS3's motion blur then doubles it. Only with the
+  game clock at 144 Hz; the default 60 Hz is not affected. A first fix (the SPURS policy module's `selectWorkload`
+  answer, after Project Helghast) removed the more common case where single weapon parts jumped. Workarounds: play at
+  60 Hz, or set `KZ_JM_SKIP_US=10` (about 15 % slower in Level 7). Investigation:
+  [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md).
 - **One crash when a rocket exploded in Level 11 (2026-11-11).** At 144 Hz in `11.SDDockingBay` the game closed
   once when a rocket launcher shot exploded: an SPU job's host stack was 8 bytes off alignment. Not seen again in two
   full plays of the chapter. If it happens, keep `play.log` and the core and play on with the stack tripwire build
