@@ -188,7 +188,7 @@ Kept:
 
 | Change | Measured |
 |---|---|
-| The frame clock sleeps until about 2 ms before the next tick, then the game's own loop spins the rest and takes the tick as before (`native_ppu/clock.cpp`, `frame_wait.h`; `KZ_FRAME_WAIT_SPIN=1` restores) | standing still at 60 Hz, the main thread 98.6 to 43.7 % busy (Level 7) and 99.0 to 49.0 % (Level 1), about half a core less for the process; 144 Hz unchanged (it never waits there) |
+| The frame clock sleeps until about 2 ms before the next tick, then the game's own loop spins the rest and takes the tick as before (`native_ppu/clock.cpp`, `frame_wait.h`; `KZ_FRAME_WAIT_SPIN=1` restores) | standing still at 60 Hz, the main thread 98.6 to 43.7 % busy (Level 7) and 99.0 to 49.0 % (Level 1), about half a core less for the process; at 144 Hz a frame mostly takes longer than a tick, so there is little to wait |
 | SPURS admits only workloads the game kicked or that asked for idle SPUs (`PS3_SPURS_WANTED=2`, patch 1017's mode 2 after Project Helghast's 1074; `PS3_SPURS_WANTED=0` restores) | process CPU per frame -4.6 % [-5.0, -4.2] (Level 7) and -6.0 % [-8.5, -3.5] (Level 1); fps +0.85 % [+0.19, +1.5] (Level 7), +1.45 % [-1.2, +4.2] (Level 1); standing still, the SPURS threads 19 to 15 % and 34 to 27 % of a core at 60 Hz |
 | Each reservation context registered once (patch 3037, upstream #758): a correctness fix, after about 127 thread starts a thread could stop being told of reservation breaks | neutral: process -0.24 % [-1.1, +0.6] (Level 7), -0.24 % [-3.6, +3.1] (Level 1) |
 
