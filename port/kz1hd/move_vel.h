@@ -5,38 +5,48 @@
  *
  * func_00294178(r3 the player controller) fills the controller's movement
  * record once a frame. With the player object at controller +0x18, it tests
- * the player's velocity (+0x80..+0x88, units a second) against a direction of
- * the player's (+0x30..+0x38; on the ground it is the ground's normal):
+ * the player's velocity (+0x80..+0x88, units a second) against an axis of
+ * the player's (+0x30..+0x38, the second row of its matrix):
  *
- *     d = dot(direction, velocity)
+ *     d = dot(axis, velocity)
  *     if |d| > sin(pi/4)  (0.7071: the float pi/4 at 0x294164 through
- *                          func_003C2518, which returns its sine for r4 = 1)
+ *                          func_003C2518 with r4 = 1)
  *         d < 0 (the float 0.0 at 0x294168) ? set byte +0x66 : set byte +0x24
  *
- * and stores |velocity| at +0x28. The first-person character's update
- * (func_00229ED0) reads the record through the state machine at its +0x164
- * (vtable +0x5C; the record is +0x1C of that object, so the flag above is the
- * record's +0x8): with the flag it takes another value for the weapon's
- * animation variable (record +0xC to character +0x424, then times 100 into
- * anim variable 16, func_001BAA98 at 0x22A294), and the weapon's 1-D blend
- * (func_00196DB8, its parameter from func_00197A90) then picks another pair
- * of clips: the weapon jumps between two poses.
+ * and stores |velocity| at +0x28. ASSUMPTION: the axis is the direction the
+ * player faces and the two bytes mean "moving forward" and "moving backward"
+ * (in the logged case it was horizontal, (0.255, 0.967, 0) with z up, and the
+ * player had been walking that way before a wall turned him aside); in the
+ * logged run the byte was set from d = 0.723 up and clear up to d = 0.702.
+ *
+ * The first-person character's update (func_00229ED0) reads the record
+ * through the state machine at its +0x164 (vtable +0x5C; the record is +0x1C
+ * of that object, so the byte above is the record's +0x8): with the byte set
+ * its +0x424 is another value (0.35 against 0.95 in the logged run), which
+ * goes, times 100, into the weapon's anim variable 16 (func_001BAA98 at
+ * 0x22A294), the parameter of the weapon's 1-D blend (func_00196DB8, read by
+ * func_00197A90): another pair of clips, and the weapon jumps between two
+ * poses.
  *
  * The velocity is the position's change over the last tick (+0x50..+0x58)
  * divided by the tick (checked in game: equal to the logged positions'
- * difference times 144). Walking up a slope the ground contact moves the
- * player by a few millimetres up and down from tick to tick. On the PS3 a
- * tick is 1/30 s and such a step changes the velocity by about 0.1; with the
- * port's game clock at 144 ticks a second the same millimetres change it by
- * about 0.5, the dot product wanders across 0.7071 from frame to frame
- * (measured: 0.70 to 0.86 in consecutive frames) and the flag, the weapon's
- * blend parameter (35 against 95) and the weapon with it chatter.
+ * difference times 144). A player pushed against a wall slides along it and
+ * the collision moves him by a few millimetres from tick to tick. On the PS3
+ * a tick is 1/30 s and such a step changes the velocity by about 0.1; with
+ * the port's game clock at 144 ticks a second the same millimetres change it
+ * by about 0.5: d went 0.70, 0.86, 0.77, 0.52 in consecutive frames, the
+ * byte, the blend parameter and the weapon with it changed from frame to
+ * frame.
  *
  * So while that function runs, the player's velocity is the one the PS3
  * would have seen: the change of position over the last 1/30 s of game time
  * (the positions of the last ticks, kept here; between two kept ticks the
  * position is interpolated). At 30 ticks a second that is the last tick's
  * change, the game's own value, and nothing is replaced.
+ *
+ * This is one cause of the weapon shaking above 30 ticks a second; the
+ * shaking in the dropship yard of chapter 9 has another one, not found yet
+ * (docs/dev/weapon-shake-144.md).
  */
 #ifndef KZ_MOVE_VEL_H
 #define KZ_MOVE_VEL_H

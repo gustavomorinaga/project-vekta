@@ -12,6 +12,12 @@ are linked.
   answer, after Project Helghast) removed the more common case where single weapon parts jumped. Workarounds: play at
   60 Hz, or set `KZ_JM_SKIP_US=10` (about 15 % slower in Level 7). Investigation:
   [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md).
+- **First-person weapon shaking in the 144 Hz mode (2026-11-12).** In the same yard of chapter 9, "Hidden Pasts",
+  looking towards the rock face and the crashed dropship, the first-person weapon shakes strongly while walking; the
+  character model looks right. It is not the ghosting above (no frame repeats the previous pose), and the same with
+  `PS3_SPURS_WANTED=0` and `KZ_FRAME_WAIT_SPIN=1`. One cause of such shaking is fixed (the weapon's pose set chosen
+  from the last tick's velocity while sliding along a wall), but the yard still shakes with that fix: its cause is
+  not known yet. Workaround: play at 60 Hz. Investigation: [dev/weapon-shake-144.md](dev/weapon-shake-144.md).
 - **One crash when a rocket exploded in Level 11 (2026-11-11).** At 144 Hz in `11.SDDockingBay` the game closed
   once when a rocket launcher shot exploded: an SPU job's host stack was 8 bytes off alignment. Not seen again in two
   full plays of the chapter. If it happens, keep `play.log` and the core and play on with the stack tripwire build

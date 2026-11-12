@@ -11,8 +11,8 @@
  * that velocity meanwhile (the call runs on the game's main thread).
  *
  * KZ_MOVE_VEL30=0 (default 1): the velocity of the last tick, as before this
- * fix (the first-person weapon then shakes when walking on slopes above
- * 30 ticks a second).
+ * fix (the first-person weapon then shakes while the player slides along a
+ * wall above 30 ticks a second).
  */
 #include "native_ppu.h"
 #include "../move_vel.h"

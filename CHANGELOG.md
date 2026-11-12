@@ -35,12 +35,12 @@ program and folder that build it. Until a release that calls itself playable
   after Project Helghast's patch 1074) ([docs/dev/performance.md](docs/dev/performance.md)).
 
 ### Fixed
-- First-person weapon shaking at 60 and 144 fps while walking on slopes (seen in the dropship yard of chapter 9,
-  "Hidden Pasts"): the game decides from the player's velocity along the ground's normal which pose set the weapon
-  uses, and took that velocity from the last tick only. With ticks 2 to 5 times shorter than the PS3's, the ground
-  contact's few millimetres from tick to tick pushed it across the game's limit from frame to frame and the weapon
-  jumped between two poses. That test now sees the velocity over the last 1/30 s of game time, as on the PS3
-  (`KZ_MOVE_VEL30=0` goes back to the old way).
+- One cause of the first-person weapon shaking above 30 fps: while the player pushes against a wall and slides along
+  it, the game decides from his velocity which pose set the weapon uses, and took that velocity from the last tick
+  only. With ticks 2 to 5 times shorter than the PS3's, the collision's few millimetres from tick to tick pushed it
+  across the game's limit from frame to frame and the weapon jumped between two poses. That test now sees the velocity
+  over the last 1/30 s of game time, as on the PS3 (`KZ_MOVE_VEL30=0` goes back to the old way). The shaking in the
+  dropship yard of chapter 9 has another cause and is still there ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 - Reservations: after many thread starts a thread could stop being told when another one broke its
   reservation (ps3recomp patch 3037, after upstream pull request #758).
 - Scripted events at 60 and 144 fps: the level scripts' update ran once per frame, so above 30 fps everything they

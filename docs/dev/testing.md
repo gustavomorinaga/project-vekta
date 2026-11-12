@@ -38,7 +38,7 @@ an existing profile changes the menu flow.
   before the fix, and `KZ_SCRIPT_SMOOTH=0` lets objects the scripts move jump once per 1/30 s instead of sliding
   (`port/kz1hd/native_ppu/script_update.cpp`).
 - `KZ_MOVE_VEL30=0` gives the player's movement record the velocity of the last tick again instead of the last 1/30 s
-  (the first-person weapon then shakes when walking on slopes above 30 ticks a second;
+  (the first-person weapon then shakes while the player slides along a wall above 30 ticks a second;
   [weapon-shake-144.md](weapon-shake-144.md)).
 
 ## Pictures

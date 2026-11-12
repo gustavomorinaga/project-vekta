@@ -1,8 +1,8 @@
 /* The player's velocity as the movement record sees it (port/kz1hd/move_vel.h): the change of position over the last
  * 1/30 s of game time, as on the PS3, whatever the game clock's tick rate. Before, func_00294178 took the change over
- * the last tick: at 144 ticks a second the ground contact's few millimetres from tick to tick made the velocity's
- * component along the ground's normal wander across sin(pi/4) from frame to frame while walking up a slope, the record's
- * flag (+0x24) chattered and the first-person weapon jumped between two poses (chapter 9, the dropship yard). */
+ * the last tick: at 144 ticks a second the few millimetres a collision moves the player from tick to tick made the
+ * velocity's component along the player's axis wander across sin(pi/4) from frame to frame while he slid along a wall,
+ * the record's flag (+0x24) chattered and the first-person weapon jumped between two poses. */
 #include <math.h>
 #include <stdio.h>
 #include "move_vel.h"
@@ -14,14 +14,14 @@ static void check(const char* what, int ok, double got)
     else printf("ok   %s (%.6f)\n", what, got);
 }
 
-/* func_00294178's test: |dot(normal, velocity)| > sin(pi/4) and the dot not negative sets the flag */
+/* func_00294178's test: |dot(axis, velocity)| > sin(pi/4) and the dot not negative sets the flag */
 static int flag(const float n[3], const float v[3])
 {
     const float d = n[0] * v[0] + n[1] * v[1] + n[2] * v[2];
     return fabsf(d) > sinf(0.78539819f) && !(d < 0.0f);
 }
 
-/* the same ground jitter for every tick rate: a fixed offset per 1/1440 s of game time */
+/* the same collision jitter for every tick rate: a fixed offset per 1/1440 s of game time */
 static float jitter(long t1440)
 {
     unsigned x = (unsigned)t1440 * 2654435761u;
@@ -29,12 +29,12 @@ static float jitter(long t1440)
     return ((float)(x & 0xFFFF) / 65535.0f - 0.5f) * 0.003f;   /* +-1.5 mm */
 }
 
-/* Walks up a slope for 20 s at `hz` ticks a second and counts the flag's changes, with the velocity of the last tick
+/* Slides along a wall for 20 s at `hz` ticks a second and counts the flag's changes, with the velocity of the last tick
  * (window = 0) or of the last 1/30 s (window = 1, move_vel_window). */
 static int flag_changes(int hz, int window)
 {
-    const float normal[3] = {0.255f, 0.967f, 0.0f};          /* the slope's, logged in game */
-    const float speed[3] = {1.65f, 0.39f, 0.0f};             /* along it: dot = 0.80, above 0.7071 */
+    const float axis[3] = {0.255f, 0.967f, 0.0f};            /* the player's, logged in game */
+    const float speed[3] = {1.65f, 0.39f, 0.0f};             /* along the wall: dot = 0.80, above 0.7071 */
     struct move_vel m = {0};
     float last[3] = {0, 0, 0};
     int changes = 0, prev = -1;
@@ -46,7 +46,7 @@ static int flag_changes(int hz, int window)
         move_vel_add(&m, 0x13000000u, tick, pos);
         if (tick < 1000 + hz) continue;                     /* the first second: history and the first step */
         if (window) move_vel_window(&m, hz, v);
-        const int f = flag(normal, v);
+        const int f = flag(axis, v);
         if (prev >= 0 && f != prev) changes++;
         prev = f;
     }
@@ -58,7 +58,7 @@ int main(void)
     /* the bug and the fix */
     const int ps3 = flag_changes(30, 0), raw144 = flag_changes(144, 0), fix144 = flag_changes(144, 1);
     const int raw60 = flag_changes(60, 0), fix60 = flag_changes(60, 1);
-    check("30 ticks a second (the PS3): the flag holds while walking up the slope", ps3 == 0, ps3);
+    check("30 ticks a second (the PS3): the flag holds while sliding along the wall", ps3 == 0, ps3);
     check("144 ticks a second, the last tick's velocity: the flag chatters (the bug)", raw144 > 20, raw144);
     check("144 ticks a second, the last 1/30 s: the flag holds", fix144 == 0, fix144);
     check("60 ticks a second, the last tick's velocity: the flag chatters", raw60 > 5, raw60);
