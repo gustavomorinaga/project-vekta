@@ -54,3 +54,4 @@ tools/tests/test_hud_layout.sh
 tools/tests/test_view_aspect.sh
 tools/tests/test_post.sh
 tools/tests/test_vk_debug.sh
+tools/tests/test_pc_deps.sh

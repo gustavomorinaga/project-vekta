@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 13 Nov 2026 13:59:50 -0300
+Subject: [PATCH] Vulkan: rsx_vulkan_temporal_active, whether the temporal
+ upscaler runs
+
+A title's options screen shows a setting the temporal upscaler overrides
+as not in use while it runs: with FSR 3.1 or DLSS the MLAA is not
+dispatched (vk_eng_mlaa returns after vk_tm_scene_end), so an
+anti-aliasing switch does nothing then. rsx_vulkan_temporal_built only
+says which upscalers the build has; this says whether one was chosen at
+start, was made with the device and was not dropped since (s_tm.ok).
+
+Read-only, any thread; nothing changes for a title that does not call it.
+---
+ libs/video/rsx_vulkan_backend.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index bec666a..184b261 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -4649,6 +4649,12 @@ static struct {
+     u32 frames, skipped;
+ } s_tm;
+ 
++/* Whether the temporal upscaler (PS3RECOMP_TEMPORAL) is running: chosen at
++ * start, made with the device, and not dropped since. It then takes the
++ * place of the MLAA (vk_eng_mlaa: vk_tm_scene_end), so a title's options
++ * screen can show the anti-aliasing setting as not in use. Any thread. */
++int rsx_vulkan_temporal_active(void) { return s_tm.ok; }
++
+ static int vk_eng_depth_readback(void* user, u32 depth, u32 x, u32 y, u32 w, u32 h,
+                                  float* out, u32 out_pitch);
+ 
