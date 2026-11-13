@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 12 Nov 2026 21:48:25 -0300
+Subject: [PATCH] draw engine: a pass capture writing vertices converts cache
+ hits again
+
+With the converted-vertex cache (patches 2062, 2063) a draw that hits it
+skips the conversion, so dc.verts still holds the last converted draw's
+vertices while dc.n_verts is the hit's count. A pass capture that writes
+each draw's vertices (RSX_ENGINE_PASS_DUMP_DRAWS, an F12 capture's
+draws.txt and .f32 files) wrote that other draw's data under this draw's
+name, and could read past the end of what was converted. While such a
+capture runs, a hit takes the PS3RECOMP_ENG_VCACHE_VERIFY path: it is
+converted anyway and compared with the stored copy (counted, and logged
+when it differs), so the capture writes this draw's own vertices and also
+checks the cache. Outside a capture nothing changes.
+
+tests/test_engine_vertex_cache.c (tools/test_rsx_vertex_cache.py): an F12
+capture over draw A, draw B, then A again (a hit) writes A's vertices; it
+wrote B's before.
+---
+ libs/video/rsx_draw_engine.c                |  6 +++-
+ libs/video/tests/test_engine_vertex_cache.c | 36 +++++++++++++++++++++
+ 2 files changed, 41 insertions(+), 1 deletion(-)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 77eeeeb..b6db33f 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -4028,7 +4028,11 @@ static void sink_end(void* user, const rsx_dispatch* r)
+     /* PS3RECOMP_ENG_VCACHE_VERIFY=1: a hit is converted anyway and checked
+      * against the stored copy, byte for byte; a copy that differs is counted,
+      * logged and not drawn (the fresh conversion is). */
+-    const int vc_fresh = vc_hit && g.vc_verify;   /* converted already, in dc */
++    /* So does a pass capture that writes each draw's vertices (draws.txt and
++     * an F12 capture's .f32 files): on a hit, dc would still hold the last
++     * converted draw's vertices, and the capture would write those under
++     * this draw's name. */
++    const int vc_fresh = vc_hit && (g.vc_verify || (s_pd.draws_log && pd_capturing()));   /* converted already, in dc */
+     if (vc_fresh && !eng_vc_verify(vc_hit, prim, &layout, rebuild))
+         vc_hit = NULL;
+     if (vc_hit) {
+diff --git a/libs/video/tests/test_engine_vertex_cache.c b/libs/video/tests/test_engine_vertex_cache.c
+index 7ab4ed7..106762c 100644
+--- a/libs/video/tests/test_engine_vertex_cache.c
++++ b/libs/video/tests/test_engine_vertex_cache.c
+@@ -11,6 +11,8 @@
+ #undef main
+ #include "rsx_draw_engine.c"
+ 
++#include <unistd.h>
++
+ #define M_IDXBUF_ADDR   0x181Cu
+ #define M_IDXBUF_FMT    0x1820u
+ #define M_IDX_BATCH     0x1824u
+@@ -284,6 +286,40 @@ int main(void)
+     engine_down();
+     unsetenv("PS3RECOMP_ENG_VCACHE_VERIFY");
+ 
++    /* An F12 capture (g_rsx_capture_request) writes each draw's vertices; a
++     * hit is converted again for it, so what it writes is this draw's own
++     * vertices and not the last converted draw's: A (x 0), B (x 3), A again.
++     * The capture folder is made in the working directory: a temporary one. */
++    {
++        char dir[] = "/tmp/vcache-capture-XXXXXX", cwd[1024];
++        CHECK(mkdtemp(dir) != NULL && getcwd(cwd, sizeof cwd) != NULL && chdir(dir) == 0,
++              "capture: a temporary working directory");
++        for (u32 i = 0; i < 8; i++) set_vertex(i, (float)i);
++        up(1);
++        draw_triangle();                                   /* A: vertices 0-2, converted */
++        g_rsx_capture_request = 1;
++        m(M_BEGIN_END, RSX_PRIMITIVE_TRIANGLES);           /* B: vertices 3-5, converted */
++        m(M_DRAW_ARRAYS, 3u | ((3u - 1u) << 24));
++        m(M_BEGIN_END, 0u);
++        CHECK(s_pd.state == 2 && s_pd.draws_log != NULL, "capture: running, with draws.txt");
++        const u64 checked = g.vc_verified, hits = stats().hits;
++        draw_triangle();                                   /* A again: a hit */
++        const float x0 = dc.verts ? ((const float*)dc.verts)[0] : -1.0f;
++        CHECK(stats().hits == hits + 1 && g.vc_verified == checked + 1 && g.vc_mismatches == 0,
++              "capture: the hit is converted and checked (checked %llu, differed %llu)",
++              (unsigned long long)g.vc_verified, (unsigned long long)g.vc_mismatches);
++        CHECK(x0 == 0.0f, "capture: the vertices written are the hit's own (x %g; B's is 3)", x0);
++        CHECK(cached_v0[0] == 0.0f, "capture: the hit is still drawn from the cache");
++        if (s_pd.index) { fclose(s_pd.index); s_pd.index = NULL; }
++        if (s_pd.draws_log) { fclose(s_pd.draws_log); s_pd.draws_log = NULL; }
++        s_pd.state = 3; s_pd.open = 0;
++        engine_down();
++        CHECK(chdir(cwd) == 0, "capture: back to the working directory");
++        char cmd[128];
++        snprintf(cmd, sizeof cmd, "rm -rf '%s'", dir);
++        if (system(cmd) != 0) fprintf(stderr, "could not remove %s\n", dir);
++    }
++
+     /* PS3RECOMP_ENG_VCACHE=0: staged as before. */
+     setenv("PS3RECOMP_ENG_VCACHE", "0", 1);
+     up(1);
+-- 
+2.56.1
+
