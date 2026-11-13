@@ -43,6 +43,7 @@
 #include "ppu_recomp.h"
 #include "view.h"
 #include "fov.h"
+#include "post.h"     /* the post-processing strengths */
 #include "view_flat.h"   /* when the picture goes 16:9 */
 #include "lua_states.h"  /* the Lua states given the PC script */
 #include "debug_give.h"  /* KZ_DEBUG_GIVE */
@@ -165,8 +166,12 @@ static void ini_save(void)
  *                             boost also keeps the GPU's clocks up. PS3RECOMP_VK_REFLEX,
  *                             always set so the device gets the extension and the row
  *                             applies at once; nothing without an NVIDIA GPU)
- *   motion_blur = on | off   (the game's radial blur while sprinting, on the GPU after the
- *                             MLAA; off: never. PS3RECOMP_MB_ON, applied at once) */
+ *   antialiasing = mlaa | off   (the game's MLAA, on the GPU; off: none. PS3RECOMP_MLAA_ON,
+ *                             applied at once; KZ_MLAA=spu|off at start still wins)
+ *   motion_blur = 0-100   (the game's radial blur while sprinting, in steps of 10: 100 the
+ *                             game's, 0 none; an older file's on/off is 100/0. post.h,
+ *                             applied at once)
+ *   film_grain  = 0-100   (the game's film grain, the same way. post.h, applied at once) */
 static const char* present_mode(const std::string& v);   /* below, with the PC screen */
 static const struct { const char* key; const char* def; } kVideo[] = {
     { "display", "window" }, { "resolution", "1280x720" }, { "refresh", "0" },
@@ -174,7 +179,7 @@ static const struct { const char* key; const char* def; } kVideo[] = {
     { "overlay", "off" }, { "widescreen", "on" }, { "field_of_view", "87" }, { "weapon_fov", "87" },
     { "hud_size", "1" }, { "hud_position", "1" }, { "intro", "on" }, { "anisotropic", "game" },
     { "upscaler", "linear" }, { "sharpness", "0.2" }, { "temporal", "off" }, { "speakers", "2" }, { "language", "system" },
-    { "reflex", "off" }, { "motion_blur", "on" },
+    { "reflex", "off" }, { "antialiasing", "mlaa" }, { "motion_blur", "100" }, { "film_grain", "100" },
 };
 /* MangoHUD with a preset for recording the game's progress: frame rate and
  * frame time, CPU per core, GPU, memory, resolution and driver. A
@@ -206,7 +211,9 @@ void rsx_vulkan_set_reflex(int mode);
 int  rsx_vulkan_reflex_available(void);
 int  rsx_vulkan_temporal_built(void);
 void rsx_vulkan_set_motion_blur(int on);
+void rsx_vulkan_set_mlaa(int on);
 int  rsx_vulkan_output_size(int* w, int* h);
+extern volatile int kz_post_pct[KZ_POST_COUNT];   /* native_ppu/post.cpp */
 }
 static bool s_widescreen = true;
 static void view_load(void)
@@ -216,6 +223,23 @@ static void view_load(void)
     kz_view.weapon_scale = (float)fov_scale(fov_setting(atof(s_ini["weapon_fov"].c_str())));
     kz_view.hud_scale = std::clamp((float)atof(s_ini["hud_size"].c_str()), 0.5f, 1.5f);
     kz_view.hud_pos = std::clamp((float)atof(s_ini["hud_position"].c_str()), 0.0f, 1.0f);
+}
+/* The post-processing strengths (post.h): the ini's text to kz_post_pct,
+ * written back as the step it became (an older file's motion_blur = on/off
+ * becomes 100/0). */
+static void post_load(void)
+{
+    static const struct { const char* key; int fx; } k[] = {
+        { "motion_blur", KZ_POST_MOTION_BLUR }, { "film_grain", KZ_POST_FILM_GRAIN } };
+    bool changed = false;
+    for (auto& e : k) {
+        const int v = kz_post_parse(s_ini[e.key].c_str(), KZ_POST_FULL);
+        kz_post_pct[e.fx] = v;
+        const std::string t = std::to_string(v);
+        if (s_ini[e.key] != t) { s_ini[e.key] = t; changed = true; }
+    }
+    if (s_ini["antialiasing"] != "off" && s_ini["antialiasing"] != "mlaa") { s_ini["antialiasing"] = "mlaa"; changed = true; }
+    if (changed) ini_write();
 }
 /* Every frame (main.cpp): the cameras' aspect follows the window's. A window
  * no wider than 16:9 keeps the game's picture, with bars. */
@@ -294,7 +318,9 @@ extern "C" void kz_pc_settings_env(void)
     setenv("PS3RECOMP_AUDIO_CHANNELS", s_ini["speakers"].c_str(), 0);
     if (s_ini["language"] != "system") setenv("PS3_LANG", s_ini["language"].c_str(), 0);
     setenv("PS3RECOMP_VK_REFLEX", s_ini["reflex"] == "boost" ? "2" : s_ini["reflex"] == "on" ? "1" : "0", 0);
-    setenv("PS3RECOMP_MB_ON", s_ini["motion_blur"] == "off" ? "0" : "1", 0);   /* KZ_MOTION_BLUR=0 (jm.c) wins */
+    post_load();
+    setenv("PS3RECOMP_MB_ON", kz_post_pct[KZ_POST_MOTION_BLUR] > 0 ? "1" : "0", 0);   /* KZ_MOTION_BLUR=0 (jm.c) wins */
+    setenv("PS3RECOMP_MLAA_ON", s_ini["antialiasing"] == "off" ? "0" : "1", 0);
     overlay_env();
     view_load();
 }
@@ -516,9 +542,12 @@ static void set_reflex(ppu_context* c) { attr_log("set_reflex", c); if ((int32_t
  * the rows follow). Custom: whatever does not match one. Original is the
  * PS3's: 30 fps, 16:9 with bars, its FOV and HUD, no upscaler; the others
  * keep the picture widescreen. */
-static const struct { const char* name; const char* kv[8][2]; } kPresets[] = {
+static void post_apply(void);   /* below, with the post rows */
+static const int kPresetKeys = 11;
+static const struct { const char* name; const char* kv[kPresetKeys][2]; } kPresets[] = {
     { "original",    { { "fps_limit", "30" }, { "widescreen", "off" }, { "field_of_view", "87" }, { "hud_size", "1" },
-                       { "scale", "100" }, { "anisotropic", "game" }, { "upscaler", "linear" }, { "motion_blur", "on" } } },
+                       { "scale", "100" }, { "anisotropic", "game" }, { "upscaler", "linear" }, { "antialiasing", "mlaa" },
+                       { "motion_blur", "100" }, { "film_grain", "100" }, { nullptr, nullptr } } },
     { "performance", { { "fps_limit", "60" }, { "widescreen", "on" }, { "scale", "75" }, { "upscaler", "fsr" }, { "sharpness", "0.2" },
                        { "anisotropic", "game" }, { nullptr, nullptr } } },
     { "balanced",    { { "fps_limit", "60" }, { "widescreen", "on" }, { "scale", "100" }, { "upscaler", "fsr" }, { "sharpness", "0.2" },
@@ -529,25 +558,40 @@ static const struct { const char* name; const char* kv[8][2]; } kPresets[] = {
 static void get_preset(ppu_context* c) { attr_log("get_preset", c); int idx = 0;
     for (int k = 0; k < 4 && !idx; k++) {
         bool all = true;
-        for (int i = 0; i < 8 && kPresets[k].kv[i][0]; i++) all = all && s_ini[kPresets[k].kv[i][0]] == kPresets[k].kv[i][1];
+        for (int i = 0; i < kPresetKeys && kPresets[k].kv[i][0]; i++) all = all && s_ini[kPresets[k].kv[i][0]] == kPresets[k].kv[i][1];
         if (all) idx = k + 1;
     }
     wrf((uint32_t)c->gpr[4], (float)idx); }
 static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t)c->gpr[5] != 2) return;
     const int k = std::clamp((int)lroundf(in_f(c)), 0, 4) - 1;
     if (k < 0) return;
-    for (int i = 0; i < 8 && kPresets[k].kv[i][0]; i++) s_ini[kPresets[k].kv[i][0]] = kPresets[k].kv[i][1];
+    for (int i = 0; i < kPresetKeys && kPresets[k].kv[i][0]; i++) s_ini[kPresets[k].kv[i][0]] = kPresets[k].kv[i][1];
     ini_write();
     apply_fps(atoi(s_ini["fps_limit"].c_str()));
     view_load();
+    post_apply();
     fsr_apply(); }
 static void get_intro(ppu_context* c) { attr_log("get_intro", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["intro"] != "off"; }
 static void set_intro(ppu_context* c) { attr_log("set_intro", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["intro"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); }
-static void get_mblur(ppu_context* c) { attr_log("get_mblur", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["motion_blur"] != "off"; }
-static void set_mblur(ppu_context* c) { attr_log("set_mblur", c); if ((int32_t)c->gpr[5] != 2) return;
-    const bool on = vm_base[(uint32_t)c->gpr[4]] != 0;
-    s_ini["motion_blur"] = on ? "on" : "off"; ini_write(); rsx_vulkan_set_motion_blur(on); }
+/* The post rows (post.h): the strengths as 0-10 (0 % to 100 %), the
+ * anti-aliasing as 0 the game's MLAA, 1 off; all applied at once. */
+static void post_apply(void)
+{
+    post_load();
+    rsx_vulkan_set_motion_blur(kz_post_pct[KZ_POST_MOTION_BLUR] > 0);
+    rsx_vulkan_set_mlaa(s_ini["antialiasing"] != "off");
+}
+static void get_post_key(ppu_context* c, const char* key) { wrf((uint32_t)c->gpr[4], (float)kz_post_row(atoi(s_ini[key].c_str()))); }
+static void set_post_key(ppu_context* c, const char* key) { if ((int32_t)c->gpr[5] != 2) return;
+    s_ini[key] = std::to_string(kz_post_from_row((int)lroundf(in_f(c)))); ini_write(); post_apply(); }
+static void get_mblur(ppu_context* c) { attr_log("get_mblur", c); get_post_key(c, "motion_blur"); }
+static void set_mblur(ppu_context* c) { attr_log("set_mblur", c); set_post_key(c, "motion_blur"); }
+static void get_grain(ppu_context* c) { attr_log("get_grain", c); get_post_key(c, "film_grain"); }
+static void set_grain(ppu_context* c) { attr_log("set_grain", c); set_post_key(c, "film_grain"); }
+static void get_aa(ppu_context* c) { attr_log("get_aa", c); wrf((uint32_t)c->gpr[4], s_ini["antialiasing"] == "off" ? 1.0f : 0.0f); }
+static void set_aa(ppu_context* c) { attr_log("set_aa", c); if ((int32_t)c->gpr[5] != 2) return;
+    s_ini["antialiasing"] = lroundf(in_f(c)) == 1 ? "off" : "mlaa"; ini_write(); post_apply(); }
 static void get_wide(ppu_context* c) { attr_log("get_wide", c); vm_base[(uint32_t)c->gpr[4]] = s_widescreen; }
 static void set_wide(ppu_context* c) { attr_log("set_wide", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["widescreen"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); view_load(); }
@@ -634,7 +678,9 @@ static void kz_pc_inject_attrs(ppu_context* ctx)
         { kSysClass, "Upscaler",              kFloatVtbl, get_upscaler, set_upscaler },
         { kSysClass, "Sharpness",             kFloatVtbl, get_sharp,   set_sharp },
         { kSysClass, "Temporal",              kFloatVtbl, get_temporal, set_temporal },
-        { kSysClass, "MotionBlur",            kBoolVtbl,  get_mblur,   set_mblur },
+        { kSysClass, "AntiAliasing",          kFloatVtbl, get_aa,      set_aa },
+        { kSysClass, "MotionBlur",            kFloatVtbl, get_mblur,   set_mblur },
+        { kSysClass, "FilmGrain",             kFloatVtbl, get_grain,   set_grain },
         { kSysClass, "Speakers",              kFloatVtbl, get_speakers, set_speakers },
         { kSysClass, "Language",              kFloatVtbl, get_language, set_language },
         { kSysClass, "Reflex",                kFloatVtbl, get_reflex,  set_reflex },
@@ -685,6 +731,13 @@ static std::string kz_lua(void)
     const std::string fs = tb & 1 ? "FSR 3.1 " : "FSR 3.1 (not built) ", dl = tb & 2 ? "DLSS " : "DLSS (not built) ";
     const std::string tl = fs + "Quality;" + fs + "Balanced;" + fs + "Performance;" + fs + "Native AA;" +
                            dl + "Quality;" + dl + "Balanced;" + dl + "Performance;" + (tb & 2 ? "DLAA" : "DLAA (not built)");
+    /* the post strengths' rows (post.h): 0 % to 100 %, 100 the game's */
+    std::string kPct, kPctL;
+    for (int r = 0; r <= 10; r++) {
+        kPct += (r ? ";" : "") + std::to_string(r) + ".0";
+        kPctL += (r ? ";" : "") + std::to_string(r * 10) + (r == 10 ? "% (Original)" : "%");
+    }
+    kPct += "|" + kPctL;
     std::string L =
     "if not KZPCROWS then\n"
     " KZPCROWS = function(b)\n"
@@ -708,15 +761,17 @@ static std::string kz_lua(void)
     "  b:SetItem(15, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
     "  b:SetItem(16, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Temporal|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0|"
         "$Conditions.Off$;" + tl + "', 'Temporal Upscaler (on restart)'))\n"
-    "  b:SetItem(17, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MotionBlur|true;false|$Conditions.On$;$Conditions.Off$', 'Motion Blur'))\n"
-    "  b:SetItem(18, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MouseYaw', 'Mouse Left/Right Sensitivity'))\n"
-    "  b:SetItem(19, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MousePitch', 'Mouse Up/Down Sensitivity'))\n"
-    "  b:SetItem(20, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MouseInvert|true;false|$Conditions.On$;$Conditions.Off$', 'Mouse Invert Look'))\n"
-    "  b:SetItem(21, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
-    "  b:SetItem(22, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
-    "  b:SetItem(23, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
+    "  b:SetItem(17, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.AntiAliasing|0.0;1.0|Original (MLAA);$Conditions.Off$', 'Anti-aliasing'))\n"
+    "  b:SetItem(18, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MotionBlur|" + kPct + "', 'Motion Blur'))\n"
+    "  b:SetItem(19, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FilmGrain|" + kPct + "', 'Film Grain'))\n"
+    "  b:SetItem(20, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MouseYaw', 'Mouse Left/Right Sensitivity'))\n"
+    "  b:SetItem(21, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MousePitch', 'Mouse Up/Down Sensitivity'))\n"
+    "  b:SetItem(22, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MouseInvert|true;false|$Conditions.On$;$Conditions.Off$', 'Mouse Invert Look'))\n"
+    "  b:SetItem(23, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
+    "  b:SetItem(24, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
+    "  b:SetItem(25, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
 #ifndef _WIN32   /* MangoHUD is a Linux Vulkan layer (under Proton: mangohud %command%) */
-    "  b:SetItem(24, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
+    "  b:SetItem(26, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
 #endif
     " end\n"
     "end\n"

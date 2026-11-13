@@ -199,6 +199,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Added</span>Post-processing settings on the PC page, applied at once: Anti-aliasing (the game&#x27;s own MLAA, or off), and Motion Blur and Film Grain from 0 % to 100 % in steps of 10 (<code>antialiasing</code>, <code>motion_blur</code>, <code>film_grain</code> in <code>kz1hd_pc.ini</code>). 100 % is the game&#x27;s own effect, unchanged; lower values scale the strength the game draws the effect with. The Original (PS3) preset sets all three to the game&#x27;s. An older <code>motion_blur = on | off</code> reads as 100 / 0. Colour grading stays the game&#x27;s.</li>
 <li><span class="sec">Added</span>Developer tools for performance work (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/perf-bench.md">docs/dev/perf-bench.md</a>, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/performance.md">docs/dev/performance.md</a>): <code>KZ_ROUTE_REBASE</code> writes a route replay out as a route of the current build, so that later replays follow it exactly; <code>tools/perf/ab.sh</code> compares two builds in alternating runs on a route and reports the paired difference; ps3recomp patch 3034 (a guest store journal, built only with <code>-DKZ_STORE_JOURNAL=ON</code>) lets <code>KZ_NATIVE_VERIFY</code> check native functions with wide effects against their lifted bodies. Off unless used; the game itself is unchanged.</li>
 <li><span class="sec">Changed</span>Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test routes the RSX thread uses 0.5-0.6 ms less per frame (about 13-15 %), the whole game about 4-7 % less; frame rates the same. <code>PS3RECOMP_ENG_VCACHE=0</code> turns it off (after ps3recomp pull request #718).</li>
 <li><span class="sec">Changed</span><code>tools/pgo.sh</code> (optional profile-guided build): it makes its own play folder (<code>work/vfs-test</code>) from <code>work/vfs</code> instead of failing on a fresh clone, ends with a check that the profile matches the lifted code (a stale profile was silently ignored), shows a failing step&#x27;s log instead of hiding it, and can train on recorded routes (<code>KZ_PGO_ROUTES</code>). An instrumented build now writes its profile when the game quits, so a route replay that ends on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about +4 % trained on combat routes (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">docs/BUILDING.md</a>).</li>
@@ -264,8 +265,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 139 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 139 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 140 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 140 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -274,6 +275,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> Post-processing settings on the PC page, applied at once: Anti-aliasing (the game&#x27;s own MLAA, or off), and Motion Blur...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Developer tools for performance work (docs/dev/perf-bench.md, docs/dev/performance.md): KZ_ROUTE_REBASE writes a route...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about...</span></li>
 <li><time>next</time><span><b>Unreleased</b> tools/pgo.sh (optional profile-guided build): it makes its own play folder (work/vfs-test) from work/vfs instead of...</span></li>
@@ -281,7 +283,6 @@
 <li><time>next</time><span><b>Unreleased</b> Reservations: after many thread starts a thread could stop being told when another one broke its reservation...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Scripted events at 60 and 144 fps: the level scripts&#x27; update ran once per frame, so above 30 fps everything they count...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the...</span></li>
-<li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Developer switches for testing (docs/dev/testing.md): KZ_DEBUG_GOD=1 keeps the game&#x27;s own God mode on, KZ_DEBUG_GIVE...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
