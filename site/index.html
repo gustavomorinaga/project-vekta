@@ -49,7 +49,7 @@
 <main class="main">
 <article id="status" class="news">
 <h2>Status: Partly playable</h2>
-<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 24 PC features</p>
+<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 25 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><span class="st st-ok">Works</span></li>
@@ -151,8 +151,8 @@
 </tbody></table></div>
 </details>
 <h3>What the port adds</h3>
-<p>24 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
-<details><summary>All 24 PC features</summary>
+<p>25 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
+<details><summary>All 25 PC features</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>Default</th><th>Where it is set</th></tr></thead>
 <tbody>
@@ -168,6 +168,7 @@
 <tr><td>Any aspect ratio: Hor+ for 21:9, 32:9 and wider, the game&#x27;s own 4:3 view for 4:3 and 16:10, menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code>, <code>aspect</code> (auto or a forced 4:3, 16:10, 16:9, 21:9, 32:9, on restart); below 16:9 the world&#x27;s FOV is the game&#x27;s own 4:3 rule, 100 / aspect vertical (func_00211540: 75 vertical, 91.3 horizontal at 4:3); Level 1, 2026-11-12/13: 1440x1080 and 1920x1200 windows fill with the HUD in the corners, round crosshair, weapon as the game frames it; forced 4:3 in a 2560-wide window and forced 16:10 in a 3440-wide one show their box with side bars; pause menu 16:9 with bars; 21:9 unchanged</td></tr>
 <tr><td>Field of view, 70 to 120 degrees horizontal at 16:9 (the game&#x27;s is 87), for the world and, apart, the first-person weapon</td><td>the game&#x27;s</td><td><code>field_of_view</code>, <code>weapon_fov</code> (the weapon&#x27;s game value is 45 degrees vertical, 72 horizontal at 16:9); a scope&#x27;s zoom keeps its magnification; an older <code>fov</code> (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it; 3440x1440, F12 capture: weapon projection 45 degrees vertical as at 16:9 (was 30.7), weapon_fov 110 gives 63.8</td></tr>
 <tr><td>HUD size and position</td><td>the game&#x27;s</td><td><code>hud_size</code>, <code>hud_position</code></td></tr>
+<tr><td>Crosshair size (the weapon crosshair alone, apart from the HUD size)</td><td>the game&#x27;s</td><td><code>crosshair_size</code></td></tr>
 <tr><td>Presets: Original (PS3), Performance, Balanced, Quality</td><td>Custom when nothing matches</td><td></td></tr>
 <tr><td>Keyboard and mouse: direct mouse look with its own sensitivity and invert, mouse in menus and dialogs</td><td>on</td><td><code>mouse_yaw</code>, <code>mouse_pitch</code>, <code>mouse_invert</code>; keys in <code>kz1hd_keys.ini</code> (written on the first run; edit to remap)</td></tr>
 <tr><td>Controllers through SDL, with keyboard and mouse at the same time</td><td>merged</td><td><code>controllers</code>; <code>PAD_MOUSE_STICK=1</code> puts the mouse on the right stick instead</td></tr>
@@ -199,6 +200,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Added</span>Crosshair Size in the PC settings: a slider for the weapon crosshair alone, from half to one and a half times the game&#x27;s size (the middle of the slider is the game&#x27;s), applied at once. It changes the crosshair&#x27;s pieces, not where the game puts them, keeps them on whole pixels of the window so they stay sharp, and is the same share of the screen&#x27;s height at any resolution and aspect. HUD Size no longer changes the crosshair. Original preset: the game&#x27;s size (<code>crosshair_size</code> in <code>kz1hd_pc.ini</code>).</li>
 <li><span class="sec">Added</span>4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world&#x27;s view is the game&#x27;s own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.</li>
 <li><span class="sec">Added</span>An &quot;Aspect Ratio&quot; row on the PC page (<code>aspect</code> in <code>kz1hd_pc.ini</code>: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the picture at that ratio whatever the window&#x27;s, with bars, and the menus and movies inside that box; applies on the next start.</li>
 <li><span class="sec">Added</span>Developer tools for performance work (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/perf-bench.md">docs/dev/perf-bench.md</a>, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/performance.md">docs/dev/performance.md</a>): <code>KZ_ROUTE_REBASE</code> writes a route replay out as a route of the current build, so that later replays follow it exactly; <code>tools/perf/ab.sh</code> compares two builds in alternating runs on a route and reports the paired difference; ps3recomp patch 3034 (a guest store journal, built only with <code>-DKZ_STORE_JOURNAL=ON</code>) lets <code>KZ_NATIVE_VERIFY</code> check native functions with wide effects against their lifted bodies. Off unless used; the game itself is unchanged.</li>
@@ -277,6 +279,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> Crosshair Size in the PC settings: a slider for the weapon crosshair alone, from half to one and a half times the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world&#x27;s view is the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> An &quot;Aspect Ratio&quot; row on the PC page (aspect in kz1hd_pc.ini: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the picture at that...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Developer tools for performance work (docs/dev/perf-bench.md, docs/dev/performance.md): KZ_ROUTE_REBASE writes a route...</span></li>
@@ -284,7 +287,6 @@
 <li><time>next</time><span><b>Unreleased</b> tools/pgo.sh (optional profile-guided build): it makes its own play folder (work/vfs-test) from work/vfs instead of...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Borderless and fullscreen at Windows&#x27; display scaling above 100 %: the program did not tell Windows it handles DPI...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Reservations: after many thread starts a thread could stop being told when another one broke its reservation...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
