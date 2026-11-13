@@ -64,6 +64,23 @@ int main(void)
              2.0 * atan(tan(fov_weapon(game169, FOV_ASPECT, 1, fov_scale(100.0)) * 0.5 * FOV_DEG) * FOV_ASPECT) / FOV_DEG,
              2.0 * atan(tan(45.0 * 0.5 * FOV_DEG) * FOV_ASPECT * fov_scale(100.0)) / FOV_DEG, 1e-9);
     }
+    /* below 16:9 (fov_narrow): the game's own 4:3 rule, vertical = 100 / aspect (func_00211540): 75 vertical and
+     * 91.3 horizontal at 4:3, 62.5 at 16:10; 16:9 and wider exactly the game's; a scope's zoom keeps its
+     * magnification (the 16:9 zoom halves the FOV; so does the narrowed one) */
+    {
+        const double a43 = 4.0 / 3.0, a1610 = 1.6, hor43 = 2.0 * atan(tan(75.0 * 0.5 * FOV_DEG) * a43) / FOV_DEG;
+        near("narrow 16:9", fov_narrow(FOV_GAME_V, FOV_ASPECT), FOV_GAME_V, 0.0);
+        near("narrow 21:9", fov_narrow(FOV_GAME_V, 3440.0 / 1440.0), FOV_GAME_V, 0.0);
+        near("narrow none", fov_narrow(FOV_GAME_V, 0.0), FOV_GAME_V, 0.0);
+        near("narrow 4:3 vertical", fov_narrow(FOV_GAME_V, a43), 100.0 / a43, 0.01);
+        near("narrow 4:3 horizontal", 2.0 * atan(tan(fov_narrow(FOV_GAME_V, a43) * 0.5 * FOV_DEG) * a43) / FOV_DEG, hor43, 1e-9);
+        near("narrow 4:3 is 91.3 h", hor43, 91.31, 0.01);
+        near("narrow 16:10 vertical", fov_narrow(FOV_GAME_V, a1610), 100.0 / a1610, 0.01);
+        near("narrow 4:3 zoom", fov_narrow(FOV_GAME_V * 0.5, a43), fov_narrow(FOV_GAME_V, a43) * 0.5, 1e-9);
+        /* the weapon: the game's own 60 / aspect / 0.75 at 4:3 (60 degrees) is kept, not taken back to 16:9's 45 */
+        const double game43 = 60.0 / a43 / 0.75;
+        near("weapon 4:3 the game's", fov_weapon(game43, a43, 1, 1.0), 60.0, 1e-9);
+    }
     /* menu rows */
     near("row 0", fov_row_value(0), 0.0, 0.0);
     near("row 1", fov_row_value(1), 70.0, 0.0);

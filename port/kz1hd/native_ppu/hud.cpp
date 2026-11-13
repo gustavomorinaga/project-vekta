@@ -9,7 +9,9 @@
  * at 0x55998 for the frame (640x360 for the downsampled passes), and
  * (0, 512, 448, 0) at 0x554A8 for the menus' layout. Both are widened to the
  * window's aspect around their middle, so the 2D keeps its shape in the 16:9
- * middle of the screen: menus, movies, loading screens. The screen effects
+ * middle of the screen: menus, movies, loading screens. On a window narrower
+ * than 16:9 the same narrows them: the middle of the layout fills the window
+ * at its own shape (hud_layout.h). The screen effects
  * (func_0029BDC8, func_0029C030: the blend of the previous frame, film grain)
  * and the HUD's damage overlays (one per side, drawn from 0x4CD830, 0x4CD908,
  * 0x4CD9D0 and 0x4CE4B8) keep theirs and cover
@@ -32,20 +34,22 @@
 #include "native_ppu.h"
 #include "../view.h"
 #include "hud_sites.h"
+#include "hud_layout.h"
+#include "crosshair.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <algorithm>
+
+extern "C" int rsx_vulkan_output_size(int* w, int* h);
 
 namespace {
 
 constexpr float kW = 1280.0f, kH = 720.0f, k169 = 16.0f / 9.0f;
 constexpr uint32_t kOrthoRet = 0x0005599C, kMenuOrthoRet = 0x000554AC;
 
-/* The 2D layer's width over 16:9's: 1 unless the frame is widened. */
-float widen()
-{
-    return kz_view.aspect > k169 + 0.01f ? kz_view.aspect / k169 : 1.0f;
-}
+/* The 2D layer's width over 16:9's (hud_layout.h): 1 at 16:9, more for a
+ * wider window, less for a narrower one. */
+float widen() { return hud_widen(kz_view.aspect); }
 
 bool log_on()
 {
@@ -96,10 +100,11 @@ double tut_x(double x) { const double k = kz_view.hud_scale > 0.0f ? kz_view.hud
 /* A HUD point (x, y), in the 1280x720 layout, to its place: it goes with the
  * third of the screen it is in (in y too), sized by the HUD size around that
  * side, and the sides spread from the 16:9 middle (position 0) to the screen's
- * edges (position 1), in the widened 2D layer. ax/ay: the sides used. */
+ * edges (position 1), in the widened 2D layer; on a window narrower than 16:9
+ * they are at its edges (hud_spread). ax/ay: the sides used. */
 double hud_side_x(double x, double ax, double e)
 {
-    const double spread = 1.0 + (e - 1.0) * kz_view.hud_pos;
+    const double spread = hud_spread(e, kz_view.hud_pos);
     const double size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0;
     return kW * 0.5 + (ax - kW * 0.5) * spread + (x - ax) * size;
 }
@@ -203,6 +208,54 @@ void func_00227A1C(ppu_context* ctx)
               fprintf(stderr, "[kz-hud-site] 0x%08X hud %d: %g %g %g %g (middle x %g: %s third)\n", ret, hud ? 1 : 0,
                       ldf(rect), ldf(rect + 4), ldf(rect + 8), ldf(rect + 12), cx,
                       cx < kW / 3 ? "left" : cx > kW * 2 / 3 ? "right" : "middle"); } } }
+    /* KZ_HUD_SKIP=0xA,0xB (diagnostic): those drawing sites draw nothing;
+     * KZ_HUD_TRACE=0xA,0xB: each rectangle they draw with a new size,
+     * texture coordinates or place (to whole units), once, for 1000 of them */
+    { static uint32_t skip[8], trace[8]; static int ns = -1, nt;
+      if (ns < 0) { ns = 0;
+          auto parse = [](const char* s, uint32_t* o, int* n) { while (s && *s && *n < 8) { char* e2; o[(*n)++] = (uint32_t)strtoul(s, &e2, 0); s = *e2 ? e2 + 1 : e2; } };
+          parse(getenv("KZ_HUD_SKIP"), skip, &ns); parse(getenv("KZ_HUD_TRACE"), trace, &nt); }
+      for (int i = 0; i < nt; i++) if (trace[i] == ret) {
+          static uint64_t seen[1000]; static int n;
+          const uint32_t uv = (uint32_t)ctx->gpr[4];
+          uint64_t key = ret;
+          /* its size and texture exactly, its place to whole units */
+          const double w = ldf(rect + 8) - ldf(rect), h = ldf(rect + 12) - ldf(rect + 4);
+          key = key * 1000003u + (uint64_t)llround(w * 1000) * 31u + (uint64_t)llround(h * 1000);
+          key = key * 1000003u + (uint64_t)llround(ldf(rect) + w * 0.5) * 7919u + (uint64_t)llround(ldf(rect + 4) + h * 0.5);
+          for (int k = 0; k < 16; k += 4) key = key * 1000003u + vm_read32(uv + k);
+          int j = 0; while (j < n && seen[j] != key) j++;
+          if (j == n && n < 1000) { seen[n++] = key;
+              fprintf(stderr, "[kz-hud-trace] 0x%08X: %g %g %g %g uv %g %g %g %g y*%g%+g\n", ret, ldf(rect), ldf(rect + 4),
+                      ldf(rect + 8), ldf(rect + 12), ldf(uv), ldf(uv + 4), ldf(uv + 8), ldf(uv + 12),
+                      ldf((uint32_t)ctx->gpr[6]), ldf((uint32_t)ctx->gpr[6] + 4)); } }
+      for (int i = 0; i < ns; i++) if (skip[i] == ret) return; }
+    /* ENHANCEMENT: the weapon crosshair (crosshair.h) keeps the place the
+     * game gives it, outside the HUD Size rule; its pieces take their own
+     * size, on whole pixels of the output */
+    if (crosshair_site(ret)) {
+        const double cs = crosshair_clamp(kz_view.crosshair_size > 0.0f ? kz_view.crosshair_size : 1.0);
+        if (cs == 1.0) {
+            func_00227A1C_lifted(ctx);
+            return;
+        }
+        const uint32_t ys = (uint32_t)ctx->gpr[6];
+        const double sy = ldf(ys), ty = ldf(ys + 4);
+        if (sy == 0.0) {
+            func_00227A1C_lifted(ctx);
+            return;
+        }
+        double r[4] = { ldf(rect), ldf(rect + 4) * sy + ty, ldf(rect + 8), ldf(rect + 12) * sy + ty };
+        int ow = 0, oh = 0;
+        const double lw = kW * widen();
+        if (!rsx_vulkan_output_size(&ow, &oh)) { ow = (int)lround(lw); oh = (int)kH; }   /* no window: the frame's own */
+        crosshair_rect(r, cs, ow, oh, lw, kH);
+        const uint32_t tmp = ((uint32_t)ctx->gpr[1] - 0x400) & ~15u;
+        stf(tmp, r[0]); stf(tmp + 4, (r[1] - ty) / sy); stf(tmp + 8, r[2]); stf(tmp + 12, (r[3] - ty) / sy);
+        ctx->gpr[5] = tmp;
+        func_00227A1C_lifted(ctx);
+        return;
+    }
     const float e = widen(), size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0f;
     if (!hud || (e == 1.0f && size == 1.0f)) {
         func_00227A1C_lifted(ctx);

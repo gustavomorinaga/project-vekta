@@ -54,5 +54,8 @@ run test_wall_clock -std=gnu17 -I "$P/runtime/syscalls" "$KZ_ROOT/tools/tests/te
 # PS3_GCM_MAX_QUEUED_FLIPS's wait on Windows (patch 2055): a real wait, not 1000 rounds of Sleep(0), with 100 us naps
 # on a high-resolution timer (patch 2058), not Sleep(1)
 run test_gcm_flip_wait -std=gnu17 -I "$P/libs/video" "$KZ_ROOT/tools/tests/test_gcm_flip_wait.c"
+# Windows display scaling (port/kz1hd/win_dpi.h): per-monitor DPI aware once SDL's video starts
+run test_win_dpi -std=gnu17 -I "$KZ_ROOT/port/kz1hd" -I "$SD/include" -I "$SD/include/SDL2" \
+  "$KZ_ROOT/tools/tests/test_win_dpi.c" -L "$SD/lib" -lSDL2
 echo "wine host tests: $((n - ${#failed[@]}))/$n pass${failed:+; failed: ${failed[*]}}"
 (( ${#failed[@]} == 0 ))
