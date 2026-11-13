@@ -43,6 +43,7 @@
 #include "ppu_recomp.h"
 #include "view.h"
 #include "fov.h"
+#include "native_ppu/crosshair.h"   /* the crosshair's size */
 #include "view_flat.h"   /* when the picture goes 16:9 */
 #include "view_aspect.h" /* the aspect setting */
 #include "lua_states.h"  /* the Lua states given the PC script */
@@ -145,6 +146,9 @@ static void ini_save(void)
  *                horizontal at 16:9 on the weapon itself)
  *   hud_size   = 0.5-1.5   (1: the game's)
  *   hud_position = 0-1     (0: the HUD in the 16:9 middle, 1: at the screen's edges)
+ *   crosshair_size = CROSSHAIR_MIN-CROSSHAIR_MAX of crosshair.h   (1: the game's; the
+ *                    weapon crosshair's pieces only, not where the game puts them;
+ *                    HUD Size leaves the crosshair alone)
  *   overlay    = off | mangohud   (MangoHUD's statistics over the game; at the next
  *                                  start: the layer loads with the Vulkan instance)
  *   intro      = on | off   (the opening movie at start-up; off: skipped, KZ_SKIP_INTRO)
@@ -177,7 +181,7 @@ static const struct { const char* key; const char* def; } kVideo[] = {
     { "display", "window" }, { "resolution", "1280x720" }, { "refresh", "0" },
     { "vsync", "on" }, { "fps_limit", "60" }, { "controllers", "merged" }, { "scale", "100" },
     { "overlay", "off" }, { "widescreen", "on" }, { "aspect", "auto" }, { "field_of_view", "87" }, { "weapon_fov", "87" },
-    { "hud_size", "1" }, { "hud_position", "1" }, { "intro", "on" }, { "anisotropic", "game" },
+    { "hud_size", "1" }, { "hud_position", "1" }, { "crosshair_size", "1" }, { "intro", "on" }, { "anisotropic", "game" },
     { "upscaler", "linear" }, { "sharpness", "0.2" }, { "temporal", "off" }, { "speakers", "2" }, { "language", "system" },
     { "reflex", "off" }, { "motion_blur", "on" },
 };
@@ -201,7 +205,7 @@ static void overlay_env(void)
 }
 /* ---- the picture: widescreen, FOV and the HUD (view.h) ----------------- */
 
-extern "C" struct KzView kz_view = { 0.0f, 0.0f, 1.0f, 1.0f };
+extern "C" struct KzView kz_view = { 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f };
 extern "C" volatile unsigned kz_view_3d = 0, kz_view_menu = 0;
 extern "C" unsigned cellGcm_flip_request_count(void);   /* frames the game asked to flip */
 extern "C" {
@@ -222,6 +226,7 @@ static void view_load(void)
     kz_view.weapon_scale = (float)fov_scale(fov_setting(atof(s_ini["weapon_fov"].c_str())));
     kz_view.hud_scale = std::clamp((float)atof(s_ini["hud_size"].c_str()), 0.5f, 1.5f);
     kz_view.hud_pos = std::clamp((float)atof(s_ini["hud_position"].c_str()), 0.0f, 1.0f);
+    kz_view.crosshair_size = (float)crosshair_clamp(atof(s_ini["crosshair_size"].c_str()));
 }
 /* Every frame (main.cpp): the cameras' aspect follows the window's, or the
  * aspect setting's (fixed at start, as the frame's size is). Within 0.01 of
@@ -526,11 +531,12 @@ static void set_reflex(ppu_context* c) { attr_log("set_reflex", c); if ((int32_t
 /* Presets: a set of the options above, written at once (internal resolution
  * and anisotropy at the next start, the rest at once; reopen the screen to see
  * the rows follow). Custom: whatever does not match one. Original is the
- * PS3's: 30 fps, 16:9 with bars, its FOV and HUD, no upscaler; the others
+ * PS3's: 30 fps, 16:9 with bars, its FOV, HUD and crosshair, no upscaler; the others
  * keep the picture widescreen. */
-static const struct { const char* name; const char* kv[8][2]; } kPresets[] = {
+static const struct { const char* name; const char* kv[9][2]; } kPresets[] = {
     { "original",    { { "fps_limit", "30" }, { "widescreen", "off" }, { "field_of_view", "87" }, { "hud_size", "1" },
-                       { "scale", "100" }, { "anisotropic", "game" }, { "upscaler", "linear" }, { "motion_blur", "on" } } },
+                       { "crosshair_size", "1" }, { "scale", "100" }, { "anisotropic", "game" }, { "upscaler", "linear" },
+                       { "motion_blur", "on" } } },
     { "performance", { { "fps_limit", "60" }, { "widescreen", "on" }, { "scale", "75" }, { "upscaler", "fsr" }, { "sharpness", "0.2" },
                        { "anisotropic", "game" }, { nullptr, nullptr } } },
     { "balanced",    { { "fps_limit", "60" }, { "widescreen", "on" }, { "scale", "100" }, { "upscaler", "fsr" }, { "sharpness", "0.2" },
@@ -541,14 +547,14 @@ static const struct { const char* name; const char* kv[8][2]; } kPresets[] = {
 static void get_preset(ppu_context* c) { attr_log("get_preset", c); int idx = 0;
     for (int k = 0; k < 4 && !idx; k++) {
         bool all = true;
-        for (int i = 0; i < 8 && kPresets[k].kv[i][0]; i++) all = all && s_ini[kPresets[k].kv[i][0]] == kPresets[k].kv[i][1];
+        for (int i = 0; i < 9 && kPresets[k].kv[i][0]; i++) all = all && s_ini[kPresets[k].kv[i][0]] == kPresets[k].kv[i][1];
         if (all) idx = k + 1;
     }
     wrf((uint32_t)c->gpr[4], (float)idx); }
 static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t)c->gpr[5] != 2) return;
     const int k = std::clamp((int)lroundf(in_f(c)), 0, 4) - 1;
     if (k < 0) return;
-    for (int i = 0; i < 8 && kPresets[k].kv[i][0]; i++) s_ini[kPresets[k].kv[i][0]] = kPresets[k].kv[i][1];
+    for (int i = 0; i < 9 && kPresets[k].kv[i][0]; i++) s_ini[kPresets[k].kv[i][0]] = kPresets[k].kv[i][1];
     ini_write();
     apply_fps(atoi(s_ini["fps_limit"].c_str()));
     view_load();
@@ -583,6 +589,11 @@ static void set_wfov(ppu_context* c) { attr_log("set_wfov", c); set_fov_key(c, "
 static void get_hud_size(ppu_context* c) { attr_log("get_hud_size", c); wrf((uint32_t)c->gpr[4], kz_view.hud_scale - 0.5f); }
 static void set_hud_size(ppu_context* c) { attr_log("set_hud_size", c); if ((int32_t)c->gpr[5] != 2) return;
     set_num("hud_size", 0.5f + std::clamp(in_f(c), 0.0f, 1.0f)); }
+/* ENHANCEMENT: the crosshair's size (crosshair.h): the slider's middle is the
+ * game's size, its ends CROSSHAIR_MIN and CROSSHAIR_MAX. */
+static void get_xhair(ppu_context* c) { attr_log("get_xhair", c); wrf((uint32_t)c->gpr[4], (float)crosshair_to_slider(kz_view.crosshair_size)); }
+static void set_xhair(ppu_context* c) { attr_log("set_xhair", c); if ((int32_t)c->gpr[5] != 2) return;
+    set_num("crosshair_size", (float)crosshair_from_slider(in_f(c))); }
 static void get_hud_pos(ppu_context* c) { attr_log("get_hud_pos", c); wrf((uint32_t)c->gpr[4], kz_view.hud_pos); }
 static void set_hud_pos(ppu_context* c) { attr_log("set_hud_pos", c); if ((int32_t)c->gpr[5] != 2) return;
     set_num("hud_position", std::clamp(in_f(c), 0.0f, 1.0f)); }
@@ -646,6 +657,7 @@ static void kz_pc_inject_attrs(ppu_context* ctx)
         { kSysClass, "WeaponFOV",             kFloatVtbl, get_wfov,    set_wfov },
         { kSysClass, "HUDSize",               kFloatVtbl, get_hud_size, set_hud_size },
         { kSysClass, "HUDPosition",           kFloatVtbl, get_hud_pos, set_hud_pos },
+        { kSysClass, "CrosshairSize",         kFloatVtbl, get_xhair,   set_xhair },
         { kSysClass, "IntroMovie",            kBoolVtbl,  get_intro,   set_intro },
         { kSysClass, "Anisotropic",           kFloatVtbl, get_aniso,   set_aniso },
         { kSysClass, "Upscaler",              kFloatVtbl, get_upscaler, set_upscaler },
@@ -713,28 +725,29 @@ static std::string kz_lua(void)
     "  b:SetItem(4, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Aspect|0.0;1.0;2.0;3.0;4.0;5.0|Auto (Window);4:3;16:10;16:9;21:9;32:9', 'Aspect Ratio (on restart)'))\n"
     "  b:SetItem(5, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Field of View'))\n"
     "  b:SetItem(6, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.WeaponFOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Weapon Field of View'))\n"
-    "  b:SetItem(7, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDSize', 'HUD Size'))\n"
-    "  b:SetItem(8, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDPosition', 'HUD Position'))\n"
-    "  b:SetItem(9, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.VSync|0.0;1.0;2.0;3.0|On;Off;Adaptive;FIFO (VRR)', 'V-Sync'))\n"
-    "  b:SetItem(10, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FrameRate|0.0;1.0;2.0|30;60;144', 'Frame Rate Limit'))\n"
-    "  b:SetItem(11, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Reflex|0.0;1.0;2.0|$Conditions.Off$;$Conditions.On$;On + Boost', '" +
+    "  b:SetItem(7, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDPosition', 'HUD Position'))\n"
+    "  b:SetItem(8, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDSize', 'HUD Size'))\n"
+    "  b:SetItem(9, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.CrosshairSize', 'Crosshair Size'))\n"
+    "  b:SetItem(10, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.VSync|0.0;1.0;2.0;3.0|On;Off;Adaptive;FIFO (VRR)', 'V-Sync'))\n"
+    "  b:SetItem(11, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FrameRate|0.0;1.0;2.0|30;60;144', 'Frame Rate Limit'))\n"
+    "  b:SetItem(12, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Reflex|0.0;1.0;2.0|$Conditions.Off$;$Conditions.On$;On + Boost', '" +
         std::string(rsx_vulkan_reflex_available() ? "NVIDIA Reflex" : "NVIDIA Reflex (not available)") + "'))\n"
-    "  b:SetItem(12, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
-    "  b:SetItem(13, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution (on restart)'))\n"
-    "  b:SetItem(14, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering (on restart)'))\n"
-    "  b:SetItem(15, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
-    "  b:SetItem(16, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
-    "  b:SetItem(17, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Temporal|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0|"
+    "  b:SetItem(13, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
+    "  b:SetItem(14, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution (on restart)'))\n"
+    "  b:SetItem(15, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering (on restart)'))\n"
+    "  b:SetItem(16, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
+    "  b:SetItem(17, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
+    "  b:SetItem(18, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Temporal|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0|"
         "$Conditions.Off$;" + tl + "', 'Temporal Upscaler (on restart)'))\n"
-    "  b:SetItem(18, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MotionBlur|true;false|$Conditions.On$;$Conditions.Off$', 'Motion Blur'))\n"
-    "  b:SetItem(19, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MouseYaw', 'Mouse Left/Right Sensitivity'))\n"
-    "  b:SetItem(20, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MousePitch', 'Mouse Up/Down Sensitivity'))\n"
-    "  b:SetItem(21, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MouseInvert|true;false|$Conditions.On$;$Conditions.Off$', 'Mouse Invert Look'))\n"
-    "  b:SetItem(22, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
-    "  b:SetItem(23, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
-    "  b:SetItem(24, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
+    "  b:SetItem(19, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MotionBlur|true;false|$Conditions.On$;$Conditions.Off$', 'Motion Blur'))\n"
+    "  b:SetItem(20, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MouseYaw', 'Mouse Left/Right Sensitivity'))\n"
+    "  b:SetItem(21, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MousePitch', 'Mouse Up/Down Sensitivity'))\n"
+    "  b:SetItem(22, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MouseInvert|true;false|$Conditions.On$;$Conditions.Off$', 'Mouse Invert Look'))\n"
+    "  b:SetItem(23, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
+    "  b:SetItem(24, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
+    "  b:SetItem(25, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
 #ifndef _WIN32   /* MangoHUD is a Linux Vulkan layer (under Proton: mangohud %command%) */
-    "  b:SetItem(25, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
+    "  b:SetItem(26, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
 #endif
     " end\n"
     "end\n"
