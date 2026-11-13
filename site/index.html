@@ -49,7 +49,7 @@
 <main class="main">
 <article id="status" class="news">
 <h2>Status: Partly playable</h2>
-<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 25 PC features</p>
+<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 26 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><span class="st st-ok">Works</span></li>
@@ -151,13 +151,13 @@
 </tbody></table></div>
 </details>
 <h3>What the port adds</h3>
-<p>25 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
-<details><summary>All 25 PC features</summary>
+<p>26 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
+<details><summary>All 26 PC features</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>Default</th><th>Where it is set</th></tr></thead>
 <tbody>
 <tr><td>Display mode: window, borderless, fullscreen; Alt+Enter</td><td>window</td><td><code>display</code>; <code>KZ_FULLSCREEN=1</code> in <code>tools/play.sh</code></td></tr>
-<tr><td>Output resolution and refresh rate</td><td>1280x720, the monitor&#x27;s rate</td><td><code>resolution</code>, <code>refresh</code>; resizable window, aspect kept</td></tr>
+<tr><td>Output resolution and refresh rate</td><td>1280x720, the monitor&#x27;s rate</td><td><code>resolution</code>, <code>refresh</code>; resizable window, aspect kept; a new size is drawn at full detail from the next start</td></tr>
 <tr><td>Internal resolution scale, 50 % to 200 %</td><td>100 %</td><td><code>scale</code>; applies on the next start</td></tr>
 <tr><td>V-Sync on, off, adaptive; VRR</td><td>on</td><td><code>vsync</code></td></tr>
 <tr><td>NVIDIA Reflex: off, on, on + boost (<code>VK_NV_low_latency2</code>)</td><td>off</td><td><code>reflex</code>; &quot;not available&quot; without the extension; no measured fps or latency change in Level 7</td></tr>
@@ -202,7 +202,7 @@
 <p class="meta">not released yet</p>
 <ul class="rlist">
 <li><span class="sec">Added</span>4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world&#x27;s view is the game&#x27;s own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.</li>
-<li><span class="sec">Added</span>An &quot;Aspect Ratio&quot; row on the PC page (<code>aspect</code> in <code>kz1hd_pc.ini</code>: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the picture at that ratio whatever the window&#x27;s, with bars; applies on the next start.</li>
+<li><span class="sec">Added</span>An &quot;Aspect Ratio&quot; row on the PC page (<code>aspect</code> in <code>kz1hd_pc.ini</code>: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the picture at that ratio whatever the window&#x27;s, with bars, and the menus and movies inside that box; applies on the next start.</li>
 <li><span class="sec">Added</span>Crosshair Size in the PC settings: a slider for the weapon crosshair alone, from half to one and a half times the game&#x27;s size (the middle of the slider is the game&#x27;s), applied at once. It changes the crosshair&#x27;s pieces, not where the game puts them, keeps them on whole pixels of the window so they stay sharp, and is the same share of the screen&#x27;s height at any resolution and aspect. HUD Size no longer changes the crosshair. Original preset: the game&#x27;s size (<code>crosshair_size</code> in <code>kz1hd_pc.ini</code>).</li>
 <li><span class="sec">Added</span>Post-processing settings on the PC page, applied at once: Anti-aliasing (the game&#x27;s own MLAA, or off), and Motion Blur, Film Grain and Glow from 0 % to 100 % in steps of 10 (<code>antialiasing</code>, <code>motion_blur</code>, <code>film_grain</code>, <code>glow</code> in <code>kz1hd_pc.ini</code>). 100 % is the game&#x27;s own effect, unchanged; lower values scale the strength the game draws the effect with. The Original (PS3) preset sets them all to the game&#x27;s. An older <code>motion_blur = on | off</code> reads as 100 / 0. Colour grading stays the game&#x27;s.</li>
 <li><span class="sec">Added</span>Developer tools for performance work (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/perf-bench.md">docs/dev/perf-bench.md</a>, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/performance.md">docs/dev/performance.md</a>): <code>KZ_ROUTE_REBASE</code> writes a route replay out as a route of the current build, so that later replays follow it exactly; <code>tools/perf/ab.sh</code> compares two builds in alternating runs on a route and reports the paired difference; ps3recomp patch 3034 (a guest store journal, built only with <code>-DKZ_STORE_JOURNAL=ON</code>) lets <code>KZ_NATIVE_VERIFY</code> check native functions with wide effects against their lifted bodies. Off unless used; the game itself is unchanged.</li>
@@ -210,6 +210,10 @@
 <li><span class="sec">Changed</span>Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test routes the RSX thread uses 0.5-0.6 ms less per frame (about 13-15 %), the whole game about 4-7 % less; frame rates the same. <code>PS3RECOMP_ENG_VCACHE=0</code> turns it off (after ps3recomp pull request #718).</li>
 <li><span class="sec">Changed</span><code>tools/pgo.sh</code> (optional profile-guided build): it makes its own play folder (<code>work/vfs-test</code>) from <code>work/vfs</code> instead of failing on a fresh clone, ends with a check that the profile matches the lifted code (a stale profile was silently ignored), shows a failing step&#x27;s log instead of hiding it, and can train on recorded routes (<code>KZ_PGO_ROUTES</code>). An instrumented build now writes its profile when the game quits, so a route replay that ends on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about +4 % trained on combat routes (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">docs/BUILDING.md</a>).</li>
 <li><span class="sec">Changed</span>Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and stayed about 99 % busy; it now sleeps until shortly before the next tick of the game clock and takes the tick exactly as before, about half a core less (<code>KZ_FRAME_WAIT_SPIN=1</code> goes back to spinning). The SPURS scheduler now runs only the work the game asked for, without probing idle SPUs, which used 4.6 to 6 % less CPU for the whole game on the Level 7 and Level 1 test routes with the same frame rates (<code>PS3_SPURS_WANTED=0</code> goes back to the old way; after Project Helghast&#x27;s patch 1074) (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/performance.md">docs/dev/performance.md</a>).</li>
+<li><span class="sec">Fixed</span>PC page: a row that depends on another is greyed out while that one makes it do nothing, and follows it at once: Resolution in borderless (the desktop&#x27;s size), Aspect Ratio and HUD Position with Widescreen off, FSR Sharpness unless Upscaling is AMD FSR 1, Anti-aliasing while FSR 3.1 or DLSS runs (they replace the MLAA), NVIDIA Reflex without an NVIDIA driver that has it. A greyed row is skipped and keeps its value, with the pad and the mouse.</li>
+<li><span class="sec">Fixed</span>PC page: the Original (PS3) preset now also sets the weapon&#x27;s field of view to the game&#x27;s and the temporal upscaler off; before, a wider weapon FOV or FSR 3.1 / DLSS stayed on after choosing it.</li>
+<li><span class="sec">Fixed</span>PC page with the mouse: holding the button after clicking a value no longer changes the selected row once more.</li>
+<li><span class="sec">Fixed</span>PC page: Display Mode and Resolution say &quot;(detail on restart)&quot;: the window changes at once, but the frame is drawn at the new size only from the next start (until then the old size is scaled to the window).</li>
 <li><span class="sec">Fixed</span>Borderless and fullscreen at Windows&#x27; display scaling above 100 %: the program did not tell Windows it handles DPI itself, so at 150 % a 1920×1200 display gave a 1280×800 picture, stretched (issue #18). It now asks for per-monitor DPI awareness, so the window, the swapchain and the PC page&#x27;s display sizes are in real pixels (<code>SDL_WINDOWS_DPI_AWARENESS</code> in the environment overrides it).</li>
 <li><span class="sec">Fixed</span>The glow of emissive effects (lights, an engine&#x27;s exhaust; measured in the last level&#x27;s docking bay) now shows: a depth buffer read as a colour texture now carries its stencil, which the game&#x27;s glow uses as its mask, and the glow (until now only on the slow <code>KZ_MLAA=spu</code> path) runs on the GPU after the edge smoothing, equal to the PS3&#x27;s chain on every pixel. <code>KZ_GLOW=&lt;0-100&gt;</code> sets its strength for tests (100, the game&#x27;s, by default).</li>
 <li><span class="sec">Fixed</span>Reservations: after many thread starts a thread could stop being told when another one broke its reservation (ps3recomp patch 3037, after upstream pull request #758).</li>
@@ -273,10 +277,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 140 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 140 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
-<p class="meta">how it works · ps3recomp v0.19.0 · 143 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 143 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 150 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 150 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -293,12 +295,6 @@
 <li><time>next</time><span><b>Unreleased</b> Graphics debugging (docs/dev/testing.md, docs/dev/frame-map.md): PS3RECOMP_VK_VALIDATION=1 runs the game with the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about...</span></li>
 <li><time>next</time><span><b>Unreleased</b> tools/pgo.sh (optional profile-guided build): it makes its own play folder (work/vfs-test) from work/vfs instead of...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Borderless and fullscreen at Windows&#x27; display scaling above 100 %: the program did not tell Windows it handles DPI...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The glow of emissive effects (lights, an engine&#x27;s exhaust; measured in the last level&#x27;s docking bay) now shows: a...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Reservations: after many thread starts a thread could stop being told when another one broke its reservation...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Scripted events at 60 and 144 fps: the level scripts&#x27; update ran once per frame, so above 30 fps everything they count...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

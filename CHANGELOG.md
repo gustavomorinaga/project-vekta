@@ -56,6 +56,15 @@ program and folder that build it. Until a release that calls itself playable
   after Project Helghast's patch 1074) ([docs/dev/performance.md](docs/dev/performance.md)).
 
 ### Fixed
+- PC page: a row that depends on another is greyed out while that one makes it do nothing, and follows it at once:
+  Resolution in borderless (the desktop's size), Aspect Ratio and HUD Position with Widescreen off, FSR Sharpness
+  unless Upscaling is AMD FSR 1, Anti-aliasing while FSR 3.1 or DLSS runs (they replace the MLAA), NVIDIA Reflex
+  without an NVIDIA driver that has it. A greyed row is skipped and keeps its value, with the pad and the mouse.
+- PC page: the Original (PS3) preset now also sets the weapon's field of view to the game's and the temporal upscaler
+  off; before, a wider weapon FOV or FSR 3.1 / DLSS stayed on after choosing it.
+- PC page with the mouse: holding the button after clicking a value no longer changes the selected row once more.
+- PC page: Display Mode and Resolution say "(detail on restart)": the window changes at once, but the frame is drawn
+  at the new size only from the next start (until then the old size is scaled to the window).
 - Borderless and fullscreen at Windows' display scaling above 100 %: the program did not tell Windows it handles DPI
   itself, so at 150 % a 1920×1200 display gave a 1280×800 picture, stretched (issue #18). It now asks for
   per-monitor DPI awareness, so the window, the swapchain and the PC page's display sizes are in real pixels

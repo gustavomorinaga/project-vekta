@@ -12,6 +12,8 @@ int main(void)
     EXPECT(!menu_box_drivable(0x00567340, 1.0f, 0), "VICTORY's statistics (inactive)");
     EXPECT(!menu_box_drivable(0x00567340, 0.0f, 1), "a hidden list");
     EXPECT(!menu_box_drivable(0x005676C0, 1.0f, 1), "another kind of object");
+    EXPECT(menu_widget_enabled(1), "an option row in use (+0x40 = 1)");
+    EXPECT(!menu_widget_enabled(0), "a greyed-out option row (+0x40 = 0: SetEnabled(FALSE))");
     if (fails) return 1;
     puts("test_menu_box: ok");
     return 0;

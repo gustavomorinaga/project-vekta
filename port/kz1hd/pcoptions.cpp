@@ -23,7 +23,8 @@
  * resolution, V-Sync, frame-rate limit, controllers and the mouse, as
  * attributes of the game system object ("PC settings.*"), applied at once
  * (window and swapchain through the Vulkan backend, the game clock through
- * main.cpp) and kept in kz1hd_pc.ini.
+ * main.cpp) and kept in kz1hd_pc.ini. A row that depends on another is
+ * greyed out while that one makes it do nothing (pc_deps.h).
  *
  * PAD_MOUSE_STICK=1 keeps the mouse on the right stick instead (cellPad).
  */
@@ -51,6 +52,7 @@
 #include "debug_give.h"  /* KZ_DEBUG_GIVE */
 #include "menu_box.h"    /* the list box the mouse drives */
 #include "route.h"
+#include "pc_deps.h"     /* which rows are in use */
 
 extern "C" {
 extern uint8_t* vm_base;
@@ -223,6 +225,7 @@ void rsx_vulkan_set_fsr(int on, float sharpness);
 void rsx_vulkan_set_reflex(int mode);
 int  rsx_vulkan_reflex_available(void);
 int  rsx_vulkan_temporal_built(void);
+int  rsx_vulkan_temporal_active(void);   /* ps3recomp patch 2079 */
 void rsx_vulkan_set_motion_blur(int on);
 void rsx_vulkan_set_mlaa(int on);
 void rsx_vulkan_set_glow_strength(int strength256);
@@ -436,6 +439,14 @@ void rsx_vulkan_set_present(const char* mode);
 int  rsx_vulkan_display_sizes(int (*out)[2], int max);
 void pad_set_merge(int on);
 }
+/* the menu should look at the rows in use again (get_deps, below) */
+static volatile bool s_deps_dirty;
+/* A greyed-out row (pc_deps.h) keeps its value whatever input reaches it:
+ * the pad skips such a row, but the game still takes left/right on one that
+ * is selected another way (the mouse's hover selected one; seen 2026-11-13,
+ * Aspect Ratio went to 4:3 with Widescreen off). */
+static unsigned deps_mask(void);
+static bool dep_on(int bit) { return (deps_mask() >> bit) & 1u; }
 static const char* const kDisplays[] = { "window", "borderless", "fullscreen" };
 static const char* const kVsyncs[]   = { "on", "off", "adaptive", "fifo" };
 /* on: mailbox where the driver has it (no tearing, and a frame that misses a
@@ -487,9 +498,9 @@ static void apply_fps(int fps)
 static float in_f(ppu_context* c) { return rdf((uint32_t)c->gpr[4]); }
 static void get_display(ppu_context* c) { attr_log("get_display", c); wrf((uint32_t)c->gpr[4], (float)pick(s_ini["display"], kDisplays, 3)); }
 static void set_display(ppu_context* c) { attr_log("set_display", c); if ((int32_t)c->gpr[5] != 2) return;
-    s_ini["display"] = kDisplays[std::clamp((int)lroundf(in_f(c)), 0, 2)]; ini_write(); apply_display(); }
+    s_ini["display"] = kDisplays[std::clamp((int)lroundf(in_f(c)), 0, 2)]; ini_write(); apply_display(); s_deps_dirty = true; }
 static void get_res(ppu_context* c) { attr_log("get_res", c); res_list(); wrf((uint32_t)c->gpr[4], (float)res_index()); }
-static void set_res(ppu_context* c) { attr_log("set_res", c); if ((int32_t)c->gpr[5] != 2) return; res_list();
+static void set_res(ppu_context* c) { attr_log("set_res", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_RESOLUTION)) return; res_list();
     const int i = std::clamp((int)lroundf(in_f(c)), 0, (int)s_res.size() - 1);
     char b[32]; snprintf(b, sizeof b, "%dx%d", s_res[i].first, s_res[i].second);
     if (s_ini["resolution"] == b) return;
@@ -527,7 +538,7 @@ static void set_aniso(ppu_context* c) { attr_log("set_aniso", c); if ((int32_t)c
 static void fsr_apply(void) { rsx_vulkan_set_fsr(s_ini["upscaler"] == "fsr", (float)atof(s_ini["sharpness"].c_str())); }
 static void get_upscaler(ppu_context* c) { attr_log("get_upscaler", c); wrf((uint32_t)c->gpr[4], s_ini["upscaler"] == "fsr" ? 1.0f : 0.0f); }
 static void set_upscaler(ppu_context* c) { attr_log("set_upscaler", c); if ((int32_t)c->gpr[5] != 2) return;
-    s_ini["upscaler"] = lroundf(in_f(c)) ? "fsr" : "linear"; ini_write(); fsr_apply(); }
+    s_ini["upscaler"] = lroundf(in_f(c)) ? "fsr" : "linear"; ini_write(); fsr_apply(); s_deps_dirty = true; }
 /* The temporal upscaler: at the next start (the scene's size is set then). */
 static const char* const kTemporal[] = { "off", "fsr3-quality", "fsr3-balanced", "fsr3-performance", "fsr3-native",
                                          "dlss-quality", "dlss-balanced", "dlss-performance", "dlss-native" };
@@ -538,7 +549,7 @@ static void set_temporal(ppu_context* c) { attr_log("set_temporal", c); if ((int
     s_ini["temporal"] = kTemporal[std::clamp((int)lroundf(in_f(c)), 0, 8)]; ini_write(); }
 static void get_sharp(ppu_context* c) { attr_log("get_sharp", c);
     wrf((uint32_t)c->gpr[4], 1.0f - std::clamp((float)atof(s_ini["sharpness"].c_str()), 0.0f, 2.0f) / 2.0f); }
-static void set_sharp(ppu_context* c) { attr_log("set_sharp", c); if ((int32_t)c->gpr[5] != 2) return;
+static void set_sharp(ppu_context* c) { attr_log("set_sharp", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_SHARPNESS)) return;
     char b[16]; snprintf(b, sizeof b, "%.2f", 2.0f * (1.0f - std::clamp(in_f(c), 0.0f, 1.0f))); s_ini["sharpness"] = b;
     ini_write(); fsr_apply(); }
 static const char* const kSpeakers[] = { "2", "6", "8" };
@@ -557,20 +568,21 @@ static const char* const kReflex[] = { "off", "on", "boost" };
 static void get_reflex(ppu_context* c) { attr_log("get_reflex", c); int i = 0;
     for (int k = 0; k < 3; k++) if (s_ini["reflex"] == kReflex[k]) i = k;
     wrf((uint32_t)c->gpr[4], (float)i); }
-static void set_reflex(ppu_context* c) { attr_log("set_reflex", c); if ((int32_t)c->gpr[5] != 2) return;
+static void set_reflex(ppu_context* c) { attr_log("set_reflex", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_REFLEX)) return;
     const int i = std::clamp((int)lroundf(in_f(c)), 0, 2);
     s_ini["reflex"] = kReflex[i]; ini_write(); rsx_vulkan_set_reflex(i); }
-/* Presets: a set of the options above, written at once (internal resolution
- * and anisotropy at the next start, the rest at once; reopen the screen to see
- * the rows follow). Custom: whatever does not match one. Original is the
- * PS3's: 30 fps, 16:9 with bars, its FOV, HUD and crosshair, no upscaler; the others
- * keep the picture widescreen. */
+/* Presets: a set of the options above, written at once (internal resolution,
+ * anisotropy and the temporal upscaler at the next start, the rest at once;
+ * the screen's rows follow at once). Custom: whatever does not match one.
+ * Original is the PS3's: 30 fps, 16:9 with bars, its FOV and weapon FOV, HUD
+ * and crosshair, its post-processing, no upscaler; the others keep the
+ * picture widescreen. */
 static void post_apply(void);   /* below, with the post rows */
-static const int kPresetKeys = 13;
+static const int kPresetKeys = 15;
 static const struct { const char* name; const char* kv[kPresetKeys][2]; } kPresets[] = {
-    { "original",    { { "fps_limit", "30" }, { "widescreen", "off" }, { "field_of_view", "87" }, { "hud_size", "1" },
-                       { "crosshair_size", "1" }, { "scale", "100" }, { "anisotropic", "game" }, { "upscaler", "linear" }, { "antialiasing", "mlaa" },
-                       { "motion_blur", "100" }, { "film_grain", "100" }, { "glow", "100" }, { nullptr, nullptr } } },
+    { "original",    { { "fps_limit", "30" }, { "widescreen", "off" }, { "field_of_view", "87" }, { "weapon_fov", "87" }, { "hud_size", "1" },
+                       { "crosshair_size", "1" }, { "scale", "100" }, { "anisotropic", "game" }, { "upscaler", "linear" }, { "temporal", "off" },
+                       { "antialiasing", "mlaa" }, { "motion_blur", "100" }, { "film_grain", "100" }, { "glow", "100" }, { nullptr, nullptr } } },
     { "performance", { { "fps_limit", "60" }, { "widescreen", "on" }, { "scale", "75" }, { "upscaler", "fsr" }, { "sharpness", "0.2" },
                        { "anisotropic", "game" }, { nullptr, nullptr } } },
     { "balanced",    { { "fps_limit", "60" }, { "widescreen", "on" }, { "scale", "100" }, { "upscaler", "fsr" }, { "sharpness", "0.2" },
@@ -593,7 +605,8 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
     apply_fps(atoi(s_ini["fps_limit"].c_str()));
     view_load();
     post_apply();
-    fsr_apply(); }
+    fsr_apply();
+    s_deps_dirty = true; }
 static void get_intro(ppu_context* c) { attr_log("get_intro", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["intro"] != "off"; }
 static void set_intro(ppu_context* c) { attr_log("set_intro", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["intro"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); }
@@ -616,15 +629,15 @@ static void set_grain(ppu_context* c) { attr_log("set_grain", c); set_post_key(c
 static void get_glow(ppu_context* c) { attr_log("get_glow", c); get_post_key(c, "glow"); }
 static void set_glow(ppu_context* c) { attr_log("set_glow", c); set_post_key(c, "glow"); }
 static void get_aa(ppu_context* c) { attr_log("get_aa", c); wrf((uint32_t)c->gpr[4], s_ini["antialiasing"] == "off" ? 1.0f : 0.0f); }
-static void set_aa(ppu_context* c) { attr_log("set_aa", c); if ((int32_t)c->gpr[5] != 2) return;
+static void set_aa(ppu_context* c) { attr_log("set_aa", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_ANTIALIASING)) return;
     s_ini["antialiasing"] = lroundf(in_f(c)) == 1 ? "off" : "mlaa"; ini_write(); post_apply(); }
 static void get_aspect(ppu_context* c) { attr_log("get_aspect", c);
     wrf((uint32_t)c->gpr[4], (float)view_aspect_row(s_ini["aspect"].c_str())); }
-static void set_aspect(ppu_context* c) { attr_log("set_aspect", c); if ((int32_t)c->gpr[5] != 2) return;
+static void set_aspect(ppu_context* c) { attr_log("set_aspect", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_ASPECT)) return;
     s_ini["aspect"] = kViewAspect[std::clamp((int)lroundf(in_f(c)), 0, VIEW_ASPECTS - 1)]; ini_write(); }
 static void get_wide(ppu_context* c) { attr_log("get_wide", c); vm_base[(uint32_t)c->gpr[4]] = s_widescreen; }
 static void set_wide(ppu_context* c) { attr_log("set_wide", c); if ((int32_t)c->gpr[5] != 2) return;
-    s_ini["widescreen"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); view_load(); }
+    s_ini["widescreen"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); view_load(); s_deps_dirty = true; }
 /* The FOV rows (fov.h): 0 the game's 87, then 70 to 120 by 5. The sliders'
  * positions, 0..1: HUD size 0.5-1.5, HUD position as is. */
 static void set_num(const char* key, float v) { char b[32]; snprintf(b, sizeof b, "%.4g", v); s_ini[key] = b; ini_write(); view_load(); }
@@ -647,8 +660,25 @@ static void get_xhair(ppu_context* c) { attr_log("get_xhair", c); wrf((uint32_t)
 static void set_xhair(ppu_context* c) { attr_log("set_xhair", c); if ((int32_t)c->gpr[5] != 2) return;
     set_num("crosshair_size", (float)crosshair_from_slider(in_f(c))); }
 static void get_hud_pos(ppu_context* c) { attr_log("get_hud_pos", c); wrf((uint32_t)c->gpr[4], kz_view.hud_pos); }
-static void set_hud_pos(ppu_context* c) { attr_log("set_hud_pos", c); if ((int32_t)c->gpr[5] != 2) return;
+static void set_hud_pos(ppu_context* c) { attr_log("set_hud_pos", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_HUD_POSITION)) return;
     set_num("hud_position", std::clamp(in_f(c), 0.0f, 1.0f)); }
+/* The option rows made (add_option, with the mouse code below): their widgets */
+struct OptRow { uint32_t w; bool slider; };
+static OptRow s_opts[128];
+static unsigned s_nopts;
+/* The rows in use (pc_deps.h), for the menu's KZPCDEP: the getter is the
+ * mask, a write is the menu saying it has applied it (s_deps_dirty: a setting
+ * a row depends on changed, the menu should look again; lua_binding). The PC
+ * screen's row of each PC_DEP_* bit: */
+static const int kDepRow[PC_DEP_COUNT] = { 2, 4, 7, 17, 19, 12 };   /* Resolution, Aspect, HUD Position, FSR Sharpness, Anti-aliasing, Reflex */
+static unsigned deps_mask(void)
+{
+    const pc_deps_in in = { s_ini["display"].c_str(), s_ini["widescreen"].c_str(), s_ini["upscaler"].c_str(),
+                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available() };
+    return pc_deps_mask(&in);
+}
+static void get_deps(ppu_context* c) { attr_log("get_deps", c); wrf((uint32_t)c->gpr[4], (float)deps_mask()); }
+static void set_deps(ppu_context* c) { attr_log("set_deps", c); if ((int32_t)c->gpr[5] == 2) s_deps_dirty = false; }
 /* Quit: Options > Quit Game (the frontend) sets it; true ends the process (main.cpp). */
 extern "C" void kz_quit(const char* why);
 /* Ready: lua_binding's probe sets it when the state still has a menu
@@ -723,6 +753,7 @@ static void kz_pc_inject_attrs(ppu_context* ctx)
         { kSysClass, "Language",              kFloatVtbl, get_language, set_language },
         { kSysClass, "Reflex",                kFloatVtbl, get_reflex,  set_reflex },
         { kSysClass, "Preset",                kFloatVtbl, get_preset,  set_preset },
+        { kSysClass, "Deps",                  kFloatVtbl, get_deps,    set_deps },
     };
     const uint32_t pc_cat = guest_str(ctx, "PC settings");
     for (unsigned i = 0; i < sizeof a / sizeof a[0]; i++) {
@@ -776,44 +807,70 @@ static std::string kz_lua(void)
         kPctL += (r ? ";" : "") + std::to_string(r * 10) + (r == 10 ? "% (Original)" : "%");
     }
     kPct += "|" + kPctL;
+    /* the rows that depend on another (pc_deps.h), by PC_DEP_* bit, highest first */
+    std::string dep_bits, dep_rows;
+    for (int k = PC_DEP_COUNT - 1; k >= 0; k--) {
+        dep_bits += std::to_string(1u << k) + (k ? ", " : "");
+        dep_rows += std::to_string(kDepRow[k]) + (k ? ", " : "");
+    }
     std::string L =
     "if not KZPCROWS then\n"
+    /* each row's widget, kept to grey it out (KZPCDEP) */
+    " KZPCR = function(i, w) KZPCW[i] = w KZPCB:SetItem(i, 0, w) end\n"
+    /* The dependent rows greyed out while the setting they depend on makes
+     * them do nothing (the mask: PC settings.Deps). Runs from KZPCROWS and
+     * when the host asks (lua_binding: a setting changed); the Deps write
+     * tells the host it ran. The rows' values need nothing: each row reads
+     * its attribute as it is drawn (a preset's rows follow at once). */
+    " KZPCDEP = function()\n"
+    "  if not KZPCB then return end\n"
+    "  gGameSystem:SetAttribute('PC settings.Deps', '0')\n"
+    "  local m = tonumber(gGameSystem:GetAttribute('PC settings.Deps')) or " + std::to_string((1u << PC_DEP_COUNT) - 1) + "\n"
+    "  local bits, rows = { " + dep_bits + " }, { " + dep_rows + " }\n"
+    "  for k = 1, " + std::to_string(PC_DEP_COUNT) + " do\n"
+    "   local w = KZPCW[rows[k]]\n"
+    "   if m >= bits[k] then m = m - bits[k] if w then w:SetEnabled(TRUE) end\n"
+    "   elseif w then w:SetEnabled(FALSE) end\n"
+    "  end\n"
+    " end\n"
     " KZPCROWS = function(b)\n"
+    "  KZPCB = b KZPCW = {}\n"
     "  local p = gGameSystem\n"
-    "  b:SetItem(0, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Preset|0.0;1.0;2.0;3.0;4.0|Custom;Original (PS3);Performance;Balanced;Quality', 'Preset'))\n"
-    "  b:SetItem(1, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Display|0.0;1.0;2.0|Window;Borderless;Fullscreen', 'Display Mode'))\n"
-    "  b:SetItem(2, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Resolution|" + rv + "|" + rl + "', 'Resolution'))\n"
-    "  b:SetItem(3, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Widescreen|true;false|$Conditions.On$;$Conditions.Off$', 'Widescreen'))\n"
-    "  b:SetItem(4, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Aspect|0.0;1.0;2.0;3.0;4.0;5.0|Auto (Window);4:3;16:10;16:9;21:9;32:9', 'Aspect Ratio (on restart)'))\n"
-    "  b:SetItem(5, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Field of View'))\n"
-    "  b:SetItem(6, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.WeaponFOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Weapon Field of View'))\n"
-    "  b:SetItem(7, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDPosition', 'HUD Position'))\n"
-    "  b:SetItem(8, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDSize', 'HUD Size'))\n"
-    "  b:SetItem(9, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.CrosshairSize', 'Crosshair Size'))\n"
-    "  b:SetItem(10, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.VSync|0.0;1.0;2.0;3.0|On;Off;Adaptive;FIFO (VRR)', 'V-Sync'))\n"
-    "  b:SetItem(11, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FrameRate|0.0;1.0;2.0|30;60;144', 'Frame Rate Limit'))\n"
-    "  b:SetItem(12, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Reflex|0.0;1.0;2.0|$Conditions.Off$;$Conditions.On$;On + Boost', '" +
+    "  KZPCR(0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Preset|0.0;1.0;2.0;3.0;4.0|Custom;Original (PS3);Performance;Balanced;Quality', 'Preset'))\n"
+    "  KZPCR(1, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Display|0.0;1.0;2.0|Window;Borderless;Fullscreen', 'Display Mode (detail on restart)'))\n"
+    "  KZPCR(2, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Resolution|" + rv + "|" + rl + "', 'Resolution (detail on restart)'))\n"
+    "  KZPCR(3, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Widescreen|true;false|$Conditions.On$;$Conditions.Off$', 'Widescreen'))\n"
+    "  KZPCR(4, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Aspect|0.0;1.0;2.0;3.0;4.0;5.0|Auto (Window);4:3;16:10;16:9;21:9;32:9', 'Aspect Ratio (on restart)'))\n"
+    "  KZPCR(5, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Field of View'))\n"
+    "  KZPCR(6, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.WeaponFOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Weapon Field of View'))\n"
+    "  KZPCR(7, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDPosition', 'HUD Position'))\n"
+    "  KZPCR(8, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDSize', 'HUD Size'))\n"
+    "  KZPCR(9, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.CrosshairSize', 'Crosshair Size'))\n"
+    "  KZPCR(10, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.VSync|0.0;1.0;2.0;3.0|On;Off;Adaptive;FIFO (VRR)', 'V-Sync'))\n"
+    "  KZPCR(11, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FrameRate|0.0;1.0;2.0|30;60;144', 'Frame Rate Limit'))\n"
+    "  KZPCR(12, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Reflex|0.0;1.0;2.0|$Conditions.Off$;$Conditions.On$;On + Boost', '" +
         std::string(rsx_vulkan_reflex_available() ? "NVIDIA Reflex" : "NVIDIA Reflex (not available)") + "'))\n"
-    "  b:SetItem(13, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
-    "  b:SetItem(14, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution (on restart)'))\n"
-    "  b:SetItem(15, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering (on restart)'))\n"
-    "  b:SetItem(16, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
-    "  b:SetItem(17, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
-    "  b:SetItem(18, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Temporal|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0|"
+    "  KZPCR(13, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
+    "  KZPCR(14, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution (on restart)'))\n"
+    "  KZPCR(15, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering (on restart)'))\n"
+    "  KZPCR(16, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
+    "  KZPCR(17, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
+    "  KZPCR(18, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Temporal|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0|"
         "$Conditions.Off$;" + tl + "', 'Temporal Upscaler (on restart)'))\n"
-    "  b:SetItem(19, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.AntiAliasing|0.0;1.0|Original (MLAA);$Conditions.Off$', 'Anti-aliasing'))\n"
-    "  b:SetItem(20, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MotionBlur|" + kPct + "', 'Motion Blur'))\n"
-    "  b:SetItem(21, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FilmGrain|" + kPct + "', 'Film Grain'))\n"
-    "  b:SetItem(22, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Glow|" + kPct + "', 'Glow'))\n"
-    "  b:SetItem(23, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MouseYaw', 'Mouse Left/Right Sensitivity'))\n"
-    "  b:SetItem(24, 0, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MousePitch', 'Mouse Up/Down Sensitivity'))\n"
-    "  b:SetItem(25, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MouseInvert|true;false|$Conditions.On$;$Conditions.Off$', 'Mouse Invert Look'))\n"
-    "  b:SetItem(26, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
-    "  b:SetItem(27, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
-    "  b:SetItem(28, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
+    "  KZPCR(19, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.AntiAliasing|0.0;1.0|Original (MLAA);$Conditions.Off$', 'Anti-aliasing'))\n"
+    "  KZPCR(20, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MotionBlur|" + kPct + "', 'Motion Blur'))\n"
+    "  KZPCR(21, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FilmGrain|" + kPct + "', 'Film Grain'))\n"
+    "  KZPCR(22, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Glow|" + kPct + "', 'Glow'))\n"
+    "  KZPCR(23, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MouseYaw', 'Mouse Left/Right Sensitivity'))\n"
+    "  KZPCR(24, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.MousePitch', 'Mouse Up/Down Sensitivity'))\n"
+    "  KZPCR(25, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MouseInvert|true;false|$Conditions.On$;$Conditions.Off$', 'Mouse Invert Look'))\n"
+    "  KZPCR(26, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
+    "  KZPCR(27, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
+    "  KZPCR(28, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
 #ifndef _WIN32   /* MangoHUD is a Linux Vulkan layer (under Proton: mangohud %command%) */
-    "  b:SetItem(29, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
+    "  KZPCR(29, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
 #endif
+    "  KZPCDEP()\n"
     " end\n"
     "end\n"
     /* Pause > Controls > Advanced Settings */
@@ -1129,10 +1186,6 @@ static bool hover_one(uint32_t sel, float vx, float vy, Goal* g)
     return true;
 }
 
-struct OptRow { uint32_t w; bool slider; };
-static OptRow s_opts[128];
-static unsigned s_nopts;
-
 /* List boxes that are longer than their box scroll with the selection, in
  * proportion to it (the list's update, func_00263118): the target scroll is
  * (rows * row height - box height) * selected / (rows - 1), and +0xDC eases
@@ -1183,6 +1236,7 @@ template <void (*F)(ppu_context*), bool Slider> static void add_option(ppu_conte
     F(ctx);
     s_opts[s_nopts++ % 128] = { (uint32_t)ctx->gpr[3], Slider };
 }
+static bool option_enabled(const OptRow* o) { return !o || menu_widget_enabled(vm_base[o->w + MENU_WIDGET_ENABLED_BYTE]); }   /* menu_box.h */
 static const OptRow* option_at(float vx, float vy)
 {
     for (unsigned i = 0; i < 128 && i < s_nopts; i++) {
@@ -1229,6 +1283,7 @@ static void menu_mouse(void)
     int x, y, w, h, wheel; unsigned b;
     pad_mouse_ui_state(&x, &y, &w, &h, &b, &wheel);
     static unsigned prev_b; static int prev_x = -1, prev_y = -1, drag_x;
+    static bool drag_on;   /* the left button went down where dragging steps a slider */
     const unsigned pressed = b & ~prev_b;
     prev_b = b;
     if (!ui || !w || !h) { prev_x = -1; s_goal = {}; return; }
@@ -1258,7 +1313,7 @@ static void menu_mouse(void)
              * row under the pointer is selected at once, as a PC menu does;
              * the list draws its highlight from the selected index. */
             const int r = box_row_at(box, vy, true);
-            if (r >= 0 && r != (int)rd32(box + 0x12C)) wr32(box + 0x12C, (uint32_t)r);
+            if (r >= 0 && r != (int)rd32(box + 0x12C) && option_enabled(option_at(vx, vy))) wr32(box + 0x12C, (uint32_t)r);
         } else hover_selection(vx, vy, &g);
         if ((g.box || g.grp) && (g.box != s_goal.box || g.grp != s_goal.grp || g.target != s_goal.target))
             s_goal = g;
@@ -1266,8 +1321,14 @@ static void menu_mouse(void)
 hovered:
     prev_x = x; prev_y = y;
     const OptRow* opt = nullptr;
+    /* Dragging steps the selected row only from a press that was not on a
+     * cycling value or a greyed-out row: from a stale drag_x, holding the
+     * button after such a click stepped the selected row once more (seen
+     * 2026-11-13: a click on the greyed Aspect Ratio row turned Widescreen). */
+    if (pressed & 1) { drag_x = x; drag_on = false; }
     if ((pressed & 1) && s_dialog_menu) { dialog_click(vx, vy); s_goal = {}; }  /* a dialog's button, or nothing */
-    else if ((pressed & 1) && (opt = option_at(vx, vy)) && !opt->slider) {
+    else if ((pressed & 1) && (opt = option_at(vx, vy)) && !option_enabled(opt)) s_goal = {};   /* greyed out: nothing */
+    else if ((pressed & 1) && opt && !opt->slider) {
         /* the row first, at once: the press goes to the selected row */
         if (box) { const int r = box_row_at(box, vy); if (r >= 0) wr32(box + 0x12C, (uint32_t)r); }
         pad_inject(0x0020, 2); s_goal = {};
@@ -1279,17 +1340,18 @@ hovered:
             if (over.grp && (int)rd32(over.grp + 0x0C) != over.target) { s_goal = over; s_goal.then_x = true; }   /* go first */
             else { pad_inject(0x4000, 2); s_goal = {}; }
         }
-        drag_x = x;
+        drag_on = true;
     }
     else if (pressed & 4)   { pad_inject(0x2000, 2); s_goal = {}; }               /* SDL_BUTTON_RMASK: O */
-    else if (wheel && (opt = option_at(vx, vy))) {   /* over an option: change it */
+    else if (wheel && (opt = option_at(vx, vy)) && !option_enabled(opt)) {}   /* greyed out: nothing */
+    else if (wheel && opt) {   /* over an option: change it */
         if (box) { const int r = box_row_at(box, vy); if (r >= 0) wr32(box + 0x12C, (uint32_t)r); }
         pad_inject(wheel > 0 ? 0x0020 : 0x0080, 2);
     }
     else if (wheel)         /* the live selection's own keys, else up/down */
         pad_inject(!box && newest_live() ? joy_mask(wheel > 0 ? newest_live()->prev : newest_live()->next)
                                             : (wheel > 0 ? 0x0010 : 0x0040), 2);
-    else if (b & 1) {       /* dragging: a step every 20 virtual units */
+    else if ((b & 1) && drag_on) {   /* dragging: a step every 20 virtual units */
         const float d = (x - drag_x) * 512.0f / fw;
         if (d >= 20 || d <= -20) { pad_inject(d > 0 ? 0x0020 : 0x0080, 2); drag_x = x; }
     } else if ((s_goal.box || s_goal.grp) && t >= next_step) {
@@ -1315,6 +1377,13 @@ static void lua_binding(ppu_context* ctx)
 {
     static struct lua_states tried; static bool busy;   /* lua_states.h */
     const uint32_t L = (uint32_t)ctx->gpr[3];
+    /* a setting a row depends on changed: the PC screen greys its rows again,
+     * in whichever state has it open; its Deps write ends this (set_deps) */
+    if (!busy && s_deps_dirty) {
+        busy = true;
+        lua_run(ctx, L, "if KZPCDEP then KZPCDEP() end", "=kzpcd");
+        busy = false;
+    }
     if (!busy) {
         const bool seen = lua_states_seen(&tried, L) != 0;
         /* Each new state gets the script; after that, every 50th call, a
