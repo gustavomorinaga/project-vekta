@@ -12,7 +12,8 @@
  * divided by it (56.25 vertical at 16:9). Here a perspective camera with the
  * 16:9 aspect gets the window's aspect instead (the frame is rendered
  * anamorphic and stretched to the window), keeping its vertical FOV: the
- * picture widens (Hor+) and nothing is stretched.
+ * picture widens (Hor+) and nothing is stretched. A narrower window (4:3,
+ * 16:10) gets the game's own 4:3 rule for the world (fov.h, fov_narrow).
  *
  * The FOV settings (fov.h) scale tan(fov/2) of the game's own FOV, so a
  * scope's zoom (the cameras' FOV halved) keeps its magnification. One camera
@@ -136,6 +137,9 @@ void func_001A9FC8(ppu_context* ctx)
     const bool vfov = !vm_read8(cam + 0x80);   /* +0x70 is vertical */
     /* the game sets FOV and near every frame; they get their own back after the build */
     const uint32_t fov_bits = vm_read32(cam + 0x70), near_bits = vm_read32(cam + 0x68);
+    /* a window narrower than 16:9: the world's cameras take the game's own 4:3 rule (fov.h, fov_narrow) */
+    if (vfov && fov_site_world(ret) && aspect > 0.0f && aspect < kGameAspect && fabs(ldf(cam + 0x74) - aspect) < 0.01)
+        stf(cam + 0x70, (float)fov_narrow(ldf(cam + 0x70), aspect));
     if (scale != 1.0 && scale > 0.0 && vfov) stf(cam + 0x70, (float)fov_apply(ldf(cam + 0x70), scale));
     if (ret == kSkyRet && vfov) {   /* the sky's near plane for a wider view (fov.h, fov_sky_near) */
         const double ty = tan(ldf(cam + 0x70) * 0.5 * FOV_DEG), tx = ty * ldf(cam + 0x74);
