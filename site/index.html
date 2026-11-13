@@ -49,7 +49,7 @@
 <main class="main">
 <article id="status" class="news">
 <h2>Status: Partly playable</h2>
-<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 24 PC features</p>
+<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 25 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><span class="st st-ok">Works</span></li>
@@ -151,8 +151,8 @@
 </tbody></table></div>
 </details>
 <h3>What the port adds</h3>
-<p>24 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
-<details><summary>All 24 PC features</summary>
+<p>25 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
+<details><summary>All 25 PC features</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>Default</th><th>Where it is set</th></tr></thead>
 <tbody>
@@ -164,6 +164,7 @@
 <tr><td>Frame-rate limit 30, 60, 144 (the game clock follows)</td><td>60</td><td><code>fps_limit</code>; 30 is the PS3&#x27;s</td></tr>
 <tr><td>AMD FSR 1 upscaling and RCAS sharpening</td><td>bilinear</td><td><code>upscaler</code>, <code>sharpness</code></td></tr>
 <tr><td>Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td>the game&#x27;s</td><td><code>anisotropic</code></td></tr>
+<tr><td>Post-processing: anti-aliasing (the game&#x27;s MLAA) on or off; motion blur and film grain 0 to 100 % in steps of 10</td><td>the game&#x27;s</td><td><code>antialiasing</code>, <code>motion_blur</code>, <code>film_grain</code>, applied at once; 100 % leaves the game&#x27;s value untouched. Level 8 (user_1023 save), 60 Hz, 2026-11-13, scripted sprint with <code>PS3RECOMP_MLAA_DUMP</code>: at 100 % the sprint field rises 12, 23 ... 94 over 8 frames and the output equals the C reference on every pixel; at 50 % the field is exactly half (6, 12 ... 47), output again equal to the reference; at 0 % the game&#x27;s factor (0.05) is drawn as 0 and no frame has field strength; anti-aliasing off: output = input on 8 frames. Film grain (alpha 0.12 in Level 8, always on): 0 % vs 100 % frames differ by grain only (high-frequency energy 2.35 vs 2.61, 4 luma darker with grain)</td></tr>
 <tr><td>Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer&#x27;s private build) DLSS Quality 135.7 fps</td></tr>
 <tr><td>Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code></td></tr>
 <tr><td>Field of view, 70 to 120 degrees horizontal at 16:9 (the game&#x27;s is 87), for the world and, apart, the first-person weapon</td><td>the game&#x27;s</td><td><code>field_of_view</code>, <code>weapon_fov</code> (the weapon&#x27;s game value is 45 degrees vertical, 72 horizontal at 16:9); a scope&#x27;s zoom keeps its magnification; an older <code>fov</code> (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it; 3440x1440, F12 capture: weapon projection 45 degrees vertical as at 16:9 (was 30.7), weapon_fov 110 gives 63.8</td></tr>

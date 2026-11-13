@@ -22,8 +22,10 @@
  *
  * The anti-aliasing (MLAA) is a choice, not a strength (antialiasing = mlaa
  * | off, rsx_vulkan_set_mlaa). Glow has a slot here and no setting yet: it is
- * not drawn on the GPU path (docs/dev/wws-jm-post.md), and the work that
- * takes it there adds its line.
+ * not drawn on the GPU path on this branch (docs/dev/wws-jm-post.md). HOOK:
+ * once the GPU glow is in (rsx_vulkan_set_glow_strength, 0..256, 256 the
+ * game's), a `glow` key and row go next to film_grain in pcoptions.cpp,
+ * applied in post_apply as rsx_vulkan_set_glow_strength(kz_post_256(pct)).
  *
  * ENHANCEMENT: the PS3 game has no such settings.
  */
@@ -61,6 +63,10 @@ static inline int kz_post_parse(const char* s, int def)
 /* A menu row (0 = 0 %, 10 = 100 %) to a strength and back. */
 static inline int kz_post_from_row(int row) { return (row < 0 ? 0 : row > 10 ? 10 : row) * KZ_POST_STEP; }
 static inline int kz_post_row(int pct) { return (pct < 0 ? 0 : pct > KZ_POST_FULL ? KZ_POST_FULL : pct) / KZ_POST_STEP; }
+
+/* A strength in 256ths, for a renderer switch that takes 0..256 with 256 the
+ * game's (the GPU glow's rsx_vulkan_set_glow_strength): 100 % is exactly 256. */
+static inline int kz_post_256(int pct) { return (pct <= 0 ? 0 : pct >= KZ_POST_FULL ? KZ_POST_FULL : pct) * 256 / KZ_POST_FULL; }
 
 /* Scales one of the game's parameters: at 100 (or more) the very same bits,
  * else value * pct / 100 rounded to single as the game's floats are. */

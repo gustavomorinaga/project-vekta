@@ -76,6 +76,11 @@ int main(void)
     eq("50% of 0.8", (long)bits(kz_post_scale(0.8f, 50)), (long)bits((float)(0.8f * 0.5)));
     eq("30% of 1.0", (long)bits(kz_post_scale(1.0f, 30)), (long)bits(0.3f));
     eq("10% of 255", (long)lroundf(kz_post_scale(255.0f, 10) * 10.0f), 255);
+    /* in 256ths for a renderer switch (the GPU glow): 100 % is the game's 256 */
+    eq("256ths of 100", kz_post_256(100), 256);
+    eq("256ths of 50", kz_post_256(50), 128);
+    eq("256ths of 0", kz_post_256(0), 0);
+    eq("256ths of 130", kz_post_256(130), 256);
     /* monotonic across the steps */
     {
         float prev = -1.0f;

@@ -581,6 +581,7 @@ static void post_apply(void)
     post_load();
     rsx_vulkan_set_motion_blur(kz_post_pct[KZ_POST_MOTION_BLUR] > 0);
     rsx_vulkan_set_mlaa(s_ini["antialiasing"] != "off");
+    /* HOOK (post.h): the glow's row, once the GPU glow is in. */
 }
 static void get_post_key(ppu_context* c, const char* key) { wrf((uint32_t)c->gpr[4], (float)kz_post_row(atoi(s_ini[key].c_str()))); }
 static void set_post_key(ppu_context* c, const char* key) { if ((int32_t)c->gpr[5] != 2) return;
