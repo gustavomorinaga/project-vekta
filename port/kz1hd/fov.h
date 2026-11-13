@@ -4,7 +4,8 @@
  * them (tools/tests/test_fov.c).
  *
  * A setting is the horizontal field of view a 16:9 screen would show, in
- * degrees; a wider window shows more at the sides (Hor+). The game's camera
+ * degrees; a wider window shows more at the sides (Hor+), a narrower one
+ * takes the game's own 4:3 rule (fov_narrow). The game's camera
  * has 56.25 degrees vertical at 16:9 (100 divided by the 1280/720 aspect),
  * 87 degrees horizontal. A camera's FOV is scaled, not replaced: tan(fov/2)
  * times tan(setting/2) / tan(87/2), so a scope's zoom (the game halves the
@@ -76,6 +77,28 @@ static inline double fov_sky_near(double near, double tx, double ty)
     return k < 1.0 ? near * k : near;
 }
 
+/* A window narrower than 16:9 (4:3, 16:10). The game has a 4:3 mode of its
+ * own (the "Aspect" setting, +0x38 of the game settings at *0x00828734,
+ * 0 = 4:3, 1 = 16:9, the default; Lua's IsWideScreen): its view camera
+ * (func_00211540) then takes aspect 4/3 and vertical FOV 100 / aspect (the
+ * global at 0x0082872C, 100, over the aspect: 56.25 at 16:9, 75 at 4:3), so
+ * the original's 4:3 picture is 75 degrees vertical, 91.3 horizontal (EBOOT,
+ * 2026-11-12). Below 16:9 the world's cameras take that formula with the
+ * window's aspect (16:10: 62.5 vertical, 88.3 horizontal): the FOV the game
+ * set for 16:9 (zoom included) times 16:9 over the aspect. FOV_NARROW_HOR 1
+ * keeps the 16:9 vertical FOV instead (Hor+, as above 16:9: 71 degrees
+ * horizontal at 4:3). The FOV setting scales the result (fov_apply). The
+ * first-person weapon needs nothing: the game makes its FOV from the view
+ * camera's aspect with the same rule (fov_weapon). */
+#ifndef FOV_NARROW_HOR
+#define FOV_NARROW_HOR 0
+#endif
+static inline double fov_narrow(double fov, double aspect)
+{
+    if (FOV_NARROW_HOR || !(aspect > 0.0) || aspect >= FOV_ASPECT - 0.01) return fov;
+    return fov * FOV_ASPECT / aspect;
+}
+
 /* Which setting a projection built by func_001A9FC8 takes, by its call
  * site (the return address; native_ppu/camera.cpp has how they were found):
  * the world's (the view 0x21A190, the sky and backdrop 0x2B81DC, and
@@ -100,7 +123,9 @@ static inline int fov_site_world(unsigned ret)
  * scaled by the weapon's setting. */
 static inline double fov_weapon(double fov, double aspect, int wide, double scale)
 {
-    if (wide && aspect > FOV_ASPECT) fov *= aspect / FOV_ASPECT;
+    /* narrower than 16:9 the game's own rule stands (fov_narrow; with
+     * FOV_NARROW_HOR, back to 16:9's like a wider window) */
+    if (wide && (aspect > FOV_ASPECT || FOV_NARROW_HOR)) fov *= aspect / FOV_ASPECT;
     return fov_apply(fov, scale);
 }
 

@@ -44,7 +44,10 @@ are linked.
 
 - **144 fps is not steady.** The 144 Hz mode runs at about 131 to 134 fps in Level 1 and Level 7 on the maintainer's
   machine, limited by the game's main PPU thread ([dev/performance.md](dev/performance.md)).
-- **Aspect ratios narrower than 16:9** (16:10, 4:3) show 16:9 with bars.
+- **The sprint motion blur is stretched outside 16:9** (2026-11-12): the game draws it for a 16:9 screen (its taps
+  across are 16/9 of those down, `mb_ref.c`) on the anamorphic frame, so on 21:9 it reaches further at the sides and
+  on 4:3 less far; on 4:3 that is what the PS3 showed in its own 4:3 mode on a 4:3 TV. Off with `motion_blur = off`.
+- **The aspect setting applies on the next start**, as the internal resolution does.
 - **The internal resolution scale applies on the next start**, not at once.
 - **Surround sound** (5.1, 7.1) was checked channel by channel, not yet heard on a real surround system.
 - **A Vulkan validation error after turning DLSS or FSR 3.1 off** (2026-11-09): the next start built the upscaler's
