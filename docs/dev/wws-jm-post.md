@@ -604,3 +604,13 @@ own 2/255 test, and the motion field's factor is 0 (the field stays neutral, and
 The Colorize values are never touched. The MLAA is a choice (`antialiasing = mlaa | off`): patch 2072 lets the renderer
 skip the MLAA stages at once while still taking the frame copy and running the motion blur on it. Glow has a slot in
 `post.h` (`KZ_POST_GLOW`) and no setting: it is not drawn on the GPU path.
+
+Checked in the game (2026-11-13; Level 8 from the `user_1023` save, 60 Hz, headless, scripted sprint with `PAD_SCRIPT`
+and `PAD_STICK`, `KZ_POST_LOG=1`, frames with `PS3RECOMP_MLAA_DUMP` and `PS3RECOMP_MLAA_DUMP_MOVING=1`, checked with
+`mlaa_ref` + `mb_ref`): at 100 % the field's strength rises 12, 23, 35 ... 94 over 8 sprint frames and every output
+equals the C reference; at 50 % it is exactly half (6, 12, 18 ... 47; frame 1 equals 100 %'s frame 0), output again
+equal to the reference; at 0 %, with the GPU pass forced on (`PS3RECOMP_MB_ON=1`), the game set its factor (0.05 seen)
+and 0 was drawn: no frame had any field strength. Anti-aliasing off: the output equals the input on 8 frames. Film
+grain is on in normal play (Level 8: alpha 0.12, 0.14-0.15 for a moment at the level's start); frames at 0 % and
+100 % from the same points of two runs differ by the grain only (high-frequency energy of the luma 2.35 against 2.61,
+the picture about 4 levels darker with it).
