@@ -1,0 +1,158 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 12 Nov 2026 21:47:22 -0300
+Subject: [PATCH] Vulkan: RenderDoc's in-application API when the game runs
+ under RenderDoc
+
+When RenderDoc's library is already in the process (the game was started
+from RenderDoc; it is never loaded here: dlopen with RTLD_NOLOAD on Linux,
+GetModuleHandle on Windows), RENDERDOC_GetAPI gives its API 1.0.0 table.
+F12 and PS3RECOMP_CAPTURE_TRIGGER then go through the new
+rsx_vulkan_capture_request: the draw engine's own pass capture as before,
+and a RenderDoc capture of the next frame. RenderDoc's own capture keys
+are cleared, so one press is one capture. Debug names (patch 2065) turn
+on unless PS3RECOMP_VK_LABELS=0, and a temporal upscaler is pointed out:
+RenderDoc cannot replay DLSS's or FSR 3.1's private parts.
+
+RenderDoc 1.46 crashed inside its vkCreateGraphicsPipelines on the pipeline
+list's prewarm threads (core dump, 2026-11-13); under RenderDoc the list is
+not built ahead unless PS3RECOMP_VK_PREWARM is set, and the same run then
+captured.
+
+Only the two entries used are declared (the 7th, SetCaptureKeys, and the
+16th, TriggerCapture, of the table RenderDoc documents for its
+in-application API, MIT); no RenderDoc file is included.
+---
+ libs/video/rsx_vulkan_backend.c | 68 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ libs/video/rsx_vulkan_backend.h |  3 +++
+ 2 files changed, 66 insertions(+), 5 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index a95a51229f82192d60068733517c81e38f462eb2..c284bcde78659535b812136aec2fef23e65a77c2 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -411,12 +411,14 @@ static struct {
+     int rp_open;      /* a guest pass region is open around the render pass */
+ } s_dbg;
+ 
++static void vk_rdoc_find(void);
+ static void vk_dbg_wanted(void)
+ {
+     const int l = rsx_vk_env_flag(getenv("PS3RECOMP_VK_LABELS"));
+     const int unset = !getenv("PS3RECOMP_VK_LABELS");
+     if (l < 0) VK_LOG("PS3RECOMP_VK_LABELS=%s not understood (0 or 1), off\n", getenv("PS3RECOMP_VK_LABELS"));
+     s_dbg.want = l > 0 || (unset && rsx_vk_env_flag(getenv("PS3RECOMP_VK_VALIDATION")) > 0);
++    vk_rdoc_find();
+ }
+ 
+ static void vk_dbg_start(VkInstance inst)
+@@ -451,6 +453,58 @@ static void vk_dbg_name_image(VkImage img, const char* text)
+     s_dbg.name(s_vk.device, &n);
+ }
+ 
++/* ---------------------------------------------------------------------------
++ * RenderDoc (patch 2066). When the game was started from RenderDoc (its
++ * library already in the process; never loaded here), its in-application
++ * API is taken: F12, the capture trigger file and KZ_POKE's "capture" then
++ * also take a RenderDoc capture of the next frame, besides the port's own
++ * pass capture, and RenderDoc's own capture keys are cleared so one press
++ * is one capture. Debug names are on unless PS3RECOMP_VK_LABELS=0.
++ *
++ * The API is RenderDoc's documented in-application interface (MIT):
++ * RENDERDOC_GetAPI(version 1.0.0 = 10000) fills a table of function
++ * pointers; this uses its 7th (SetCaptureKeys) and 16th (TriggerCapture)
++ * entries, which every later version keeps in place.
++ * -------------------------------------------------------------------------*/
++typedef int (*vk_rdoc_get_api)(int version, void** api);
++typedef void (*vk_rdoc_set_keys)(int* keys, int n);
++typedef void (*vk_rdoc_trigger)(void);
++static struct { int present; vk_rdoc_trigger trigger; } s_rdoc;
++
++static void vk_rdoc_find(void)
++{
++    void* get = NULL;
++#ifdef _WIN32
++    HMODULE m = GetModuleHandleA("renderdoc.dll");
++    if (m) get = (void*)GetProcAddress(m, "RENDERDOC_GetAPI");
++#else
++    void* m = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD);
++    if (m) { get = dlsym(m, "RENDERDOC_GetAPI"); dlclose(m); }   /* still loaded: RenderDoc holds it */
++#endif
++    if (!get) return;
++    void** api = NULL;
++    if (!((vk_rdoc_get_api)get)(10000, (void**)&api) || !api) {
++        VK_LOG("RenderDoc is in the process but gave no API 1.0.0\n");
++        return;
++    }
++    s_rdoc.present = 1;
++    s_rdoc.trigger = (vk_rdoc_trigger)api[15];
++    if (api[6]) ((vk_rdoc_set_keys)api[6])(NULL, 0);
++    if (!getenv("PS3RECOMP_VK_LABELS")) s_dbg.want = 1;
++    VK_LOG("RenderDoc in the process: F12 takes a RenderDoc capture of the next frame too "
++           "(RenderDoc's own capture keys are off)%s\n",
++           getenv("PS3RECOMP_TEMPORAL") && strcmp(getenv("PS3RECOMP_TEMPORAL"), "off")
++               ? "; a temporal upscaler is on: RenderDoc cannot replay its private parts, turn it off for captures" : "");
++}
++
++/* The port's capture (rsx_draw_engine.c) and, under RenderDoc, its capture. */
++void rsx_vulkan_capture_request(void)
++{
++    extern volatile int g_rsx_capture_request;   /* rsx_draw_engine.c */
++    g_rsx_capture_request = 1;
++    if (s_rdoc.trigger) s_rdoc.trigger();
++}
++
+ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_val_message(
+     VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type,
+     const VkDebugUtilsMessengerCallbackDataEXT* d, void* user)
+@@ -2998,9 +3052,7 @@ static void vk_cb_present(void* ud, u32 buffer_id)
+     { static int on = -1; static char path[512];
+       if (on < 0) { const char* e = getenv("PS3RECOMP_CAPTURE_TRIGGER"); on = e && *e;
+                     if (on) snprintf(path, sizeof path, "%s", e); }
+-      if (on && (s_vk.presented & 15) == 0 && remove(path) == 0) {
+-          extern volatile int g_rsx_capture_request;   /* rsx_draw_engine.c */
+-          g_rsx_capture_request = 1; } }
++      if (on && (s_vk.presented & 15) == 0 && remove(path) == 0) rsx_vulkan_capture_request(); }
+     s_dump_now = vk_dump_decide();
+ 
+     /* The draw engine reads its own centre pixel; the frame comes back to the
+@@ -6039,6 +6091,13 @@ static void vk_plist_start(void)
+ 
+     const char* e = getenv("PS3RECOMP_VK_PREWARM");
+     int threads = e && *e ? atoi(e) : 2;
++    /* Under RenderDoc (1.46, 2026-11-13) pipelines built on the prewarm
++     * threads crashed it inside its vkCreateGraphicsPipelines; each one is
++     * built when first drawn instead (a slower first minute). */
++    if (s_rdoc.present && !(e && *e)) {
++        VK_LOG("RenderDoc in the process: the pipeline list is not built ahead (PS3RECOMP_VK_PREWARM=2 to force)\n");
++        threads = 0;
++    }
+     if (threads > 8) threads = 8;
+     if (!s_pl.n || threads <= 0) return;
+     VK_LOG("pipeline list: building %u pipelines ahead on %d threads\n", s_pl.n, threads);
+@@ -7282,8 +7341,7 @@ int rsx_vulkan_backend_pump_messages(void)
+         }
+         else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F12 && !e.key.repeat &&
+                  !(e.key.keysym.mod & KMOD_SHIFT)) {   /* Shift+F12 is MangoHUD's */
+-            extern volatile int g_rsx_capture_request;   /* rsx_draw_engine.c */
+-            g_rsx_capture_request = 1;
++            rsx_vulkan_capture_request();
+         }
+         else if (e.type == SDL_MOUSEWHEEL) {   /* cellPad: menus scroll with it */
+             extern volatile int g_pad_mouse_wheel;
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 633c49739e2e588bada84c9e9da6fa66204a0f8c..7ee1f8e0d18ce95d72a89213c0ec3f62377b92d4 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -103,6 +103,9 @@ void rsx_vulkan_set_mlaa(int on);
+ /* PS3RECOMP_VK_VALIDATION: the counts per message ID, once (also at exit and
+  * shutdown); for a process that ends with _exit. */
+ void rsx_vulkan_validation_summary(void);
++/* F12's capture: the draw engine's pass capture of the next frames and,
++ * when the game runs under RenderDoc, a RenderDoc capture of the next frame. */
++void rsx_vulkan_capture_request(void);
+ int  rsx_vulkan_reflex_available(void);
+ /* The temporal upscalers this build has (PS3RECOMP_TEMPORAL): bit 0 FSR 3
+  * (PS3RECOMP_FFX_DIR), bit 1 DLSS (PS3RECOMP_DLSS_SDK; it also needs an
+-- 
+2.x

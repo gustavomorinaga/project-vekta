@@ -30,6 +30,11 @@ program and folder that build it. Until a release that calls itself playable
   on a route and reports the paired difference; ps3recomp patch 3034 (a guest store journal, built only with
   `-DKZ_STORE_JOURNAL=ON`) lets `KZ_NATIVE_VERIFY` check native functions with wide effects against their lifted
   bodies. Off unless used; the game itself is unchanged.
+- Graphics debugging ([docs/dev/testing.md](docs/dev/testing.md), [docs/dev/frame-map.md](docs/dev/frame-map.md)):
+  `PS3RECOMP_VK_VALIDATION=1` runs the game with the Vulkan validation layer and writes its messages to the log, each
+  kind a few times and then as counts, with a total per kind at quit; under RenderDoc (`KZ_RENDERDOC=1 tools/play.sh`
+  on Linux) F12 also takes a RenderDoc capture, in which every pass of the frame is named by what it draws into. Off
+  unless used; the game itself is unchanged.
 
 ### Changed
 - Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged

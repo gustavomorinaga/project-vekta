@@ -147,3 +147,7 @@
 2077-NV0039_STATS-count-the-lit-pixels-of-Killzone-HD-s-g.patch
 2078-Killzone-HD-s-glow-on-the-GPU-PS3RECOMP_GLOW_GPU-aft.patch
 2072-Vulkan-the-MLAA-switched-at-once-rsx_vulkan_set_mlaa-PS3R.patch
+2064-Vulkan-PS3RECOMP_VK_VALIDATION-1-the-validation-layer-a.patch
+2065-Vulkan-debug-labels-per-guest-pass-and-port-pass-names.patch
+2066-Vulkan-RenderDoc-s-in-application-API-when-the-game-r.patch
+2067-draw-engine-a-pass-capture-writing-vertices-converts-.patch

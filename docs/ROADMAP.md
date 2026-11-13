@@ -71,7 +71,8 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] `ps3recomp_host`: the 13 test scenes pass on an RTX 3070 Ti
 - [x] Windows build: clang with the MinGW-w64 sysroot, cross-built on Linux (`tools/build-win.sh`)
 - [x] Vulkan on Windows in ps3recomp (loader through `LoadLibrary`/SDL, option enabled in CMake); checked under Wine and Proton
-- [ ] Vulkan validation layers and RenderDoc
+- [x] Vulkan validation layers and RenderDoc (`PS3RECOMP_VK_VALIDATION=1`, named passes, F12 under RenderDoc;
+      [dev/testing.md](dev/testing.md), 2026-11-13)
 - [x] Moved to ps3recomp v0.18.0, re-applying our patches one by one (2026-10-28)
 - [ ] Record and replay routes per level: inputs recorded per game-clock tick from a checkpoint and replayed through
       the virtual pad, for repeatable benchmarks and regression tests
@@ -174,7 +175,9 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] Optional 144 Hz mode (about 131 to 134 fps in Level 1 since 2026-10-21)
 - [ ] A steady 144 fps (about 10 % short on the main thread in Level 7; PSGL rewrites and redundant commands measured
       on 2026-11-10 and set aside, the next place to look is the engine's own code: [dev/performance.md](dev/performance.md))
-- [ ] Frame map (RenderDoc): HDR scene, depth, tone mapping, post passes, HUD, camera
+- [x] Frame map ([dev/frame-map.md](dev/frame-map.md), 2026-11-13): each pass's target, size and format in Levels 1,
+      4, 7, 8 and 11; the scene is 8-bit RGBA with a 256x1 grading ramp, no HDR scene and no shadow maps; the
+      cameras' projection sites
 - [x] Direct mouse look, with its own horizontal and vertical sensitivity and invert in the game's menu (Pause >
       Controls > Advanced Settings)
 - [x] Menus with the mouse: hover, click = X, right button = O, wheel, dragging sliders

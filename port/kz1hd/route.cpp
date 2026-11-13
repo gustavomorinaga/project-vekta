@@ -188,6 +188,7 @@ void summary(const char* how)
             s_resyncs ? " (loose: desynced, the rest replayed as input only)" : "");
 }
 
+extern "C" void kz_validation_summary(void);   /* main.cpp */
 void stop_replay(const char* how, int status)
 {
     summary(how);
@@ -199,7 +200,7 @@ void stop_replay(const char* how, int status)
     if (exit_on) {
         if (status) fprintf(stderr, "[route] exit status %d\n", status);
         fflush(NULL);
-        if (status) _exit(status);
+        if (status) { kz_validation_summary(); _exit(status); }
         kz_quit("route replayed");
     }
 }

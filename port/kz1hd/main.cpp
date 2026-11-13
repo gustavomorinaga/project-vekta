@@ -154,6 +154,8 @@ unsigned cellGcm_flip_written_count(void);
 extern "C" int  rsx_vulkan_backend_init(uint32_t w, uint32_t h, const char* title);
 extern "C" void rsx_vulkan_backend_present(void);
 extern "C" int  rsx_vulkan_backend_pump_messages(void);
+extern "C" void rsx_vulkan_capture_request(void);   /* F12's capture, and RenderDoc's under RenderDoc (patch 2066) */
+extern "C" void rsx_vulkan_validation_summary(void);   /* PS3RECOMP_VK_VALIDATION's counts (patch 2064) */
 #  define rsx_backend_init    rsx_vulkan_backend_init
 #  define rsx_backend_present rsx_vulkan_backend_present
 #  define rsx_backend_pump    rsx_vulkan_backend_pump_messages
@@ -299,12 +301,20 @@ static void kz_tick_rate(void)
  * may refuse), the logs are flushed, and nothing else is torn down. */
 extern "C" int cellSaveData_quiesce(unsigned max_ms);
 void kz_native_report_all(void);   /* native_ppu/native_ppu.cpp */
+/* PS3RECOMP_VK_VALIDATION's counts per message ID (patch 2064), before an _exit. */
+extern "C" void kz_validation_summary(void)
+{
+#if defined(PS3RECOMP_RSX_VULKAN)
+    rsx_vulkan_validation_summary();
+#endif
+}
 extern "C" void kz_quit(const char* why)
 {
     static volatile int once;
     if (__atomic_exchange_n(&once, 1, __ATOMIC_ACQ_REL)) return;
     fprintf(stderr, "[kz] quitting (%s)\n", why);
     kz_native_report_all();   /* KZ_NATIVE_VERIFY: the final counts (native_ppu.cpp) */
+    kz_validation_summary();   /* _exit below skips the backend's atexit */
     if (!cellSaveData_quiesce(5000)) fprintf(stderr, "[kz] a save was still being written after 5 s\n");
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
@@ -451,9 +461,13 @@ static DWORD WINAPI frame_clock(LPVOID)
                   next_pk = now + 1000; pokes.clear();
                   if (FILE* f = fopen(pk, "rb")) { char w[16]; unsigned a, v; float fv;
                       while (fscanf(f, "%15s", w) == 1) {
-                          if (!strcmp(w, "capture")) {   /* as F12: the next frames' passes */
+                          if (!strcmp(w, "capture")) {   /* as F12: the next frames' passes (and RenderDoc's) */
+#if defined(PS3RECOMP_RSX_VULKAN)
+                              rsx_vulkan_capture_request();
+#else
                               extern volatile int g_rsx_capture_request;
                               g_rsx_capture_request = 1;
+#endif
                           } else if (!strcmp(w, "cam")) {
                               for (uint32_t x = 0x40000000u; x < 0x50000000u; x += 4) {
                                   uint32_t t; memcpy(&t, vm_base + x, 4);
