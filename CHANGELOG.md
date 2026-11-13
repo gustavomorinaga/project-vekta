@@ -8,6 +8,11 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- Crosshair Size in the PC settings: a slider for the weapon crosshair alone, from half to one and a half times the
+  game's size (the middle of the slider is the game's), applied at once. It changes the crosshair's pieces, not where
+  the game puts them, keeps them on whole pixels of the window so they stay sharp, and is the same share of the
+  screen's height at any resolution and aspect. HUD Size no longer changes the crosshair. Original preset: the game's
+  size (`crosshair_size` in `kz1hd_pc.ini`).
 - Developer tools for performance work ([docs/dev/perf-bench.md](docs/dev/perf-bench.md),
   [docs/dev/performance.md](docs/dev/performance.md)): `KZ_ROUTE_REBASE` writes a route replay out as a route of the
   current build, so that later replays follow it exactly; `tools/perf/ab.sh` compares two builds in alternating runs

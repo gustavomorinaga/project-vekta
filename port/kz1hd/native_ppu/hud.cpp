@@ -35,9 +35,12 @@
 #include "../view.h"
 #include "hud_sites.h"
 #include "hud_layout.h"
+#include "crosshair.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <algorithm>
+
+extern "C" int rsx_vulkan_output_size(int* w, int* h);
 
 namespace {
 
@@ -227,6 +230,32 @@ void func_00227A1C(ppu_context* ctx)
                       ldf(rect + 8), ldf(rect + 12), ldf(uv), ldf(uv + 4), ldf(uv + 8), ldf(uv + 12),
                       ldf((uint32_t)ctx->gpr[6]), ldf((uint32_t)ctx->gpr[6] + 4)); } }
       for (int i = 0; i < ns; i++) if (skip[i] == ret) return; }
+    /* ENHANCEMENT: the weapon crosshair (crosshair.h) keeps the place the
+     * game gives it, outside the HUD Size rule; its pieces take their own
+     * size, on whole pixels of the output */
+    if (crosshair_site(ret)) {
+        const double cs = crosshair_clamp(kz_view.crosshair_size > 0.0f ? kz_view.crosshair_size : 1.0);
+        if (cs == 1.0) {
+            func_00227A1C_lifted(ctx);
+            return;
+        }
+        const uint32_t ys = (uint32_t)ctx->gpr[6];
+        const double sy = ldf(ys), ty = ldf(ys + 4);
+        if (sy == 0.0) {
+            func_00227A1C_lifted(ctx);
+            return;
+        }
+        double r[4] = { ldf(rect), ldf(rect + 4) * sy + ty, ldf(rect + 8), ldf(rect + 12) * sy + ty };
+        int ow = 0, oh = 0;
+        const double lw = kW * widen();
+        if (!rsx_vulkan_output_size(&ow, &oh)) { ow = (int)lround(lw); oh = (int)kH; }   /* no window: the frame's own */
+        crosshair_rect(r, cs, ow, oh, lw, kH);
+        const uint32_t tmp = ((uint32_t)ctx->gpr[1] - 0x400) & ~15u;
+        stf(tmp, r[0]); stf(tmp + 4, (r[1] - ty) / sy); stf(tmp + 8, r[2]); stf(tmp + 12, (r[3] - ty) / sy);
+        ctx->gpr[5] = tmp;
+        func_00227A1C_lifted(ctx);
+        return;
+    }
     const float e = widen(), size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0f;
     if (!hud || (e == 1.0f && size == 1.0f)) {
         func_00227A1C_lifted(ctx);

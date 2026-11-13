@@ -31,6 +31,7 @@ pc		Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA		off	
 pc		Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9		on		`widescreen`	Widescreen Hor+ for 21:9, 32:9 and wider; field of view; HUD size and position
 pc		Field of view, 70 to 120 degrees horizontal at 16:9 (the game's is 87), for the world and, apart, the first-person weapon		the game's		`field_of_view`, `weapon_fov` (the weapon's game value is 45 degrees vertical, 72 horizontal at 16:9); a scope's zoom keeps its magnification; an older `fov` (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it; 3440x1440, F12 capture: weapon projection 45 degrees vertical as at 16:9 (was 30.7), weapon_fov 110 gives 63.8	
 pc		HUD size and position		the game's		`hud_size`, `hud_position`	
+pc		Crosshair size (the weapon crosshair alone, apart from the HUD size)		the game's		`crosshair_size`	
 pc		Presets: Original (PS3), Performance, Balanced, Quality		Custom when nothing matches			Presets: Original (PS3), Performance, Balanced, Quality
 pc		Keyboard and mouse: direct mouse look with its own sensitivity and invert, mouse in menus and dialogs		on		`mouse_yaw`, `mouse_pitch`, `mouse_invert`; keys in `kz1hd_keys.ini` (written on the first run; edit to remap)	Keyboard and mouse with direct mouse look, mouse in menus, remappable keys
 pc		Controllers through SDL, with keyboard and mouse at the same time		merged		`controllers`; `PAD_MOUSE_STICK=1` puts the mouse on the right stick instead	
