@@ -72,12 +72,6 @@ are linked.
   picture. Fixed in 0.4.0 (patch 2054): the picture came back after Alt+Tab on Windows 11 with an NVIDIA card
   (2026-11-07); since patch 2057 no failure to recreate the swapchain closes the window (the frames are skipped and
   the presents try again). Workaround in 0.3.0: borderless or a window.
-- **Borderless and fullscreen draw at a lower resolution when Windows scales the desktop** (seen on a 1920×1200
-  display, likely at Windows' 150 %, by issue #18's tester, 2026-11-09): the port does not tell Windows it handles DPI
-  scaling, so Windows gives it a desktop of 1280×800 and stretches the picture; the log shows `window swapchain
-  1280x800` whatever size the PC page asks for, in borderless and fullscreen. Not seen on Linux or at 100 %.
-  Workarounds: set the display's scale to 100 %, or in the Properties of `KZ1HD.exe` (in `work\build-win`),
-  Compatibility, "Change high DPI settings", tick "Override high DPI scaling behavior" with "Application".
 - **A controller that is detected but gives no input** (a OneXPlayer X2 Mini Pro's built-in Xbox-style pad, issue
   #19). Fixed in 0.3.0 (patch 4012), not yet confirmed on that machine; in 0.2.0 set `SDL_JOYSTICK_RAWINPUT=0`
   before `play.cmd`.

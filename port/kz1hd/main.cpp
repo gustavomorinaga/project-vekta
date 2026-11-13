@@ -41,6 +41,7 @@
 #include "../ps3_trace.h"   /* runtime/, via the runtime/ppu include directory */
 #include "ps3emu/thread_name.h"
 #include "debug_god.h"   /* KZ_DEBUG_GOD */
+#include "win_dpi.h"     /* Windows display scaling */
 #include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
@@ -637,6 +638,7 @@ int main(int argc, char** argv)
 #ifdef _WIN32
     kz_log_setup();
 #endif
+    kz_win_dpi_aware();     /* win_dpi.h: real pixels at Windows' 125 %, 150 %... */
     kz_pc_settings_env();   /* pcoptions.cpp: kz1hd_pc.ini */
     /* The game steps its command buffer through 64 KB segments with its own
      * callback: the runtime's recycling of a title's ring would rewind it
