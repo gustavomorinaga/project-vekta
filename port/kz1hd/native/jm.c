@@ -662,9 +662,13 @@ __attribute__((constructor)) static void kz_jm_init(void)
      * buffer where the game copies its frame to the SPUs (ps3recomp
      * PS3RECOMP_MLAA_GPU, same rules as native/mlaa_ref.c), then the sprint
      * motion blur with the field the game draws at IO 0xF1000
-     * (PS3RECOMP_MB_GPU, native/mb_ref.c; KZ_MOTION_BLUR=0 leaves it out);
+     * (PS3RECOMP_MB_GPU, native/mb_ref.c; KZ_MOTION_BLUR=0 leaves it out),
+     * with the glow in between (PS3RECOMP_GLOW_GPU, the glow source the game
+     * draws at IO 0x10000, native/glow_ref.c; KZ_GLOW=<0-100>, default 100,
+     * its strength in percent for tests, 100 = the game's, 0 leaves it out);
      * spu: the game's own SPU chain, with the render targets kept coherent and
-     * the NV0039 copies done (exact, slow, the only path with the glow);
+     * the NV0039 copies done (exact, slow: the reference the GPU passes are
+     * checked against);
      * off: none. */
     { const char* m = getenv("KZ_MLAA");
       if (m && !strcmp(m, "spu")) {
@@ -673,6 +677,9 @@ __attribute__((constructor)) static void kz_jm_init(void)
           setenv("PS3RECOMP_MLAA_GPU", "1", 0);
           const char* b = getenv("KZ_MOTION_BLUR");
           if (!b || atoi(b)) setenv("PS3RECOMP_MB_GPU", "0xF1000", 0);
+          setenv("PS3RECOMP_GLOW_GPU", "0x10000", 0);
+          const char* gl = getenv("KZ_GLOW");
+          if (gl && *gl) setenv("PS3RECOMP_GLOW_STRENGTH", gl, 0);
       } }
     { const char* e = getenv("KZ_JM_HLE_PM"); s_hle_pm = !e || atoi(e); }
     { const char* e = getenv("KZ_JM_SKIP"); s_skip = !e || atoi(e); }

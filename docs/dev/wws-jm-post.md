@@ -496,3 +496,43 @@ indirectly with size 0 and the image stays as it was.
   `kz1hd_pc.ini` (default on, as in the original; the Original preset includes on), applied at once
   (`rsx_vulkan_set_motion_blur`; at start `PS3RECOMP_MB_ON`). Checked: the row shows and writes the ini; with `off`,
   4 frames dumped while sprinting (field strength up to 255) come out equal to the MLAA alone.
+
+## The glow (2026-11-13)
+
+The glow is steps 3 to 6 of the chain above for the half- and quarter-resolution part (the 24 half-resolution
+`ab05`/`6b71` pairs belong to the motion field, not the glow). Read from a Level 8 capture's DMA, job by job (IO
+offsets; base `0x11300000` on v0.18):
+
+1. `8197` (Modulate) x24 copies the RSX's 640x360 target at IO `0x10000`, the glow source, to IO `0x718000`
+   (factor 1.0: a copy).
+2. `de0b` (Downsample) x12 halves it to 320x180 (IO `0xB7D000`).
+3. `ab05`/`6b71` x6 each, 7 times, between IO `0xB7D000` and `0xBB5400`; `8197` x6 with factor 1.5; 4 more pairs.
+4. `f601` x12 doubles it to IO `0x718000`; `f601` x96 doubles that again and adds it to the full image.
+
+The rules, measured on the lifted modules with random inputs through `tools/mb_harness` (`check_glow.py`):
+Downsample as for the motion blur (byte averages rounded up, down the columns first); the blur is the 7-tap binomial
+`(1,6,15,20,15,6,1)/64` truncated to a byte on each pass, edges repeated, with no special rule for any byte (unlike the
+motion field's strength byte); Modulate 1.5 is `min(255, (x * 3) >> 1)`; the doubling is Upsample's 9:3:3:1; the last
+step is a saturating add (`f601` 0x4FD0), every byte. The C reference `port/kz1hd/native/glow_ref.c` matches the lifted
+code on every pixel, stage by stage and over the whole chain (two seeds; random, sparse and black sources). A black
+source therefore adds nothing to the colour.
+
+**Why the glow was zero in the port.** The glow source pass (pipe 92 in the F12 captures: a 640x360 quad into IO
+`0x10000`) computes `tex0.rgb * tex1.z`, where `tex0` is the 1280x720 surface `0x0D740000` and `tex1` the frame's
+depth target read as A8R8G8B8: `.z` is the low byte of the Z24S8 word, the stencil. The game draws its glow sprites
+(32x32 textures; one draw per sprite) into `0x0D740000` with the depth test on and stencil ALWAYS, ref 255, REPLACE on
+depth pass (F12 capture of 2026-11-11 17:55, pass 005, about 340 thousand lit pixels after the draw), so the source is
+the glow texture where a sprite is visible. The renderer's depth-to-colour pack wrote the stencil byte as 0, so the
+source was black on both paths (`KZ_MLAA=spu` measured it: 0 lit pixels in every frame of Level 1). Patch 2076 packs
+the real stencil (the D32S8 target's stencil aspect). Level 1's opening has no glow draws at all (the Level 1 capture
+has none into `0x0D740000`, and with 2076 the source stays black there, about 200 s measured).
+
+On the GPU (patch 2078, `libs/video/vulkan/rsx_vk_glow.comp`): the glow source is copied from the RSX target
+(`PS3RECOMP_GLOW_GPU`, set by `jm.c` to IO `0x10000` on the default path), halved, blurred, modulated, doubled and
+added to the MLAA's buffer before the motion blur, as the SPU chain orders them; under a temporal upscaler the add is
+over its output, upsampled bilinearly. When the source has no colour or the strength is 0, the stages after the halving
+are dispatched with size 0. Strength in 1/256 (`rsx_vulkan_set_glow_strength`; 256, the default, is the game's, bit
+for bit; `KZ_GLOW=<percent>` for tests). `tools/mb_harness/regress_glow.sh` checks lifted code = C and GPU = C (strength
+256, 128 and 0); `check_dump.sh` checks frames dumped in the game (`PS3RECOMP_MLAA_DUMP`, with `PS3RECOMP_MLAA_DUMP_GLOW=1`)
+against the C references in the renderer's order. When the source is black the GPU leaves the frame's alpha as it was
+where the SPUs saturate it to 255; the game's frame alpha is 255 anyway, and the alpha is not shown.
