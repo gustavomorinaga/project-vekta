@@ -102,7 +102,8 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] Keyboard in menus and in play
 - [x] Logic at 60 Hz checked (hints, movement, rate of fire)
 - [x] Loading from about 8 min down to about 8 s
-- [ ] `jm_post` effects the game uses elsewhere (probably depth of field in cutscenes), reimplemented on the GPU
+- [x] `jm_post` glow on the GPU (emissive sprites; zero in most places), checked against the SPU chain in the game
+- [ ] Per-event channels (damage, sniper zoom, type 8): RSX colour grading per the code, to confirm in the game
 
 ### Phase 6. Full campaign
 - [x] Movies (`cellSail` through FFmpeg) and sound

@@ -536,3 +536,25 @@ for bit; `KZ_GLOW=<percent>` for tests). `tools/mb_harness/regress_glow.sh` chec
 256, 128 and 0); `check_dump.sh` checks frames dumped in the game (`PS3RECOMP_MLAA_DUMP`, with `PS3RECOMP_MLAA_DUMP_GLOW=1`)
 against the C references in the renderer's order. When the source is black the GPU leaves the frame's alpha as it was
 where the SPUs saturate it to 255; the game's frame alpha is 255 anyway, and the alpha is not shown.
+
+**Where the game draws glow (2026-11-13, measured).** `KZ_MLAA=spu` with patch 2076 and `NV0039_STATS` (patch 2077), all
+11 levels at 60 Hz, each reached through the unlocked level list on a new profile and played live for about 220 s (god
+mode, walking, turning, firing): 0 lit pixels in the glow source in every frame of every level. A Level 7 run with
+`RSX_DAC_LOG` and four F12 captures shows why: the glow pass does read the depth through the GPU pack (A8R8G8B8, the
+path 2076 fixed), and nothing is drawn into `0x0D740000` there (the surface was last written at boot). The glow is
+emissive sprites in a few places, not a screen-wide bloom: the captures with glow draws are Level 11 (the rocket ride:
+an engine's exhaust; the docking bay interior). From the docking bay checkpoint of a saved game, the same SPU-path run
+measured a lit source in 10 frames, up to 7162 pixels.
+
+**The GPU pass in the game (same checkpoint, 60 Hz).** `KZ_MLAA=gpu` with `PS3RECOMP_MLAA_DUMP` and
+`PS3RECOMP_MLAA_DUMP_GLOW=1`, 8 frames with a lit source (10 to 10689 pixels) each run, through
+`tools/mb_harness/check_dump.sh`: with `KZ_GLOW=100` the output equals `mlaa_ref`, `glow_ref` and `mb_ref` over the dumped
+input on every pixel (the glow then changes up to about 23 thousand pixels more than the MLAA alone); with `KZ_GLOW=0`
+it equals the MLAA (and motion blur) alone on every pixel.
+
+**The other event channels.** The player's screen effects set channels 4 (damage), 6 (sniper zoom presets) and 8 at
+`0x20148C`. `FUN_0029BDC8`, which draws the screen effects every frame, passes the blended preset values (`+0x1B0` to
+`+0x1E8`: Colorize's contrast, brightness, mix and colours) to an RSX shader's parameters, and only the type 5 pair
+(`+0x78`/`+0x7C`) to the motion field; the `jm_post` jobs are built once and their per-frame inputs are the two RSX
+targets. So these channels act through the RSX's colour grading, which the port draws as the game does, not through
+`jm_post`. Not yet checked in the game (taking damage and zooming on the SPU path and comparing what the chain changes).

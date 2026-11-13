@@ -66,8 +66,8 @@
 </ul>
 <h3>The PS3 game, feature by feature</h3>
 <ul class="meters">
-<li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span><b>14</b></li>
-<li class="m-part"><span class="ml">Partial</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>3</b></li>
+<li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span><b>15</b></li>
+<li class="m-part"><span class="ml">Partial</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>2</b></li>
 <li class="m-no"><span class="ml">Not yet</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
 <li class="m-na"><span class="ml">Not applicable</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
 </ul>
@@ -110,7 +110,7 @@
 <tbody>
 <tr><td>1280x720 picture</td><td>720p</td><td>at any window size</td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>Anti-aliasing (MLAA on the SPUs)</td><td><code>jm_post</code> job chain</td><td>the game&#x27;s own MLAA reimplemented as a GPU pass, equal to the SPU code except at about 0.6 % of edge pixels (<code>KZ_MLAA=gpu</code>, default; <code>spu</code> runs the original jobs, slowly; <code>off</code>)</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Glow and motion blur (<code>jm_post</code>)</td><td>event-driven SPU jobs</td><td>zero in normal play; only the slow <code>KZ_MLAA=spu</code> path computes them</td><td><span class="st st-part">Partial</span></td></tr>
+<tr><td>Glow and motion blur (<code>jm_post</code>)</td><td>event-driven SPU jobs</td><td>on the GPU; the glow (emissive sprites, Level 11 docking bay measured) and the sprint blur equal the SPU chain on every pixel in the game</td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>HUD, menus, fonts</td><td>as shipped</td><td></td><td><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
@@ -203,6 +203,7 @@
 <li><span class="sec">Changed</span>Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test routes the RSX thread uses 0.5-0.6 ms less per frame (about 13-15 %), the whole game about 4-7 % less; frame rates the same. <code>PS3RECOMP_ENG_VCACHE=0</code> turns it off (after ps3recomp pull request #718).</li>
 <li><span class="sec">Changed</span><code>tools/pgo.sh</code> (optional profile-guided build): it makes its own play folder (<code>work/vfs-test</code>) from <code>work/vfs</code> instead of failing on a fresh clone, ends with a check that the profile matches the lifted code (a stale profile was silently ignored), shows a failing step&#x27;s log instead of hiding it, and can train on recorded routes (<code>KZ_PGO_ROUTES</code>). An instrumented build now writes its profile when the game quits, so a route replay that ends on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about +4 % trained on combat routes (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">docs/BUILDING.md</a>).</li>
 <li><span class="sec">Changed</span>Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and stayed about 99 % busy; it now sleeps until shortly before the next tick of the game clock and takes the tick exactly as before, about half a core less (<code>KZ_FRAME_WAIT_SPIN=1</code> goes back to spinning). The SPURS scheduler now runs only the work the game asked for, without probing idle SPUs, which used 4.6 to 6 % less CPU for the whole game on the Level 7 and Level 1 test routes with the same frame rates (<code>PS3_SPURS_WANTED=0</code> goes back to the old way; after Project Helghast&#x27;s patch 1074) (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/performance.md">docs/dev/performance.md</a>).</li>
+<li><span class="sec">Fixed</span>The glow of emissive effects (lights, an engine&#x27;s exhaust; measured in the last level&#x27;s docking bay) now shows: a depth buffer read as a colour texture now carries its stencil, which the game&#x27;s glow uses as its mask, and the glow (until now only on the slow <code>KZ_MLAA=spu</code> path) runs on the GPU after the edge smoothing, equal to the PS3&#x27;s chain on every pixel. <code>KZ_GLOW=&lt;0-100&gt;</code> sets its strength for tests (100, the game&#x27;s, by default).</li>
 <li><span class="sec">Fixed</span>Reservations: after many thread starts a thread could stop being told when another one broke its reservation (ps3recomp patch 3037, after upstream pull request #758).</li>
 <li><span class="sec">Fixed</span>Scripted events at 60 and 144 fps: the level scripts&#x27; update ran once per frame, so above 30 fps everything they count in updates ran 2 to 5 times too fast. In the last level the platform ride to the main station took about 12 s instead of about 49 s, the story events timed in seconds fell behind it and the section never ended. The update now runs 30 times per second of game time, as on the PS3, at every frame rate, and also on any frame with script messages waiting (area triggers, finished dialogue), which the game drops after the update (<code>KZ_SCRIPT_EVERY_FRAME=1</code> goes back to the old way). Objects a script moves step by step, such as that platform, slide a little every frame instead of jumping 30 times a second, which also made the voices of the characters riding it sound robotic (<code>KZ_SCRIPT_SMOOTH=0</code> turns the sliding off).</li>
 <li><span class="sec">Fixed</span>Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the Vulkan validation layer reported as an error (<code>VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605</code>); <code>independentBlend</code> is now on whenever the GPU has it (patch 2061).</li>
@@ -278,10 +279,10 @@
 <li><time>next</time><span><b>Unreleased</b> Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about...</span></li>
 <li><time>next</time><span><b>Unreleased</b> tools/pgo.sh (optional profile-guided build): it makes its own play folder (work/vfs-test) from work/vfs instead of...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The glow of emissive effects (lights, an engine&#x27;s exhaust; measured in the last level&#x27;s docking bay) now shows: a...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Reservations: after many thread starts a thread could stop being told when another one broke its reservation...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Scripted events at 60 and 144 fps: the level scripts&#x27; update ran once per frame, so above 30 fps everything they count...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the...</span></li>
-<li><time datetime="2026-11-09">11-09</time><span><b>0.4.0</b> Developer switches for testing (docs/dev/testing.md): KZ_DEBUG_GOD=1 keeps the game&#x27;s own God mode on, KZ_DEBUG_GIVE...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -290,9 +291,9 @@
 <ul class="todo">
 <li class="o-no"><span class="box" aria-hidden="true"></span>&quot;One / Two Player&quot; in the menu <em>(not yet)</em></li>
 <li class="o-part"><span class="box" aria-hidden="true"></span>Levels 2 to 11 <em>(partial)</em></li>
-<li class="o-part"><span class="box" aria-hidden="true"></span>Glow and motion blur (<code>jm_post</code>) <em>(partial)</em></li>
 <li class="o-part"><span class="box" aria-hidden="true"></span>Trophy unlocks <em>(partial)</em></li>
 <li class="o-part"><span class="box" aria-hidden="true"></span>Windows x64 exe (cross-built on Linux) <em>(partial)</em></li>
+<li class="o-part"><span class="box" aria-hidden="true"></span>Installer that builds the port on the player&#x27;s PC <em>(partial)</em></li>
 </ul>
 <p class="small">The next features still open; all of them: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, and the plan: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">ROADMAP.md</a>.</p>
 </section>
@@ -304,8 +305,8 @@
 <h2>At a glance</h2>
 <p class="headline">Status: <strong>Partly playable</strong></p>
 <ul class="glance">
-<li><span class="st st-ok">Works</span> <b>14</b></li>
-<li><span class="st st-part">Partial</span> <b>3</b></li>
+<li><span class="st st-ok">Works</span> <b>15</b></li>
+<li><span class="st st-part">Partial</span> <b>2</b></li>
 <li><span class="st st-no">Not yet</span> <b>1</b></li>
 <li><span class="st st-na">Not applicable</span> <b>1</b></li>
 </ul>

@@ -35,6 +35,10 @@ program and folder that build it. Until a release that calls itself playable
   after Project Helghast's patch 1074) ([docs/dev/performance.md](docs/dev/performance.md)).
 
 ### Fixed
+- The glow of emissive effects (lights, an engine's exhaust; measured in the last level's docking bay) now shows: a
+  depth buffer read as a colour texture now carries its stencil, which the game's glow uses as its mask, and the glow
+  (until now only on the slow `KZ_MLAA=spu` path) runs on the GPU after the edge smoothing, equal to the PS3's chain on
+  every pixel. `KZ_GLOW=<0-100>` sets its strength for tests (100, the game's, by default).
 - Reservations: after many thread starts a thread could stop being told when another one broke its
   reservation (ps3recomp patch 3037, after upstream pull request #758).
 - Scripted events at 60 and 144 fps: the level scripts' update ran once per frame, so above 30 fps everything they
