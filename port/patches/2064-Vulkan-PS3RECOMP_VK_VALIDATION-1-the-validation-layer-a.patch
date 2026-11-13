@@ -1,0 +1,392 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 12 Nov 2026 21:41:29 -0300
+Subject: [PATCH] Vulkan: PS3RECOMP_VK_VALIDATION=1, the validation layer and a
+ debug messenger with per-ID counts
+
+Off by default. With PS3RECOMP_VK_VALIDATION=1 the instance enables
+VK_LAYER_KHRONOS_validation when the loader lists it, and
+VK_EXT_debug_utils (from the loader or the layer) with a messenger for
+errors and warnings (general, validation and performance) that writes to
+the log. A frame repeats one mistake hundreds of times, so messages are
+keyed by their ID (their name when the ID is 0, as some driver and loader
+messages have): the first 3 of a key are logged in full, then one line at
+10, 100, 1000... occurrences, and the counts of every key are listed,
+most frequent first, when the backend shuts down or the process exits.
+The filter and the switch's parser are in rsx_vk_debug.h, plain C a host
+test can include alone.
+
+A missing layer or extension is logged and the run goes on without it;
+if vkCreateInstance fails with them, it is tried again without, before the
+existing fallbacks (temporal upscaler's extensions, then the surface's).
+The layer can also come from the loader
+(VK_LOADER_LAYERS_ENABLE='*validation*'); this switch adds the
+messenger and the counts. Written from the Vulkan specification and the
+validation layer's documentation.
+
+The layer itself stops reporting an ID after 10 by default; when it offers
+VK_EXT_layer_settings, its enable_message_limit is turned off so the counts
+at quit are the true ones.
+---
+ libs/video/rsx_vk_debug.h       | 120 +++++++++++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c | 175 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ libs/video/rsx_vulkan_backend.h |   3 ++
+ 3 files changed, 296 insertions(+), 2 deletions(-)
+
+diff --git a/libs/video/rsx_vk_debug.h b/libs/video/rsx_vk_debug.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf0f06d8538834fd4d474471c9c0a6aa6363157a
+--- /dev/null
++++ b/libs/video/rsx_vk_debug.h
+@@ -0,0 +1,120 @@
++/* The Vulkan backend's debugging switches and its validation message filter
++ * (ps3recomp-vekta patch 2064). Plain C with no Vulkan types, so a host test
++ * can include it alone.
++ *
++ * PS3RECOMP_VK_VALIDATION=1 turns on VK_LAYER_KHRONOS_validation and a
++ * VK_EXT_debug_utils messenger whose messages go to the log. A frame repeats
++ * the same mistake hundreds of times, so each message is keyed by its ID (its
++ * name when the ID is 0): the first RSX_VK_MSG_FULL occurrences are logged in
++ * full, after that only a count line at 10, 100, 1000... occurrences, and the
++ * counts of every key are listed when the backend shuts down. */
++#ifndef RSX_VK_DEBUG_H
++#define RSX_VK_DEBUG_H
++
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++
++/* A switch's value: 1 for "1", "on", "yes", "true"; 0 for unset, "", "0",
++ * "off", "no", "false"; -1 for anything else (the caller says so and keeps
++ * it off). Case does not matter. */
++static inline int rsx_vk_env_flag(const char* v)
++{
++    static const char* const on[] = { "1", "on", "yes", "true" };
++    static const char* const off[] = { "", "0", "off", "no", "false" };
++    if (!v) return 0;
++    char low[8];
++    size_t n = 0;
++    for (; v[n] && n < sizeof low - 1; n++)
++        low[n] = (char)((v[n] >= 'A' && v[n] <= 'Z') ? v[n] - 'A' + 'a' : v[n]);
++    if (v[n]) return -1;   /* longer than any word above */
++    low[n] = 0;
++    for (size_t i = 0; i < sizeof on / sizeof on[0]; i++) if (!strcmp(low, on[i])) return 1;
++    for (size_t i = 0; i < sizeof off / sizeof off[0]; i++) if (!strcmp(low, off[i])) return 0;
++    return -1;
++}
++
++#define RSX_VK_MSG_SLOTS 256   /* distinct keys counted; later new ones only add to "other" */
++#define RSX_VK_MSG_FULL  3     /* occurrences of one key logged in full */
++
++typedef struct {
++    int32_t  id;          /* VkDebugUtilsMessengerCallbackDataEXT.messageIdNumber */
++    uint32_t severity;    /* the highest VkDebugUtilsMessageSeverityFlagBitsEXT seen */
++    uint64_t count;
++    char     name[64];    /* pMessageIdName, cut to fit */
++} rsx_vk_msg_slot;
++
++typedef struct {
++    rsx_vk_msg_slot slot[RSX_VK_MSG_SLOTS];
++    uint32_t used;
++    uint64_t total;       /* every message */
++    uint64_t other;       /* messages of keys that found no free slot */
++} rsx_vk_msg_filter;
++
++/* What to do with a message: */
++enum {
++    RSX_VK_MSG_QUIET = 0,   /* count it only */
++    RSX_VK_MSG_LOG   = 1,   /* log it in full */
++    RSX_VK_MSG_COUNT = 2    /* log one line: "<name> seen <count> times" */
++};
++
++static inline int rsx_vk_msg_same(const rsx_vk_msg_slot* s, int32_t id, const char* name)
++{
++    if (id) return s->id == id;
++    return s->id == 0 && !strncmp(s->name, name ? name : "", sizeof s->name - 1);
++}
++
++/* Counts one message and says what to do with it; *count gets how many times
++ * its key has been seen, this one included (0 when it went to "other"). The
++ * caller serialises calls: the messenger may be called from any thread. */
++static inline int rsx_vk_msg_note(rsx_vk_msg_filter* f, int32_t id, const char* name,
++                                  uint32_t severity, uint64_t* count)
++{
++    f->total++;
++    rsx_vk_msg_slot* s = NULL;
++    for (uint32_t i = 0; i < f->used; i++)
++        if (rsx_vk_msg_same(&f->slot[i], id, name)) { s = &f->slot[i]; break; }
++    if (!s) {
++        if (f->used == RSX_VK_MSG_SLOTS) {
++            f->other++;
++            if (count) *count = 0;
++            /* the first one that did not fit is shown, so the summary's
++             * "other" line has a face; the rest are counted */
++            return f->other == 1 ? RSX_VK_MSG_LOG : RSX_VK_MSG_QUIET;
++        }
++        s = &f->slot[f->used++];
++        memset(s, 0, sizeof *s);
++        s->id = id;
++        snprintf(s->name, sizeof s->name, "%s", name ? name : "");
++    }
++    s->count++;
++    if (severity > s->severity) s->severity = severity;
++    if (count) *count = s->count;
++    if (s->count <= RSX_VK_MSG_FULL) return RSX_VK_MSG_LOG;
++    uint64_t p = 10;
++    while (p < s->count && p <= UINT64_MAX / 10) p *= 10;
++    return p == s->count ? RSX_VK_MSG_COUNT : RSX_VK_MSG_QUIET;
++}
++
++/* The summary at shutdown: one line a key, most frequent first. */
++static inline void rsx_vk_msg_summary(const rsx_vk_msg_filter* f, FILE* out, const char* prefix)
++{
++    fprintf(out, "%svalidation: %llu message(s), %u distinct\n", prefix,
++            (unsigned long long)f->total, f->used);
++    uint8_t done[RSX_VK_MSG_SLOTS] = {0};
++    for (uint32_t k = 0; k < f->used; k++) {
++        int best = -1;
++        for (uint32_t i = 0; i < f->used; i++)
++            if (!done[i] && (best < 0 || f->slot[i].count > f->slot[best].count)) best = (int)i;
++        done[best] = 1;
++        const rsx_vk_msg_slot* s = &f->slot[best];
++        fprintf(out, "%s  %10llu  %-7s  0x%08X  %s\n", prefix, (unsigned long long)s->count,
++                s->severity >= 0x1000u ? "error" : s->severity >= 0x100u ? "warning" :
++                s->severity >= 0x10u ? "info" : "verbose",
++                (unsigned)s->id, s->name[0] ? s->name : "(no name)");
++    }
++    if (f->other)
++        fprintf(out, "%s  %10llu  other (no slot left)\n", prefix, (unsigned long long)f->other);
++}
++
++#endif
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index e8ee16d4e2bb7f241b68f6149d46c9bc3ad070ff..8cacf2889d049979e14add5747114f739a7df382 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -366,6 +366,151 @@ static int vk_load_wsi_device_functions(void)
+     return 0;
+ }
+ 
++/* ---------------------------------------------------------------------------
++ * Validation (patch 2064). PS3RECOMP_VK_VALIDATION=1 (default off) enables
++ * VK_LAYER_KHRONOS_validation when the loader lists it, and VK_EXT_debug_utils
++ * with a messenger that writes errors and warnings to the log through the
++ * repeat filter in rsx_vk_debug.h; the counts per message ID are listed at
++ * shutdown. A missing layer or extension is logged and the run goes on
++ * without it. The layer can also come from the loader
++ * (VK_LOADER_LAYERS_ENABLE='*validation*'); this switch adds the messenger.
++ * -------------------------------------------------------------------------*/
++#include "rsx_vk_debug.h"
++static struct {
++    int want;                /* PS3RECOMP_VK_VALIDATION */
++    int layer;               /* VK_LAYER_KHRONOS_validation asked for */
++    int utils;               /* VK_EXT_debug_utils asked for */
++    int settings;            /* VK_EXT_layer_settings: the layer's own repeat limit off */
++    VkDebugUtilsMessengerEXT messenger;
++    PFN_vkDestroyDebugUtilsMessengerEXT destroy;
++    pthread_mutex_t lock;
++    rsx_vk_msg_filter filter;
++    int summarised;
++} s_val = { .lock = PTHREAD_MUTEX_INITIALIZER };
++
++static VKAPI_ATTR VkBool32 VKAPI_CALL vk_val_message(
++    VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type,
++    const VkDebugUtilsMessengerCallbackDataEXT* d, void* user)
++{
++    (void)type; (void)user;
++    uint64_t n = 0;
++    pthread_mutex_lock(&s_val.lock);
++    const int what = rsx_vk_msg_note(&s_val.filter, d ? d->messageIdNumber : 0,
++                                     d ? d->pMessageIdName : NULL, (uint32_t)severity, &n);
++    pthread_mutex_unlock(&s_val.lock);
++    const char* sev = severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ? "error" :
++                      severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT ? "warning" : "info";
++    if (what == RSX_VK_MSG_LOG)
++        VK_LOG("validation %s #%llu [0x%08X %s]: %s\n", sev, (unsigned long long)n,
++               d ? (unsigned)d->messageIdNumber : 0u, d && d->pMessageIdName ? d->pMessageIdName : "",
++               d && d->pMessage ? d->pMessage : "");
++    else if (what == RSX_VK_MSG_COUNT)
++        VK_LOG("validation %s [0x%08X %s] seen %llu times\n", sev, d ? (unsigned)d->messageIdNumber : 0u,
++               d && d->pMessageIdName ? d->pMessageIdName : "", (unsigned long long)n);
++    return VK_FALSE;   /* never abort the call */
++}
++
++static void vk_val_summary(void)
++{
++    if (!s_val.utils || s_val.summarised) return;
++    s_val.summarised = 1;
++    pthread_mutex_lock(&s_val.lock);
++    rsx_vk_msg_summary(&s_val.filter, stderr, "[RSX vulkan] ");
++    pthread_mutex_unlock(&s_val.lock);
++}
++/* For a title that ends with _exit (no atexit handlers): the counts now. */
++void rsx_vulkan_validation_summary(void) { vk_val_summary(); }
++
++/* Before vkCreateInstance: which of the layer and the extension the loader
++ * has. Adds the extension to ext[] (room for one more) and returns the layer
++ * count (0 or 1) for ppEnabledLayerNames. */
++static const char* const s_val_layer = "VK_LAYER_KHRONOS_validation";
++static u32 vk_val_prepare(const char** ext, u32* n_ext)
++{
++    const int v = rsx_vk_env_flag(getenv("PS3RECOMP_VK_VALIDATION"));
++    if (v < 0) VK_LOG("PS3RECOMP_VK_VALIDATION=%s not understood (0 or 1), off\n", getenv("PS3RECOMP_VK_VALIDATION"));
++    s_val.want = v > 0;
++    if (!s_val.want) return 0;
++    PFN_vkEnumerateInstanceLayerProperties lp = (PFN_vkEnumerateInstanceLayerProperties)
++        pvkGetInstanceProcAddr(NULL, "vkEnumerateInstanceLayerProperties");
++    PFN_vkEnumerateInstanceExtensionProperties ep = (PFN_vkEnumerateInstanceExtensionProperties)
++        pvkGetInstanceProcAddr(NULL, "vkEnumerateInstanceExtensionProperties");
++    uint32_t n = 0;
++    if (lp && lp(&n, NULL) == VK_SUCCESS && n) {
++        VkLayerProperties* l = (VkLayerProperties*)calloc(n, sizeof *l);
++        if (l && lp(&n, l) == VK_SUCCESS)
++            for (uint32_t i = 0; i < n; i++) if (!strcmp(l[i].layerName, s_val_layer)) s_val.layer = 1;
++        free(l);
++    }
++    if (!s_val.layer) VK_LOG("validation: %s is not installed, messages from the driver and loader only\n", s_val_layer);
++    /* the extension from the loader, or from the layer itself */
++    for (int pass = 0; pass < 2 && !s_val.utils && ep; pass++) {
++        const char* from = pass ? (s_val.layer ? s_val_layer : NULL) : NULL;
++        if (pass && !from) break;
++        n = 0;
++        if (ep(from, &n, NULL) != VK_SUCCESS || !n) continue;
++        VkExtensionProperties* e = (VkExtensionProperties*)calloc(n, sizeof *e);
++        if (e && ep(from, &n, e) == VK_SUCCESS)
++            for (uint32_t i = 0; i < n; i++)
++                if (!strcmp(e[i].extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) s_val.utils = 1;
++        free(e);
++    }
++    if (s_val.utils) {
++        u32 k = 0;
++        while (k < *n_ext && strcmp(ext[k], VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) k++;
++        if (k == *n_ext) ext[(*n_ext)++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
++    } else {
++        VK_LOG("validation: no %s, nothing will be logged\n", VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
++    }
++#ifdef VK_EXT_layer_settings
++    /* The layer stops reporting an ID after 10 of it by default; the filter
++     * here does that job, so the counts at quit are the true ones. */
++    n = 0;
++    if (s_val.layer && s_val.utils && ep && ep(s_val_layer, &n, NULL) == VK_SUCCESS && n) {
++        VkExtensionProperties* e = (VkExtensionProperties*)calloc(n, sizeof *e);
++        if (e && ep(s_val_layer, &n, e) == VK_SUCCESS)
++            for (uint32_t i = 0; i < n; i++)
++                if (!strcmp(e[i].extensionName, VK_EXT_LAYER_SETTINGS_EXTENSION_NAME)) s_val.settings = 1;
++        free(e);
++        if (s_val.settings) ext[(*n_ext)++] = VK_EXT_LAYER_SETTINGS_EXTENSION_NAME;
++    }
++#endif
++    return s_val.layer ? 1u : 0u;
++}
++
++/* After vkCreateInstance. */
++static void vk_val_start(VkInstance inst)
++{
++    if (!s_val.utils) return;
++    PFN_vkCreateDebugUtilsMessengerEXT create = (PFN_vkCreateDebugUtilsMessengerEXT)
++        pvkGetInstanceProcAddr(inst, "vkCreateDebugUtilsMessengerEXT");
++    s_val.destroy = (PFN_vkDestroyDebugUtilsMessengerEXT)
++        pvkGetInstanceProcAddr(inst, "vkDestroyDebugUtilsMessengerEXT");
++    VkDebugUtilsMessengerCreateInfoEXT mi = {
++        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
++        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
++                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
++        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
++                       VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
++                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
++        .pfnUserCallback = vk_val_message };
++    if (!create || !s_val.destroy || create(inst, &mi, NULL, &s_val.messenger) != VK_SUCCESS) {
++        VK_LOG("validation: the debug messenger could not be made, nothing will be logged\n");
++        s_val.utils = 0;
++        return;
++    }
++    atexit(vk_val_summary);   /* the game may exit without shutting the backend down */
++    VK_LOG("validation: on (%s%s); per message ID the first %d in full, then a count at 10, 100, 1000...\n",
++           s_val.layer ? s_val_layer : "no layer", s_val.settings ? ", its repeat limit off" : "", RSX_VK_MSG_FULL);
++}
++
++static void vk_val_stop(VkInstance inst)
++{
++    vk_val_summary();
++    if (s_val.messenger && s_val.destroy) s_val.destroy(inst, s_val.messenger, NULL);
++    s_val.messenger = VK_NULL_HANDLE;
++}
++
+ /* ---------------------------------------------------------------------------
+  * Device selection: PS3RECOMP_VK_DEVICE if set, else the first discrete GPU,
+  * else integrated, else anything that is not a CPU rasteriser, else whatever
+@@ -6687,8 +6832,10 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+       if (js) sscanf(js, "%f,%f", &s_tm.jsign_x, &s_tm.jsign_y); }
+     const char* iext[32];
+     u32 ni = 0;
+-    if (s_vk.windowed) for (u32 i = 0; i < s_vk.inst_ext_count && ni < 32; i++) iext[ni++] = s_vk.inst_exts[i];
+-    const u32 ni_window = ni;
++    if (s_vk.windowed) for (u32 i = 0; i < s_vk.inst_ext_count && ni < 30; i++) iext[ni++] = s_vk.inst_exts[i];
++    const u32 ni_surface = ni;
++    const u32 n_layers = vk_val_prepare(iext, &ni);   /* PS3RECOMP_VK_VALIDATION: debug utils after the surface's */
++    u32 ni_window = ni;
+     if (s_tm.want == 1) {
+         u32 a, b; const char* const* ia; const char* const* da;
+         rsx_dlss_required_extensions(&a, &ia, &b, &da);
+@@ -6706,7 +6853,29 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+                                 .pApplicationInfo = &app };
+     ci.enabledExtensionCount   = ni;
+     ci.ppEnabledExtensionNames = ni ? iext : NULL;
++    ci.enabledLayerCount   = n_layers;
++    ci.ppEnabledLayerNames = n_layers ? &s_val_layer : NULL;
++#ifdef VK_EXT_layer_settings
++    const VkBool32 no_limit = VK_FALSE;
++    const VkLayerSettingEXT lset = { s_val_layer, "enable_message_limit", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &no_limit };
++    const VkLayerSettingsCreateInfoEXT lsci = { .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
++                                                .settingCount = 1, .pSettings = &lset };
++    if (s_val.settings) ci.pNext = &lsci;
++#endif
+     VkResult ir = pvkCreateInstance(&ci, NULL, &s_vk.instance);
++    if (ir != VK_SUCCESS && (n_layers || ni_window != ni_surface)) {
++        VK_LOG("validation: vkCreateInstance with the layer failed (VkResult %d), off\n", (int)ir);
++        s_val.layer = s_val.utils = s_val.settings = 0;
++        ci.enabledLayerCount = 0; ci.ppEnabledLayerNames = NULL; ci.pNext = NULL;
++        if (ni_window != ni_surface) {   /* drop the debugging extensions, keep what came after them */
++            const u32 d = ni_window - ni_surface;
++            for (u32 k = ni_surface; k + d < ni; k++) iext[k] = iext[k + d];
++            ni -= d; ni_window -= d;
++        }
++        ci.enabledExtensionCount = ni;
++        ci.ppEnabledExtensionNames = ni ? iext : NULL;
++        ir = pvkCreateInstance(&ci, NULL, &s_vk.instance);
++    }
+     if (ir != VK_SUCCESS && s_tm.want) {
+         VK_LOG("temporal: vkCreateInstance with NGX's extensions failed (VkResult %d), off\n", (int)ir);
+         s_tm.want = 0;
+@@ -6722,6 +6891,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     }
+     if (ir != VK_SUCCESS) { VK_LOG("vkCreateInstance failed (VkResult %d)\n", (int)ir); return -1; }
+     if (vk_load_instance_functions()) return -1;
++    vk_val_start(s_vk.instance);
+     if (s_vk.windowed) {
+         if (vk_load_wsi_instance_functions()) {
+             vk_window_drop("the driver has no surface functions");
+@@ -6974,6 +7144,7 @@ void rsx_vulkan_backend_shutdown(void)
+         if (s_vk.pool)  pvkDestroyCommandPool(s_vk.device, s_vk.pool, NULL);
+         pvkDestroyDevice(s_vk.device, NULL);
+     }
++    if (s_vk.instance) vk_val_stop(s_vk.instance);
+     if (s_vk.instance && pvkDestroyInstance) pvkDestroyInstance(s_vk.instance, NULL);
+     if (s_vk.lib) dlclose(s_vk.lib);
+     free(s_vk.cpu_verts);
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 6bf3314d110863da2d66a5af75762d1d4912358c..633c49739e2e588bada84c9e9da6fa66204a0f8c 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -100,6 +100,9 @@ void rsx_vulkan_set_glow_strength(int strength256);
+  * (the glow and the motion blur still run there) and the frame is left
+  * unsmoothed. */
+ void rsx_vulkan_set_mlaa(int on);
++/* PS3RECOMP_VK_VALIDATION: the counts per message ID, once (also at exit and
++ * shutdown); for a process that ends with _exit. */
++void rsx_vulkan_validation_summary(void);
+ int  rsx_vulkan_reflex_available(void);
+ /* The temporal upscalers this build has (PS3RECOMP_TEMPORAL): bit 0 FSR 3
+  * (PS3RECOMP_FFX_DIR), bit 1 DLSS (PS3RECOMP_DLSS_SDK; it also needs an
+-- 
+2.x

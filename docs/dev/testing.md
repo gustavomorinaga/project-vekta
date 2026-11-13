@@ -57,6 +57,72 @@ an existing profile changes the menu flow.
 - `KZ_CAM_LOG=1` logs each camera projection site once (`[kz-cam]`: near, far, FOV, aspect); the sites and what each
   draws are in `port/kz1hd/fov.h`.
 
+## Vulkan validation and RenderDoc
+
+- `PS3RECOMP_VK_VALIDATION=1` (default off; ps3recomp patch 2064) turns on `VK_LAYER_KHRONOS_validation` when it is
+  installed (Arch: `vulkan-validation-layers`; Windows: the Vulkan SDK) and a `VK_EXT_debug_utils` messenger that writes
+  errors and warnings to the log as `[RSX vulkan] validation warning #n [0xID name]: ...`. Each message ID is logged
+  in full 3 times, then once at 10, 100, 1000... occurrences; at quit the log gets the count of every ID, most frequent
+  first (`[RSX vulkan] validation: N message(s), M distinct`). A missing layer or extension is logged and the game
+  runs without it. The layer alone also comes from the loader: `VK_LOADER_LAYERS_ENABLE='*validation*'` (its messages
+  then go to stdout unfiltered). When the layer offers `VK_EXT_layer_settings`, its own limit of 10 reports per ID is
+  turned off, so the counts are complete. The layer halves the frame rate (Level 1's route: about 61 fps against
+  about 127), so time nothing with it on.
+- What it reports (2026-11-13, route replays of about 15,000 frames, NVIDIA 615.78.08, layer 1.4.363): no errors.
+  Level 1: 464 warnings, all `0x9805298C Undefined-Value-ShaderOutputNotConsumed` (a guest fragment program writes a
+  second colour output and the pass has one target: the write is dropped, as on the RSX); Level 7: 493, the same.
+  Level 7 with FSR 3.1: the same 495 plus 14959 (one a frame) `0x013365B2
+  Undefined-Value-StorageImage-FormatMismatch-ImageView` inside FSR 3.1's own luma-instability pass (`rw_luma_history`
+  declared Rgba8 in AMD's shader, bound to the SDK's own RGBA16F image); no fault seen in the picture.
+- `PS3RECOMP_VK_LABELS=1` (patch 2065; on with validation or under RenderDoc unless set to 0) names what the GPU does:
+  a debug region for each guest pass (`pass 3: A 0x0C3A0000 640x360 RGBA8 | Z ...`: the pass's place in the frame and
+  its colour targets and zeta by guest address, size and format), for the port's own passes (`jm_post MLAA`, `jm_post
+  motion blur`, `temporal upscaler: DLSS` or `FSR 3.1`, `FSR 1`, `present`) and a name on every colour and zeta target
+  the draw engine makes (`colour 0:0x... 1280x720 RGBA8`). Without `VK_EXT_debug_utils` nothing is named.
+  [frame-map.md](frame-map.md) says what each pass is.
+
+### Running under RenderDoc
+
+Turn the temporal upscalers off first (PC page: Upscaler other than DLSS or FSR 3.1, or `temporal=off` in
+`kz1hd_pc.ini`): NVIDIA's NGX keeps parts of DLSS private and RenderDoc does not capture them, and a capture with
+FSR 3.1 is large and replays slowly. A RenderDoc layer also reports fewer device features and extensions than the
+driver; the port then starts without the ones it is not given (Reflex, the upscalers), as on a GPU without them.
+
+What changes under RenderDoc (RenderDoc 1.46 on Linux, 2026-11-13):
+
+- RenderDoc offers no Wayland surface (`VK_KHR_wayland_surface`), so on a Wayland desktop the window must go through
+  XWayland: `SDL_VIDEODRIVER=x11` (`KZ_RENDERDOC=1 tools/play.sh` sets it). Without it the game runs without a window
+  and RenderDoc has no frame to capture.
+- The pipeline list is not built ahead on worker threads (patch 2066): RenderDoc crashed inside its
+  `vkCreateGraphicsPipelines` on those threads. Each pipeline is built when first drawn instead, so the first minute
+  stutters; `PS3RECOMP_VK_PREWARM=2` forces the prewarm back.
+- A Level 1 capture (1280x720 guest frame shown at 3440x1320) is about 530 MB.
+
+- **Linux**: `KZ_RENDERDOC=1 tools/play.sh` starts the game under `renderdoccmd` (RenderDoc installed, `renderdoccmd`
+  on the PATH); captures go to `work/renderdoc/kz1hd_frameN.rdc`, to open in `qrenderdoc`. From `qrenderdoc` itself
+  (Launch Application): executable `work/build/KZ1HD`, arguments `<run folder>/PS3_GAME/USRDIR/EBOOT.elf`, working
+  directory the run folder (`work/vfs`), and the environment `tools/play.sh` exports (`KZ_LIBSRE_IMAGE`,
+  `PS3RECOMP_VK_GUEST_PROGRAMS=1`, `GCM_PARK_SKIP=1`, `PS3RECOMP_VK_WINDOW=1`).
+- **Windows**: RenderDoc's Launch Application on `KZ1HD.exe` in the installed folder, working directory that folder,
+  arguments as `play.cmd` passes them.
+- In the game, **F12** takes a RenderDoc capture of the next frame together with the port's own pass capture
+  (`capture_<date>_<time>/`, below; ps3recomp patch 2066); RenderDoc's own capture keys are turned off, so one press
+  is one capture. `PS3RECOMP_CAPTURE_TRIGGER=<file>` and `KZ_POKE`'s `capture` do the same from a script. The port
+  finds RenderDoc only when it is already in the process; it never loads it.
+- In the capture, the Event Browser shows the regions above; the Resource Inspector shows the targets by name (the
+  name gives the guest's size, 1280x720, also when the image itself is larger at another internal resolution). A guest
+  pass shows as several regions of the same name when the backend restarts its Vulkan render pass inside it (around
+  a clear, or a draw that reads its own target): in Level 1, about 200 for the world pass.
+
+### The F12 capture and the vertex cache
+
+The F12 capture writes each draw's vertices (`draws.txt`, `pass*_draw*_verts*.f32`). With the converted-vertex cache
+on, a draw that hits it is not converted, and until patch 2067 the capture wrote the vertices of the last converted
+draw under its name. Seen 2026-11-13 on Level 1's route, one capture 40 s into the replay: draws whose written vertices
+were the previous draw's while their own vertex arrays were elsewhere, 562 of 1880 with the cache on, 8 of 2458 with
+`PS3RECOMP_ENG_VCACHE=0` (real repeats), 8 of 1296 with the cache on and patch 2067. Now a capture converts every hit again and checks it against the cache
+(as `PS3RECOMP_ENG_VCACHE_VERIFY=1`), so its files are the draw's own; the game itself is unchanged.
+
 ## Speed
 
 Compare only in alternating A/B on the same executable; drift between sessions reaches ±3 fps

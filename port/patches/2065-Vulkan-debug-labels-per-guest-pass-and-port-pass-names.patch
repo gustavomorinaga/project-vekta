@@ -1,0 +1,456 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 12 Nov 2026 21:45:56 -0300
+Subject: [PATCH] Vulkan: debug labels per guest pass and port pass, names on
+ the engine's targets
+
+For RenderDoc and the validation layer's messages. On with
+PS3RECOMP_VK_LABELS=1, or with PS3RECOMP_VK_VALIDATION=1 unless
+PS3RECOMP_VK_LABELS=0, and only when VK_EXT_debug_utils is there (the
+instance then enables it without the validation layer). Off, every place
+costs one test of a flag, and the engine never builds a name: it asks the
+backend once, at init (rsx_draw_backend.debug_enabled).
+
+The draw engine names each guest pass by its target set, in frame order
+("pass 3: A 0x0C3A0000 640x360 RGBA8 | Z 0x...") through the optional
+debug_pass hook, and each colour and zeta target it makes ("colour
+0:0x... 1280x720 RGBA8") through debug_name. A clear looks the zeta up
+without making one, so names never change what the engine allocates.
+The backend opens a region around the Vulkan render passes of a guest
+pass, and around its own passes: jm_post's MLAA and motion blur on the
+GPU, the temporal upscaler (DLSS, FSR 3.1), FSR 1 and the present. A
+region is opened only on a command buffer being recorded and closed in
+the same function, so begin and end always pair. Written from the Vulkan
+specification.
+---
+ libs/video/rsx_draw_engine.c    |  85 ++++++++++++++++++++++++++++++++++++++++++++
+ libs/video/rsx_draw_engine.h    |  11 ++++++
+ libs/video/rsx_vulkan_backend.c | 115 +++++++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 3 files changed, 202 insertions(+), 9 deletions(-)
+
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 696e503d08903d8931b28acae9a94e76541805ad..e487171168cd540fa575ac0f03917d6c430a025c 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -235,10 +235,16 @@ static struct {
+     rsx_vertex_cache* vc;
+     int vc_stats;
+     int vc_verify;                        /* PS3RECOMP_ENG_VCACHE_VERIFY */
++    /* debug names (rsx_draw_backend.debug_pass): on, the target set of the
++     * pass named last, and the pass count of this frame */
++    int dbg;
++    u32 dbg_n, dbg_targets[RSX_BE_MAX_COLOR_TARGETS], dbg_z, dbg_pass;
+     u64 vc_verified, vc_mismatches;
+     u64 vc_bypass, vc_stats_frame;
+     u64 vc_new_indices, vc_new_vertices;  /* misses: indices not seen, or bytes/state changed */
+ } g;
++static void eng_dbg_name_color(u32 handle, u32 location, u32 offset, u32 w, u32 h, rsx_be_format fmt);
++static void eng_dbg_name_depth(u32 handle, u32 location, u32 offset, u32 w, u32 h);
+ 
+ /* The decompilers' HLSL. The VP decompiler builds bodies up to 192 KB. */
+ static char s_vs_hlsl[256 * 1024];
+@@ -891,6 +897,7 @@ static u32 eng_surface_get(u32 location, u32 offset, u32 want_w, u32 want_h,
+     s->location = location; s->offset = offset;
+     s->w = want_w; s->h = want_h; s->fmt = want_fmt; s->aa_grid = aa_grid;
+     s->handle = handle;
++    eng_dbg_name_color(handle, location, offset, want_w, want_h, want_fmt);
+     s->color_serial = 0;
+     s->guest_dirty = 0;
+     s->last_use = g.frames;
+@@ -1345,6 +1352,7 @@ static u32 eng_zdepth_get(u32 location, u32 offset, u32 rt_w, u32 rt_h)
+     z->location = location; z->offset = offset;
+     z->w = want_w; z->h = want_h;
+     z->handle = handle;
++    eng_dbg_name_depth(handle, location, offset, want_w, want_h);
+     z->snapshot = 0;
+     z->cleared = 0;
+     z->had_write = 0;
+@@ -3241,6 +3249,71 @@ static u32 sink_bind_vertex_textures(
+  *
+  * The question it answers is which pass of a multi-pass frame first comes out
+  * wrong. */
++/* Debug names for a frame debugger (patch 2065). */
++static const char* eng_dbg_format(rsx_be_format f)
++{
++    switch (f) {
++    case RSX_BE_FMT_R8: return "R8";                 case RSX_BE_FMT_R8G8: return "RG8";
++    case RSX_BE_FMT_R8G8B8A8: return "RGBA8";        case RSX_BE_FMT_R16: return "R16";
++    case RSX_BE_FMT_R16G16: return "RG16";           case RSX_BE_FMT_R16G16F: return "RG16F";
++    case RSX_BE_FMT_R16G16B16A16F: return "RGBA16F"; case RSX_BE_FMT_R32F: return "R32F";
++    case RSX_BE_FMT_R32G32B32A32F: return "RGBA32F";
++    default: return "?";
++    }
++}
++
++static void eng_dbg_name_color(u32 handle, u32 location, u32 offset, u32 w, u32 h, rsx_be_format fmt)
++{
++    if (!g.dbg || !handle) return;
++    char t[96];
++    snprintf(t, sizeof t, "colour %u:0x%08X %ux%u %s", location, offset, w, h, eng_dbg_format(fmt));
++    g.be->debug_name(g.be->user, handle, t);
++}
++
++static void eng_dbg_name_depth(u32 handle, u32 location, u32 offset, u32 w, u32 h)
++{
++    if (!g.dbg || !handle) return;
++    char t[96];
++    snprintf(t, sizeof t, "zeta %u:0x%08X %ux%u", location, offset, w, h);
++    g.be->debug_name(g.be->user, handle, t);
++}
++
++static void eng_dbg_pass_text(char* t, size_t cap, u32 pass, const u32* targets, u32 n, u32 zslot)
++{
++    size_t k = (size_t)snprintf(t, cap, "pass %u:", pass);
++    for (u32 i = 0; i < n && k < cap; i++) {
++        const eng_surface* s = &g.surfaces[targets[i]];
++        k += (size_t)snprintf(t + k, cap - k, " %c 0x%08X %ux%u %s", 'A' + (int)i, s->offset, s->w, s->h,
++                              eng_dbg_format(s->fmt));
++    }
++    if (zslot != ENG_INVALID && k < cap) {
++        const eng_zdepth* z = &g.zdepths[zslot];
++        snprintf(t + k, cap - k, " | Z 0x%08X %ux%u", z->offset, z->w, z->h);
++    }
++}
++
++/* A draw or clear into this target set: a new name when the set changed
++ * (a clear does not look at the zeta: it may come before the zeta exists). */
++static void eng_dbg_note(const u32* targets, u32 n, u32 zslot, int clear)
++{
++    if (!g.dbg) return;
++    int same = g.dbg_n == n && (clear || g.dbg_z == zslot);
++    for (u32 k = 0; same && k < n; k++) same = g.dbg_targets[k] == targets[k];
++    if (same) return;
++    g.dbg_n = n; g.dbg_z = zslot;
++    memcpy(g.dbg_targets, targets, n * sizeof(u32));
++    char t[256];
++    eng_dbg_pass_text(t, sizeof t, g.dbg_pass++, targets, n, zslot);
++    g.be->debug_pass(g.be->user, t);
++}
++
++static void eng_dbg_frame_end(void)
++{
++    if (!g.dbg) return;
++    g.be->debug_pass(g.be->user, NULL);
++    g.dbg_n = 0; g.dbg_z = ENG_INVALID; g.dbg_pass = 0;
++}
++
+ static struct {
+     int state;              /* 0 unread, 1 waiting, 2 capturing, 3 done/off */
+     const char* dir;
+@@ -4137,6 +4210,7 @@ static void sink_end(void* user, const rsx_dispatch* r)
+       if (s_dbz.unit) { alpha[4] = s_dbz.mn; alpha[5] = s_dbz.mx; alpha[6] = alpha[7] = 0.0f; } }
+ 
+     pd_note(targets, n_targets, zslot, &rs, pipeline, tex_mask);
++    eng_dbg_note(targets, n_targets, zslot, 0);
+     /* RSX_ENGINE_STATE_LOG=<pipeline>: the raw state registers of that
+      * pipeline's first 4 draws (alpha test, blend, anti-aliasing, shader control). */
+     { static int want = -2; if (want == -2) { const char* e = getenv("RSX_ENGINE_STATE_LOG"); want = e ? atoi(e) : -1; }
+@@ -4305,6 +4379,14 @@ static void sink_clear(void* user, const rsx_dispatch* r, u32 mask)
+                 eng_zdepth_get(zs.zeta_location, zs.zeta_offset, zs.clip_w, zs.clip_h),
+                 NULL, 0, 0);
+     }
++    if (g.dbg) {   /* the zeta only if it exists: a name must not make one */
++        rsx_dsp_surface zs;
++        rsx_dsp_get_surface(&g.rsx, &zs);
++        u32 zslot = ENG_INVALID;
++        for (u32 i = 0; i < g.n_zdepths; i++)
++            if (g.zdepths[i].location == zs.zeta_location && g.zdepths[i].offset == zs.zeta_offset) { zslot = i; break; }
++        eng_dbg_note(targets, n_targets, zslot, 1);
++    }
+ 
+     rsx_dsp_surface sf;
+     rsx_dsp_get_surface(&g.rsx, &sf);
+@@ -4420,6 +4502,7 @@ static u32 eng_present_surface(u32 buffer_id)
+ static void eng_present(u32 buffer_id)
+ {
+     if (!g.ready) return;
++    eng_dbg_frame_end();
+     const u32 target = eng_present_surface(buffer_id);
+     if (target == ENG_INVALID) return;
+     g.surfaces[target].last_use = g.frames;
+@@ -4484,6 +4567,8 @@ int rsx_draw_engine_init(u32 width, u32 height)
+     if (!g.be) return -1;
+     g.width  = width  ? width  : 1280;
+     g.height = height ? height : 720;
++    g.dbg = g.be->debug_enabled && g.be->debug_pass && g.be->debug_name && g.be->debug_enabled(g.be->user);
++    g.dbg_z = ENG_INVALID;
+     { const char* e = getenv("PS3RECOMP_ENG_TEXHASH_FULL");
+       s_texhash_full_always = e && *e && strcmp(e, "0") != 0; }
+     { const char* e = getenv("PS3RECOMP_ENG_DEPTH_VIA_GUEST");
+diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
+index cffed061056bedcbef581211c01c0e16b8b8405e..b445c96ffea1e4b43db3e557ee9ebc3027885823 100644
+--- a/libs/video/rsx_draw_engine.h
++++ b/libs/video/rsx_draw_engine.h
+@@ -341,6 +341,17 @@ typedef struct rsx_draw_backend {
+                         u32 vb_off, u32 vertex_count, u32 stride,
+                         u32 ib_off, u32 index_count);
+     u64  (*commit_serial)(void* user, u64* completed);
++
++    /* Optional, all three or none: names for a frame debugger (RenderDoc,
++     * the validation layer's messages). debug_enabled says once, at
++     * rsx_draw_engine_init, whether the backend records them; without it the
++     * engine never builds a name. debug_pass names the guest pass the next
++     * draws belong to (its target set), NULL at the end of a frame;
++     * debug_name names a target the engine made (guest address, size,
++     * format). */
++    int  (*debug_enabled)(void* user);
++    void (*debug_pass)(void* user, const char* text);
++    void (*debug_name)(void* user, u32 handle, const char* text);
+ } rsx_draw_backend;
+ 
+ /* ---- the engine --------------------------------------------------------- */
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 8cacf2889d049979e14add5747114f739a7df382..a95a51229f82192d60068733517c81e38f462eb2 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -388,6 +388,69 @@ static struct {
+     int summarised;
+ } s_val = { .lock = PTHREAD_MUTEX_INITIALIZER };
+ 
++/* ---------------------------------------------------------------------------
++ * Debug names (patch 2065): labelled regions in the command buffers and
++ * names on the engine's targets, for RenderDoc and the validation layer's
++ * messages. On with PS3RECOMP_VK_LABELS=1, or with PS3RECOMP_VK_VALIDATION=1
++ * unless PS3RECOMP_VK_LABELS=0, and only when VK_EXT_debug_utils is there;
++ * off, each place below costs one test of s_dbg.on.
++ *
++ * Regions: each guest pass (the draw engine names it by its targets, its
++ * Vulkan render passes inside), the MLAA, the motion blur, the temporal
++ * upscaler, FSR 1 and the present. A region is opened only on a command
++ * buffer being recorded and closed in the same function, so begin and end
++ * always pair.
++ * -------------------------------------------------------------------------*/
++static struct {
++    int want;     /* asked for (PS3RECOMP_VK_LABELS, or validation) */
++    int on;       /* the functions are there */
++    PFN_vkCmdBeginDebugUtilsLabelEXT begin;
++    PFN_vkCmdEndDebugUtilsLabelEXT end;
++    PFN_vkSetDebugUtilsObjectNameEXT name;
++    char pass[256];   /* the guest pass the next render pass belongs to */
++    int rp_open;      /* a guest pass region is open around the render pass */
++} s_dbg;
++
++static void vk_dbg_wanted(void)
++{
++    const int l = rsx_vk_env_flag(getenv("PS3RECOMP_VK_LABELS"));
++    const int unset = !getenv("PS3RECOMP_VK_LABELS");
++    if (l < 0) VK_LOG("PS3RECOMP_VK_LABELS=%s not understood (0 or 1), off\n", getenv("PS3RECOMP_VK_LABELS"));
++    s_dbg.want = l > 0 || (unset && rsx_vk_env_flag(getenv("PS3RECOMP_VK_VALIDATION")) > 0);
++}
++
++static void vk_dbg_start(VkInstance inst)
++{
++    if (!s_dbg.want || !s_val.utils) return;
++    s_dbg.begin = (PFN_vkCmdBeginDebugUtilsLabelEXT)pvkGetInstanceProcAddr(inst, "vkCmdBeginDebugUtilsLabelEXT");
++    s_dbg.end = (PFN_vkCmdEndDebugUtilsLabelEXT)pvkGetInstanceProcAddr(inst, "vkCmdEndDebugUtilsLabelEXT");
++    s_dbg.name = (PFN_vkSetDebugUtilsObjectNameEXT)pvkGetInstanceProcAddr(inst, "vkSetDebugUtilsObjectNameEXT");
++    s_dbg.on = s_dbg.begin && s_dbg.end && s_dbg.name;
++    VK_LOG("debug names: %s\n", s_dbg.on ? "on (passes, MLAA, motion blur, upscalers, present; target names)"
++                                          : "VK_EXT_debug_utils has no label functions, off");
++}
++
++static void vk_dbg_push(VkCommandBuffer cmd, const char* text)
++{
++    if (!s_dbg.on) return;
++    VkDebugUtilsLabelEXT l = { .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, .pLabelName = text };
++    s_dbg.begin(cmd, &l);
++}
++
++static void vk_dbg_pop(VkCommandBuffer cmd)
++{
++    if (s_dbg.on) s_dbg.end(cmd);
++}
++
++static void vk_dbg_name_image(VkImage img, const char* text)
++{
++    if (!s_dbg.on || !img) return;
++    VkDebugUtilsObjectNameInfoEXT n = { .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
++                                        .objectType = VK_OBJECT_TYPE_IMAGE,
++                                        .objectHandle = (uint64_t)(uintptr_t)img, .pObjectName = text };
++    s_dbg.name(s_vk.device, &n);
++}
++
+ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_val_message(
+     VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type,
+     const VkDebugUtilsMessengerCallbackDataEXT* d, void* user)
+@@ -412,7 +475,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_val_message(
+ 
+ static void vk_val_summary(void)
+ {
+-    if (!s_val.utils || s_val.summarised) return;
++    if (!s_val.messenger || s_val.summarised) return;
+     s_val.summarised = 1;
+     pthread_mutex_lock(&s_val.lock);
+     rsx_vk_msg_summary(&s_val.filter, stderr, "[RSX vulkan] ");
+@@ -430,19 +493,21 @@ static u32 vk_val_prepare(const char** ext, u32* n_ext)
+     const int v = rsx_vk_env_flag(getenv("PS3RECOMP_VK_VALIDATION"));
+     if (v < 0) VK_LOG("PS3RECOMP_VK_VALIDATION=%s not understood (0 or 1), off\n", getenv("PS3RECOMP_VK_VALIDATION"));
+     s_val.want = v > 0;
+-    if (!s_val.want) return 0;
++    vk_dbg_wanted();
++    if (!s_val.want && !s_dbg.want) return 0;
+     PFN_vkEnumerateInstanceLayerProperties lp = (PFN_vkEnumerateInstanceLayerProperties)
+         pvkGetInstanceProcAddr(NULL, "vkEnumerateInstanceLayerProperties");
+     PFN_vkEnumerateInstanceExtensionProperties ep = (PFN_vkEnumerateInstanceExtensionProperties)
+         pvkGetInstanceProcAddr(NULL, "vkEnumerateInstanceExtensionProperties");
+     uint32_t n = 0;
+-    if (lp && lp(&n, NULL) == VK_SUCCESS && n) {
++    if (s_val.want && lp && lp(&n, NULL) == VK_SUCCESS && n) {
+         VkLayerProperties* l = (VkLayerProperties*)calloc(n, sizeof *l);
+         if (l && lp(&n, l) == VK_SUCCESS)
+             for (uint32_t i = 0; i < n; i++) if (!strcmp(l[i].layerName, s_val_layer)) s_val.layer = 1;
+         free(l);
+     }
+-    if (!s_val.layer) VK_LOG("validation: %s is not installed, messages from the driver and loader only\n", s_val_layer);
++    if (s_val.want && !s_val.layer)
++        VK_LOG("validation: %s is not installed, messages from the driver and loader only\n", s_val_layer);
+     /* the extension from the loader, or from the layer itself */
+     for (int pass = 0; pass < 2 && !s_val.utils && ep; pass++) {
+         const char* from = pass ? (s_val.layer ? s_val_layer : NULL) : NULL;
+@@ -460,7 +525,7 @@ static u32 vk_val_prepare(const char** ext, u32* n_ext)
+         while (k < *n_ext && strcmp(ext[k], VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) k++;
+         if (k == *n_ext) ext[(*n_ext)++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+     } else {
+-        VK_LOG("validation: no %s, nothing will be logged\n", VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
++        VK_LOG("validation and debug names: no %s, off\n", VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+     }
+ #ifdef VK_EXT_layer_settings
+     /* The layer stops reporting an ID after 10 of it by default; the filter
+@@ -481,7 +546,7 @@ static u32 vk_val_prepare(const char** ext, u32* n_ext)
+ /* After vkCreateInstance. */
+ static void vk_val_start(VkInstance inst)
+ {
+-    if (!s_val.utils) return;
++    if (!s_val.utils || !s_val.want) return;
+     PFN_vkCreateDebugUtilsMessengerEXT create = (PFN_vkCreateDebugUtilsMessengerEXT)
+         pvkGetInstanceProcAddr(inst, "vkCreateDebugUtilsMessengerEXT");
+     s_val.destroy = (PFN_vkDestroyDebugUtilsMessengerEXT)
+@@ -496,7 +561,6 @@ static void vk_val_start(VkInstance inst)
+         .pfnUserCallback = vk_val_message };
+     if (!create || !s_val.destroy || create(inst, &mi, NULL, &s_val.messenger) != VK_SUCCESS) {
+         VK_LOG("validation: the debug messenger could not be made, nothing will be logged\n");
+-        s_val.utils = 0;
+         return;
+     }
+     atexit(vk_val_summary);   /* the game may exit without shutting the backend down */
+@@ -511,6 +575,7 @@ static void vk_val_stop(VkInstance inst)
+     s_val.messenger = VK_NULL_HANDLE;
+ }
+ 
++
+ /* ---------------------------------------------------------------------------
+  * Device selection: PS3RECOMP_VK_DEVICE if set, else the first discrete GPU,
+  * else integrated, else anything that is not a CPU rasteriser, else whatever
+@@ -930,6 +995,7 @@ static void vk_rp_close(void)
+     if (!s_rpo.open) return;
+     s_rpo.open = 0;
+     pvkCmdEndRenderPass(s_vk.cmd);
++    if (s_dbg.rp_open) { s_dbg.rp_open = 0; vk_dbg_pop(s_vk.cmd); }
+ }
+ 
+ static void vk_flush(void)
+@@ -2705,8 +2771,13 @@ static void vk_present_window_body(void)
+     VkCommandBuffer cmd_saved = s_vk.cmd;
+     s_vk.cmd = s_vk.pcmd;
+     if (vk_begin_raw()) { s_vk.cmd = cmd_saved; return; }
++    vk_dbg_push(s_vk.cmd, "present: display image to the window");
+     vk_barrier_image(s_vk.color.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+-    if (fsr) vk_fsr_record(s_vk.width, s_vk.height);
++    if (fsr) {
++        vk_dbg_push(s_vk.cmd, "FSR 1 (EASU + RCAS)");
++        vk_fsr_record(s_vk.width, s_vk.height);
++        vk_dbg_pop(s_vk.cmd);
++    }
+     VkImageMemoryBarrier b = {
+         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+         .srcAccessMask = 0, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+@@ -2770,6 +2841,7 @@ static void vk_present_window_body(void)
+     pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                           0, 0, NULL, 0, NULL, 1, &b);
+     s_vk.cmd = cmd_saved;
++    vk_dbg_pop(s_vk.pcmd);
+     if (pvkEndCommandBuffer(s_vk.pcmd) != VK_SUCCESS) { VK_LOG("vkEndCommandBuffer failed\n"); return; }
+ 
+     VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+@@ -4420,6 +4492,7 @@ static int vk_eng_mlaa(void* user, u32 surface, u32 field)
+     vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     VkBufferImageCopy region = { .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, .imageExtent = { W, H, 1 } };
+     pvkCmdCopyImageToBuffer(s_vk.cmd, o->im.img, VK_IMAGE_LAYOUT_GENERAL, s_mlaa.buf[0].buf, 1, &region);
++    vk_dbg_push(s_vk.cmd, "jm_post MLAA (port, GPU) 1280x720");
+     vk_mlaa_barrier();
+     if (aa) {
+         pvkCmdBindPipeline(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_mlaa.pipe);
+@@ -4441,10 +4514,13 @@ static int vk_eng_mlaa(void* user, u32 surface, u32 field)
+         }
+         vk_mlaa_stage(8, 0, W / 256, H);                      /* STORE */
+     }
+-    if (glow) vk_glow_record(go);
++    vk_dbg_pop(s_vk.cmd);
++    if (glow) { vk_dbg_push(s_vk.cmd, "jm_post glow (port, GPU)"); vk_glow_record(go); vk_dbg_pop(s_vk.cmd); }
+     if (mb) {
++        vk_dbg_push(s_vk.cmd, "jm_post motion blur (port, GPU), field 640x360");
+         vk_mb_record(fo);
+         vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
++        vk_dbg_pop(s_vk.cmd);
+     }
+     pvkCmdCopyBufferToImage(s_vk.cmd, s_mlaa.buf[0].buf, o->im.img, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+     vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+@@ -4917,7 +4993,9 @@ static int vk_tm_scene_end(void* user, u32 surface, u32 field)
+                                             i == 0 ? VK_FORMAT_R32_SFLOAT : i == 1 ? VK_FORMAT_R16G16_SFLOAT : VK_FORMAT_R32_UINT, ow, oh };
+     { static double last; const double now = (double)vk_now_ns() / 1e6;
+       f.frame_ms = last > 0.0 && now - last < 1000.0 ? (float)(now - last) : 16.7f; last = now; }
++    vk_dbg_push(s_vk.cmd, s_tm.want == 2 ? "temporal upscaler: FSR 3.1" : "temporal upscaler: DLSS");
+     const int r = s_tm.want == 2 ? rsx_fsr3_evaluate(s_vk.cmd, &f) : rsx_dlss_evaluate(s_vk.cmd, s_tm.mode, &f);
++    vk_dbg_pop(s_vk.cmd);
+     s_tm.prev = v; s_tm.have_prev = 1;
+     if (r) { s_tm.skipped++; return 0; }
+     vk_barrier_image(s_tm.sw[slot].out.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+@@ -6637,6 +6715,7 @@ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vert
+         VkRenderPassBeginInfo rbi = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                                       .renderPass = rp, .framebuffer = fb,
+                                       .renderArea = { { 0, 0 }, { w, h } } };
++        if (s_dbg.on && s_dbg.pass[0]) { vk_dbg_push(s_vk.cmd, s_dbg.pass); s_dbg.rp_open = 1; }
+         pvkCmdBeginRenderPass(s_vk.cmd, &rbi, VK_SUBPASS_CONTENTS_INLINE);
+         s_rpo.open = 1; s_rpo.fb = fb; s_rpo.rp = rp;
+     }
+@@ -6732,6 +6811,20 @@ static u64 vk_eng_commit_serial(void* user, u64* completed)
+     return s_ser.next;
+ }
+ 
++static int vk_eng_debug_enabled(void* user) { (void)user; return s_dbg.on; }
++/* The next guest render pass's region name; NULL at a present: none. A
++ * region already open keeps its name until its render pass closes. */
++static void vk_eng_debug_pass(void* user, const char* text)
++{
++    (void)user;
++    snprintf(s_dbg.pass, sizeof s_dbg.pass, "%s", text ? text : "");
++}
++static void vk_eng_debug_name(void* user, u32 handle, const char* text)
++{
++    (void)user;
++    if (handle && handle < VK_ENG_MAX_OBJ) vk_dbg_name_image(s_eobj[handle].im.img, text);
++}
++
+ static const rsx_draw_backend s_vk_engine_backend = {
+     .user                 = NULL,
+     .init                 = vk_eng_init,
+@@ -6772,6 +6865,9 @@ static const rsx_draw_backend s_vk_engine_backend = {
+     .vcache_chunk_release = vk_eng_vcache_chunk_release,
+     .draw_cached          = vk_eng_draw_cached,
+     .commit_serial        = vk_eng_commit_serial,
++    .debug_enabled        = vk_eng_debug_enabled,
++    .debug_pass           = vk_eng_debug_pass,
++    .debug_name           = vk_eng_debug_name,
+     .color_target_write   = vk_eng_color_target_write,
+     /* Uploads are recorded into the open batch behind a barrier, after the
+      * draws that sampled the old bytes. */
+@@ -6892,6 +6988,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     if (ir != VK_SUCCESS) { VK_LOG("vkCreateInstance failed (VkResult %d)\n", (int)ir); return -1; }
+     if (vk_load_instance_functions()) return -1;
+     vk_val_start(s_vk.instance);
++    vk_dbg_start(s_vk.instance);
+     if (s_vk.windowed) {
+         if (vk_load_wsi_instance_functions()) {
+             vk_window_drop("the driver has no surface functions");
+-- 
+2.x
