@@ -1,0 +1,73 @@
+From 5a8afcadf083fe2426c2c7efbcd058c3e8fe62a9 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 12 Nov 2026 22:00:44 -0300
+Subject: [PATCH 2/3] NV0039_STATS: count the lit pixels of Killzone HD's glow
+ source
+
+Next to the motion field's count, NV0039_STATS (the faithful SPU path's
+statistics, patch 2041) now reads the 640x360 target at IO 0x10000, the
+input of jm_post's glow (Modulate, then the blur pyramid): each 10 s summary
+gives the most pixels with any colour in one frame, the brightest value and
+how many frames had some. When more than 64 pixels are lit (at most every
+5 s, 40 times) it writes glowNNN_t<time>.ppm (the source) and
+glowNNN_frame.ppm (the raw frame sent to the SPUs) into the stats folder.
+---
+ libs/video/cellGcmSys.c | 28 +++++++++++++++++++++++++---
+ 1 file changed, 25 insertions(+), 3 deletions(-)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 0235d38..2a3fff9 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -1422,7 +1422,7 @@ static void nv0039_engine_sync(int to_guest, u32 loc, u32 off, u32 pitch, u32 le
+  * moves by more than 3, and both frames to <dir> (out_/in_ PPM, at most one
+  * pair per 2 s) when by more than 8. Called before the copy (the raw side is
+  * read after it, see nv0039_stats_out). */
+-static struct { u32 ea[2]; u8* raw[2]; double last_dump, last_line; unsigned frames, dumps, motion, motion_px; double sum_max, peak; } s_nvst;
++static struct { u32 ea[2]; u8* raw[2]; double last_dump, last_line; unsigned frames, dumps, motion, motion_px, glow, glow_max, glow_frames, glow_dumps; double sum_max, peak, glow_last_dump; } s_nvst;
+ 
+ static double nvst_now(void)
+ {
+@@ -1495,6 +1495,26 @@ static void nv0039_stats(u32 loc_in, u32 ea_in, u32 loc_out, u32 ea_out)
+             fprintf(stderr, "[NV0039-stats] motion field moved (%u px): %s created\n", moved, go); } }
+       if (mea) s_nvst.motion_px = *(const u32*)(vm_base + mea + (180u * 640u + 320u) * 4u); }
+     const double t = nvst_now();
++    /* Killzone HD's glow source (640x360 at IO 0x10000, the input of jm_post's
++     * Modulate x1.5 and the glow pyramid): pixels with any colour. */
++    { const u32 gea = cellGcmResolveLocated(0, 0x10000u);
++      unsigned lit = 0, mx = 0;
++      if (gea) for (u32 i = 0; i < 640u * 360u; i++) {
++          const u8* q = vm_base + gea + i * 4u;
++          const unsigned m = q[1] > q[2] ? (q[1] > q[3] ? q[1] : q[3]) : (q[2] > q[3] ? q[2] : q[3]);
++          if (m) { lit++; if (m > mx) mx = m; } }
++      if (lit > s_nvst.glow) s_nvst.glow = lit;
++      if (mx > s_nvst.glow_max) s_nvst.glow_max = mx;
++      if (lit) s_nvst.glow_frames++;
++      if (lit > 64u && t - s_nvst.glow_last_dump > 5.0 && s_nvst.glow_dumps < 40) {
++          char path[1024]; FILE* f;
++          s_nvst.glow_last_dump = t;
++          snprintf(path, sizeof path, "%s/glow%03u_t%.0f.ppm", d, s_nvst.glow_dumps++, t);
++          if ((f = fopen(path, "wb"))) { fprintf(f, "P6 640 360 255\n");
++              for (u32 i = 0; i < 640u * 360u; i++) fwrite(vm_base + gea + i * 4u + 1, 1, 3, f); fclose(f); }
++          snprintf(path, sizeof path, "%s/glow%03u_frame.ppm", d, s_nvst.glow_dumps - 1); nvst_ppm(path, a, 1);
++          fprintf(stderr, "[NV0039-stats] t=%.1f glow source lit %u px, max %u\n", t, lit, mx);
++      } }
+     s_nvst.frames++; s_nvst.sum_max += bmax; if (bmax > s_nvst.peak) s_nvst.peak = bmax;
+     if (bmax > 3.0 && t - s_nvst.last_line > 0.5) {
+         s_nvst.last_line = t;
+@@ -1509,8 +1529,10 @@ static void nv0039_stats(u32 loc_in, u32 ea_in, u32 loc_out, u32 ea_out)
+         s_nvst.dumps++;
+     }
+     { static double last; if (t - last > 10.0) { last = t;
+-        fprintf(stderr, "[NV0039-stats] summary t=%.1f frames %u, mean block max %.2f, peak %.1f, motion field moved px max %u (centre %08X)\n",
+-                t, s_nvst.frames, s_nvst.frames ? s_nvst.sum_max / s_nvst.frames : 0.0, s_nvst.peak, s_nvst.motion, s_nvst.motion_px);
++        fprintf(stderr, "[NV0039-stats] summary t=%.1f frames %u, mean block max %.2f, peak %.1f, motion field moved px max %u (centre %08X), glow source lit px max %u (value max %u, %u frames)\n",
++                t, s_nvst.frames, s_nvst.frames ? s_nvst.sum_max / s_nvst.frames : 0.0, s_nvst.peak, s_nvst.motion, s_nvst.motion_px,
++                s_nvst.glow, s_nvst.glow_max, s_nvst.glow_frames);
++        s_nvst.glow = 0; s_nvst.glow_max = 0; s_nvst.glow_frames = 0;
+         s_nvst.motion = 0; s_nvst.frames = 0; s_nvst.sum_max = 0; s_nvst.peak = 0; } }
+ }
+ 
+-- 
+2.56.1
+

@@ -18,3 +18,16 @@ Nothing here is game data; captures and the build stay on the SSD (`MB_WORK`, de
 - `regress_mb.sh [cap]`: builds all of the above and checks lifted code = C (`check_mb.py`) and GPU = C.
 - In the game: `PS3RECOMP_MLAA_DUMP=<dir> PS3RECOMP_MLAA_DUMP_MOVING=1` and `touch <dir>/go` while sprinting dumps
   8 frames (`_in` before the MLAA, `_field`, `_out`); `mlaa_ref_cli` then `mb_ref_cli all` on `_in`/`_field` must give `_out`.
+
+The glow (docs/dev/wws-jm-post.md, "The glow"), with the same harness and captures:
+
+- `check_glow.py <cap> [seed]`: the glow's stages (Modulate 1.0 and 1.5, Downsample, the 320x180 blur pairs, Upsample
+  and its saturating add) and the whole chain through the harness and through the C reference
+  (`port/kz1hd/native/glow_ref.c`) on random, sparse and black sources.
+- `glow_ref_cli texture|add|all ...`: the C reference on raw files (see the top of the file).
+- `glow_vk_test shader.spv in.argb src.argb out.argb [strength/256] [repeats]`: the GPU pass (ps3recomp
+  `libs/video/vulkan/rsx_vk_glow.comp`) headless, as the renderer records it.
+- `regress_glow.sh [cap]`: builds all of the above and checks lifted code = C and GPU = C (strength 256, 128, 0).
+- `check_dump.sh <dir> [strength/256]`: frames dumped in the game with `PS3RECOMP_MLAA_DUMP=<dir>` (and
+  `PS3RECOMP_MLAA_DUMP_GLOW=1`) through `mlaa_ref`, `glow_ref` and `mb_ref` in the renderer's order: equal to the
+  dumped output on every pixel.

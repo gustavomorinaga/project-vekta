@@ -143,3 +143,6 @@
 3037-PPU-register-each-reservation-context-once.patch
 2068-Vulkan-fill-for-frames-taller-than-16-9-and-a-forced-dis.patch
 2069-Vulkan-a-forced-aspect-holds-the-2D-screens-too-menus-.patch
+2076-Vulkan-a-depth-target-read-as-A8R8G8B8-carries-its-s.patch
+2077-NV0039_STATS-count-the-lit-pixels-of-Killzone-HD-s-g.patch
+2078-Killzone-HD-s-glow-on-the-GPU-PS3RECOMP_GLOW_GPU-aft.patch

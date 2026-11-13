@@ -18,6 +18,7 @@ tools/tests/test_sync_from_private.py
 tools/tests/test_check_tree.sh
 tools/tests/test_check_coauthors.sh
 tools/tests/test_mlaa_ref.sh
+tools/tests/test_glow_ref.sh
 tools/tests/test_sandbox.sh
 tools/tests/test_upstream_suite.sh
 tools/tests/test_spu_put_recheck.sh
@@ -26,6 +27,7 @@ tools/tests/test_wall_clock.sh
 tools/tests/test_present_steps.sh
 tools/tests/test_gcm_flip_wait.sh
 tools/tests/test_vk_cache_key.sh
+tools/tests/test_depth_pack_stencil.py
 tools/tests/test_swapchain_retry.sh
 tools/tests/test_wine_test.sh
 tools/tests/test_zig_wrappers.sh
