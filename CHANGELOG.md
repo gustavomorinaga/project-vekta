@@ -8,6 +8,11 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world's view is the
+  game's own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and
+  wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.
+- An "Aspect Ratio" row on the PC page (`aspect` in `kz1hd_pc.ini`: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the
+  picture at that ratio whatever the window's, with bars; applies on the next start.
 - Developer tools for performance work ([docs/dev/perf-bench.md](docs/dev/perf-bench.md),
   [docs/dev/performance.md](docs/dev/performance.md)): `KZ_ROUTE_REBASE` writes a route replay out as a route of the
   current build, so that later replays follow it exactly; `tools/perf/ab.sh` compares two builds in alternating runs
