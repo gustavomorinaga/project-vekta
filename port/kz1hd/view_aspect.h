@@ -2,7 +2,8 @@
  * The `aspect` setting (pcoptions.cpp): the picture's aspect ratio, whatever
  * the window's. auto (the default) follows the window; a ratio shows the
  * picture at that ratio with bars where the window's differs (the frame is
- * rendered to that box: PS3RECOMP_VK_ASPECT, patch 2068), at the next start.
+ * rendered to that box: PS3RECOMP_VK_ASPECT, patch 2068; menus and movies,
+ * 16:9, sit inside the box too, patch 2069), at the next start.
  * Header-only, plain C, so a host test can check it
  * (tools/tests/test_view_aspect.c).
  */

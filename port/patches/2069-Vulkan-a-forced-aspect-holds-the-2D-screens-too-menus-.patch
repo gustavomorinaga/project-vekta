@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 13 Nov 2026 03:00:00 -0300
+Subject: [PATCH] Vulkan: a forced aspect holds the 2D screens too (menus,
+ movies inside its box)
+
+With PS3RECOMP_VK_ASPECT (patch 2068) a stretched frame filled the forced
+box, but a frame that is not stretched (a title's 2D screens: menus,
+movies, loading, shown at the guest frame's own shape) was fitted to the
+whole window, so a 16:9 menu in a 4:3 box spanned the window, wider than
+the box. It is now fitted inside the box as well: 16:9 with bars above and
+below within a 4:3 or 16:10 box. Without a forced aspect nothing changes.
+The arithmetic is rsx_present_size in rsx_fit_scale.h, for a host test.
+---
+diff --git a/libs/video/rsx_fit_scale.h b/libs/video/rsx_fit_scale.h
+index bf88deb..07a7826 100644
+--- a/libs/video/rsx_fit_scale.h
++++ b/libs/video/rsx_fit_scale.h
+@@ -38,4 +38,15 @@ static inline void rsx_fit_axes(int w, int h, unsigned gw, unsigned gh, float k,
+     *sy = (float)h / (float)gh * k;
+     if (!fill) *sx = *sy = *sx < *sy ? *sx : *sy;
+ }
++/* The picture's size in a w x h window: the forced aspect's box (or the
++ * window) first; a stretched frame fills it, any other keeps the guest
++ * frame's gw x gh shape inside it (a 2D screen, 16:9 with bars, stays in
++ * the forced box instead of spanning the window). */
++static inline void rsx_present_size(int w, int h, float forced, int stretch, unsigned gw, unsigned gh, int* dw, int* dh)
++{
++    rsx_aspect_box(w, h, forced, dw, dh);
++    if (stretch || !gw || !gh) return;
++    if ((long long)*dw * gh > (long long)*dh * gw) *dw = (int)((long long)*dh * gw / gh);
++    else *dh = (int)((long long)*dw * gh / gw);
++}
+ #endif
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 731b393..f3a3aca 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2547,15 +2547,12 @@ static void vk_present_window_body(void)
+     int32_t dw = (int32_t)s_vk.sc_extent.width, dh = (int32_t)s_vk.sc_extent.height;
+     const float crop = s_stretch == 1 ? s_crop : 1.0f;
+     const int32_t sx0 = (int32_t)((float)s_vk.width * (1.0f - crop) * 0.5f), sx1 = (int32_t)s_vk.width - sx0;
+-    if (s_stretch) {   /* the whole window (or the forced aspect's box), or its share */
+-        rsx_aspect_box(dw, dh, vk_forced_aspect(), &dw, &dh);
+-        dw = (int32_t)((float)dw * crop + 0.5f);
+-    }
+-    else {   /* at the guest frame's shape, even when it was rendered anamorphic */
+-        const int64_t fw = s_guest_w ? s_guest_w : s_vk.width, fh = s_guest_h ? s_guest_h : s_vk.height;
+-        if ((int64_t)dw * fh > (int64_t)dh * fw) dw = (int32_t)((int64_t)dh * fw / fh);
+-        else dh = (int32_t)((int64_t)dw * fh / fw);
+-    }
++    /* stretched: the whole window (or the forced aspect's box), or its share;
++     * not: the guest frame's shape, even when it was rendered anamorphic,
++     * inside that box too (rsx_fit_scale.h, rsx_present_size) */
++    rsx_present_size(dw, dh, vk_forced_aspect(), s_stretch != 0, s_guest_w ? s_guest_w : s_vk.width,
++                     s_guest_h ? s_guest_h : s_vk.height, &dw, &dh);
++    if (s_stretch) dw = (int32_t)((float)dw * crop + 0.5f);
+     const int32_t dx = ((int32_t)s_vk.sc_extent.width - dw) / 2, dy = ((int32_t)s_vk.sc_extent.height - dh) / 2;
+     const int fsr = sx0 == 0 && dw > 0 && dh > 0 && !vk_fsr_prepare((u32)dw, (u32)dh);
+ 

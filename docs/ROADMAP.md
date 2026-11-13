@@ -188,7 +188,7 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] Widescreen (21:9, 32:9 and wider): Hor+ picture at the window's size, menus, movies and text in the middle 16:9,
       the HUD at the edges; on and off on the PC page
 - [x] Aspect ratios narrower than 16:9 (16:10, 4:3): the game's own 4:3 view (75 degrees vertical at 4:3), the HUD in
-      the corners, menus and movies 16:9 with bars; a forced aspect (4:3 to 32:9) on the PC page
+      the corners, menus and movies 16:9 with bars; a forced aspect (4:3 to 32:9) on the PC page, menus inside its box
 - [ ] HDR (brightness, paper white, tone mapping)
 - [ ] Shadows: resolution and distance; level of detail
 - [x] Motion vectors and camera jitter (camera and per-object motion, for the temporal upscalers)

@@ -137,7 +137,8 @@ static void ini_save(void)
  *                            16:9 middle; off: a 16:9 picture with bars)
  *   aspect     = auto | 4:3 | 16:10 | 16:9 | 21:9 | 32:9   (with widescreen on: the picture's
  *                aspect, auto = the window's; another shows that ratio with bars where the
- *                window's differs. At the next start, PS3RECOMP_VK_ASPECT; view_aspect.h)
+ *                window's differs, menus and movies inside it. At the next start,
+ *                PS3RECOMP_VK_ASPECT; view_aspect.h)
  *   field_of_view = the world's horizontal FOV at 16:9 in degrees, 70-120 (87: the game's;
  *                   a wider window shows more at the sides; fov.h)
  *   weapon_fov = the first-person weapon's, the same way (87: the game's, 72 degrees

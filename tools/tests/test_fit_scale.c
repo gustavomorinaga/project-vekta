@@ -1,4 +1,4 @@
-/* The frame's render scale and the forced aspect's box (patch 2068, rsx_fit_scale.h). "fill" scales each axis to the
+/* The frame's render scale and the forced aspect's box (patches 2068 and 2069, rsx_fit_scale.h). "fill" scales each axis to the
  * window for a frame rendered anamorphic to the window's aspect, now also for a window taller than 16:9 (before, fill
  * only widened, and a 4:3 or 16:10 window got the 16:9 frame with bars); a forced aspect fits its box in the window. */
 #include <math.h>
@@ -42,6 +42,20 @@ int main(void)
     /* a forced 4:3 in a 16:9 window renders 4:3, anamorphic in the 16:9 frame */
     rsx_aspect_box(1920, 1080, 4.0f / 3.0f, &bw, &bh);
     rsx_fit_axes(bw, bh, 1280, 720, 1.0f, 1, &sx, &sy); EXPECT(sx == 1.125f && sy == 1.5f);
+    /* the picture on screen (patch 2069, rsx_present_size): a stretched frame fills the box; a 2D screen (not
+     * stretched, 16:9) keeps its shape inside the box, not the window: in a 1920x1080 window with 4:3 forced, the
+     * 4:3 box is 1440x1080 and a 16:9 menu is 1440x810 in it (before, 1920x1080: wider than the box) */
+    int dw, dh;
+    rsx_present_size(1920, 1080, 4.0f / 3.0f, 1, 1280, 720, &dw, &dh); EXPECT(dw == 1440 && dh == 1080);
+    rsx_present_size(1920, 1080, 4.0f / 3.0f, 0, 1280, 720, &dw, &dh); EXPECT(dw == 1440 && dh == 810);
+    rsx_present_size(3440, 1440, 1.6f, 0, 1280, 720, &dw, &dh); EXPECT(dw == 2304 && dh == 1296);
+    /* the guest size is the frame's before scaling, whatever the anamorphic render */
+    rsx_present_size(3440, 1440, 1.6f, 0, 1280, 720, &dw, &dh); EXPECT(dw * 9 == dh * 16);
+    /* no forced aspect: as before (stretched fills the window, a 2D screen fits it) */
+    rsx_present_size(3440, 1440, 0.0f, 1, 1280, 720, &dw, &dh); EXPECT(dw == 3440 && dh == 1440);
+    rsx_present_size(3440, 1440, 0.0f, 0, 1280, 720, &dw, &dh); EXPECT(dw == 2560 && dh == 1440);
+    rsx_present_size(1440, 1080, 0.0f, 0, 1280, 720, &dw, &dh); EXPECT(dw == 1440 && dh == 810);
+    rsx_present_size(1920, 1080, 0.0f, 0, 1280, 720, &dw, &dh); EXPECT(dw == 1920 && dh == 1080);
     if (fails) return 1;
     puts("test_fit_scale: ok");
     return 0;
