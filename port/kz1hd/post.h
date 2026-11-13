@@ -21,11 +21,11 @@
  *                         below 2/255, the test at 0x29C008)
  *
  * The anti-aliasing (MLAA) is a choice, not a strength (antialiasing = mlaa
- * | off, rsx_vulkan_set_mlaa). Glow has a slot here and no setting yet: it is
- * not drawn on the GPU path on this branch (docs/dev/wws-jm-post.md). HOOK:
- * once the GPU glow is in (rsx_vulkan_set_glow_strength, 0..256, 256 the
- * game's), a `glow` key and row go next to film_grain in pcoptions.cpp,
- * applied in post_apply as rsx_vulkan_set_glow_strength(kz_post_256(pct)).
+ * | off, rsx_vulkan_set_mlaa). The glow is drawn by the renderer (ps3recomp
+ * patch 2078) and takes its strength in 256ths there:
+ *
+ *   glow        = 0-100   rsx_vulkan_set_glow_strength(kz_post_256(pct)),
+ *                         256 the game's
  *
  * ENHANCEMENT: the PS3 game has no such settings.
  */
@@ -37,7 +37,7 @@
 enum kz_post_effect {
     KZ_POST_MOTION_BLUR = 0,
     KZ_POST_FILM_GRAIN  = 1,
-    KZ_POST_GLOW        = 2,   /* reserved: no setting, always 100 (the game's) */
+    KZ_POST_GLOW        = 2,   /* applied by the renderer, not in post.cpp */
     KZ_POST_COUNT
 };
 

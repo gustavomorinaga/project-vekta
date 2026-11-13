@@ -614,3 +614,9 @@ and 0 was drawn: no frame had any field strength. Anti-aliasing off: the output 
 grain is on in normal play (Level 8: alpha 0.12, 0.14-0.15 for a moment at the level's start); frames at 0 % and
 100 % from the same points of two runs differ by the grain only (high-frequency energy of the luma 2.35 against 2.61,
 the picture about 4 levels darker with it).
+
+Glow (`glow = 0-100`, `rsx_vulkan_set_glow_strength(kz_post_256(pct))`, 100 % = 256 the game's; at start
+`PS3RECOMP_GLOW_STRENGTH`): Level 8 from the same save (60 Hz, `PS3RECOMP_MLAA_DUMP_GLOW=1`, 8 frames with 13 to 696
+lit pixels in the glow source). At 100 % every output equals `check_dump.sh` at strength 256 on every pixel; at 0 % every
+output equals it at strength 0 (MLAA and motion blur only), while the 256 reference differs there by about 8000 pixels:
+the glow alone.

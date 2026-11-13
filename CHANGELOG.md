@@ -9,9 +9,9 @@ program and folder that build it. Until a release that calls itself playable
 
 ### Added
 - Post-processing settings on the PC page, applied at once: Anti-aliasing (the game's own MLAA, or off), and
-  Motion Blur and Film Grain from 0 % to 100 % in steps of 10 (`antialiasing`, `motion_blur`, `film_grain` in
-  `kz1hd_pc.ini`). 100 % is the game's own effect, unchanged; lower values scale the strength the game draws the
-  effect with. The Original (PS3) preset sets all three to the game's. An older `motion_blur = on | off` reads as
+  Motion Blur, Film Grain and Glow from 0 % to 100 % in steps of 10 (`antialiasing`, `motion_blur`, `film_grain`,
+  `glow` in `kz1hd_pc.ini`). 100 % is the game's own effect, unchanged; lower values scale the strength the game draws
+  the effect with. The Original (PS3) preset sets them all to the game's. An older `motion_blur = on | off` reads as
   100 / 0. Colour grading stays the game's.
 - Developer tools for performance work ([docs/dev/perf-bench.md](docs/dev/perf-bench.md),
   [docs/dev/performance.md](docs/dev/performance.md)): `KZ_ROUTE_REBASE` writes a route replay out as a route of the
