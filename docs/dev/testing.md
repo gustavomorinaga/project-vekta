@@ -31,6 +31,10 @@ an existing profile changes the menu flow.
   every frame (`port/kz1hd/debug_god.h`), for camera and view checks in a fight.
 - `KZ_HUD_SITES=1` logs each HUD drawing site once per third of the screen (`[kz-hud-site]`, `[kz-hud-site2]`),
   HUD text (`[kz-hud-text]`) and who builds the menus' 512x448 layout (`[kz-menu-ortho]`).
+- `KZ_HUD_TRACE=0xADDR[,0xADDR...]` logs each rectangle those HUD drawing sites (the return addresses `[kz-hud-site]`
+  prints) draw with a new size, texture coordinates or place, once (`[kz-hud-trace]`, up to 1000); `KZ_HUD_SKIP=...`
+  makes those sites draw nothing, to see on screen what a site is. The weapon crosshair is `0x004CBBB4`
+  (`port/kz1hd/native_ppu/crosshair.h`).
 - `KZ_UNLOCK_LEVELS=1` makes every level selectable: START, X (GAME), X (Campaign), X (select level), DOWN × (level −
   1), X, DOWN (Normal), X, X (character).
 - `KZ_SCRIPT_LOG=1` logs, every 300 calls, how often the level scripts' `OnUpdate` ran per second of game time
@@ -48,6 +52,8 @@ an existing profile changes the menu flow.
   the next stores of a value with guest stacks (also `PPU_WVAL=<0xvalue>`, with `PPU_WVAL_LO`/`_HI`/`_GATE`; the
   watches make the game about three times slower). The other commands are listed where it is read, in
   `port/kz1hd/main.cpp`.
+- `KZ_POST_LOG=1` logs, about once a second, the motion blur factor and the film grain alpha the game set and the
+  value drawn with at the current strength (`[kz-post]`, `port/kz1hd/native_ppu/post.cpp`).
 - `KZ_CAM_LOG=1` logs each camera projection site once (`[kz-cam]`: near, far, FOV, aspect); the sites and what each
   draws are in `port/kz1hd/fov.h`.
 

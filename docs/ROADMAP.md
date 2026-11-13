@@ -103,7 +103,8 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] Keyboard in menus and in play
 - [x] Logic at 60 Hz checked (hints, movement, rate of fire)
 - [x] Loading from about 8 min down to about 8 s
-- [ ] `jm_post` effects the game uses elsewhere (probably depth of field in cutscenes), reimplemented on the GPU
+- [x] `jm_post` glow on the GPU (emissive sprites; zero in most places), checked against the SPU chain in the game
+- [ ] Per-event channels (damage, sniper zoom, type 8): RSX colour grading per the code, to confirm in the game
 
 ### Phase 6. Full campaign
 - [x] Movies (`cellSail` through FFmpeg) and sound
@@ -186,11 +187,13 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [ ] An in-game key remapping page
 - [x] Field of view: rows on the PC page for the world and the first-person weapon (70 to 120 degrees
       horizontal at 16:9; the game's is 87); zoom keeps its magnification
-- [ ] Post-processing toggles (motion blur, grain, depth of field, lens flare, where the game has them)
+- [x] Post-processing settings on the PC page: anti-aliasing (the game's MLAA) on or off, motion blur, film grain
+      and glow 0-100 %; the game has no depth of field (jm_post has no such module, [dev/wws-jm-post.md](dev/wws-jm-post.md))
 - [x] HUD size and position on the PC page
 - [x] Widescreen (21:9, 32:9 and wider): Hor+ picture at the window's size, menus, movies and text in the middle 16:9,
       the HUD at the edges; on and off on the PC page
-- [ ] Aspect ratios narrower than 16:9 (16:10, 4:3): today 16:9 with bars
+- [x] Aspect ratios narrower than 16:9 (16:10, 4:3): the game's own 4:3 view (75 degrees vertical at 4:3), the HUD in
+      the corners, menus and movies 16:9 with bars; a forced aspect (4:3 to 32:9) on the PC page, menus inside its box
 - [ ] HDR (brightness, paper white, tone mapping)
 - [ ] Shadows: resolution and distance; level of detail
 - [x] Motion vectors and camera jitter (camera and per-object motion, for the temporal upscalers)

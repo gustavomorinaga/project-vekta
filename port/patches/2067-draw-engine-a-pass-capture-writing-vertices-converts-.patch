@@ -19,15 +19,15 @@ tests/test_engine_vertex_cache.c (tools/test_rsx_vertex_cache.py): an F12
 capture over draw A, draw B, then A again (a hit) writes A's vertices; it
 wrote B's before.
 ---
- libs/video/rsx_draw_engine.c                |  6 +++-
- libs/video/tests/test_engine_vertex_cache.c | 36 +++++++++++++++++++++
+ libs/video/rsx_draw_engine.c                |  6 +++++-
+ libs/video/tests/test_engine_vertex_cache.c | 36 ++++++++++++++++++++++++++++++++++++
  2 files changed, 41 insertions(+), 1 deletion(-)
 
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 77eeeeb..b6db33f 100644
+index e487171168cd540fa575ac0f03917d6c430a025c..88c72c00ad9c7c54928d858800c2b816bb12419d 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -4028,7 +4028,11 @@ static void sink_end(void* user, const rsx_dispatch* r)
+@@ -4054,7 +4054,11 @@ static void sink_end(void* user, const rsx_dispatch* r)
      /* PS3RECOMP_ENG_VCACHE_VERIFY=1: a hit is converted anyway and checked
       * against the stored copy, byte for byte; a copy that differs is counted,
       * logged and not drawn (the fresh conversion is). */
@@ -41,7 +41,7 @@ index 77eeeeb..b6db33f 100644
          vc_hit = NULL;
      if (vc_hit) {
 diff --git a/libs/video/tests/test_engine_vertex_cache.c b/libs/video/tests/test_engine_vertex_cache.c
-index 7ab4ed7..106762c 100644
+index 7ab4ed7a1668835376c224b2ffffa95fb72b1112..106762ce1c05e9815b4aa6c8a7c2baf7a34f7b69 100644
 --- a/libs/video/tests/test_engine_vertex_cache.c
 +++ b/libs/video/tests/test_engine_vertex_cache.c
 @@ -11,6 +11,8 @@
@@ -95,5 +95,4 @@ index 7ab4ed7..106762c 100644
      setenv("PS3RECOMP_ENG_VCACHE", "0", 1);
      up(1);
 -- 
-2.56.1
-
+2.x

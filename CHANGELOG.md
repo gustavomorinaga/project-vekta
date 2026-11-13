@@ -8,6 +8,22 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- Post-processing settings on the PC page, applied at once: Anti-aliasing (the game's own MLAA, or off), and
+  Motion Blur, Film Grain and Glow from 0 % to 100 % in steps of 10 (`antialiasing`, `motion_blur`, `film_grain`,
+  `glow` in `kz1hd_pc.ini`). 100 % is the game's own effect, unchanged; lower values scale the strength the game draws
+  the effect with. The Original (PS3) preset sets them all to the game's. An older `motion_blur = on | off` reads as
+  100 / 0. Colour grading stays the game's.
+- Crosshair Size in the PC settings: a slider for the weapon crosshair alone, from half to one and a half times the
+  game's size (the middle of the slider is the game's), applied at once. It changes the crosshair's pieces, not where
+  the game puts them, keeps them on whole pixels of the window so they stay sharp, and is the same share of the
+  screen's height at any resolution and aspect. HUD Size no longer changes the crosshair. Original preset: the game's
+  size (`crosshair_size` in `kz1hd_pc.ini`).
+- 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world's view is the
+  game's own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and
+  wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.
+- An "Aspect Ratio" row on the PC page (`aspect` in `kz1hd_pc.ini`: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the
+  picture at that ratio whatever the window's, with bars, and the menus and movies inside that box; applies on the
+  next start.
 - Developer tools for performance work ([docs/dev/perf-bench.md](docs/dev/perf-bench.md),
   [docs/dev/performance.md](docs/dev/performance.md)): `KZ_ROUTE_REBASE` writes a route replay out as a route of the
   current build, so that later replays follow it exactly; `tools/perf/ab.sh` compares two builds in alternating runs
@@ -40,6 +56,14 @@ program and folder that build it. Until a release that calls itself playable
   after Project Helghast's patch 1074) ([docs/dev/performance.md](docs/dev/performance.md)).
 
 ### Fixed
+- The glow of emissive effects (lights, an engine's exhaust; measured in the last level's docking bay) now shows: a
+  depth buffer read as a colour texture now carries its stencil, which the game's glow uses as its mask, and the glow
+  (until now only on the slow `KZ_MLAA=spu` path) runs on the GPU after the edge smoothing, equal to the PS3's chain on
+  every pixel. `KZ_GLOW=<0-100>` sets its strength for tests (100, the game's, by default).
+- Borderless and fullscreen at Windows' display scaling above 100 %: the program did not tell Windows it handles DPI
+  itself, so at 150 % a 1920×1200 display gave a 1280×800 picture, stretched (issue #18). It now asks for
+  per-monitor DPI awareness, so the window, the swapchain and the PC page's display sizes are in real pixels
+  (`SDL_WINDOWS_DPI_AWARENESS` in the environment overrides it).
 - Reservations: after many thread starts a thread could stop being told when another one broke its
   reservation (ps3recomp patch 3037, after upstream pull request #758).
 - Scripted events at 60 and 144 fps: the level scripts' update ran once per frame, so above 30 fps everything they

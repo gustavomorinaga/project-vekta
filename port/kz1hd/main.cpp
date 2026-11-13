@@ -41,6 +41,8 @@
 #include "../ps3_trace.h"   /* runtime/, via the runtime/ppu include directory */
 #include "ps3emu/thread_name.h"
 #include "debug_god.h"   /* KZ_DEBUG_GOD */
+#include "view.h"        /* KZ_POKE xhair, hudsize */
+#include "win_dpi.h"     /* Windows display scaling */
 #include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
@@ -450,13 +452,14 @@ static DWORD WINAPI frame_clock(LPVOID)
          *   rw|ww <hex addr> <hex len>   move the runtime's dynamic read/write watch
          *   wv <hex value> <hex n>   log the next n stores of that value, with guest stacks
          *   capture   the next frames' passes, as F12 (rsx_draw_engine.c)
-         *   cam   find the camera blocks (near, far, fov, aspect 16:9) and log them */
+         *   cam   find the camera blocks (near, far, fov, aspect 16:9) and log them
+         *   xhair <size>, hudsize <size>   the crosshair's or the HUD's size for now (not saved) */
         { static const char* pk = getenv("KZ_POKE"); static ULONGLONG next_pk;
           static std::vector<std::pair<uint32_t, uint32_t>> pokes;
           if (pk) {
               if (now >= next_pk) {
                   next_pk = now + 1000; pokes.clear();
-                  if (FILE* f = fopen(pk, "rb")) { char w[16]; unsigned a, v;
+                  if (FILE* f = fopen(pk, "rb")) { char w[16]; unsigned a, v; float fv;
                       while (fscanf(f, "%15s", w) == 1) {
                           if (!strcmp(w, "capture")) {   /* as F12: the next frames' passes (and RenderDoc's) */
 #if defined(PS3RECOMP_RSX_VULKAN)
@@ -472,6 +475,9 @@ static DWORD WINAPI frame_clock(LPVOID)
                                   float nf[3]; for (int k = 0; k < 3; k++) { uint32_t u; memcpy(&u, vm_base + x - 12 + 4 * k, 4); u = __builtin_bswap32(u); memcpy(&nf[k], &u, 4); }
                                   fprintf(stderr, "[kz-cam] aspect at 0x%08X near %g far %g fov %g\n", x, nf[0], nf[1], nf[2]);
                               }
+                          } else if ((!strcmp(w, "xhair") || !strcmp(w, "hudsize")) && fscanf(f, "%f", &fv) == 1) {
+                              if (w[0] == 'x') { if (kz_view.crosshair_size != fv) fprintf(stderr, "[kz-poke] crosshair size %g\n", fv); kz_view.crosshair_size = fv; }
+                              else { if (kz_view.hud_scale != fv) fprintf(stderr, "[kz-poke] HUD size %g\n", fv); kz_view.hud_scale = fv; }
                           } else if (!strcmp(w, "wv") && fscanf(f, "%x %x", &a, &v) == 2) {
                               /* the next <v> stores of the value <a>, with their guest stacks */
                               g_barrier_sync_watch = 0x100; g_st_span = 0; g_wval_dyn = a; g_wval_dyn_n = v;
@@ -651,6 +657,7 @@ int main(int argc, char** argv)
 #ifdef _WIN32
     kz_log_setup();
 #endif
+    kz_win_dpi_aware();     /* win_dpi.h: real pixels at Windows' 125 %, 150 %... */
     kz_pc_settings_env();   /* pcoptions.cpp: kz1hd_pc.ini */
     /* The game steps its command buffer through 64 KB segments with its own
      * callback: the runtime's recycling of a title's ring would rewind it

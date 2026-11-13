@@ -23,15 +23,15 @@ Only the two entries used are declared (the 7th, SetCaptureKeys, and the
 16th, TriggerCapture, of the table RenderDoc documents for its
 in-application API, MIT); no RenderDoc file is included.
 ---
- libs/video/rsx_vulkan_backend.c | 68 ++++++++++++++++++++++++++++++---
- libs/video/rsx_vulkan_backend.h |  3 ++
+ libs/video/rsx_vulkan_backend.c | 68 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ libs/video/rsx_vulkan_backend.h |  3 +++
  2 files changed, 66 insertions(+), 5 deletions(-)
 
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 5c6aaf8..537e1b7 100644
+index a95a51229f82192d60068733517c81e38f462eb2..c284bcde78659535b812136aec2fef23e65a77c2 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
-@@ -408,12 +408,14 @@ static struct {
+@@ -411,12 +411,14 @@ static struct {
      int rp_open;      /* a guest pass region is open around the render pass */
  } s_dbg;
  
@@ -46,7 +46,7 @@ index 5c6aaf8..537e1b7 100644
  }
  
  static void vk_dbg_start(VkInstance inst)
-@@ -448,6 +450,58 @@ static void vk_dbg_name_image(VkImage img, const char* text)
+@@ -451,6 +453,58 @@ static void vk_dbg_name_image(VkImage img, const char* text)
      s_dbg.name(s_vk.device, &n);
  }
  
@@ -105,7 +105,7 @@ index 5c6aaf8..537e1b7 100644
  static VKAPI_ATTR VkBool32 VKAPI_CALL vk_val_message(
      VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type,
      const VkDebugUtilsMessengerCallbackDataEXT* d, void* user)
-@@ -2995,9 +3049,7 @@ static void vk_cb_present(void* ud, u32 buffer_id)
+@@ -2998,9 +3052,7 @@ static void vk_cb_present(void* ud, u32 buffer_id)
      { static int on = -1; static char path[512];
        if (on < 0) { const char* e = getenv("PS3RECOMP_CAPTURE_TRIGGER"); on = e && *e;
                      if (on) snprintf(path, sizeof path, "%s", e); }
@@ -116,7 +116,7 @@ index 5c6aaf8..537e1b7 100644
      s_dump_now = vk_dump_decide();
  
      /* The draw engine reads its own centre pixel; the frame comes back to the
-@@ -5832,6 +5884,13 @@ static void vk_plist_start(void)
+@@ -6039,6 +6091,13 @@ static void vk_plist_start(void)
  
      const char* e = getenv("PS3RECOMP_VK_PREWARM");
      int threads = e && *e ? atoi(e) : 2;
@@ -130,7 +130,7 @@ index 5c6aaf8..537e1b7 100644
      if (threads > 8) threads = 8;
      if (!s_pl.n || threads <= 0) return;
      VK_LOG("pipeline list: building %u pipelines ahead on %d threads\n", s_pl.n, threads);
-@@ -7074,8 +7133,7 @@ int rsx_vulkan_backend_pump_messages(void)
+@@ -7282,8 +7341,7 @@ int rsx_vulkan_backend_pump_messages(void)
          }
          else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F12 && !e.key.repeat &&
                   !(e.key.keysym.mod & KMOD_SHIFT)) {   /* Shift+F12 is MangoHUD's */
@@ -141,10 +141,10 @@ index 5c6aaf8..537e1b7 100644
          else if (e.type == SDL_MOUSEWHEEL) {   /* cellPad: menus scroll with it */
              extern volatile int g_pad_mouse_wheel;
 diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
-index 15ccb80..b330151 100644
+index 633c49739e2e588bada84c9e9da6fa66204a0f8c..7ee1f8e0d18ce95d72a89213c0ec3f62377b92d4 100644
 --- a/libs/video/rsx_vulkan_backend.h
 +++ b/libs/video/rsx_vulkan_backend.h
-@@ -94,6 +94,9 @@ void rsx_vulkan_set_motion_blur(int on);
+@@ -103,6 +103,9 @@ void rsx_vulkan_set_mlaa(int on);
  /* PS3RECOMP_VK_VALIDATION: the counts per message ID, once (also at exit and
   * shutdown); for a process that ends with _exit. */
  void rsx_vulkan_validation_summary(void);
@@ -155,5 +155,4 @@ index 15ccb80..b330151 100644
  /* The temporal upscalers this build has (PS3RECOMP_TEMPORAL): bit 0 FSR 3
   * (PS3RECOMP_FFX_DIR), bit 1 DLSS (PS3RECOMP_DLSS_SDK; it also needs an
 -- 
-2.56.1
-
+2.x

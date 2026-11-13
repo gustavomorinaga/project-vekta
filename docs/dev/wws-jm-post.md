@@ -496,3 +496,127 @@ indirectly with size 0 and the image stays as it was.
   `kz1hd_pc.ini` (default on, as in the original; the Original preset includes on), applied at once
   (`rsx_vulkan_set_motion_blur`; at start `PS3RECOMP_MB_ON`). Checked: the row shows and writes the ini; with `off`,
   4 frames dumped while sprinting (field strength up to 255) come out equal to the MLAA alone.
+
+## The glow (2026-11-13)
+
+The glow is steps 3 to 6 of the chain above for the half- and quarter-resolution part (the 24 half-resolution
+`ab05`/`6b71` pairs belong to the motion field, not the glow). Read from a Level 8 capture's DMA, job by job (IO
+offsets; base `0x11300000` on v0.18):
+
+1. `8197` (Modulate) x24 copies the RSX's 640x360 target at IO `0x10000`, the glow source, to IO `0x718000`
+   (factor 1.0: a copy).
+2. `de0b` (Downsample) x12 halves it to 320x180 (IO `0xB7D000`).
+3. `ab05`/`6b71` x6 each, 7 times, between IO `0xB7D000` and `0xBB5400`; `8197` x6 with factor 1.5; 4 more pairs.
+4. `f601` x12 doubles it to IO `0x718000`; `f601` x96 doubles that again and adds it to the full image.
+
+The rules, measured on the lifted modules with random inputs through `tools/mb_harness` (`check_glow.py`):
+Downsample as for the motion blur (byte averages rounded up, down the columns first); the blur is the 7-tap binomial
+`(1,6,15,20,15,6,1)/64` truncated to a byte on each pass, edges repeated, with no special rule for any byte (unlike the
+motion field's strength byte); Modulate 1.5 is `min(255, (x * 3) >> 1)`; the doubling is Upsample's 9:3:3:1; the last
+step is a saturating add (`f601` 0x4FD0), every byte. The C reference `port/kz1hd/native/glow_ref.c` matches the lifted
+code on every pixel, stage by stage and over the whole chain (two seeds; random, sparse and black sources). A black
+source therefore adds nothing to the colour.
+
+**Why the glow was zero in the port.** The glow source pass (pipe 92 in the F12 captures: a 640x360 quad into IO
+`0x10000`) computes `tex0.rgb * tex1.z`, where `tex0` is the 1280x720 surface `0x0D740000` and `tex1` the frame's
+depth target read as A8R8G8B8: `.z` is the low byte of the Z24S8 word, the stencil. The game draws its glow sprites
+(32x32 textures; one draw per sprite) into `0x0D740000` with the depth test on and stencil ALWAYS, ref 255, REPLACE on
+depth pass (F12 capture of 2026-11-11 17:55, pass 005, about 340 thousand lit pixels after the draw), so the source is
+the glow texture where a sprite is visible. The renderer's depth-to-colour pack wrote the stencil byte as 0, so the
+source was black on both paths (`KZ_MLAA=spu` measured it: 0 lit pixels in every frame of Level 1). Patch 2076 packs
+the real stencil (the D32S8 target's stencil aspect). Level 1's opening has no glow draws at all (the Level 1 capture
+has none into `0x0D740000`, and with 2076 the source stays black there, about 200 s measured).
+
+On the GPU (patch 2078, `libs/video/vulkan/rsx_vk_glow.comp`): the glow source is copied from the RSX target
+(`PS3RECOMP_GLOW_GPU`, set by `jm.c` to IO `0x10000` on the default path), halved, blurred, modulated, doubled and
+added to the MLAA's buffer before the motion blur, as the SPU chain orders them; under a temporal upscaler the add is
+over its output, upsampled bilinearly. When the source has no colour or the strength is 0, the stages after the halving
+are dispatched with size 0, but the add's alpha still runs (a full-screen alpha-only stage): the MLAA leaves its flags in
+the frame's alpha (148 values, never 255, in a Level 8 frame), the glow's saturating add sets it back (to 255 for the
+game's source, whose alpha is a uniform 255 from the pass's shader constant: every stage keeps a uniform value, and
+Modulate makes it `min(255, (3v) >> 1)`), and the motion blur after weighs its taps by `1 + alpha/16`. Skipping that
+add (the first version of 2078) made the sprint blur differ from the SPU chain by up to 34 levels in about 550
+thousand pixels a frame (Level 8, found with the post-processing switches' dumps). A source of uneven alpha runs the
+whole chain. Strength (`rsx_vulkan_set_glow_strength`, in 1/256; `KZ_GLOW=<percent>` for tests) is ours: it scales the
+colour the glow adds (256, the default, is the game's, bit for bit) and leaves the alpha the game's at every strength,
+so the glow setting never changes the motion blur. `tools/mb_harness/regress_glow.sh` checks lifted code = C and GPU =
+C (strength 256, 128 and 0; a frame whose alpha is not 255; with `GLOW_REPRO=<dump dirs>`, sprint frames as MLAA, GPU
+glow and motion blur against all three in C); `check_dump.sh` checks frames dumped in the game (`PS3RECOMP_MLAA_DUMP`,
+with `PS3RECOMP_MLAA_DUMP_GLOW=1` or `_MOVING=1`) against the C references in the renderer's order, every byte.
+
+**Where the game draws glow (2026-11-13, measured).** `KZ_MLAA=spu` with patch 2076 and `NV0039_STATS` (patch 2077), all
+11 levels at 60 Hz, each reached through the unlocked level list on a new profile and played live for about 220 s (god
+mode, walking, turning, firing): 0 lit pixels in the glow source in every frame of every level. A Level 7 run with
+`RSX_DAC_LOG` and four F12 captures shows why: the glow pass does read the depth through the GPU pack (A8R8G8B8, the
+path 2076 fixed), and nothing is drawn into `0x0D740000` there (the surface was last written at boot). The glow is
+emissive sprites in a few places, not a screen-wide bloom: the captures with glow draws are Level 11 (the rocket ride:
+an engine's exhaust; the docking bay interior). From the docking bay checkpoint of a saved game, the same SPU-path run
+measured a lit source in 10 frames, up to 7162 pixels.
+
+**The GPU pass in the game (same checkpoint, 60 Hz).** `KZ_MLAA=gpu` with `PS3RECOMP_MLAA_DUMP` and
+`PS3RECOMP_MLAA_DUMP_GLOW=1`, 8 frames with a lit source (10 to 10689 pixels) each run, through
+`tools/mb_harness/check_dump.sh`: with `KZ_GLOW=100` the output equals `mlaa_ref`, `glow_ref` and `mb_ref` over the dumped
+input on every pixel (the glow then changes up to about 23 thousand pixels more than the MLAA alone); with `KZ_GLOW=0`
+it equals the MLAA (and motion blur) alone on every pixel.
+
+**The other event channels.** The player's screen effects set channels 4 (damage), 6 (sniper zoom presets) and 8 at
+`0x20148C`. `FUN_0029BDC8`, which draws the screen effects every frame, passes the blended preset values (`+0x1B0` to
+`+0x1E8`: Colorize's contrast, brightness, mix and colours) to an RSX shader's parameters, and only the type 5 pair
+(`+0x78`/`+0x7C`) to the motion field; the `jm_post` jobs are built once and their per-frame inputs are the two RSX
+targets. So these channels act through the RSX's colour grading, which the port draws as the game does, not through
+`jm_post`. Not yet checked in the game (taking damage and zooming on the SPU path and comparing what the chain changes).
+
+## The effect strengths (2026-11-13)
+
+Static reading of the lifted bodies (no new runs for this part). `func_0021AB28` calls two functions every frame for
+the camera's screen-effects object (`camera+0x108`, `r3`): `func_0029BDC8` (at `0x21B664`) and `func_0029C030` (at
+`0x21B858`). The object's fields they read:
+
+| Offset | What |
+|---|---|
+| `+0x78`, `+0x7C` | the motion field's resource and factor (the type 5 channel; `+0x7C` is the player's sprint time `+0x310`, set at `0x20148C`) |
+| `+0xD0`, `+0xD4` | the Colorize pass's resources (the pass is set only with both) |
+| `+0x1B0`, `+0x1B4`, `+0x1B8` | Colorize contrast, brightness and mix factor (the mix factor goes straight to the pass object's `+0x18`) |
+| `+0x1C0..+0x1C8`, `+0x1D0..+0x1D8`, `+0x1E0..+0x1E8` | shadow, midtone and highlight colours (RGB; multiplied by 255.0, the float at `0x29BDC0`, as they are set) |
+| `+0x1F0` | a value for `func_0004C8F8` before the grain is drawn |
+| `+0x1F4`, `+0x1F8`, `+0x1FC` | the grain's alpha, size and texture |
+| `+0x204` | the effects on (byte; both functions return at once when 0) |
+| `+0x208` | the Colorize pass object |
+
+- `func_0029BDC8` sets the Colorize pass (virtual calls `+0x14`, `+0x10`, `+0x18`, `+0x1C`, `+0x20` for contrast,
+  brightness and the three colours, `+0x24` for the resource), draws it (`+0x08`) and then the motion field through
+  `func_001106C4` (the post singleton `0x8285A0`, `f1` = `+0x7C`, `r6` = 1 when the Colorize pass exists).
+- `func_0029C030` draws the film grain: unless `+0x1F4 <= 2/255` (the float at `0x29C008`), tiles 32 units apart
+  (`0x29C00C`) of the texture at `+0x1FC`, scaled by `+0x1F8`, each at a random offset (`func_00013B48` twice), coloured
+  with alpha `int(+0x1F4 * 255)` (`0x29C010`) and drawn by `func_0004464C`.
+- Who writes these fields each frame from the level's `PostProcessPreset` (and the sniper presets of channel 6) was not
+  found: no direct float store to `+0x1F4` of this object is in the lifted code (the five stores at that offset belong
+  to other classes, whose `+0x1F8` is a byte).
+- The "previous-frame blend" named for `func_0029BDC8` in earlier notes: the function itself only sets and draws the
+  Colorize pass and the motion field; whether the Colorize pass's mix factor mixes in the previous frame is not
+  confirmed. Not exposed.
+
+**The switches** (`port/kz1hd/post.h`, `native_ppu/post.cpp`, the PC screen): motion blur and film grain take a strength
+from 0 to 100 % in steps of 10. The two functions are wrapped: below 100 %, the factor at `+0x7C` or the alpha at
+`+0x1F4` is scaled for that call and the game's value put back afterwards; the lifted body runs as always (no draw or job
+is skipped). At 100 % the lifted body runs with nothing touched. At 0 % the value is 0: the grain falls under the game's
+own 2/255 test, and the motion field's factor is 0 (the field stays neutral, and the GPU motion blur is switched off too).
+The Colorize values are never touched. The MLAA is a choice (`antialiasing = mlaa | off`): patch 2072 lets the renderer
+skip the MLAA stages at once while still taking the frame copy and running the motion blur on it. Glow has a slot in
+`post.h` (`KZ_POST_GLOW`) and no setting: it is not drawn on the GPU path.
+
+Checked in the game (2026-11-13; Level 8 from the `user_1023` save, 60 Hz, headless, scripted sprint with `PAD_SCRIPT`
+and `PAD_STICK`, `KZ_POST_LOG=1`, frames with `PS3RECOMP_MLAA_DUMP` and `PS3RECOMP_MLAA_DUMP_MOVING=1`, checked with
+`mlaa_ref` + `mb_ref`): at 100 % the field's strength rises 12, 23, 35 ... 94 over 8 sprint frames and every output
+equals the C reference; at 50 % it is exactly half (6, 12, 18 ... 47; frame 1 equals 100 %'s frame 0), output again
+equal to the reference; at 0 %, with the GPU pass forced on (`PS3RECOMP_MB_ON=1`), the game set its factor (0.05 seen)
+and 0 was drawn: no frame had any field strength. Anti-aliasing off: the output equals the input on 8 frames. Film
+grain is on in normal play (Level 8: alpha 0.12, 0.14-0.15 for a moment at the level's start); frames at 0 % and
+100 % from the same points of two runs differ by the grain only (high-frequency energy of the luma 2.35 against 2.61,
+the picture about 4 levels darker with it).
+
+Glow (`glow = 0-100`, `rsx_vulkan_set_glow_strength(kz_post_256(pct))`, 100 % = 256 the game's; at start
+`PS3RECOMP_GLOW_STRENGTH`): Level 8 from the same save (60 Hz, `PS3RECOMP_MLAA_DUMP_GLOW=1`, 8 frames with 13 to 696
+lit pixels in the glow source). At 100 % every output equals `check_dump.sh` at strength 256 on every pixel; at 0 % every
+output equals it at strength 0 (MLAA and motion blur only), while the 256 reference differs there by about 8000 pixels:
+the glow alone.

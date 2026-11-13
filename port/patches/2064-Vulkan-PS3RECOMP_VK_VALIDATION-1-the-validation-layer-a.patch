@@ -28,15 +28,14 @@ The layer itself stops reporting an ID after 10 by default; when it offers
 VK_EXT_layer_settings, its enable_message_limit is turned off so the counts
 at quit are the true ones.
 ---
- libs/video/rsx_vk_debug.h       | 120 ++++++++++++++++++++++
- libs/video/rsx_vulkan_backend.c | 175 +++++++++++++++++++++++++++++++-
- libs/video/rsx_vulkan_backend.h |   3 +
+ libs/video/rsx_vk_debug.h       | 120 +++++++++++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c | 175 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ libs/video/rsx_vulkan_backend.h |   3 ++
  3 files changed, 296 insertions(+), 2 deletions(-)
- create mode 100644 libs/video/rsx_vk_debug.h
 
 diff --git a/libs/video/rsx_vk_debug.h b/libs/video/rsx_vk_debug.h
 new file mode 100644
-index 0000000..bf0f06d
+index 0000000000000000000000000000000000000000..bf0f06d8538834fd4d474471c9c0a6aa6363157a
 --- /dev/null
 +++ b/libs/video/rsx_vk_debug.h
 @@ -0,0 +1,120 @@
@@ -161,10 +160,10 @@ index 0000000..bf0f06d
 +
 +#endif
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index f2268df..814d790 100644
+index e8ee16d4e2bb7f241b68f6149d46c9bc3ad070ff..8cacf2889d049979e14add5747114f739a7df382 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
-@@ -363,6 +363,151 @@ static int vk_load_wsi_device_functions(void)
+@@ -366,6 +366,151 @@ static int vk_load_wsi_device_functions(void)
      return 0;
  }
  
@@ -316,7 +315,7 @@ index f2268df..814d790 100644
  /* ---------------------------------------------------------------------------
   * Device selection: PS3RECOMP_VK_DEVICE if set, else the first discrete GPU,
   * else integrated, else anything that is not a CPU rasteriser, else whatever
-@@ -6479,8 +6624,10 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+@@ -6687,8 +6832,10 @@ static int vk_init_all(u32 width, u32 height, const char* title)
        if (js) sscanf(js, "%f,%f", &s_tm.jsign_x, &s_tm.jsign_y); }
      const char* iext[32];
      u32 ni = 0;
@@ -329,7 +328,7 @@ index f2268df..814d790 100644
      if (s_tm.want == 1) {
          u32 a, b; const char* const* ia; const char* const* da;
          rsx_dlss_required_extensions(&a, &ia, &b, &da);
-@@ -6498,7 +6645,29 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+@@ -6706,7 +6853,29 @@ static int vk_init_all(u32 width, u32 height, const char* title)
                                  .pApplicationInfo = &app };
      ci.enabledExtensionCount   = ni;
      ci.ppEnabledExtensionNames = ni ? iext : NULL;
@@ -359,7 +358,7 @@ index f2268df..814d790 100644
      if (ir != VK_SUCCESS && s_tm.want) {
          VK_LOG("temporal: vkCreateInstance with NGX's extensions failed (VkResult %d), off\n", (int)ir);
          s_tm.want = 0;
-@@ -6514,6 +6683,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+@@ -6722,6 +6891,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
      }
      if (ir != VK_SUCCESS) { VK_LOG("vkCreateInstance failed (VkResult %d)\n", (int)ir); return -1; }
      if (vk_load_instance_functions()) return -1;
@@ -367,7 +366,7 @@ index f2268df..814d790 100644
      if (s_vk.windowed) {
          if (vk_load_wsi_instance_functions()) {
              vk_window_drop("the driver has no surface functions");
-@@ -6766,6 +6936,7 @@ void rsx_vulkan_backend_shutdown(void)
+@@ -6974,6 +7144,7 @@ void rsx_vulkan_backend_shutdown(void)
          if (s_vk.pool)  pvkDestroyCommandPool(s_vk.device, s_vk.pool, NULL);
          pvkDestroyDevice(s_vk.device, NULL);
      }
@@ -376,13 +375,13 @@ index f2268df..814d790 100644
      if (s_vk.lib) dlclose(s_vk.lib);
      free(s_vk.cpu_verts);
 diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
-index bfde453..15ccb80 100644
+index 6bf3314d110863da2d66a5af75762d1d4912358c..633c49739e2e588bada84c9e9da6fa66204a0f8c 100644
 --- a/libs/video/rsx_vulkan_backend.h
 +++ b/libs/video/rsx_vulkan_backend.h
-@@ -91,6 +91,9 @@ void rsx_vulkan_set_reflex(int mode);
- /* Killzone HD's motion blur after its MLAA (PS3RECOMP_MB_GPU): on or off from
-  * the next frame; PS3RECOMP_MB_ON=0 starts it off. */
- void rsx_vulkan_set_motion_blur(int on);
+@@ -100,6 +100,9 @@ void rsx_vulkan_set_glow_strength(int strength256);
+  * (the glow and the motion blur still run there) and the frame is left
+  * unsmoothed. */
+ void rsx_vulkan_set_mlaa(int on);
 +/* PS3RECOMP_VK_VALIDATION: the counts per message ID, once (also at exit and
 + * shutdown); for a process that ends with _exit. */
 +void rsx_vulkan_validation_summary(void);
@@ -390,5 +389,4 @@ index bfde453..15ccb80 100644
  /* The temporal upscalers this build has (PS3RECOMP_TEMPORAL): bit 0 FSR 3
   * (PS3RECOMP_FFX_DIR), bit 1 DLSS (PS3RECOMP_DLSS_SDK; it also needs an
 -- 
-2.56.1
-
+2.x
