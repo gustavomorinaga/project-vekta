@@ -43,6 +43,8 @@ case "$bin" in
     # KZ_RENDERDOC=1: under RenderDoc (renderdoccmd on the PATH); F12 then takes a RenderDoc capture too, written as
     # $KZ_WORK/renderdoc/kz1hd_frameN.rdc (docs/dev/testing.md, "Running under RenderDoc")
     if [ "${KZ_RENDERDOC:-0}" = 1 ]; then
+        # RenderDoc offers no Wayland surface (VK_KHR_wayland_surface): the window goes through XWayland
+        export SDL_VIDEODRIVER=${SDL_VIDEODRIVER:-x11}
         mkdir -p "$KZ_WORK/renderdoc"
         renderdoccmd capture -w -c "$KZ_WORK/renderdoc/kz1hd" "$bin" "$PWD/PS3_GAME/USRDIR/EBOOT.elf" > "$KZ_WORK/play.log" 2>&1 &
     else

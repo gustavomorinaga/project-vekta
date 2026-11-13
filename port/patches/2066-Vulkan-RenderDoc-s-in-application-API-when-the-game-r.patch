@@ -14,19 +14,24 @@ are cleared, so one press is one capture. Debug names (patch 2065) turn
 on unless PS3RECOMP_VK_LABELS=0, and a temporal upscaler is pointed out:
 RenderDoc cannot replay DLSS's or FSR 3.1's private parts.
 
+RenderDoc 1.46 crashed inside its vkCreateGraphicsPipelines on the pipeline
+list's prewarm threads (core dump, 2026-11-13); under RenderDoc the list is
+not built ahead unless PS3RECOMP_VK_PREWARM is set, and the same run then
+captured.
+
 Only the two entries used are declared (the 7th, SetCaptureKeys, and the
 16th, TriggerCapture, of the table RenderDoc documents for its
 in-application API, MIT); no RenderDoc file is included.
 ---
- libs/video/rsx_vulkan_backend.c | 61 ++++++++++++++++++++++++++++++---
+ libs/video/rsx_vulkan_backend.c | 68 ++++++++++++++++++++++++++++++---
  libs/video/rsx_vulkan_backend.h |  3 ++
- 2 files changed, 59 insertions(+), 5 deletions(-)
+ 2 files changed, 66 insertions(+), 5 deletions(-)
 
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index 12ee61e..dc73f33 100644
+index 5c6aaf8..537e1b7 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
-@@ -407,12 +407,14 @@ static struct {
+@@ -408,12 +408,14 @@ static struct {
      int rp_open;      /* a guest pass region is open around the render pass */
  } s_dbg;
  
@@ -41,7 +46,7 @@ index 12ee61e..dc73f33 100644
  }
  
  static void vk_dbg_start(VkInstance inst)
-@@ -447,6 +449,58 @@ static void vk_dbg_name_image(VkImage img, const char* text)
+@@ -448,6 +450,58 @@ static void vk_dbg_name_image(VkImage img, const char* text)
      s_dbg.name(s_vk.device, &n);
  }
  
@@ -100,7 +105,7 @@ index 12ee61e..dc73f33 100644
  static VKAPI_ATTR VkBool32 VKAPI_CALL vk_val_message(
      VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type,
      const VkDebugUtilsMessengerCallbackDataEXT* d, void* user)
-@@ -2981,9 +3035,7 @@ static void vk_cb_present(void* ud, u32 buffer_id)
+@@ -2995,9 +3049,7 @@ static void vk_cb_present(void* ud, u32 buffer_id)
      { static int on = -1; static char path[512];
        if (on < 0) { const char* e = getenv("PS3RECOMP_CAPTURE_TRIGGER"); on = e && *e;
                      if (on) snprintf(path, sizeof path, "%s", e); }
@@ -111,7 +116,21 @@ index 12ee61e..dc73f33 100644
      s_dump_now = vk_dump_decide();
  
      /* The draw engine reads its own centre pixel; the frame comes back to the
-@@ -7052,8 +7104,7 @@ int rsx_vulkan_backend_pump_messages(void)
+@@ -5832,6 +5884,13 @@ static void vk_plist_start(void)
+ 
+     const char* e = getenv("PS3RECOMP_VK_PREWARM");
+     int threads = e && *e ? atoi(e) : 2;
++    /* Under RenderDoc (1.46, 2026-11-13) pipelines built on the prewarm
++     * threads crashed it inside its vkCreateGraphicsPipelines; each one is
++     * built when first drawn instead (a slower first minute). */
++    if (s_rdoc.present && !(e && *e)) {
++        VK_LOG("RenderDoc in the process: the pipeline list is not built ahead (PS3RECOMP_VK_PREWARM=2 to force)\n");
++        threads = 0;
++    }
+     if (threads > 8) threads = 8;
+     if (!s_pl.n || threads <= 0) return;
+     VK_LOG("pipeline list: building %u pipelines ahead on %d threads\n", s_pl.n, threads);
+@@ -7074,8 +7133,7 @@ int rsx_vulkan_backend_pump_messages(void)
          }
          else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F12 && !e.key.repeat &&
                   !(e.key.keysym.mod & KMOD_SHIFT)) {   /* Shift+F12 is MangoHUD's */

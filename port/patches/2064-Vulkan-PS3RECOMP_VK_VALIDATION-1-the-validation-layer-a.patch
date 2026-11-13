@@ -23,11 +23,15 @@ The layer can also come from the loader
 (VK_LOADER_LAYERS_ENABLE='*validation*'); this switch adds the
 messenger and the counts. Written from the Vulkan specification and the
 validation layer's documentation.
+
+The layer itself stops reporting an ID after 10 by default; when it offers
+VK_EXT_layer_settings, its enable_message_limit is turned off so the counts
+at quit are the true ones.
 ---
- libs/video/rsx_vk_debug.h       | 120 +++++++++++++++++++++++++
- libs/video/rsx_vulkan_backend.c | 153 +++++++++++++++++++++++++++++++-
+ libs/video/rsx_vk_debug.h       | 120 ++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c | 175 +++++++++++++++++++++++++++++++-
  libs/video/rsx_vulkan_backend.h |   3 +
- 3 files changed, 274 insertions(+), 2 deletions(-)
+ 3 files changed, 296 insertions(+), 2 deletions(-)
  create mode 100644 libs/video/rsx_vk_debug.h
 
 diff --git a/libs/video/rsx_vk_debug.h b/libs/video/rsx_vk_debug.h
@@ -157,10 +161,10 @@ index 0000000..bf0f06d
 +
 +#endif
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index f2268df..c9826ab 100644
+index f2268df..814d790 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
-@@ -363,6 +363,137 @@ static int vk_load_wsi_device_functions(void)
+@@ -363,6 +363,151 @@ static int vk_load_wsi_device_functions(void)
      return 0;
  }
  
@@ -178,6 +182,7 @@ index f2268df..c9826ab 100644
 +    int want;                /* PS3RECOMP_VK_VALIDATION */
 +    int layer;               /* VK_LAYER_KHRONOS_validation asked for */
 +    int utils;               /* VK_EXT_debug_utils asked for */
++    int settings;            /* VK_EXT_layer_settings: the layer's own repeat limit off */
 +    VkDebugUtilsMessengerEXT messenger;
 +    PFN_vkDestroyDebugUtilsMessengerEXT destroy;
 +    pthread_mutex_t lock;
@@ -259,6 +264,19 @@ index f2268df..c9826ab 100644
 +    } else {
 +        VK_LOG("validation: no %s, nothing will be logged\n", VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 +    }
++#ifdef VK_EXT_layer_settings
++    /* The layer stops reporting an ID after 10 of it by default; the filter
++     * here does that job, so the counts at quit are the true ones. */
++    n = 0;
++    if (s_val.layer && s_val.utils && ep && ep(s_val_layer, &n, NULL) == VK_SUCCESS && n) {
++        VkExtensionProperties* e = (VkExtensionProperties*)calloc(n, sizeof *e);
++        if (e && ep(s_val_layer, &n, e) == VK_SUCCESS)
++            for (uint32_t i = 0; i < n; i++)
++                if (!strcmp(e[i].extensionName, VK_EXT_LAYER_SETTINGS_EXTENSION_NAME)) s_val.settings = 1;
++        free(e);
++        if (s_val.settings) ext[(*n_ext)++] = VK_EXT_LAYER_SETTINGS_EXTENSION_NAME;
++    }
++#endif
 +    return s_val.layer ? 1u : 0u;
 +}
 +
@@ -284,8 +302,8 @@ index f2268df..c9826ab 100644
 +        return;
 +    }
 +    atexit(vk_val_summary);   /* the game may exit without shutting the backend down */
-+    VK_LOG("validation: on (%s); per message ID the first %d in full, then a count at 10, 100, 1000...\n",
-+           s_val.layer ? s_val_layer : "no layer", RSX_VK_MSG_FULL);
++    VK_LOG("validation: on (%s%s); per message ID the first %d in full, then a count at 10, 100, 1000...\n",
++           s_val.layer ? s_val_layer : "no layer", s_val.settings ? ", its repeat limit off" : "", RSX_VK_MSG_FULL);
 +}
 +
 +static void vk_val_stop(VkInstance inst)
@@ -298,33 +316,41 @@ index f2268df..c9826ab 100644
  /* ---------------------------------------------------------------------------
   * Device selection: PS3RECOMP_VK_DEVICE if set, else the first discrete GPU,
   * else integrated, else anything that is not a CPU rasteriser, else whatever
-@@ -6479,8 +6610,10 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+@@ -6479,8 +6624,10 @@ static int vk_init_all(u32 width, u32 height, const char* title)
        if (js) sscanf(js, "%f,%f", &s_tm.jsign_x, &s_tm.jsign_y); }
      const char* iext[32];
      u32 ni = 0;
 -    if (s_vk.windowed) for (u32 i = 0; i < s_vk.inst_ext_count && ni < 32; i++) iext[ni++] = s_vk.inst_exts[i];
 -    const u32 ni_window = ni;
-+    if (s_vk.windowed) for (u32 i = 0; i < s_vk.inst_ext_count && ni < 31; i++) iext[ni++] = s_vk.inst_exts[i];
++    if (s_vk.windowed) for (u32 i = 0; i < s_vk.inst_ext_count && ni < 30; i++) iext[ni++] = s_vk.inst_exts[i];
 +    const u32 ni_surface = ni;
 +    const u32 n_layers = vk_val_prepare(iext, &ni);   /* PS3RECOMP_VK_VALIDATION: debug utils after the surface's */
 +    u32 ni_window = ni;
      if (s_tm.want == 1) {
          u32 a, b; const char* const* ia; const char* const* da;
          rsx_dlss_required_extensions(&a, &ia, &b, &da);
-@@ -6498,7 +6631,21 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+@@ -6498,7 +6645,29 @@ static int vk_init_all(u32 width, u32 height, const char* title)
                                  .pApplicationInfo = &app };
      ci.enabledExtensionCount   = ni;
      ci.ppEnabledExtensionNames = ni ? iext : NULL;
 +    ci.enabledLayerCount   = n_layers;
 +    ci.ppEnabledLayerNames = n_layers ? &s_val_layer : NULL;
++#ifdef VK_EXT_layer_settings
++    const VkBool32 no_limit = VK_FALSE;
++    const VkLayerSettingEXT lset = { s_val_layer, "enable_message_limit", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &no_limit };
++    const VkLayerSettingsCreateInfoEXT lsci = { .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
++                                                .settingCount = 1, .pSettings = &lset };
++    if (s_val.settings) ci.pNext = &lsci;
++#endif
      VkResult ir = pvkCreateInstance(&ci, NULL, &s_vk.instance);
 +    if (ir != VK_SUCCESS && (n_layers || ni_window != ni_surface)) {
 +        VK_LOG("validation: vkCreateInstance with the layer failed (VkResult %d), off\n", (int)ir);
-+        s_val.layer = s_val.utils = 0;
-+        ci.enabledLayerCount = 0; ci.ppEnabledLayerNames = NULL;
-+        if (ni_window != ni_surface) {   /* drop debug utils, keep what came after it */
-+            for (u32 k = ni_surface; k + 1 < ni; k++) iext[k] = iext[k + 1];
-+            ni--; ni_window--;
++        s_val.layer = s_val.utils = s_val.settings = 0;
++        ci.enabledLayerCount = 0; ci.ppEnabledLayerNames = NULL; ci.pNext = NULL;
++        if (ni_window != ni_surface) {   /* drop the debugging extensions, keep what came after them */
++            const u32 d = ni_window - ni_surface;
++            for (u32 k = ni_surface; k + d < ni; k++) iext[k] = iext[k + d];
++            ni -= d; ni_window -= d;
 +        }
 +        ci.enabledExtensionCount = ni;
 +        ci.ppEnabledExtensionNames = ni ? iext : NULL;
@@ -333,7 +359,7 @@ index f2268df..c9826ab 100644
      if (ir != VK_SUCCESS && s_tm.want) {
          VK_LOG("temporal: vkCreateInstance with NGX's extensions failed (VkResult %d), off\n", (int)ir);
          s_tm.want = 0;
-@@ -6514,6 +6661,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+@@ -6514,6 +6683,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
      }
      if (ir != VK_SUCCESS) { VK_LOG("vkCreateInstance failed (VkResult %d)\n", (int)ir); return -1; }
      if (vk_load_instance_functions()) return -1;
@@ -341,7 +367,7 @@ index f2268df..c9826ab 100644
      if (s_vk.windowed) {
          if (vk_load_wsi_instance_functions()) {
              vk_window_drop("the driver has no surface functions");
-@@ -6766,6 +6914,7 @@ void rsx_vulkan_backend_shutdown(void)
+@@ -6766,6 +6936,7 @@ void rsx_vulkan_backend_shutdown(void)
          if (s_vk.pool)  pvkDestroyCommandPool(s_vk.device, s_vk.pool, NULL);
          pvkDestroyDevice(s_vk.device, NULL);
      }
