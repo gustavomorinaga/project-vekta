@@ -151,3 +151,4 @@
 2065-Vulkan-debug-labels-per-guest-pass-and-port-pass-names.patch
 2066-Vulkan-RenderDoc-s-in-application-API-when-the-game-r.patch
 2067-draw-engine-a-pass-capture-writing-vertices-converts-.patch
+2079-Vulkan-rsx_vulkan_temporal_active-whether-the-tempor.patch
