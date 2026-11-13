@@ -531,11 +531,18 @@ On the GPU (patch 2078, `libs/video/vulkan/rsx_vk_glow.comp`): the glow source i
 (`PS3RECOMP_GLOW_GPU`, set by `jm.c` to IO `0x10000` on the default path), halved, blurred, modulated, doubled and
 added to the MLAA's buffer before the motion blur, as the SPU chain orders them; under a temporal upscaler the add is
 over its output, upsampled bilinearly. When the source has no colour or the strength is 0, the stages after the halving
-are dispatched with size 0. Strength in 1/256 (`rsx_vulkan_set_glow_strength`; 256, the default, is the game's, bit
-for bit; `KZ_GLOW=<percent>` for tests). `tools/mb_harness/regress_glow.sh` checks lifted code = C and GPU = C (strength
-256, 128 and 0); `check_dump.sh` checks frames dumped in the game (`PS3RECOMP_MLAA_DUMP`, with `PS3RECOMP_MLAA_DUMP_GLOW=1`)
-against the C references in the renderer's order. When the source is black the GPU leaves the frame's alpha as it was
-where the SPUs saturate it to 255; the game's frame alpha is 255 anyway, and the alpha is not shown.
+are dispatched with size 0, but the add's alpha still runs (a full-screen alpha-only stage): the MLAA leaves its flags in
+the frame's alpha (148 values, never 255, in a Level 8 frame), the glow's saturating add sets it back (to 255 for the
+game's source, whose alpha is a uniform 255 from the pass's shader constant: every stage keeps a uniform value, and
+Modulate makes it `min(255, (3v) >> 1)`), and the motion blur after weighs its taps by `1 + alpha/16`. Skipping that
+add (the first version of 2078) made the sprint blur differ from the SPU chain by up to 34 levels in about 550
+thousand pixels a frame (Level 8, found with the post-processing switches' dumps). A source of uneven alpha runs the
+whole chain. Strength (`rsx_vulkan_set_glow_strength`, in 1/256; `KZ_GLOW=<percent>` for tests) is ours: it scales the
+colour the glow adds (256, the default, is the game's, bit for bit) and leaves the alpha the game's at every strength,
+so the glow setting never changes the motion blur. `tools/mb_harness/regress_glow.sh` checks lifted code = C and GPU =
+C (strength 256, 128 and 0; a frame whose alpha is not 255; with `GLOW_REPRO=<dump dirs>`, sprint frames as MLAA, GPU
+glow and motion blur against all three in C); `check_dump.sh` checks frames dumped in the game (`PS3RECOMP_MLAA_DUMP`,
+with `PS3RECOMP_MLAA_DUMP_GLOW=1` or `_MOVING=1`) against the C references in the renderer's order, every byte.
 
 **Where the game draws glow (2026-11-13, measured).** `KZ_MLAA=spu` with patch 2076 and `NV0039_STATS` (patch 2077), all
 11 levels at 60 Hz, each reached through the unlocked level list on a new profile and played live for about 220 s (god

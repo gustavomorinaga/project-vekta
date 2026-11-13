@@ -18,7 +18,7 @@ extern "C" {
 #define GLOW_QW 320
 #define GLOW_QH 180
 
-/* Strength in 1/256: GLOW_FULL (256) is the game's glow, bit for bit; 0 adds nothing. */
+/* Strength in 1/256 of the colour added: GLOW_FULL (256) is the game's glow, bit for bit; 0 adds no colour. */
 #define GLOW_FULL 256
 
 /* Gfx.Post.Downsample (de0b): 2x2, byte averages rounded up, down the columns first. w, h: the output's size. */
@@ -39,7 +39,9 @@ void glow_ref_up(const uint8_t* in, uint8_t* out, int w, int h);
 void glow_ref_texture(const uint8_t* src, uint8_t* glow);
 
 /* Upsample's composition (f601 0x4FD0): the glow texture doubled and added to the full image, saturated, every
- * byte; the added value is (g * strength) >> 8 (strength GLOW_FULL: the game's). */
+ * byte. Strength (ours, not the game's) scales the colour bytes: (g * strength) >> 8, GLOW_FULL the game's; the alpha
+ * byte (byte 0) always gets the whole add, as the game does: the MLAA leaves its flags in the alpha, this add
+ * saturates it, and the motion blur after weighs its taps by it. */
 void glow_ref_add(uint8_t* full, const uint8_t* glow, int strength);
 
 /* All of it. */

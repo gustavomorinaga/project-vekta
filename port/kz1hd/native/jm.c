@@ -665,7 +665,8 @@ __attribute__((constructor)) static void kz_jm_init(void)
      * (PS3RECOMP_MB_GPU, native/mb_ref.c; KZ_MOTION_BLUR=0 leaves it out),
      * with the glow in between (PS3RECOMP_GLOW_GPU, the glow source the game
      * draws at IO 0x10000, native/glow_ref.c; KZ_GLOW=<0-100>, default 100,
-     * its strength in percent for tests, 100 = the game's, 0 leaves it out);
+     * the strength of the colour it adds in percent for tests, 100 = the
+     * game's, 0 none; the alpha its add sets stays the game's);
      * spu: the game's own SPU chain, with the render targets kept coherent and
      * the NV0039 copies done (exact, slow: the reference the GPU passes are
      * checked against);

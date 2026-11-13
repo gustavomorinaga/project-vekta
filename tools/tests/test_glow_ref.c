@@ -3,7 +3,8 @@
  * against (the C itself is checked against the lifted SPU code by tools/mb_harness/check_glow.py). No game data.
  *  1. A uniform source v: every stage keeps it uniform (the averages and the blur's weights sum to one), so each
  *     byte of the image gains min(255, (3v) >> 1), the Modulate x1.5; at strength 128, half of that, truncated.
- *  2. A black source (alpha 255, the game's) leaves the colour as it was; strength 0 leaves the image as it was.
+ *  2. A black source (alpha 255, the game's) leaves the colour as it was and saturates the alpha; strength 0 leaves
+ *     the colour as it was and still saturates the alpha (the game's add, which the motion blur after weighs by).
  *  3. Saturation: 250 + 60 stays 255.
  *  4. Mirror symmetry: the source mirrored left-right gives the result mirrored (down, blur and up are symmetric
  *     with their edges repeated), on a source of scattered dots.
@@ -41,7 +42,8 @@ int main(void)
     CHECK(!bad, "uniform source: %d bytes not base + min(255, 3v/2)", bad);
     fill(full, F, 0, 10, 20, 30);
     glow_ref(full, src, 128);
-    CHECK(full[1] == 10 + 30 && full[2] == 20 + 75 && full[3] == 30 + 127, "strength 128: %u %u %u", full[1], full[2], full[3]);
+    CHECK(full[1] == 10 + 30 && full[2] == 20 + 75 && full[3] == 30 + 127 && full[0] == 255, "strength 128: %u %u %u, alpha %u",
+          full[1], full[2], full[3], full[0]);
 
     /* 2. black source, strength 0 */
     for (size_t i = 0; i < F; i++) ref[i] = (uint8_t)rand();
@@ -53,8 +55,11 @@ int main(void)
     CHECK(!bad, "black source: %d bytes changed (colour) or alpha not saturated", bad);
     for (size_t i = 0; i < S; i++) src[i] = (uint8_t)rand();
     memcpy(full, ref, F);
+    fill(src, S, 255, 200, 200, 200);
     glow_ref(full, src, 0);
-    CHECK(!memcmp(full, ref, F), "strength 0 changed the image");
+    bad = 0;
+    for (size_t i = 0; i < F; i++) bad += (i & 3) ? full[i] != ref[i] : full[i] != 255;
+    CHECK(!bad, "strength 0: %d bytes not the colour kept and the alpha saturated", bad);
 
     /* 3. saturation */
     fill(src, S, 0, 40, 40, 40); fill(full, F, 0, 250, 250, 250);

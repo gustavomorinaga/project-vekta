@@ -80,7 +80,7 @@ int main(int argc, char** argv)
     VkQueue q; vkGetDeviceQueue(dev, qfi, 0, &q);
 
     buf_t b[NB];   /* image, glow source, QA, QB, glow texture G, control (lit, indirect sizes) */
-    const VkDeviceSize sz[NB] = { W * H * 4, HW * HH * 4, QW * QH * 4, QW * QH * 4, HW * HH * 4, 64 };
+    const VkDeviceSize sz[NB] = { W * H * 4, HW * HH * 4, QW * QH * 4, QW * QH * 4, HW * HH * 4, 128 };
     b[0] = mkbuf(sz[0], 1);
     for (int i = 1; i < NB; i++) b[i] = mkbuf(sz[i], 0);
     buf_t src = mkbuf((VkDeviceSize)W * H * 4, 1), fsrc = mkbuf((VkDeviceSize)HW * HH * 4, 1);
@@ -137,7 +137,7 @@ int main(int argc, char** argv)
 #define PC(s, j) do { int _p[5] = { s, j, 0, 0, strength }; vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 20, _p); } while (0)
 #define ST(s, j, gx) do { PC(s, j); vkCmdDispatch(cb, gx, 1, 1); barrier(cb); TS(s); } while (0)
 #define STI(s, j, off) do { PC(s, j); vkCmdDispatchIndirect(cb, b[5].b, off); barrier(cb); TS(s); } while (0)
-        vkCmdFillBuffer(cb, b[5].b, 0, 64, 0); barrier(cb);
+        vkCmdFillBuffer(cb, b[5].b, 0, 128, 0); barrier(cb);
         ST(0, 0, (QW * QH + 255) / 256);                           /* DOWN */
         ST(6, 0, 1);                                               /* ARM */
         for (int k = 0; k < 7; k++) { STI(1, 0, 4); STI(1, 1, 4); } /* BLUR across, down */
@@ -145,6 +145,7 @@ int main(int argc, char** argv)
         for (int k = 0; k < 4; k++) { STI(1, 0, 4); STI(1, 1, 4); }
         STI(3, 0, 16);                                             /* UP */
         STI(4, 0, 28);                                             /* ADD */
+        STI(7, 0, 56);                                             /* ALPHA, when ADD did not run */
     }
     for (int i = nts + 1; i < 64; i++) vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, qp, i);
     CK(vkEndCommandBuffer(cb));

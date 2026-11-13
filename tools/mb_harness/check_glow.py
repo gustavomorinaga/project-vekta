@@ -84,6 +84,7 @@ for name, (half, full) in cases.items():
     if name == 'black source':
         f = full[:720].copy(); f[..., 0] = 255             # alpha saturates, the colour stays
         report('black: image kept', c_chain(half, full), f, (720, 1280, 4))
-        report('strength 0', c_chain(dots, full, 0), full[:720], (720, 1280, 4))
+        # strength (ours) scales the colour: at 0 the colour stays, the alpha gets the game's add (255 here)
+        report('strength 0', c_chain(dots, full, 0), f, (720, 1280, 4))
 print('PASS' if not fail else 'FAIL')
 sys.exit(fail)

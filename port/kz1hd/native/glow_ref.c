@@ -83,7 +83,7 @@ void glow_ref_add(uint8_t* full, const uint8_t* glow, int strength)
     uint8_t* up = malloc(GLOW_W * GLOW_H * 4);
     glow_ref_up(glow, up, GLOW_HW, GLOW_HH);
     for (size_t i = 0; i < (size_t)GLOW_W * GLOW_H * 4; i++) {
-        const int g = strength == GLOW_FULL ? up[i] : (up[i] * strength) >> 8;
+        const int g = strength == GLOW_FULL || !(i & 3) ? up[i] : (up[i] * strength) >> 8;   /* byte 0: alpha */
         const int v = full[i] + g;
         full[i] = (uint8_t)(v > 255 ? 255 : v);
     }
