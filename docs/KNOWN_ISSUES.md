@@ -44,7 +44,10 @@ are linked.
 
 - **144 fps is not steady.** The 144 Hz mode runs at about 131 to 134 fps in Level 1 and Level 7 on the maintainer's
   machine, limited by the game's main PPU thread ([dev/performance.md](dev/performance.md)).
-- **Aspect ratios narrower than 16:9** (16:10, 4:3) show 16:9 with bars.
+- **The sprint motion blur is stretched outside 16:9** (2026-11-12): the game draws it for a 16:9 screen (its taps
+  across are 16/9 of those down, `mb_ref.c`) on the anamorphic frame, so on 21:9 it reaches further at the sides and
+  on 4:3 less far; on 4:3 that is what the PS3 showed in its own 4:3 mode on a 4:3 TV. Off with `motion_blur = off`.
+- **The aspect setting applies on the next start**, as the internal resolution does.
 - **The internal resolution scale applies on the next start**, not at once.
 - **Surround sound** (5.1, 7.1) was checked channel by channel, not yet heard on a real surround system.
 - **A Vulkan validation error after turning DLSS or FSR 3.1 off** (2026-11-09): the next start built the upscaler's
@@ -72,12 +75,6 @@ are linked.
   picture. Fixed in 0.4.0 (patch 2054): the picture came back after Alt+Tab on Windows 11 with an NVIDIA card
   (2026-11-07); since patch 2057 no failure to recreate the swapchain closes the window (the frames are skipped and
   the presents try again). Workaround in 0.3.0: borderless or a window.
-- **Borderless and fullscreen draw at a lower resolution when Windows scales the desktop** (seen on a 1920×1200
-  display, likely at Windows' 150 %, by issue #18's tester, 2026-11-09): the port does not tell Windows it handles DPI
-  scaling, so Windows gives it a desktop of 1280×800 and stretches the picture; the log shows `window swapchain
-  1280x800` whatever size the PC page asks for, in borderless and fullscreen. Not seen on Linux or at 100 %.
-  Workarounds: set the display's scale to 100 %, or in the Properties of `KZ1HD.exe` (in `work\build-win`),
-  Compatibility, "Change high DPI settings", tick "Override high DPI scaling behavior" with "Application".
 - **A controller that is detected but gives no input** (a OneXPlayer X2 Mini Pro's built-in Xbox-style pad, issue
   #19). Fixed in 0.3.0 (patch 4012), not yet confirmed on that machine; in 0.2.0 set `SDL_JOYSTICK_RAWINPUT=0`
   before `play.cmd`.
