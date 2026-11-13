@@ -205,6 +205,28 @@ void func_00227A1C(ppu_context* ctx)
               fprintf(stderr, "[kz-hud-site] 0x%08X hud %d: %g %g %g %g (middle x %g: %s third)\n", ret, hud ? 1 : 0,
                       ldf(rect), ldf(rect + 4), ldf(rect + 8), ldf(rect + 12), cx,
                       cx < kW / 3 ? "left" : cx > kW * 2 / 3 ? "right" : "middle"); } } }
+    /* KZ_HUD_SKIP=0xA,0xB (diagnostic): those drawing sites draw nothing;
+     * KZ_HUD_TRACE=0xA,0xB: each rectangle they draw with a new size,
+     * texture coordinates or place (to whole units), once, for 1000 of them */
+    { static uint32_t skip[8], trace[8]; static int ns = -1, nt;
+      if (ns < 0) { ns = 0;
+          auto parse = [](const char* s, uint32_t* o, int* n) { while (s && *s && *n < 8) { char* e2; o[(*n)++] = (uint32_t)strtoul(s, &e2, 0); s = *e2 ? e2 + 1 : e2; } };
+          parse(getenv("KZ_HUD_SKIP"), skip, &ns); parse(getenv("KZ_HUD_TRACE"), trace, &nt); }
+      for (int i = 0; i < nt; i++) if (trace[i] == ret) {
+          static uint64_t seen[1000]; static int n;
+          const uint32_t uv = (uint32_t)ctx->gpr[4];
+          uint64_t key = ret;
+          /* its size and texture exactly, its place to whole units */
+          const double w = ldf(rect + 8) - ldf(rect), h = ldf(rect + 12) - ldf(rect + 4);
+          key = key * 1000003u + (uint64_t)llround(w * 1000) * 31u + (uint64_t)llround(h * 1000);
+          key = key * 1000003u + (uint64_t)llround(ldf(rect) + w * 0.5) * 7919u + (uint64_t)llround(ldf(rect + 4) + h * 0.5);
+          for (int k = 0; k < 16; k += 4) key = key * 1000003u + vm_read32(uv + k);
+          int j = 0; while (j < n && seen[j] != key) j++;
+          if (j == n && n < 1000) { seen[n++] = key;
+              fprintf(stderr, "[kz-hud-trace] 0x%08X: %g %g %g %g uv %g %g %g %g y*%g%+g\n", ret, ldf(rect), ldf(rect + 4),
+                      ldf(rect + 8), ldf(rect + 12), ldf(uv), ldf(uv + 4), ldf(uv + 8), ldf(uv + 12),
+                      ldf((uint32_t)ctx->gpr[6]), ldf((uint32_t)ctx->gpr[6] + 4)); } }
+      for (int i = 0; i < ns; i++) if (skip[i] == ret) return; }
     const float e = widen(), size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0f;
     if (!hud || (e == 1.0f && size == 1.0f)) {
         func_00227A1C_lifted(ctx);
