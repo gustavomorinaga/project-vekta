@@ -19,6 +19,11 @@ program and folder that build it. Until a release that calls itself playable
   the game puts them, keeps them on whole pixels of the window so they stay sharp, and is the same share of the
   screen's height at any resolution and aspect. HUD Size no longer changes the crosshair. Original preset: the game's
   size (`crosshair_size` in `kz1hd_pc.ini`).
+- Post-processing settings on the PC page, applied at once: Anti-aliasing (the game's own MLAA, or off), and
+  Motion Blur, Film Grain and Glow from 0 % to 100 % in steps of 10 (`antialiasing`, `motion_blur`, `film_grain`,
+  `glow` in `kz1hd_pc.ini`). 100 % is the game's own effect, unchanged; lower values scale the strength the game draws
+  the effect with. The Original (PS3) preset sets them all to the game's. An older `motion_blur = on | off` reads as
+  100 / 0. Colour grading stays the game's.
 - Developer tools for performance work ([docs/dev/perf-bench.md](docs/dev/perf-bench.md),
   [docs/dev/performance.md](docs/dev/performance.md)): `KZ_ROUTE_REBASE` writes a route replay out as a route of the
   current build, so that later replays follow it exactly; `tools/perf/ab.sh` compares two builds in alternating runs
@@ -50,6 +55,10 @@ program and folder that build it. Until a release that calls itself playable
   itself, so at 150 % a 1920×1200 display gave a 1280×800 picture, stretched (issue #18). It now asks for
   per-monitor DPI awareness, so the window, the swapchain and the PC page's display sizes are in real pixels
   (`SDL_WINDOWS_DPI_AWARENESS` in the environment overrides it).
+- The glow of emissive effects (lights, an engine's exhaust; measured in the last level's docking bay) now shows: a
+  depth buffer read as a colour texture now carries its stencil, which the game's glow uses as its mask, and the glow
+  (until now only on the slow `KZ_MLAA=spu` path) runs on the GPU after the edge smoothing, equal to the PS3's chain on
+  every pixel. `KZ_GLOW=<0-100>` sets its strength for tests (100, the game's, by default).
 - Reservations: after many thread starts a thread could stop being told when another one broke its
   reservation (ps3recomp patch 3037, after upstream pull request #758).
 - Scripted events at 60 and 144 fps: the level scripts' update ran once per frame, so above 30 fps everything they
