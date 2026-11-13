@@ -131,14 +131,17 @@ void func_001A9FC8(ppu_context* ctx)
         return;
     }
     const float aspect = kz_view.aspect;
-    if (aspect > 0.0f && fabs(ldf(cam + 0x74) - kGameAspect) < 0.01) stf(cam + 0x74, aspect);
+    /* only a camera at the game's 16:9 is ours to change: some have their own
+     * aspect (0x1CEC28: 4:3, FOV 90, culling or shadows) */
+    const bool widened = aspect > 0.0f && fabs(ldf(cam + 0x74) - kGameAspect) < 0.01;
+    if (widened) stf(cam + 0x74, aspect);
     kz_view_3d++;   /* a 3D picture is being drawn (pcoptions.cpp: no crop) */
     const double scale = site_scale(ret);
     const bool vfov = !vm_read8(cam + 0x80);   /* +0x70 is vertical */
     /* the game sets FOV and near every frame; they get their own back after the build */
     const uint32_t fov_bits = vm_read32(cam + 0x70), near_bits = vm_read32(cam + 0x68);
     /* a window narrower than 16:9: the world's cameras take the game's own 4:3 rule (fov.h, fov_narrow) */
-    if (vfov && fov_site_world(ret) && aspect > 0.0f && aspect < kGameAspect && fabs(ldf(cam + 0x74) - aspect) < 0.01)
+    if (vfov && widened && fov_site_world(ret) && aspect < kGameAspect)
         stf(cam + 0x70, (float)fov_narrow(ldf(cam + 0x70), aspect));
     if (scale != 1.0 && scale > 0.0 && vfov) stf(cam + 0x70, (float)fov_apply(ldf(cam + 0x70), scale));
     if (ret == kSkyRet && vfov) {   /* the sky's near plane for a wider view (fov.h, fov_sky_near) */
