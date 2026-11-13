@@ -146,3 +146,4 @@
 2076-Vulkan-a-depth-target-read-as-A8R8G8B8-carries-its-s.patch
 2077-NV0039_STATS-count-the-lit-pixels-of-Killzone-HD-s-g.patch
 2078-Killzone-HD-s-glow-on-the-GPU-PS3RECOMP_GLOW_GPU-aft.patch
+2072-Vulkan-the-MLAA-switched-at-once-rsx_vulkan_set_mlaa-PS3R.patch

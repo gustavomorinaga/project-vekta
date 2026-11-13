@@ -8,6 +8,11 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- Post-processing settings on the PC page, applied at once: Anti-aliasing (the game's own MLAA, or off), and
+  Motion Blur, Film Grain and Glow from 0 % to 100 % in steps of 10 (`antialiasing`, `motion_blur`, `film_grain`,
+  `glow` in `kz1hd_pc.ini`). 100 % is the game's own effect, unchanged; lower values scale the strength the game draws
+  the effect with. The Original (PS3) preset sets them all to the game's. An older `motion_blur = on | off` reads as
+  100 / 0. Colour grading stays the game's.
 - Crosshair Size in the PC settings: a slider for the weapon crosshair alone, from half to one and a half times the
   game's size (the middle of the slider is the game's), applied at once. It changes the crosshair's pieces, not where
   the game puts them, keeps them on whole pixels of the window so they stay sharp, and is the same share of the

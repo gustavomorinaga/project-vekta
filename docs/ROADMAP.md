@@ -184,7 +184,8 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [ ] An in-game key remapping page
 - [x] Field of view: rows on the PC page for the world and the first-person weapon (70 to 120 degrees
       horizontal at 16:9; the game's is 87); zoom keeps its magnification
-- [ ] Post-processing toggles (motion blur, grain, depth of field, lens flare, where the game has them)
+- [x] Post-processing settings on the PC page: anti-aliasing (the game's MLAA) on or off, motion blur, film grain
+      and glow 0-100 %; the game has no depth of field (jm_post has no such module, [dev/wws-jm-post.md](dev/wws-jm-post.md))
 - [x] HUD size and position on the PC page
 - [x] Widescreen (21:9, 32:9 and wider): Hor+ picture at the window's size, menus, movies and text in the middle 16:9,
       the HUD at the edges; on and off on the PC page

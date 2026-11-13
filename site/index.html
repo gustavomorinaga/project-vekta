@@ -49,7 +49,7 @@
 <main class="main">
 <article id="status" class="news">
 <h2>Status: Partly playable</h2>
-<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 25 PC features</p>
+<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 26 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><span class="st st-ok">Works</span></li>
@@ -151,8 +151,8 @@
 </tbody></table></div>
 </details>
 <h3>What the port adds</h3>
-<p>25 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
-<details><summary>All 25 PC features</summary>
+<p>26 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
+<details><summary>All 26 PC features</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>Default</th><th>Where it is set</th></tr></thead>
 <tbody>
@@ -164,6 +164,7 @@
 <tr><td>Frame-rate limit 30, 60, 144 (the game clock follows)</td><td>60</td><td><code>fps_limit</code>; 30 is the PS3&#x27;s</td></tr>
 <tr><td>AMD FSR 1 upscaling and RCAS sharpening</td><td>bilinear</td><td><code>upscaler</code>, <code>sharpness</code></td></tr>
 <tr><td>Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td>the game&#x27;s</td><td><code>anisotropic</code></td></tr>
+<tr><td>Post-processing: anti-aliasing (the game&#x27;s MLAA) on or off; motion blur, film grain and glow 0 to 100 % in steps of 10</td><td>the game&#x27;s</td><td><code>antialiasing</code>, <code>motion_blur</code>, <code>film_grain</code>, <code>glow</code>, applied at once; 100 % leaves the game&#x27;s value untouched. Level 8 (user_1023 save), 60 Hz, 2026-11-13, scripted sprint with <code>PS3RECOMP_MLAA_DUMP</code>: at 100 % the sprint field rises 12, 23 ... 94 over 8 frames and the output equals the C reference on every pixel; at 50 % the field is exactly half (6, 12 ... 47), output again equal to the reference; at 0 % the game&#x27;s factor (0.05) is drawn as 0 and no frame has field strength; anti-aliasing off: output = input on 8 frames. Film grain (alpha 0.12 in Level 8, always on): 0 % vs 100 % frames differ by grain only (high-frequency energy 2.35 vs 2.61, 4 luma darker with grain); glow (Level 8, lit sprite glow, 8 frames with 13-696 lit source pixels): at 100 % every output equals the C reference at the game&#x27;s strength 256 (the glow branch&#x27;s <code>check_dump.sh</code>), at 0 % every output equals the reference without glow, about 8000 pixels apart from the 100 % one</td></tr>
 <tr><td>Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer&#x27;s private build) DLSS Quality 135.7 fps</td></tr>
 <tr><td>Any aspect ratio: Hor+ for 21:9, 32:9 and wider, the game&#x27;s own 4:3 view for 4:3 and 16:10, menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code>, <code>aspect</code> (auto or a forced 4:3, 16:10, 16:9, 21:9, 32:9, on restart); below 16:9 the world&#x27;s FOV is the game&#x27;s own 4:3 rule, 100 / aspect vertical (func_00211540: 75 vertical, 91.3 horizontal at 4:3); Level 1, 2026-11-12/13: 1440x1080 and 1920x1200 windows fill with the HUD in the corners, round crosshair, weapon as the game frames it; forced 4:3 in a 2560-wide window and forced 16:10 in a 3440-wide one show their box with side bars; pause menu 16:9 with bars; 21:9 unchanged</td></tr>
 <tr><td>Field of view, 70 to 120 degrees horizontal at 16:9 (the game&#x27;s is 87), for the world and, apart, the first-person weapon</td><td>the game&#x27;s</td><td><code>field_of_view</code>, <code>weapon_fov</code> (the weapon&#x27;s game value is 45 degrees vertical, 72 horizontal at 16:9); a scope&#x27;s zoom keeps its magnification; an older <code>fov</code> (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it; 3440x1440, F12 capture: weapon projection 45 degrees vertical as at 16:9 (was 30.7), weapon_fov 110 gives 63.8</td></tr>
@@ -200,6 +201,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Added</span>Post-processing settings on the PC page, applied at once: Anti-aliasing (the game&#x27;s own MLAA, or off), and Motion Blur, Film Grain and Glow from 0 % to 100 % in steps of 10 (<code>antialiasing</code>, <code>motion_blur</code>, <code>film_grain</code>, <code>glow</code> in <code>kz1hd_pc.ini</code>). 100 % is the game&#x27;s own effect, unchanged; lower values scale the strength the game draws the effect with. The Original (PS3) preset sets them all to the game&#x27;s. An older <code>motion_blur = on | off</code> reads as 100 / 0. Colour grading stays the game&#x27;s.</li>
 <li><span class="sec">Added</span>Crosshair Size in the PC settings: a slider for the weapon crosshair alone, from half to one and a half times the game&#x27;s size (the middle of the slider is the game&#x27;s), applied at once. It changes the crosshair&#x27;s pieces, not where the game puts them, keeps them on whole pixels of the window so they stay sharp, and is the same share of the screen&#x27;s height at any resolution and aspect. HUD Size no longer changes the crosshair. Original preset: the game&#x27;s size (<code>crosshair_size</code> in <code>kz1hd_pc.ini</code>).</li>
 <li><span class="sec">Added</span>4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world&#x27;s view is the game&#x27;s own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.</li>
 <li><span class="sec">Added</span>An &quot;Aspect Ratio&quot; row on the PC page (<code>aspect</code> in <code>kz1hd_pc.ini</code>: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the picture at that ratio whatever the window&#x27;s, with bars, and the menus and movies inside that box; applies on the next start.</li>
@@ -270,8 +272,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 144 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 144 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 145 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 145 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -280,6 +282,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> Post-processing settings on the PC page, applied at once: Anti-aliasing (the game&#x27;s own MLAA, or off), and Motion...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Crosshair Size in the PC settings: a slider for the weapon crosshair alone, from half to one and a half times the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world&#x27;s view is the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> An &quot;Aspect Ratio&quot; row on the PC page (aspect in kz1hd_pc.ini: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the picture at that...</span></li>
@@ -287,7 +290,6 @@
 <li><time>next</time><span><b>Unreleased</b> Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about...</span></li>
 <li><time>next</time><span><b>Unreleased</b> tools/pgo.sh (optional profile-guided build): it makes its own play folder (work/vfs-test) from work/vfs instead of...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The glow of emissive effects (lights, an engine&#x27;s exhaust; measured in the last level&#x27;s docking bay) now shows: a...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

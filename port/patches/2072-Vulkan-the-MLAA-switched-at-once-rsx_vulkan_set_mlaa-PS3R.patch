@@ -1,0 +1,122 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 13 Nov 2026 01:30:00 -0300
+Subject: [PATCH] Vulkan: the MLAA switched at once (rsx_vulkan_set_mlaa,
+ PS3RECOMP_MLAA_ON)
+
+A title's options screen can turn the GPU MLAA (patch 2036) on and off
+while it runs, as rsx_vulkan_set_motion_blur does for the motion blur
+(patch 2043). PS3RECOMP_MLAA_ON=0 starts it off.
+
+Off, the frame copy is still taken where the MLAA runs (cellGcmSys keeps
+the copies off the 3D engine, as with the MLAA on), and the stages are not
+dispatched: the buffer keeps the frame as copied. The motion blur, which
+runs on that buffer after the MLAA, still runs on it, and so does the glow
+(patch 2078); with none of them, nothing is recorded and the frame stays as
+drawn.
+
+Before, the only way off was PS3RECOMP_MLAA_GPU unset at start, which also
+dropped the motion blur and sent the frame copies' methods to the 3D
+engine.
+---
+ libs/video/rsx_vulkan_backend.c | 57 +++++++++++++++---------
+ libs/video/rsx_vulkan_backend.h |  5 +++
+ 2 files changed, 42 insertions(+), 20 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index f539932b..fd2fc5c9 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -3816,6 +3816,16 @@ static int vk_mb_on(void)
+     if (s_mb_on < 0) { const char* e = getenv("PS3RECOMP_MB_ON"); s_mb_on = !e || atoi(e) != 0; }
+     return s_mb_on;
+ }
++/* The MLAA itself: on unless PS3RECOMP_MLAA_ON=0; rsx_vulkan_set_mlaa switches
++ * it at once. Off, vk_eng_mlaa still takes the frame copy (the copies stay off
++ * the 3D engine, as with it on) but runs no MLAA stage. */
++static volatile int s_mlaa_on = -1;
++void rsx_vulkan_set_mlaa(int on) { s_mlaa_on = on != 0; }
++static int vk_mlaa_on(void)
++{
++    if (s_mlaa_on < 0) { const char* e = getenv("PS3RECOMP_MLAA_ON"); s_mlaa_on = !e || atoi(e) != 0; }
++    return s_mlaa_on;
++}
+ 
+ static int vk_mb_init(void)
+ {
+@@ -4242,30 +4252,37 @@ static int vk_eng_mlaa(void* user, u32 surface, u32 field)
+     if (!o || o->fmt != VK_FORMAT_R8G8B8A8_UNORM || o->w != 1280 || o->h != 720 || !vk_mlaa_ready() || vk_batch_reserve(0))
+         return 0;
+     const u32 W = 1280, H = 720;
++    const int mb = fo && s_mb.ok && vk_mb_on() && fo->fmt == VK_FORMAT_R8G8B8A8_UNORM && fo->w >= 640 && fo->h >= 360;
++    vk_eng_obj* go = NULL;
++    const int glow = vk_glow_usable(&go);
++    const int aa = vk_mlaa_on();
++    if (!aa && !glow && !mb) return 1;   /* nothing to do: the frame stays as drawn */
+     vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     VkBufferImageCopy region = { .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, .imageExtent = { W, H, 1 } };
+     pvkCmdCopyImageToBuffer(s_vk.cmd, o->im.img, VK_IMAGE_LAYOUT_GENERAL, s_mlaa.buf[0].buf, 1, &region);
+     vk_mlaa_barrier();
+-    pvkCmdBindPipeline(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_mlaa.pipe);
+-    pvkCmdBindDescriptorSets(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_mlaa.layout, 0, 1, &s_mlaa.set, 0, NULL);
+-    if (!s_mlaa.slopes) { vk_mlaa_stage(9, 0, 9, 1); s_mlaa.slopes = 1; }
+-    vk_mlaa_stage(0, 0, W / 256, H);                      /* LOAD */
+-    vk_mlaa_stage(1, 0, W / 256, H);                      /* FLAGS */
+-    for (int j = 0; j < 5; j++) {                         /* the column pass, job by job */
+-        const u32 lo = j ? 256u * j - 1u : 0u, last = j == 4 ? W - 1u : 256u * j + 255u;
+-        vk_mlaa_stage(2, j, (H + 255) / 256, 1);          /* FIX */
+-        vk_mlaa_stage(3, j, last - lo + 1u, 1);           /* REC1 */
+-        vk_mlaa_stage(4, j, (H + 255) / 256, last - lo + 1u);   /* CHAIN1 */
+-    }
+-    vk_mlaa_stage(5, 0, W / 256, H);                      /* PREP2 */
+-    vk_mlaa_stage(6, 0, H - 1 + 4, 1);                    /* REC2, and each later row job's first pair */
+-    for (int j = 0; j < 5; j++) {                         /* CHAIN2, row job by row job */
+-        const u32 lo = j ? 144u * j - 1u : 0u, last = j == 4 ? H - 2u : 144u * j + 143u;
+-        vk_mlaa_stage(7, j, W / 256, last - lo + 1u);
+-    }
+-    vk_mlaa_stage(8, 0, W / 256, H);                      /* STORE */
+-    { vk_eng_obj* go; if (vk_glow_usable(&go)) vk_glow_record(go); }
+-    if (fo && s_mb.ok && vk_mb_on() && fo->fmt == VK_FORMAT_R8G8B8A8_UNORM && fo->w >= 640 && fo->h >= 360) {
++    if (aa) {
++        pvkCmdBindPipeline(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_mlaa.pipe);
++        pvkCmdBindDescriptorSets(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_mlaa.layout, 0, 1, &s_mlaa.set, 0, NULL);
++        if (!s_mlaa.slopes) { vk_mlaa_stage(9, 0, 9, 1); s_mlaa.slopes = 1; }
++        vk_mlaa_stage(0, 0, W / 256, H);                      /* LOAD */
++        vk_mlaa_stage(1, 0, W / 256, H);                      /* FLAGS */
++        for (int j = 0; j < 5; j++) {                         /* the column pass, job by job */
++            const u32 lo = j ? 256u * j - 1u : 0u, last = j == 4 ? W - 1u : 256u * j + 255u;
++            vk_mlaa_stage(2, j, (H + 255) / 256, 1);          /* FIX */
++            vk_mlaa_stage(3, j, last - lo + 1u, 1);           /* REC1 */
++            vk_mlaa_stage(4, j, (H + 255) / 256, last - lo + 1u);   /* CHAIN1 */
++        }
++        vk_mlaa_stage(5, 0, W / 256, H);                      /* PREP2 */
++        vk_mlaa_stage(6, 0, H - 1 + 4, 1);                    /* REC2, and each later row job's first pair */
++        for (int j = 0; j < 5; j++) {                         /* CHAIN2, row job by row job */
++            const u32 lo = j ? 144u * j - 1u : 0u, last = j == 4 ? H - 2u : 144u * j + 143u;
++            vk_mlaa_stage(7, j, W / 256, last - lo + 1u);
++        }
++        vk_mlaa_stage(8, 0, W / 256, H);                      /* STORE */
++    }
++    if (glow) vk_glow_record(go);
++    if (mb) {
+         vk_mb_record(fo);
+         vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     }
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 34c5355e..6bf3314d 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -95,6 +95,11 @@ void rsx_vulkan_set_motion_blur(int on);
+  * the default), 0 none; the alpha the add sets (the motion blur weighs by it) stays the title's at every strength.
+  * Takes effect from the next frame. PS3RECOMP_GLOW_STRENGTH=<percent> sets the start. */
+ void rsx_vulkan_set_glow_strength(int strength256);
++/* Killzone HD's MLAA on the GPU (PS3RECOMP_MLAA_GPU): on or off from the next
++ * frame; PS3RECOMP_MLAA_ON=0 starts it off. Off, the frame copies stay taken
++ * (the glow and the motion blur still run there) and the frame is left
++ * unsmoothed. */
++void rsx_vulkan_set_mlaa(int on);
+ int  rsx_vulkan_reflex_available(void);
+ /* The temporal upscalers this build has (PS3RECOMP_TEMPORAL): bit 0 FSR 3
+  * (PS3RECOMP_FFX_DIR), bit 1 DLSS (PS3RECOMP_DLSS_SDK; it also needs an
+-- 
+2.47.1
