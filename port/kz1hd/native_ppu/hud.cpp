@@ -9,7 +9,9 @@
  * at 0x55998 for the frame (640x360 for the downsampled passes), and
  * (0, 512, 448, 0) at 0x554A8 for the menus' layout. Both are widened to the
  * window's aspect around their middle, so the 2D keeps its shape in the 16:9
- * middle of the screen: menus, movies, loading screens. The screen effects
+ * middle of the screen: menus, movies, loading screens. On a window narrower
+ * than 16:9 the same narrows them: the middle of the layout fills the window
+ * at its own shape (hud_layout.h). The screen effects
  * (func_0029BDC8, func_0029C030: the blend of the previous frame, film grain)
  * and the HUD's damage overlays (one per side, drawn from 0x4CD830, 0x4CD908,
  * 0x4CD9D0 and 0x4CE4B8) keep theirs and cover
@@ -32,6 +34,7 @@
 #include "native_ppu.h"
 #include "../view.h"
 #include "hud_sites.h"
+#include "hud_layout.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <algorithm>
@@ -41,11 +44,9 @@ namespace {
 constexpr float kW = 1280.0f, kH = 720.0f, k169 = 16.0f / 9.0f;
 constexpr uint32_t kOrthoRet = 0x0005599C, kMenuOrthoRet = 0x000554AC;
 
-/* The 2D layer's width over 16:9's: 1 unless the frame is widened. */
-float widen()
-{
-    return kz_view.aspect > k169 + 0.01f ? kz_view.aspect / k169 : 1.0f;
-}
+/* The 2D layer's width over 16:9's (hud_layout.h): 1 at 16:9, more for a
+ * wider window, less for a narrower one. */
+float widen() { return hud_widen(kz_view.aspect); }
 
 bool log_on()
 {
@@ -96,10 +97,11 @@ double tut_x(double x) { const double k = kz_view.hud_scale > 0.0f ? kz_view.hud
 /* A HUD point (x, y), in the 1280x720 layout, to its place: it goes with the
  * third of the screen it is in (in y too), sized by the HUD size around that
  * side, and the sides spread from the 16:9 middle (position 0) to the screen's
- * edges (position 1), in the widened 2D layer. ax/ay: the sides used. */
+ * edges (position 1), in the widened 2D layer; on a window narrower than 16:9
+ * they are at its edges (hud_spread). ax/ay: the sides used. */
 double hud_side_x(double x, double ax, double e)
 {
-    const double spread = 1.0 + (e - 1.0) * kz_view.hud_pos;
+    const double spread = hud_spread(e, kz_view.hud_pos);
     const double size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0;
     return kW * 0.5 + (ax - kW * 0.5) * spread + (x - ax) * size;
 }

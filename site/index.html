@@ -165,7 +165,7 @@
 <tr><td>AMD FSR 1 upscaling and RCAS sharpening</td><td>bilinear</td><td><code>upscaler</code>, <code>sharpness</code></td></tr>
 <tr><td>Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td>the game&#x27;s</td><td><code>anisotropic</code></td></tr>
 <tr><td>Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer&#x27;s private build) DLSS Quality 135.7 fps</td></tr>
-<tr><td>Widescreen Hor+ (21:9, 32:9 and wider), menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code></td></tr>
+<tr><td>Any aspect ratio: Hor+ for 21:9, 32:9 and wider, the game&#x27;s own 4:3 view for 4:3 and 16:10, menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code>, <code>aspect</code> (auto or a forced 4:3, 16:10, 16:9, 21:9, 32:9, on restart); below 16:9 the world&#x27;s FOV is the game&#x27;s own 4:3 rule, 100 / aspect vertical (func_00211540: 75 vertical, 91.3 horizontal at 4:3); Level 1, 2026-11-12/13: 1440x1080 and 1920x1200 windows fill with the HUD in the corners, round crosshair, weapon as the game frames it; forced 4:3 in a 2560-wide window and forced 16:10 in a 3440-wide one show their box with side bars; pause menu 16:9 with bars; 21:9 unchanged</td></tr>
 <tr><td>Field of view, 70 to 120 degrees horizontal at 16:9 (the game&#x27;s is 87), for the world and, apart, the first-person weapon</td><td>the game&#x27;s</td><td><code>field_of_view</code>, <code>weapon_fov</code> (the weapon&#x27;s game value is 45 degrees vertical, 72 horizontal at 16:9); a scope&#x27;s zoom keeps its magnification; an older <code>fov</code> (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it; 3440x1440, F12 capture: weapon projection 45 degrees vertical as at 16:9 (was 30.7), weapon_fov 110 gives 63.8</td></tr>
 <tr><td>HUD size and position</td><td>the game&#x27;s</td><td><code>hud_size</code>, <code>hud_position</code></td></tr>
 <tr><td>Presets: Original (PS3), Performance, Balanced, Quality</td><td>Custom when nothing matches</td><td></td></tr>
@@ -199,6 +199,8 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Added</span>4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world&#x27;s view is the game&#x27;s own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.</li>
+<li><span class="sec">Added</span>An &quot;Aspect Ratio&quot; row on the PC page (<code>aspect</code> in <code>kz1hd_pc.ini</code>: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the picture at that ratio whatever the window&#x27;s, with bars, and the menus and movies inside that box; applies on the next start.</li>
 <li><span class="sec">Added</span>Developer tools for performance work (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/perf-bench.md">docs/dev/perf-bench.md</a>, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/performance.md">docs/dev/performance.md</a>): <code>KZ_ROUTE_REBASE</code> writes a route replay out as a route of the current build, so that later replays follow it exactly; <code>tools/perf/ab.sh</code> compares two builds in alternating runs on a route and reports the paired difference; ps3recomp patch 3034 (a guest store journal, built only with <code>-DKZ_STORE_JOURNAL=ON</code>) lets <code>KZ_NATIVE_VERIFY</code> check native functions with wide effects against their lifted bodies. Off unless used; the game itself is unchanged.</li>
 <li><span class="sec">Changed</span>Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about 70 % of them) in GPU memory instead of converting them again every frame. On the Level 7 and Level 1 test routes the RSX thread uses 0.5-0.6 ms less per frame (about 13-15 %), the whole game about 4-7 % less; frame rates the same. <code>PS3RECOMP_ENG_VCACHE=0</code> turns it off (after ps3recomp pull request #718).</li>
 <li><span class="sec">Changed</span><code>tools/pgo.sh</code> (optional profile-guided build): it makes its own play folder (<code>work/vfs-test</code>) from <code>work/vfs</code> instead of failing on a fresh clone, ends with a check that the profile matches the lifted code (a stale profile was silently ignored), shows a failing step&#x27;s log instead of hiding it, and can train on recorded routes (<code>KZ_PGO_ROUTES</code>). An instrumented build now writes its profile when the game quits, so a route replay that ends on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about +4 % trained on combat routes (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">docs/BUILDING.md</a>).</li>
@@ -265,8 +267,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 139 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 139 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 141 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 141 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -275,14 +277,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world&#x27;s view is the...</span></li>
+<li><time>next</time><span><b>Unreleased</b> An &quot;Aspect Ratio&quot; row on the PC page (aspect in kz1hd_pc.ini: auto, 4:3, 16:10, 16:9, 21:9, 32:9): the picture at that...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Developer tools for performance work (docs/dev/perf-bench.md, docs/dev/performance.md): KZ_ROUTE_REBASE writes a route...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged (about...</span></li>
 <li><time>next</time><span><b>Unreleased</b> tools/pgo.sh (optional profile-guided build): it makes its own play folder (work/vfs-test) from work/vfs instead of...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Borderless and fullscreen at Windows&#x27; display scaling above 100 %: the program did not tell Windows it handles DPI...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Reservations: after many thread starts a thread could stop being told when another one broke its reservation...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Scripted events at 60 and 144 fps: the level scripts&#x27; update ran once per frame, so above 30 fps everything they count...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler&#x27;s pipelines ahead, which the...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

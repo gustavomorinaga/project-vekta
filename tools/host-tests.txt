@@ -46,3 +46,6 @@ tools/tests/test_pgo_write.sh
 tools/tests/test_blend_state.sh
 tools/tests/test_script_rate.sh
 tools/tests/test_win_dpi.sh
+tools/tests/test_fit_scale.sh
+tools/tests/test_hud_layout.sh
+tools/tests/test_view_aspect.sh
