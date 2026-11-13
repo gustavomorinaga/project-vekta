@@ -35,6 +35,10 @@ program and folder that build it. Until a release that calls itself playable
   after Project Helghast's patch 1074) ([docs/dev/performance.md](docs/dev/performance.md)).
 
 ### Fixed
+- Borderless and fullscreen at Windows' display scaling above 100 %: the program did not tell Windows it handles DPI
+  itself, so at 150 % a 1920×1200 display gave a 1280×800 picture, stretched (issue #18). It now asks for
+  per-monitor DPI awareness, so the window, the swapchain and the PC page's display sizes are in real pixels
+  (`SDL_WINDOWS_DPI_AWARENESS` in the environment overrides it).
 - Reservations: after many thread starts a thread could stop being told when another one broke its
   reservation (ps3recomp patch 3037, after upstream pull request #758).
 - Scripted events at 60 and 144 fps: the level scripts' update ran once per frame, so above 30 fps everything they
