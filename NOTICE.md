@@ -29,6 +29,7 @@ which is (c) Sony Interactive Entertainment and is not part of this repository.
 |---|---|---|---|
 | FidelityFX Super Resolution 1 (`ffx_a.h`, `ffx_fsr1.h`) | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-FSR1-LICENSE.txt](licenses/AMD-FidelityFX-FSR1-LICENSE.txt)) | the EASU upscaler and RCAS sharpener, unmodified, added by patch 2033 under `libs/video/vulkan/ffx/` |
 | FidelityFX SDK 1.1.4: FSR 3.1 upscaler and Vulkan backend | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-SDK-LICENSE.txt](licenses/AMD-FidelityFX-SDK-LICENSE.txt)) | the sources, headers and compiled shader permutations the FSR 3.1 path needs, vendored in `third_party/fidelityfx-fsr3/` (two files adapted for Linux, see its README.md) and built into the Linux program and the Windows exe |
+| RenderDoc in-application API | Baldur Karlsson | MIT | the interface only: patch 2066 declares the two entries of its documented `RENDERDOC_GetAPI` table it calls (SetCaptureKeys, TriggerCapture) when RenderDoc is already in the process; no RenderDoc file is included |
 | Input Prompts | Kenney (kenney.nl) | CC0 1.0 | the button prompts, as signed distance fields made by `tools/glyphs/kenney_prep.py` into `port/kz1hd/glyphs_kenney.inc` |
 
 ## Fonts
