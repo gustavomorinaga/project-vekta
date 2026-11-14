@@ -6,7 +6,10 @@
   images with an 8-pixel border of one colour (no runs reach the SPU's edge defect),
   and on the captured game frames, where only the edge deviation may remain
   (reported: pixels and largest channel difference);
-- the GPU pass (mlaa_vk_test) against the C reference: every pixel, on all of them.
+- the GPU pass (mlaa_vk_test) against the C reference: every pixel, on all of them;
+- the same at the sizes the port draws the display buffer at under its internal
+  resolution scale (mlaa_ref_wh, patch 2080): random rectangles and the game frames
+  upscaled (nearest) to 2560x1440, 3440x1440, 1707x960 and 1281x721.
 MLAA_WORK: the work directory (captures, hb/ with harness, mlaa_ref_cli,
 mlaa_vk_test, mlaa.spv)."""
 import os, sys, subprocess, numpy as np
@@ -28,12 +31,21 @@ def run_gpu(img):
     subprocess.run([C + '/hb/mlaa_vk_test', C + '/hb/mlaa.spv', mlaa.T + '/g.argb', mlaa.T + '/go.argb'],
                    check=True, capture_output=True)
     return np.fromfile(mlaa.T + '/go.argb', np.uint8).reshape(720, 1280, 4)
-def rects(seed, n=1500, flat_border=False):
+def run_c_wh(img, w, h):
+    img.tofile(mlaa.T + '/c.argb')
+    subprocess.run([C + '/hb/mlaa_ref_cli', mlaa.T + '/c.argb', mlaa.T + '/co.argb', str(w), str(h)], check=True)
+    return np.fromfile(mlaa.T + '/co.argb', np.uint8).reshape(h, w, 4)
+def run_gpu_wh(img, w, h):
+    img.tofile(mlaa.T + '/g.argb')
+    subprocess.run([C + '/hb/mlaa_vk_test', C + '/hb/mlaa.spv', mlaa.T + '/g.argb', mlaa.T + '/go.argb', '1', str(w), str(h)],
+                   check=True, capture_output=True)
+    return np.fromfile(mlaa.T + '/go.argb', np.uint8).reshape(h, w, 4)
+def rects(seed, n=1500, flat_border=False, W=1280, H=720):
     rng = np.random.default_rng(seed)
-    I = np.zeros((720, 1280, 4), np.uint8)
+    I = np.zeros((H, W, 4), np.uint8)
     I[:, :, 1:] = rng.integers(0, 256, 3)
     for _ in range(n):
-        x, y = rng.integers(-40, 1280), rng.integers(-30, 720)
+        x, y = rng.integers(-40, W), rng.integers(-30, H)
         w, h = rng.integers(2, 50), rng.integers(1, 30)
         I[max(y, 0):max(y + h, 0), max(x, 0):max(x + w, 0), 1:] = rng.integers(0, 256, 3)
     if flat_border:   # one colour around: no run reaches the 4 first pixels of a line or its end
@@ -70,4 +82,9 @@ bad = 0
 for I in images:
     bad += int((run_gpu(I) != run_c(I)).any(2).sum())
 report('GPU = C on %d images' % len(images), bad == 0, '%d pixels differ' % bad)
+for (w, h) in ((2560, 1440), (3440, 1440), (1707, 960), (1281, 721)):
+    sized = [rects(3000 + w + s, n=1500 * w * h // 921600, W=w, H=h) for s in range(2)]
+    sized += [np.ascontiguousarray(I[(np.arange(h) * 720 // h)][:, (np.arange(w) * 1280 // w)]) for I in images[6:9]]
+    bad = sum(int((run_gpu_wh(I, w, h) != run_c_wh(I, w, h)).any(2).sum()) for I in sized)
+    report('GPU = C at %dx%d on %d images' % (w, h, len(sized)), bad == 0, '%d pixels differ' % bad)
 sys.exit(1 if fail else 0)

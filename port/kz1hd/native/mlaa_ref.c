@@ -299,12 +299,12 @@ static void apply_one(lines_t* L, int y, int x)
 typedef struct { int x0, x1; uint32_t h2, h3; int top; } rec_t;
 
 /* everything the pair (y, y+1) does, in order */
-static void do_pair(lines_t* L, int y, entry_t* ents, rec_t* zs, rec_t* us, int64_t* acc)
+static void do_pair(lines_t* L, int y, entry_t* ents, rec_t* zs, rec_t* us, int64_t* acc, int* runs /* 2 * (len + 1) */)
 {
     const int len = L->len;
     int ne = 0, nz = 0, nu = 0;
     /* runs: edge flag towards the next line, one polarity */
-    int runs[2 * 1300], nr = 0;
+    int nr = 0;
     for (int x = 0; x < len;) {
         const int a = AL(L, y, x);
         if (!(a & F_EDGE)) { x++; continue; }
@@ -356,14 +356,14 @@ static uint8_t flag(const uint8_t* p, const uint8_t* r, const uint8_t* d)
     return (uint8_t)f;
 }
 /* column x's flags (image roles) from colour rows: right neighbour column xr */
-static void flags_col(const uint8_t* img, int x, int xr, uint8_t* out /* MLAA_H */)
+static void flags_col(const uint8_t* img, int W, int H, int x, int xr, uint8_t* out /* H */)
 {
-    for (int y = 0; y < MLAA_H; y++) {
-        const uint8_t* p = img + ((long)y * MLAA_W + x) * 4;
-        const uint8_t* r = img + ((long)y * MLAA_W + xr) * 4;
-        const uint8_t* d = y + 1 < MLAA_H ? p + MLAA_W * 4 : NULL;   /* the last row has no edge down */
+    for (int y = 0; y < H; y++) {
+        const uint8_t* p = img + ((long)y * W + x) * 4;
+        const uint8_t* r = img + ((long)y * W + xr) * 4;
+        const uint8_t* d = y + 1 < H ? p + (long)W * 4 : NULL;      /* the last row has no edge down */
         uint8_t f = flag(p, r, d);
-        if (y >= MLAA_H - 4) f = (f & 0xF0) | 2;                    /* the last quad's luma (78A0 epilogue) */
+        if (y >= H - 4) f = (f & 0xF0) | 2;                         /* the last quad's luma (78A0 epilogue) */
         out[y] = f;
     }
 }
@@ -376,8 +376,10 @@ static inline uint8_t swapbits(uint8_t a) { return (uint8_t)((a & 0x0F) | ((a >>
 static void run_jobs(lines_t* img, int per, uint8_t* al, int nal, void (*job_flags)(lines_t*, int, uint8_t*, void*), void* ctx)
 {
     const int nl = img->nlines, len = img->len;
-    entry_t* ents = malloc(sizeof(entry_t) * 1400);
-    rec_t* zs = malloc(sizeof(rec_t) * 2800); rec_t* us = malloc(sizeof(rec_t) * 2800);
+    /* a pair has at most len / 2 runs longer than one pixel, an entry each, two records each */
+    entry_t* ents = malloc(sizeof(entry_t) * (size_t)(len + 8));
+    rec_t* zs = malloc(sizeof(rec_t) * (size_t)(2 * len + 16)); rec_t* us = malloc(sizeof(rec_t) * (size_t)(2 * len + 16));
+    int* runs = malloc(sizeof(int) * (size_t)(2 * len + 2));
     int64_t* acc = malloc(sizeof(int64_t) * (len + 16));
     uint8_t* loc = malloc((size_t)(per + 8) * len * 4);
     for (int j = 0; j * per < nl; j++) {
@@ -391,62 +393,66 @@ static void run_jobs(lines_t* img, int per, uint8_t* al, int nal, void (*job_fla
             const int src = l < nl ? l : l - nl + 1;
             for (int p = 0; p < len; p++) memcpy(loc + ((long)(l - lo) * len + p) * 4, PX(img, src, p), 4);
         }
-        for (int y = lo; y <= last; y++) do_pair(&L, y - lo, ents, zs, us, acc);
+        for (int y = lo; y <= last; y++) do_pair(&L, y - lo, ents, zs, us, acc, runs);
         for (int l = r0; l <= r1; l++)
             for (int p = 0; p < len; p++) memcpy(PX(img, l, p), loc + ((long)(l - lo) * len + p) * 4, 4);
     }
-    free(ents); free(zs); free(us); free(acc); free(loc);
+    free(ents); free(zs); free(us); free(acc); free(loc); free(runs);
 }
 
-typedef struct { uint8_t* argb; uint8_t* al0; uint8_t* fl; } col_ctx;
+typedef struct { uint8_t* argb; uint8_t* al0; uint8_t* fl; int W, H, per; } col_ctx;
 /* a column job computes its flags from memory as it finds it: line r0-1 was
  * blended by the job before; past the last column come columns 1, 2, 3 */
 static void col_job_flags(lines_t* img, int j, uint8_t* al, void* vctx)
 {
     col_ctx* c = vctx;
     (void)img;
-    uint8_t col[MLAA_H];
-    memcpy(al, c->al0, (size_t)MLAA_W * MLAA_H);
+    const int W = c->W, H = c->H;
+    uint8_t* col = malloc((size_t)H);
+    memcpy(al, c->al0, (size_t)W * H);
     if (j > 0) {
-        const int x = 256 * j - 1;
-        flags_col(c->argb, x, x + 1, col);
-        for (int y = 0; y < MLAA_H; y++) al[(long)x * MLAA_H + y] = swapbits(col[y]);
+        const int x = c->per * j - 1;
+        flags_col(c->argb, W, H, x, x + 1, col);
+        for (int y = 0; y < H; y++) al[(long)x * H + y] = swapbits(col[y]);
     }
-    if (j == 4) {
-        flags_col(c->argb, MLAA_W - 1, 1, col);
-        for (int y = 0; y < MLAA_H; y++) {
-            al[(long)(MLAA_W - 1) * MLAA_H + y] = swapbits(col[y]);
-            c->fl[(long)y * MLAA_W + MLAA_W - 1] = col[y];          /* what the job leaves in alpha */
+    if ((j + 1) * c->per >= W) {                                        /* the last job */
+        flags_col(c->argb, W, H, W - 1, 1, col);
+        for (int y = 0; y < H; y++) {
+            al[(long)(W - 1) * H + y] = swapbits(col[y]);
+            c->fl[(long)y * W + W - 1] = col[y];                        /* what the job leaves in alpha */
         }
-        for (int k = 0; k < 3; k++) {                                   /* lines 1280.. = columns 1.. */
-            flags_col(c->argb, 1 + k, 2 + k, col);
-            for (int y = 0; y < MLAA_H; y++) al[(long)(MLAA_W + k) * MLAA_H + y] = swapbits(col[y]);
+        for (int k = 0; k < 3; k++) {                                   /* lines W.. = columns 1.. */
+            flags_col(c->argb, W, H, 1 + k, 2 + k, col);
+            for (int y = 0; y < H; y++) al[(long)(W + k) * H + y] = swapbits(col[y]);
         }
     }
+    free(col);
 }
 
-void mlaa_ref(uint8_t* argb)
+void mlaa_ref(uint8_t* argb) { mlaa_ref_wh(argb, MLAA_W, MLAA_H); }
+
+void mlaa_ref_wh(uint8_t* argb, int W, int H)
 {
-    const int W = MLAA_W, H = MLAA_H;
+    if (W < MLAA_MIN_SIDE || H < MLAA_MIN_SIDE || W > MLAA_MAX_SIDE || H > MLAA_MAX_SIDE) return;
     /* the column pass: flags of every column from the image as it comes */
     uint8_t* al0 = malloc((size_t)W * H);        /* column-major: line x, position y */
     uint8_t* alc = malloc((size_t)(W + 4) * H);
     uint8_t* fl = malloc((size_t)W * H);         /* image roles, row-major, for the alpha left behind */
-    uint8_t col[MLAA_H];
+    uint8_t* col = malloc((size_t)H);
     for (int x = 0; x < W; x++) {
-        flags_col(argb, x, (x + 1) % W, col);
+        flags_col(argb, W, H, x, (x + 1) % W, col);
         for (int y = 0; y < H; y++) { al0[(long)x * H + y] = swapbits(col[y]); fl[(long)y * W + x] = col[y]; }
     }
     memset(alc, 0, (size_t)(W + 4) * H);
-    col_ctx cc = { argb, al0, fl };
+    col_ctx cc = { argb, al0, fl, W, H, MLAA_JOB_SPAN(W) };
     lines_t cols = { argb, 4, (long)W * 4, W, H, NULL, 0 };
-    run_jobs(&cols, 256, alc, W + 3, col_job_flags, &cc);
+    run_jobs(&cols, cc.per, alc, W + 3, col_job_flags, &cc);
     /* the row pass reads the flags from alpha */
     for (long i = 0; i < (long)W * H; i++) argb[4 * i] = fl[i];
     uint8_t* alr = malloc((size_t)W * (H + 2));
     memset(alr, 0, (size_t)W * (H + 2));
     for (long i = 0; i < (long)W * H; i++) alr[i] = argb[4 * i];
     lines_t rows = { argb, (long)W * 4, 4, H, W, NULL, 0 };
-    run_jobs(&rows, 144, alr, H + 2, NULL, NULL);
-    free(al0); free(alc); free(fl); free(alr);
+    run_jobs(&rows, MLAA_JOB_SPAN(H), alr, H + 2, NULL, NULL);
+    free(al0); free(alc); free(fl); free(alr); free(col);
 }

@@ -18,6 +18,20 @@ extern "C" {
  * On return the alpha holds the chain's flags and luma, as the SPUs leave it. */
 void mlaa_ref(uint8_t* argb);
 
+/* ENHANCEMENT: the same chain on a W x H image (the port's internal resolution
+ * scale draws the display buffer bigger than the game's 1280x720). The game
+ * runs 5 column jobs of 256 columns and 5 row jobs of 144 rows
+ * (docs/dev/wws-jm-post.md); here each pass keeps its 5 jobs, each
+ * MLAA_JOB_SPAN lines (256 and 144 at 1280x720, so mlaa_ref is this at that
+ * size), and every other rule (the last column job's columns 1..3 after the
+ * last one, the last four rows' luma) carries over with W and H. Sides
+ * outside [MLAA_MIN_SIDE, MLAA_MAX_SIDE] are left untouched. */
+#define MLAA_JOBS 5
+#define MLAA_JOB_SPAN(n) (((n) + MLAA_JOBS - 1) / MLAA_JOBS)
+#define MLAA_MIN_SIDE 32
+#define MLAA_MAX_SIDE 8192
+void mlaa_ref_wh(uint8_t* argb, int w, int h);
+
 /* The SPU single-precision arithmetic the module uses, in integers (the port's
  * SPU code runs it as host IEEE ops rounding toward zero, flushing denormals). */
 uint32_t mlaa_f_mul(uint32_t a, uint32_t b);                /* fm */
