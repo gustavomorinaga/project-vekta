@@ -35,6 +35,8 @@ program and folder that build it. Until a release that calls itself playable
   kind a few times and then as counts, with a total per kind at quit; under RenderDoc (`KZ_RENDERDOC=1 tools/play.sh`
   on Linux) F12 also takes a RenderDoc capture, in which every pass of the frame is named by what it draws into. Off
   unless used; the game itself is unchanged.
+- A page for players, [docs/INSTALL.md](docs/INSTALL.md): numbered steps for the Windows setup program, the
+  Windows zip and the Linux folder, with what each step asks and shows (after Project Helghast's install page).
 
 ### Changed
 - Less CPU for the same frames: the draw engine keeps the converted vertices of draws the game repeats unchanged
