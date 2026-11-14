@@ -402,6 +402,37 @@ skipped until it is ready (the log shows `not run ... still being built` once, t
 (no cache) / 143.3 / 143.3 (no cache) / 143.3 fps, off 141.1 / 142.6 / 143.5, SPU path 43.7; the level load took about
 4 s in every run.
 
+## The MLAA at the port's internal resolution (2026-11-14)
+
+The game draws its display buffer at 1280x720 and its MLAA chain is built for that size once (5 `af58` column jobs of
+256 columns, 5 row jobs of 144 rows, above). The port's renderer draws the same buffer bigger under its internal
+resolution scale (`PS3RECOMP_VK_SCALE`, `_SCALE_XY`, and `_SCALE_FIT`, which the PC page sets to `fill` by default,
+so any window that is not 1280x720 gives a scaled frame). Until patch 2080 the GPU pass ran only on a 1280x720
+target: at any other size `vk_eng_mlaa` returned 0, the NV0039 copy was still dropped, and the frame went on with no
+anti-aliasing, no glow and no sprint motion blur. Checked on Level 8 at scale 2 with the build before the patch: the
+log shows only `GPU MLAA ... not run`, never `ran`.
+
+Patch 2080 (ENHANCEMENT: the game has no other size) runs the same rules at the drawn size W x H:
+
+- **Rules:** `mlaa_ref_wh` (`port/kz1hd/native/mlaa_ref.c`) is the C reference at any size: every rule carries over
+  with W and H (the last column against column 1 and columns 1-3 after the last; the last four rows' luma), and each
+  pass keeps 5 jobs of `(n + 4) / 5` lines, which is 256 and 144 at 1280x720, so `mlaa_ref` is the 1280x720 case.
+- **Shader:** the size and the job spans are push constants; the per-pair runs, records and slots, which were in
+  shared memory sized for 1280-pixel lines, are in two scratch buffers, a slice per workgroup, and 256 workgroups
+  take the line pairs in turn. Only the 4 lines of flags stay in shared memory (lines up to 8192 pixels).
+  `rsx_mlaa_size.h` holds the sizes it takes, its buffers and its dispatches.
+- **Glow and motion blur:** at 1280x720 the chain is unchanged (MLAA, glow, motion blur on one buffer). Drawn bigger,
+  they run over the scaled frame as over a temporal upscaler's output (patch 2048), and their 640x360 sources are
+  scaled down to 640x360 first, which also fixes the upscaler path reading the top-left corner of those targets.
+- **Checked:** `regress_mlaa.sh` adds GPU = C at 2560x1440, 3440x1440, 1707x960 and 1281x721 (random images and game
+  frames upscaled), 0 pixels differ; in the game (Level 8, user_1023 save), 8 frames each at 2560x1440 and 3440x1440
+  dumped with `PS3RECOMP_MLAA_DUMP_NATIVE`: the GPU output equals `mlaa_ref_wh` on the same input on every pixel (about
+  140,000 and 152,000 pixels blended per frame); at scale 1 the output still equals `mlaa_ref` on 8 frames; with
+  anti-aliasing off the frame is left as drawn; Vulkan validation reports nothing new.
+- **Cost** (`mlaa_vk_test`, RTX 3070 Ti): 1280x720 about 0.1 ms more than before (1.41 against 1.29 ms with the
+  test's upload); 2560x1440 about 4.6 ms, 3440x1440 about 6.4 ms, 5120x2880 about 17 ms, upload included. The
+  cold compile is about 2.9 s (was 2.3 s), still on its own thread.
+
 ## Where the other effects show (2026-10-31)
 
 Question: besides the MLAA, when does the chain change the image? Measured on the faithful path (`KZ_MLAA=spu`) with

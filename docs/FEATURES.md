@@ -26,7 +26,7 @@ otherwise. Last checked 2026-10-30.
 | Controls | Rumble | pad vibration | **works** | SDL |
 | Controls | Controller options (sensitivity, invert) | Pause > Controls | **works** | the game's own menu |
 | Graphics | 1280x720 picture | 720p | **works**, at any window size | |
-| Graphics | Anti-aliasing (MLAA on the SPUs) | `jm_post` job chain | **works**: the game's own MLAA reimplemented as a GPU pass, equal to the SPU code except at about 0.6 % of edge pixels (`KZ_MLAA=gpu`, default; `spu` runs the original jobs, slowly; `off`) | [dev/wws-jm-post.md](dev/wws-jm-post.md) |
+| Graphics | Anti-aliasing (MLAA on the SPUs) | `jm_post` job chain | **works**: the game's own MLAA reimplemented as a GPU pass, equal to the SPU code except at about 0.6 % of edge pixels (`KZ_MLAA=gpu`, default; `spu` runs the original jobs, slowly; `off`). ENHANCEMENT since patch 2080: also at the size the port draws the frame (internal scale, fill to the window); before, only at 1280x720, and the glow and sprint motion blur dropped with it. Level 8 (user_1023 save), 2026-11-14: 8 frames each at 2560x1440 and 3440x1440, the GPU output equals `mlaa_ref_wh` on every pixel (`PS3RECOMP_MLAA_DUMP_NATIVE`); at 1280x720 the output still equals `mlaa_ref` | [dev/wws-jm-post.md](dev/wws-jm-post.md) |
 | Graphics | Glow and motion blur (`jm_post`) | event-driven SPU jobs | **works**: on the GPU; the glow (emissive sprites, Level 11 docking bay measured) and the sprint blur equal the SPU chain on every pixel in the game | [dev/wws-jm-post.md](dev/wws-jm-post.md) |
 | Graphics | HUD, menus, fonts | as shipped | **works** | |
 | Sound | Music, effects, dialogue | MultiStream on the SPUs, MP3 streams | **works** | the firmware's MP3 decoder runs translated |

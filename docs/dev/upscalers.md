@@ -161,7 +161,9 @@ is image quality at high resolutions, or frame rate on slower GPUs.
 - **Comparing by image:** routes diverge between runs, so an image A/B does not hold. To measure, use
   `PS3RECOMP_TEMPORAL_DUMP` and reproject offline.
 - **Sprint motion blur:** runs over the upscaler's output since patch 2048. The image stages work on a 1280x720 copy
-  and the final blend comes out at the output resolution. The MLAA does not run, since the upscaler already does the
+  and the final blend comes out at the output resolution. Since patch 2080 the motion field and the glow source,
+  drawn at the render size, are scaled down to the game's 640x360 before those stages; before, the stages read the
+  top-left 640x360 texels of the bigger target. The MLAA does not run, since the upscaler already does the
   antialiasing.
 
 ## FSR 4
