@@ -1,8 +1,9 @@
 /*
- * mlaa_vk_test <shader.spv> <in.argb> <out.argb> [repeats]: the GPU MLAA
- * (ps3recomp libs/video/vulkan/rsx_vk_mlaa.comp) on a raw 1280x720 A,R,G,B
- * image, headless, with the same stage sequence the renderer records; prints
- * the GPU time of one run. For checking it against mlaa_ref_cli.
+ * mlaa_vk_test <shader.spv> <in.argb> <out.argb> [repeats [W H]]: the GPU MLAA
+ * (ps3recomp libs/video/vulkan/rsx_vk_mlaa.comp) on a raw W x H A,R,G,B image
+ * (default 1280x720), headless, with the same stage sequence the renderer
+ * records (rsx_mlaa_size.h); prints the GPU time of one run. For checking it
+ * against mlaa_ref_cli.
  */
 #include <vulkan/vulkan.h>
 #include <stdio.h>
@@ -10,8 +11,7 @@
 #include <string.h>
 #include <time.h>
 
-#define W 1280
-#define H 720
+static int W = 1280, H = 720;
 #define CK(x) do { VkResult _r = (x); if (_r != VK_SUCCESS) { fprintf(stderr, "%s: %d\n", #x, _r); exit(1); } } while (0)
 
 static VkDevice dev; static VkPhysicalDevice phys;
@@ -49,10 +49,13 @@ int main(int argc, char** argv)
 {
     if (argc < 4) { fprintf(stderr, "usage: mlaa_vk_test shader.spv in.argb out.argb [repeats]\n"); return 1; }
     const int reps = argc > 4 ? atoi(argv[4]) : 1;
+    if (argc > 6) { W = atoi(argv[5]); H = atoi(argv[6]); }
+    if (W < 32 || H < 32 || W > 8192 || H > 8192) { fprintf(stderr, "bad size %dx%d\n", W, H); return 1; }
+    const int CJ = (W + 4) / 5, RJ = (H + 4) / 5, L = W > H ? W : H, NB = 256;   /* rsx_mlaa_size.h */
     FILE* f = fopen(argv[1], "rb"); fseek(f, 0, SEEK_END); long ssz = ftell(f); rewind(f);
     uint32_t* spv = malloc(ssz); if (fread(spv, 1, ssz, f) != (size_t)ssz) return 1; fclose(f);
-    uint8_t* img = malloc(W * H * 4);
-    f = fopen(argv[2], "rb"); if (!f || fread(img, 4, W * H, f) != W * H) { fprintf(stderr, "bad input\n"); return 1; } fclose(f);
+    uint8_t* img = malloc((size_t)W * H * 4);
+    f = fopen(argv[2], "rb"); if (!f || fread(img, 4, (size_t)W * H, f) != (size_t)W * H) { fprintf(stderr, "bad input\n"); return 1; } fclose(f);
 
     VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion = VK_API_VERSION_1_1 };
     VkInstanceCreateInfo ici = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app };
@@ -71,20 +74,23 @@ int main(int argc, char** argv)
     CK(vkCreateDevice(phys, &dci, NULL, &dev));
     VkQueue q; vkGetDeviceQueue(dev, qfi, 0, &q);
 
-    buf_t b[7];
-    const VkDeviceSize sz[7] = { W * H * 4, W * H * 4, W * H * 4, W * H * 4, (W + 3) * H * 4, (W + 8) * H * 2 * 4, 2049 * 4 };
+    buf_t b[9];
+    const VkDeviceSize wh = (VkDeviceSize)W * H;
+    const VkDeviceSize sz[9] = { wh * 4, wh * 4, wh * 4, wh * 4, (VkDeviceSize)(W + 3) * H * 4,
+                                 (VkDeviceSize)(W + 8) * (H + 8) * 2 * 4, 2049 * 4,
+                                 (VkDeviceSize)NB * 5 * L * 4, (VkDeviceSize)NB * 9 * (L / 3 + 2) * 4 };
     b[0] = mkbuf(sz[0], 1);
-    for (int i = 1; i < 7; i++) b[i] = mkbuf(sz[i], 0);
-    buf_t src = mkbuf((VkDeviceSize)W * H * 4, 1);
+    for (int i = 1; i < 9; i++) b[i] = mkbuf(sz[i], 0);
+    buf_t src = mkbuf(wh * 4, 1);
     uint32_t* io = b[0].map; uint32_t* in = src.map;
-    for (int i = 0; i < W * H; i++)      /* A,R,G,B bytes -> texel R,G,B,A */
+    for (long i = 0; i < (long)W * H; i++)      /* A,R,G,B bytes -> texel R,G,B,A */
         in[i] = img[4 * i + 1] | img[4 * i + 2] << 8 | img[4 * i + 3] << 16 | (uint32_t)img[4 * i] << 24;
 
-    VkDescriptorSetLayoutBinding lb[7];
-    for (int i = 0; i < 7; i++) lb[i] = (VkDescriptorSetLayoutBinding){ i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL };
-    VkDescriptorSetLayoutCreateInfo dl = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 7, .pBindings = lb };
+    VkDescriptorSetLayoutBinding lb[9];
+    for (int i = 0; i < 9; i++) lb[i] = (VkDescriptorSetLayoutBinding){ i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL };
+    VkDescriptorSetLayoutCreateInfo dl = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 9, .pBindings = lb };
     VkDescriptorSetLayout dsl; CK(vkCreateDescriptorSetLayout(dev, &dl, NULL, &dsl));
-    VkPushConstantRange pr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, 8 };
+    VkPushConstantRange pr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, 24 };
     VkPipelineLayoutCreateInfo pl = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &dsl, .pushConstantRangeCount = 1, .pPushConstantRanges = &pr };
     VkPipelineLayout layout; CK(vkCreatePipelineLayout(dev, &pl, NULL, &layout));
     VkShaderModuleCreateInfo smi = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = ssz, .pCode = spv };
@@ -95,17 +101,17 @@ int main(int argc, char** argv)
     VkPipeline pipe; CK(vkCreateComputePipelines(dev, VK_NULL_HANDLE, 1, &cpi, NULL, &pipe));
     clock_gettime(CLOCK_MONOTONIC, &t1);
     fprintf(stderr, "pipeline created in %.1f ms\n", (t1.tv_sec - t0.tv_sec) * 1e3 + (t1.tv_nsec - t0.tv_nsec) / 1e6);
-    VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7 };
+    VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9 };
     VkDescriptorPoolCreateInfo dpi = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, .maxSets = 1, .poolSizeCount = 1, .pPoolSizes = &ps };
     VkDescriptorPool pool; CK(vkCreateDescriptorPool(dev, &dpi, NULL, &pool));
     VkDescriptorSetAllocateInfo dai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = pool, .descriptorSetCount = 1, .pSetLayouts = &dsl };
     VkDescriptorSet set; CK(vkAllocateDescriptorSets(dev, &dai, &set));
-    VkDescriptorBufferInfo dbi[7]; VkWriteDescriptorSet wr[7];
-    for (int i = 0; i < 7; i++) {
+    VkDescriptorBufferInfo dbi[9]; VkWriteDescriptorSet wr[9];
+    for (int i = 0; i < 9; i++) {
         dbi[i] = (VkDescriptorBufferInfo){ b[i].b, 0, VK_WHOLE_SIZE };
         wr[i] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = i, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pBufferInfo = &dbi[i] };
     }
-    vkUpdateDescriptorSets(dev, 7, wr, 0, NULL);
+    vkUpdateDescriptorSets(dev, 9, wr, 0, NULL);
     VkQueryPoolCreateInfo qpi = { .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, .queryType = VK_QUERY_TYPE_TIMESTAMP, .queryCount = 64 };
     VkQueryPool qp; CK(vkCreateQueryPool(dev, &qpi, NULL, &qp));
 
@@ -120,24 +126,26 @@ int main(int argc, char** argv)
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 1, &set, 0, NULL);
     vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, qp, 0);
     int nts = 0, stname[64];
-    { int _p[2] = { 9, 0 }; vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 8, _p); vkCmdDispatch(cb, 9, 1, 1); barrier(cb); }
+    { int _p[6] = { 9, 0, W, H, CJ, RJ }; vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 24, _p); vkCmdDispatch(cb, 9, 1, 1); barrier(cb); }
+    const int GX = (W + 255) / 256;
+#define NBMIN(n) ((n) < NB ? (n) : NB)
     for (int r = 0; r < reps; r++) {
         { VkBufferCopy bc = { 0, 0, (VkDeviceSize)W * H * 4 }; vkCmdCopyBuffer(cb, src.b, b[0].b, 1, &bc); barrier(cb); }   /* each run on the input */
-#define ST(s, j, gx, gy) do { int _p[2] = { s, j }; vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 8, _p); vkCmdDispatch(cb, gx, gy, 1); barrier(cb); if (nts < 62 && r == reps - 1) { stname[nts] = s; vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, qp, 1 + nts); nts++; } } while (0)
-        ST(0, 0, W / 256, H);
-        ST(1, 0, W / 256, H);
+#define ST(s, j, gx, gy) do { int _p[6] = { s, j, W, H, CJ, RJ }; vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 24, _p); vkCmdDispatch(cb, gx, gy, 1); barrier(cb); if (nts < 62 && r == reps - 1) { stname[nts] = s; vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, qp, 1 + nts); nts++; } } while (0)
+        ST(0, 0, GX, H);
+        ST(1, 0, GX, H);
         for (int j = 0; j < 5; j++) {
-            const int lo = j ? 256 * j - 1 : 0, last = j == 4 ? W - 1 : 256 * j + 255;
+            const int lo = j ? CJ * j - 1 : 0, last = j == 4 ? W - 1 : CJ * j + CJ - 1;
             ST(2, j, (H + 255) / 256, 1);
-            ST(3, j, last - lo + 1, 1);
+            ST(3, j, NBMIN(last - lo + 1), 1);
             ST(4, j, (H + 255) / 256, last - lo + 1);
         }
-        ST(5, 0, W / 256, H);
+        ST(5, 0, GX, H);
         if (!getenv("MLAA_P1ONLY")) {   /* debugging: stop after the column pass */
-        ST(6, 0, H - 1 + 4, 1);
-        for (int j = 0; j < 5; j++) { const int lo = j ? 144 * j - 1 : 0, last = j == 4 ? H - 2 : 144 * j + 143; ST(7, j, W / 256, last - lo + 1); }
+        ST(6, 0, NBMIN(H - 1 + 4), 1);
+        for (int j = 0; j < 5; j++) { const int lo = j ? RJ * j - 1 : 0, r1 = RJ * j + RJ - 1, last = r1 < H - 2 ? r1 : H - 2; ST(7, j, GX, last - lo + 1); }
         }
-        ST(8, 0, W / 256, H);
+        ST(8, 0, GX, H);
     }
     for (int i = nts + 1; i < 64; i++) vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, qp, i);
     CK(vkEndCommandBuffer(cb));
@@ -147,10 +155,10 @@ int main(int argc, char** argv)
     fprintf(stderr, "%s: %.3f ms per run\n", props.deviceName, (ts[63] - ts[0]) * props.limits.timestampPeriod / 1e6 / reps);
     if (getenv("MLAA_STAGES")) for (int i = 0; i < nts; i++)
         fprintf(stderr, "  stage %d: %.3f ms\n", stname[i], (ts[1 + i] - ts[i]) * props.limits.timestampPeriod / 1e6);
-    for (int i = 0; i < W * H; i++) {
+    for (long i = 0; i < (long)W * H; i++) {
         const uint32_t v = io[i];
         img[4 * i] = v >> 24; img[4 * i + 1] = v; img[4 * i + 2] = v >> 8; img[4 * i + 3] = v >> 16;
     }
-    f = fopen(argv[3], "wb"); fwrite(img, 4, W * H, f); fclose(f);
+    f = fopen(argv[3], "wb"); fwrite(img, 4, (size_t)W * H, f); fclose(f);
     return 0;
 }

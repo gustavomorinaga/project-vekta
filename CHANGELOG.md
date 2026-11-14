@@ -56,6 +56,10 @@ program and folder that build it. Until a release that calls itself playable
   after Project Helghast's patch 1074) ([docs/dev/performance.md](docs/dev/performance.md)).
 
 ### Fixed
+- Anti-aliasing at any resolution: the game's MLAA, its glow and the sprint motion blur only ran when the frame was
+  drawn at exactly 1280x720. With the internal resolution scale, or the default fill to a window of any other size,
+  none of the three ran and the picture had no anti-aliasing at all. They now run at the size the frame is drawn
+  (ps3recomp patch 2080), with the same rules as the game's MLAA; at 1280x720 the result is unchanged.
 - PC page: a row that depends on another is greyed out while that one makes it do nothing, and follows it at once:
   Resolution in borderless (the desktop's size), Aspect Ratio and HUD Position with Widescreen off, FSR Sharpness
   unless Upscaling is AMD FSR 1, Anti-aliasing while FSR 3.1 or DLSS runs (they replace the MLAA), NVIDIA Reflex

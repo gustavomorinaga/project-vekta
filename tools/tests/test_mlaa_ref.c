@@ -4,6 +4,9 @@
  *     in mlaa_ref.h say they are): random normal operands, compared wherever the host result is a normal number.
  *  2. A few exact cases: truncation instead of rounding, denormals flushed to zero, overflow held at FLT_MAX.
  *  3. A flat image keeps its colour: with no edge there is nothing to blend.
+ *  4. mlaa_ref_wh (the chain at the size the port draws the display buffer, patch 2080): at 1280x720 it is mlaa_ref;
+ *     at 2560x1440 and 3440x1440 a flat image keeps its colour, a shallow slanted edge is blended along the edge and
+ *     nowhere else; sizes outside [MLAA_MIN_SIDE, MLAA_MAX_SIDE] are left alone.
  */
 #include "../../port/kz1hd/native/mlaa_ref.h"
 #include <fenv.h>
@@ -58,6 +61,63 @@ int main(void)
     for (int i = 0; i < MLAA_W * MLAA_H; i++) changed += img[4 * i + 1] != 90 || img[4 * i + 2] != 140 || img[4 * i + 3] != 200;
     CHECK(changed == 0, "flat image: %d pixels changed colour", changed);
     free(img);
+
+    /* 4. mlaa_ref_wh */
+    {
+        const int W = MLAA_W, H = MLAA_H;
+        uint8_t* a = malloc((size_t)W * H * 4); uint8_t* b = malloc((size_t)W * H * 4);
+        srand(7);
+        for (int i = 0; i < W * H; i++) { a[4 * i] = 0; for (int c = 1; c < 4; c++) a[4 * i + c] = 40; }
+        for (int r = 0; r < 1500; r++) {                       /* random rectangles, as the GPU checks use */
+            const int x = rand() % (W + 40) - 40, y = rand() % (H + 30) - 30, w = 2 + rand() % 48, h = 1 + rand() % 29;
+            const uint8_t col[3] = { (uint8_t)rand(), (uint8_t)rand(), (uint8_t)rand() };
+            for (int yy = y < 0 ? 0 : y; yy < y + h && yy < H; yy++)
+                for (int xx = x < 0 ? 0 : x; xx < x + w && xx < W; xx++)
+                    for (int c = 0; c < 3; c++) a[((long)yy * W + xx) * 4 + 1 + c] = col[c];
+        }
+        memcpy(b, a, (size_t)W * H * 4);
+        mlaa_ref(a); mlaa_ref_wh(b, W, H);
+        CHECK(!memcmp(a, b, (size_t)W * H * 4), "mlaa_ref_wh(1280, 720) differs from mlaa_ref");
+        free(a); free(b);
+    }
+    static const int sizes[][2] = { { 2560, 1440 }, { 3440, 1440 }, { 1707, 961 } };
+    for (unsigned k = 0; k < sizeof sizes / sizeof sizes[0]; k++) {
+        const int W = sizes[k][0], H = sizes[k][1];
+        uint8_t* a = malloc((size_t)W * H * 4);
+        for (int i = 0; i < W * H; i++) { a[4 * i] = 0; a[4 * i + 1] = 90; a[4 * i + 2] = 140; a[4 * i + 3] = 200; }
+        mlaa_ref_wh(a, W, H);
+        int changed = 0;
+        for (int i = 0; i < W * H; i++) changed += a[4 * i + 1] != 90 || a[4 * i + 2] != 140 || a[4 * i + 3] != 200;
+        CHECK(changed == 0, "%dx%d flat: %d pixels changed colour", W, H, changed);
+        /* dark above y = H/2 + x/40 (a step every 40 columns), light below; away from the borders */
+        const int x0 = 100, x1 = W - 100;
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) {
+                const int edge = H / 2 + (x < x0 ? x0 : x > x1 ? x1 : x) / 40 - W / 80;
+                const uint8_t v = y < edge ? 30 : 220;
+                uint8_t* p = a + ((long)y * W + x) * 4; p[0] = 0; p[1] = p[2] = p[3] = v;
+            }
+        mlaa_ref_wh(a, W, H);
+        int blended = 0, stray = 0;
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) {
+                const int edge = H / 2 + (x < x0 ? x0 : x > x1 ? x1 : x) / 40 - W / 80;
+                const uint8_t* p = a + ((long)y * W + x) * 4;
+                if (p[1] == 30 || p[1] == 220) continue;
+                if (x == W - 1) continue;              /* the last column is compared with column 1 (the game's wrap) */
+                if (y == edge || y == edge - 1) blended++; else stray++;
+            }
+        CHECK(blended > (x1 - x0) / 2, "%dx%d slanted edge: only %d pixels blended", W, H, blended);
+        CHECK(stray == 0, "%dx%d slanted edge: %d pixels changed away from it", W, H, stray);
+        free(a);
+    }
+    {
+        uint8_t px[16 * 16 * 4];
+        for (int i = 0; i < 16 * 16 * 4; i++) px[i] = (uint8_t)(i * 37);
+        uint8_t cp[sizeof px]; memcpy(cp, px, sizeof px);
+        mlaa_ref_wh(px, 16, 16);
+        CHECK(!memcmp(px, cp, sizeof px), "a 16x16 image is below MLAA_MIN_SIDE and stays as it is");
+    }
 
     printf("test_mlaa_ref: %s\n", fails ? "FAIL" : "ok");
     return fails ? 1 : 0;
