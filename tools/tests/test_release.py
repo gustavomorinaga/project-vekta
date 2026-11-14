@@ -102,6 +102,11 @@ with tempfile.TemporaryDirectory() as tmp:
           "v0.3.0's notes say it was installed over 0.2.0 on the maintainer's machine")
     later = release_notes.notes("0.3.1", es["0.2.0"])
     check("only on the maintainer's machine" not in later, "later notes do not")
+    old, new = release_notes.notes("0.4.0", es["0.2.0"]), release_notes.notes("0.5.0", es["0.2.0"])
+    check("How to install" not in old and old.index("New in") < old.index("setup.exe"),
+          "notes up to 0.4.0 keep the downloads after the lists")
+    check(new.index("How to install") < new.index("setup.exe") < new.index("New in")
+          and "/blob/v0.5.0/docs/INSTALL.md" in new and new.count("setup.exe") == 1, "notes after 0.4.0 start with the downloads and the install page, once")
     check(run(REL / "release_notes.py", "--tag", "v0.3.0", "--root", tmp).returncode == 1, "a tag with no entry is refused")
     r = run(REL / "release_notes.py", "--preview", "0.3.0", "--root", tmp)
     check(r.returncode == 0 and "Something new" in r.stdout, "a preview takes [Unreleased]")

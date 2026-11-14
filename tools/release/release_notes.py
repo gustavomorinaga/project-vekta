@@ -7,6 +7,7 @@
 After Project Pyrrhus's and Project Helghast's tools/release/release_notes.py (undecuple, MIT), with this project's
 wording and assets:
   Project Vekta X.Y.Z, a pre-release: partly playable, see docs/RELEASE-CRITERIA.md.
+  How to install: <a link to docs/INSTALL.md, then the fixed paragraph below>   (after 0.4.0: here, before the lists)
   New in X.Y.Z: <the entry's Added/Changed/... items, one bullet each>
   Fixed: <its fixes>                       (part of the list above for the first published release, which also
                                            carries the entries before the first version: the first public tree)
@@ -64,14 +65,19 @@ LINUX_FOLDER = (
     "with your own compilers ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). ")
 FILES = (
     "Windows: project-vekta-{version}-setup.exe installs the port's sources and the pinned toolchain for your user "
-    "(no admin rights). Its launcher, Project Vekta.exe, asks where your files are, builds the port on its first "
-    "start (about five minutes) and then plays. project-vekta-{version}-windows.zip is the same folder without the "
+    "(no admin rights). It asks where your files are and builds the port in the wizard (about five minutes; untick "
+    "\"Build now\" and the first start builds); its launcher, Project Vekta.exe, plays. "
+    "project-vekta-{version}-windows.zip is the same folder without the "
     "setup program: run.cmd builds, play.cmd plays. {linux}"
     "None of the files holds anything of the game: you need your own Killzone HD (NPUA80856) from the Killzone "
     "Trilogy disc with its decrypted EBOOT and data archive, and the decrypted libsre and dev_flash of your own PS3 "
     "firmware; none of them is included or downloaded. What each must contain: "
     "[docs/GETTING-FILES.md]({blob}/docs/GETTING-FILES.md). SHA-256 sums: SHA256SUMS (and a .sha256 beside each "
     "file).")
+# After 0.4.0 the paragraph on the downloads comes first, under this heading, with the player's install page.
+INSTALL_FIRST = (0, 4, 0)
+INSTALL_PAGE = ("How to install, step by step, with what each step asks and shows: "
+                "[docs/INSTALL.md]({blob}/docs/INSTALL.md).")
 
 
 def entries(text):
@@ -126,14 +132,17 @@ def notes(version, entry, first=False):
         lists = [f"New in {version}:\n{bullets(new + fixed)}"]
     else:
         lists = ([f"New in {version}:\n{bullets(new)}"] if new else []) + ([f"Fixed:\n{bullets(fixed)}"] if fixed else [])
+    v = tuple(int(x) for x in version.split("."))
+    files = (SOURCE_ONLY.format(version=version, blob=blob) if version == "0.1.0" else
+             FILES.format(version=version, blob=blob, linux=(
+                 LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE).format(version=version, blob=blob)))
+    install_first = v > INSTALL_FIRST
     return "\n\n".join([
         f"Project Vekta {version}, {kind}: {STATUS}, see [docs/RELEASE-CRITERIA.md]({blob}/docs/RELEASE-CRITERIA.md).",
+        *([f"{INSTALL_PAGE.format(blob=blob)}\n\n{files}"] if install_first else []),
         *lists,
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
-        *([SOURCE_ONLY.format(version=version, blob=blob)] if version == "0.1.0" else
-          [FILES.format(version=version, blob=blob, linux=(
-              LINUX_FOLDER if tuple(int(x) for x in version.split(".")) > (0, 2, 0) else LINUX_SOURCE
-          ).format(version=version, blob=blob))]),
+        *([] if install_first else [files]),
         *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE]}.get(version, [])),
     ]) + "\n"
 
