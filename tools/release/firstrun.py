@@ -89,14 +89,19 @@ INPUTS = [
     ("eboot", "KZ_EBOOT", "the decrypted EBOOT (EBOOT.elf)", ("Game", "EBOOT.elf")),
     ("psarc", "KZ_PSARC", "the decrypted data archive (data_ps3.psarc)", ("Game", "data_ps3.psarc")),
     ("libsre", "KZ_LIBSRE", "the decrypted libsre from PS3 firmware 4.93 (libsre.prx)", ("Game", "libsre.prx")),
-    ("dev_flash", "PS3_DEV_FLASH", "RPCS3's dev_flash folder (for the MP3 decoder; optional)", None),
+    ("dev_flash", "PS3_DEV_FLASH", "RPCS3's dev_flash folder (for the MP3 decoder; optional)" +
+     (": in RPCS3's own folder, beside rpcs3.exe" if os.name == "nt" else ""), None),
 ]
 # What check-game-files.py names each input in its MISSING / WRONG / DIFFERENT lines.
 INPUT_OF = {"PARAM.SFO": "game", "TROPHY.TRP": "game", "EBOOT.elf": "eboot", "data_ps3.psarc": "psarc",
             "libsre.prx": "libsre", "flashMP3.pic": "dev_flash"}
 
 
-def default_dev_flash():
+def default_dev_flash(root=ROOT, windows=os.name == "nt"):
+    """tools/kzbuild.py's default_dev_flash: RPCS3's folder on Linux; on Windows, where RPCS3 keeps dev_flash beside
+    rpcs3.exe (anywhere), Game/dev_flash in this tree, as for the other files."""
+    if windows:
+        return os.path.join(root, "Game", "dev_flash")
     return os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
 
 
@@ -489,7 +494,7 @@ def resolve_paths(root, work, given):
     for name, var, _, default in INPUTS:
         p = given.get(name) or os.environ.get(var) or saved.get(name)
         if not p:
-            p = os.path.join(root, *default) if default else default_dev_flash()
+            p = os.path.join(root, *default) if default else default_dev_flash(root)
         out[name] = os.path.abspath(os.path.expanduser(p))
     return out
 

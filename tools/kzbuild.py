@@ -61,6 +61,15 @@ def venv_bin(work):
     return os.path.join(work, "venv", "Scripts" if WINDOWS else "bin")
 
 
+def default_dev_flash(root=ROOT):
+    """Where dev_flash is looked for when nothing names it. Linux: RPCS3's, ~/.config/rpcs3/dev_flash. Windows: RPCS3
+    keeps dev_flash in its own folder, beside rpcs3.exe, which can be anywhere, so the default is Game/dev_flash in this
+    tree, as for the other files."""
+    if WINDOWS:
+        return os.path.join(root, "Game", "dev_flash")
+    return os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
+
+
 def resolve(environ=None, root=ROOT):
     """tools/env.sh's values: {VAR: path} (and PATH with work/venv's tools first)."""
     e = dict(os.environ if environ is None else environ)
@@ -76,7 +85,7 @@ def resolve(environ=None, root=ROOT):
     w = e["KZ_WORK"]
     e["KZ_VFS"] = e.get("KZ_VFS") or j(w, "vfs")
     e["PS3RECOMP_DIR"] = e.get("PS3RECOMP_DIR") or j(w, "ps3recomp-patched")
-    e["PS3_DEV_FLASH"] = e.get("PS3_DEV_FLASH") or j(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
+    e["PS3_DEV_FLASH"] = e.get("PS3_DEV_FLASH") or default_dev_flash(root)
     if not e.get("KZ_PY"):
         venv_py = j(venv_bin(w), "python.exe" if WINDOWS else "python")
         e["KZ_PY"] = venv_py if os.path.isfile(venv_py) else sys.executable

@@ -14,7 +14,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = os.environ.get("KZ_GAME", os.path.join(ROOT, "Game", "NPUA80856"))
-DEV_FLASH = os.environ.get("PS3_DEV_FLASH", os.path.expanduser("~/.config/rpcs3/dev_flash"))
+# tools/kzbuild.py's default_dev_flash: on Windows RPCS3 keeps dev_flash beside rpcs3.exe, anywhere
+DEV_FLASH = os.environ.get("PS3_DEV_FLASH") or (os.path.join(ROOT, "Game", "dev_flash") if os.name == "nt"
+                                                else os.path.expanduser("~/.config/rpcs3/dev_flash"))
 
 # (label, path, size, sha256, magic, required, what it is)
 FILES = [
@@ -72,8 +74,10 @@ def main():
             continue
         got = sha256(path)
         if got != digest:
+            then = ("the check stops here: the port is made from the tested file, and no other has been tried"
+                    if required else "nobody has tried this version; it is optional, so the check goes on")
             print(f"DIFFERENT {label}: SHA-256 {got[:16]}..., the tested file is {digest[:16]}...\n"
-                  f"         it may still work, but nobody has tried this version; expected: {what}")
+                  f"         {then}; expected: {what}")
             bad |= required
             continue
         print(f"ok       {label}")
