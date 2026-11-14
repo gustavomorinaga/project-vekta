@@ -13,9 +13,9 @@
 ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64%20(cross--built)-0078D6)
 ![Vulkan](https://img.shields.io/badge/graphics-Vulkan-A41E22)
 
-**[Status](#status)** · **[Features](docs/FEATURES.md)** · **[Screenshots](docs/SCREENSHOTS.md)** ·
-**[Requirements](docs/requirements.md)** · **[Getting your files](docs/GETTING-FILES.md)** ·
-**[Building](docs/BUILDING.md)** · **[How it works](docs/HOW-IT-WORKS.md)** · **[Known issues](docs/KNOWN_ISSUES.md)** ·
+**[Install](docs/INSTALL.md)** · **[Status](#status)** · **[Features](docs/FEATURES.md)** ·
+**[Screenshots](docs/SCREENSHOTS.md)** · **[Requirements](docs/requirements.md)** ·
+**[Getting your files](docs/GETTING-FILES.md)** · **[Building](docs/BUILDING.md)** · **[How it works](docs/HOW-IT-WORKS.md)** · **[Known issues](docs/KNOWN_ISSUES.md)** ·
 **[Roadmap](docs/ROADMAP.md)** · **[Glossary](docs/GLOSSARY.md)** · **[AI use](#how-ai-was-used)** ·
 **[Contributing](.github/CONTRIBUTING.md)** · **[Forking](docs/FORKING.md)**
 
@@ -33,6 +33,33 @@ on Vulkan.
 **You need your own copy of the game.** This repository contains only the port: source code, patches to the
 recompiler, tools and documentation. It contains no game code, data, assets, keys or firmware, and it never will.
 Each player translates and builds the game's code on their own machine, from their own files.
+
+## What you need
+
+- **Your own game:** Killzone HD (NPUA80856), installed from your own **Killzone Trilogy** disc, with its decrypted
+  EBOOT and data archive, and the decrypted `libsre` (and, for the music, `dev_flash`) of your own PS3 system
+  software 4.93. What each file must be, and how the scripts check them: [docs/GETTING-FILES.md](docs/GETTING-FILES.md).
+- **A PC:** Windows x64 or Linux x64, a CPU with AVX2 (x86-64-v3), and a Vulkan graphics card and driver
+  ([docs/requirements.md](docs/requirements.md)).
+- **Disk space:** about 4 GB for the game files, plus a few GB for the build.
+
+The release downloads bring their own build tools: nothing else to install on Windows, and on Linux only Python 3.10
+or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
+
+## How to play
+
+Latest release: <!-- release -->[v0.4.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.4.0), a pre-release<!-- /release -->.
+Every download builds the port on your PC from your own files, once, in about five minutes. Each download has its
+SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
+
+- **Windows, setup program** (`project-vekta-X.Y.Z-setup.exe`): it asks where your files are, builds, and puts
+  **Project Vekta** in the Start menu.
+- **Windows, zip** (`project-vekta-X.Y.Z-windows.zip`): the same folder without the setup. `run.cmd` asks where your
+  files are and builds; `play.cmd` plays.
+- **Linux folder** (`project-vekta-X.Y.Z-linux.tar.gz`): `./run.sh` builds, `./play.sh` plays.
+
+Step by step, with what you see at each step: **[docs/INSTALL.md](docs/INSTALL.md)**. To build from a Git clone or
+the source archive instead: [For developers](#for-developers-building-from-source).
 
 ## Status
 
@@ -88,40 +115,6 @@ local trophy log in `gamedata/trophies/`. The log of a run goes to `work/play.lo
 repository's `work/` folder, and nothing is written into your game files. The Windows setup program is the one
 exception: unless you pick its "Portable" option, the settings and saves go to `%APPDATA%\Project Vekta` instead.
 
-## Getting it
-
-Latest release: <!-- release -->[v0.4.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.4.0), a pre-release<!-- /release -->. Each release carries the Windows setup program and the same folder as
-a zip, a Linux folder with its own toolchain, and a source archive (this tree with ps3recomp at its pinned commit),
-each checked by SHA-256; either way the port is built on your machine from your own game
-([docs/BUILDING.md](docs/BUILDING.md)). You need:
-
-- the Killzone HD package from your own **Killzone Trilogy** disc, installed, plus its decrypted
-  EBOOT and data archive, and the decrypted `libsre` from your own PS3 firmware: what each must be, and how the
-  scripts check them, is in [docs/GETTING-FILES.md](docs/GETTING-FILES.md);
-- Linux x64 with clang, CMake, Ninja, Python 3, SDL2, zlib, glslang and the Vulkan headers; for the Windows exe, the
-  MinGW-w64 sysroot as well;
-- a CPU with AVX2 (x86-64-v3) and a Vulkan GPU ([docs/requirements.md](docs/requirements.md)).
-
-The short way, from a release's archive or a clone: one command asks where your files are, checks them, and builds
-with one progress bar; it remembers the paths, so afterwards `tools/play.sh` is all you need.
-
-```sh
-tools/install.sh
-tools/play.sh
-```
-
-Step by step (what `tools/install.sh` runs):
-
-```sh
-git clone --recurse-submodules https://github.com/gustavomorinaga/project-vekta
-cd project-vekta
-tools/ps3recomp-patched.sh   # ps3recomp v0.19.0 with port/patches applied, in work/
-tools/lift.sh                # translates your EBOOT, SPU code and firmware pieces, in work/lift
-tools/setup-vfs.sh           # the folder the game runs from, in work/vfs
-tools/build.sh               # work/build/KZ1HD
-tools/play.sh                # plays in a window
-```
-
 ## How it works, briefly
 
 - **PPU:** the game's PowerPC functions are lifted to C++ by ps3recomp's lifter and compiled with clang; a few hot
@@ -161,6 +154,32 @@ Anyone else offering builds, "fixes" or donations in this project's name is not 
 Tests on other hardware, reports with logs, and fixes are welcome: [CONTRIBUTING.md](.github/CONTRIBUTING.md). The
 rules for everyone, people and AI coding agents alike, are in [AGENTS.md](AGENTS.md). Security problems and rights
 holders' reports go privately through the Security tab ([SECURITY.md](.github/SECURITY.md)).
+
+## For developers: building from source
+
+On Linux, from a clone or the release's source archive, you need clang, CMake, Ninja, Python 3, SDL2, zlib,
+glslang and the Vulkan headers; for the Windows exe, the MinGW-w64 sysroot as well. All of it is in
+[docs/BUILDING.md](docs/BUILDING.md).
+
+The short way, from a release's archive or a clone: one command asks where your files are, checks them, and builds
+with one progress bar; it remembers the paths, so afterwards `tools/play.sh` is all you need.
+
+```sh
+tools/install.sh
+tools/play.sh
+```
+
+Step by step (what `tools/install.sh` runs):
+
+```sh
+git clone --recurse-submodules https://github.com/gustavomorinaga/project-vekta
+cd project-vekta
+tools/ps3recomp-patched.sh   # ps3recomp v0.19.0 with port/patches applied, in work/
+tools/lift.sh                # translates your EBOOT, SPU code and firmware pieces, in work/lift
+tools/setup-vfs.sh           # the folder the game runs from, in work/vfs
+tools/build.sh               # work/build/KZ1HD
+tools/play.sh                # plays in a window
+```
 
 ## Repository layout
 
