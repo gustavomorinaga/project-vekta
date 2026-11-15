@@ -131,6 +131,11 @@ Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cr
 Source: "{#Payload}\work\ps3recomp-patched\.patchset"; DestDir: "{app}\work\ps3recomp-patched"; Flags: ignoreversion
 ; Apps & features' icon (UninstallDisplayIcon) and the Start menu's Uninstall entry
 Source: "art\vekta-uninstall.ico"; DestDir: "{app}"; Flags: ignoreversion
+; The "Your game" page asks tools/release/rpcs3_import.py what the player's RPCS3 has, before anything is installed:
+; the bundled Python and the two modules go to a temporary folder (after Project Pyrrhus's kz2.iss, MIT)
+Source: "{#Payload}\work\toolchain-cache\python\*"; DestDir: "{tmp}\rp\python"; Flags: dontcopy recursesubdirs
+Source: "{#Payload}\tools\release\rpcs3_import.py"; DestDir: "{tmp}\rp"; Flags: dontcopy
+Source: "{#Payload}\tools\release\rpcs3_locate.py"; DestDir: "{tmp}\rp"; Flags: dontcopy
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"
@@ -184,6 +189,9 @@ Type: filesandordirs; Name: "{app}\work\toolchain-cache\python\__pycache__"
 
 [Code]
 var
+  SourcePage: TInputOptionWizardPage;
+  RpcsLooked, RpcsOK: Boolean;
+  RpcsRoot, RpcsGame, RpcsFlash, RpcsProblems: String;
   GamePage: TInputDirWizardPage;
   FilesPage: TInputFileWizardPage;
   FlashPage: TInputQueryWizardPage;
@@ -202,6 +210,24 @@ end;
 function BuildNotDone: Boolean;
 begin
   Result := not BuildSucceeded;
+end;
+
+function Quote(S: String): String;
+begin
+  Result := '"' + S + '"';
+end;
+
+{ The value of a whole "key=value" line of rpcs3_import.py's --out file (values may hold spaces); '' if none }
+function ResultValue(Lines: TArrayOfString; Key: String): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    if Pos(Key + '=', Lines[I]) = 1 then begin
+      Result := Copy(Lines[I], Length(Key) + 2, MaxInt);
+      Exit;
+    end;
 end;
 
 { One "key=value" field of a firstrun.py PROGRESS / RESULT line }
@@ -329,7 +355,8 @@ begin
   M := Magic(Path);
   if not (((Kind = 'ELF') and (M = #127 + 'ELF')) or ((Kind = 'PSAR') and (M = 'PSAR'))) then begin
     if M = 'SCE' + #0 then
-      Result := Name + ': this is the encrypted container (as EBOOT.BIN or a .sprx), not the decrypted file.'
+      Result := Name + ': this is the encrypted container (as EBOOT.BIN or a .sprx), not the decrypted file. ' +
+        'With the game and the firmware installed in RPCS3, go Back and choose "Use my RPCS3 install".'
     else if (Kind = 'PSAR') and (CompareText(ExtractFileExt(Path), '.edat') = 0) then
       Result := Name + ': this is the .edat the package installs, not the decrypted archive.'
     else
@@ -455,7 +482,15 @@ end;
 
 procedure InitializeWizard;
 begin
-  GamePage := CreateInputDirPage(wpSelectTasks, 'Your game',
+  SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
+    'From your RPCS3, or from files you pick.',
+    'Setup looks for RPCS3 with Killzone HD ({#TitleId}) and the PS3 firmware installed. With it, your RPCS3 ' +
+    'decrypts copies of the game''s EBOOT and the firmware''s libsre into the install folder during the build, and ' +
+    'nothing needs preparing by hand. Your game and RPCS3 folders are only read.', True, False);
+  SourcePage.Add('Use my RPCS3 install');
+  SourcePage.Add('I will pick the game folder and the decrypted files myself');
+  SourcePage.SelectedValueIndex := 1;
+  GamePage := CreateInputDirPage(SourcePage.ID, 'Your game',
     'The installed Killzone HD ({#TitleId}), from your own Killzone Trilogy disc.',
     'Pick the installed game folder: it holds PARAM.SFO, TROPDIR and USRDIR (in RPCS3: dev_hdd0\game\{#TitleId}; ' +
     'picking the folder it is in also works). Setup only reads it.', False, '');
@@ -494,6 +529,10 @@ end;
 
 procedure RegisterPreviousData(PreviousDataKey: Integer);
 begin
+  if SourcePage.SelectedValueIndex = 0 then
+    SetPreviousData(PreviousDataKey, 'Source', 'rpcs3')
+  else
+    SetPreviousData(PreviousDataKey, 'Source', 'files');
   SetPreviousData(PreviousDataKey, 'Game', GamePage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Eboot', FilesPage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Psarc', FilesPage.Values[1]);
@@ -502,8 +541,66 @@ begin
   SetPreviousData(PreviousDataKey, 'Dlss', DlssChoice);
 end;
 
+{ "Your game": what the player's RPCS3 has (tools/release/rpcs3_import.py --resolve: read-only, under a second; all
+  the logic is there and host-tested). Run once, when the page is first shown. }
+procedure CheckRpcs3;
+var
+  Py, Res, Problem: String;
+  Lines: TArrayOfString;
+  RC, I: Integer;
+begin
+  RpcsLooked := True;
+  RpcsOK := False;
+  RpcsProblems := '';
+  Res := ExpandConstant('{tmp}\rp\resolve.txt');
+  try
+    ExtractTemporaryFiles('{tmp}\rp\*');
+  except
+    Log('rpcs3: the helper could not be unpacked: ' + GetExceptionMessage);
+  end;
+  Py := ExpandConstant('{tmp}\rp\python\python.exe');
+  if not Exec(Py, Quote(ExpandConstant('{tmp}\rp\rpcs3_import.py')) + ' --resolve --out ' + Quote(Res),
+              ExpandConstant('{tmp}\rp'), SW_HIDE, ewWaitUntilTerminated, RC) or
+     not LoadStringsFromFile(Res, Lines) then begin
+    RpcsProblems := 'The RPCS3 check could not run (see the setup log).';
+    Log('rpcs3: --resolve did not run');
+  end else begin
+    { the BOM of the first line is not part of its key }
+    if (GetArrayLength(Lines) > 0) and (Pos('status=', Lines[0]) > 1) then
+      Lines[0] := Copy(Lines[0], Pos('status=', Lines[0]), MaxInt);
+    RpcsOK := ResultValue(Lines, 'status') = 'ok';
+    RpcsRoot := ResultValue(Lines, 'root');
+    RpcsGame := ResultValue(Lines, 'game');
+    RpcsFlash := ResultValue(Lines, 'dev_flash');
+    for I := 0 to GetArrayLength(Lines) - 1 do
+      if Pos('problem=', Lines[I]) = 1 then begin
+        Problem := Copy(Lines[I], 9, MaxInt);
+        if Pos('|', Problem) > 0 then Problem := Copy(Problem, Pos('|', Problem) + 1, MaxInt);
+        RpcsProblems := RpcsProblems + Problem + #13#10;
+      end;
+    Log('rpcs3: status ' + ResultValue(Lines, 'status') + ', root ' + RpcsRoot);
+  end;
+  if RpcsOK then begin
+    SourcePage.CheckListBox.ItemCaption[0] := 'Use my RPCS3 install (' + RpcsRoot + ')';
+    SourcePage.SelectedValueIndex := 0;
+    if GetPreviousData('Source', '') = 'files' then SourcePage.SelectedValueIndex := 1;
+  end else begin
+    SourcePage.CheckListBox.ItemCaption[0] := 'Use my RPCS3 install (not available: see below)';
+    SourcePage.CheckListBox.ItemEnabled[0] := False;
+    SourcePage.SelectedValueIndex := 1;
+    SourcePage.SubCaptionLabel.Caption := SourcePage.SubCaptionLabel.Caption + #13#10#13#10 + RpcsProblems;
+  end;
+end;
+
+{ The RPCS3 route: the game folder, the files and dev_flash come from RPCS3, so their pages are skipped }
+function UseRpcs3: Boolean;
+begin
+  Result := RpcsOK and (SourcePage.SelectedValueIndex = 0);
+end;
+
 procedure CurPageChanged(CurPageID: Integer);
 begin
+  if (CurPageID = SourcePage.ID) and not RpcsLooked then CheckRpcs3;
   if CurPageID = FilesPage.ID then FillFiles;
 end;
 
@@ -620,8 +717,9 @@ end;
 { Silent installs never press Next: the pages are skipped, and the values are checked here instead }
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := WizardSilent and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID) or
-    (PageID = DlssPage.ID));
+  Result := WizardSilent and ((PageID = SourcePage.ID) or (PageID = GamePage.ID) or (PageID = FilesPage.ID) or
+    (PageID = FlashPage.ID) or (PageID = DlssPage.ID));
+  if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID)) then Result := True;
 end;
 
 { All four required files, checked; silent installs with any of them missing build nothing }
@@ -629,6 +727,10 @@ function FilesReady: Boolean;
 var
   P: String;
 begin
+  if UseRpcs3 then begin
+    Result := True;   { firstrun.py --rpcs3 checks them, after the decrypted copies are made }
+    Exit;
+  end;
   P := '';
   if GamePage.Values[0] = '' then P := 'no game folder. '
   else P := GameProblem(ResolveGame(GamePage.Values[0]));
@@ -637,14 +739,13 @@ begin
   if not Result then Log('game files: ' + P);
 end;
 
-function Quote(S: String): String;
-begin
-  Result := '"' + S + '"';
-end;
-
 function PathArgs: String;
 begin
   Result := '';
+  if UseRpcs3 then begin
+    Result := ' --rpcs3 ' + Quote(RpcsRoot);
+    Exit;
+  end;
   if GamePage.Values[0] <> '' then Result := Result + ' --game ' + Quote(ResolveGame(GamePage.Values[0]));
   if FilesPage.Values[0] <> '' then Result := Result + ' --eboot ' + Quote(FilesPage.Values[0]);
   if FilesPage.Values[1] <> '' then Result := Result + ' --psarc ' + Quote(FilesPage.Values[1]);
@@ -772,7 +873,7 @@ procedure SavePaths;
 var
   RC: Integer;
 begin
-  if PathArgs = '' then Exit;
+  if (PathArgs = '') or UseRpcs3 then Exit;   { the RPCS3 route saves its paths when it has made the copies }
   if Exec(ExpandConstant('{app}\work\toolchain-cache\python\python.exe'),
           Quote(ExpandConstant('{app}\tools\release\firstrun.py')) + ' --root ' + Quote(ExpandConstant('{app}')) +
           ' --save-paths' + PathArgs, ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, RC) and (RC = 0) then
