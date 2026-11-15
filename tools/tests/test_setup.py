@@ -63,6 +63,9 @@ sizes = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
 for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc"), ("LibsreSize", "libsre.prx")):
     m = re.search(r'#define %s "(\d+)"' % define, text)
     check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
+m_fw = re.search(r'#define Firmware "([^"]+)"', text)
+check(m_fw and m_fw.group(1) == cgf.FIRMWARE and "FirmwareVersion(FlashPage.Values[0]) <> '{#Firmware}'" in text,
+      "the firmware page refuses a dev_flash of another system software than check-game-files.py's")
 check("'USRDIR\\data_ps3.psarc.edat'" in text, "the wizard takes the game's .edat when the archive is left empty")
 # The build in the wizard runs firstrun.py with options it has, and names its steps
 import firstrun  # noqa: E402

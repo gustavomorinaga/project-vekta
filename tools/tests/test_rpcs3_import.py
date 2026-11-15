@@ -90,6 +90,9 @@ with tempfile.TemporaryDirectory() as tmp:
     ext = rp / "dev_flash" / "sys" / "external"
     ext.mkdir(parents=True)
     (ext / "libsre.sprx").write_bytes(b"SCE\0 encrypted libsre")
+    ver = rp / "dev_flash" / "vsh" / "etc" / "version.txt"
+    ver.parent.mkdir(parents=True)
+    ver.write_text("release:04.9300:\nbuild:1,20260101:x\n")
     exdata = rp / "dev_hdd0" / "home" / "00000001" / "exdata"   # the player's licences (a made-up name; never read)
     exdata.mkdir(parents=True)
     (exdata / "UP9000-TEST00000_00-NOTAREALLICENCE.rap").write_bytes(b"x" * 16)
@@ -150,6 +153,16 @@ with tempfile.TemporaryDirectory() as tmp:
     check(p["status"] == "failed" and time.monotonic() - t0 < 20, "the watchdog stops an RPCS3 that never finishes")
     os.environ["FAKE_MODE"] = "ok"
     check(tree_state(rp) == before, "after the failures too, nothing written into RPCS3's or the game's folders")
+
+    # the firmware's version: another one than 4.93 is named, with the version found
+    ver.write_text("release:04.9000:\n")
+    r = ri.resolve(str(rp))
+    check([x["code"] for x in r["problems"]] == ["wrong_firmware"] and "4.90" in r["problems"][0]["text"]
+          and "4.93" in r["problems"][0]["text"], f"firmware 4.90: wrong_firmware names both versions: {r['problems']}")
+    ver.unlink()
+    check([x["code"] for x in ri.resolve(str(rp))["problems"]] == ["no_firmware"], "no version.txt: no_firmware")
+    ver.write_text("release:04.9300:\n")
+    check(ri.resolve(str(rp))["firmware"] == "4.93", "resolve reports the firmware's version")
 
     # what resolve reports when a piece is missing
     (ext / "libsre.sprx").rename(tmp / "libsre.sprx")

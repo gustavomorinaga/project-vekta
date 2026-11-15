@@ -104,7 +104,7 @@ INPUTS = [
 ]
 # What check-game-files.py names each input in its MISSING / WRONG / DIFFERENT lines.
 INPUT_OF = {"PARAM.SFO": "game", "TROPHY.TRP": "game", "data_ps3.psarc.edat": "game", "EBOOT.elf": "eboot",
-            "data_ps3.psarc": "psarc",
+            "data_ps3.psarc": "psarc", "firmware": "dev_flash",
             "libsre.prx": "libsre", "flashMP3.pic": "dev_flash"}
 
 

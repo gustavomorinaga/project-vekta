@@ -24,6 +24,9 @@ program and folder that build it. Until a release that calls itself playable
   would never end) each stop it with what to do. An encrypted `EBOOT.BIN` or `.sprx`, or the `.edat` given as the
   decrypted archive, is named as such. A port folder that was moved or renamed is built again instead of failing in
   CMake, and the saved paths that pointed inside it follow it.
+- The PS3 system software version is checked where it is picked: RPCS3 with another firmware than 4.93, or a
+  `dev_flash` of another version on the setup's firmware page or in the first run's check, is refused with the
+  version found and how to install 4.93, instead of a later "different file" on libsre.
 - With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles.
   `firstrun.py --cleanup` (also with `tools/install.sh` and `run.cmd`) removes, after a good build, what no later build
   reads: the toolchain's downloaded archives and the Windows libraries' build folder.

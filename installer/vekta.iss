@@ -49,6 +49,7 @@
 ; The tested files' sizes, as tools/check-game-files.py has them (tools/tests/test_setup.py checks they agree)
 #define EbootSize "19706080"
 #define PsarcSize "3147174243"
+#define Firmware "4.93"
 #define LibsreSize "239344"
 #define TitleId "NPUA80856"
 #define FilesDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md"
@@ -386,6 +387,25 @@ begin
   if P <> '' then Result := Result + P + #13#10;
 end;
 
+{ The system software version in a dev_flash folder ('4.93'), from vsh\etc\version.txt's "release:04.9300:" line;
+  '' when it cannot be read. The same rule as tools/check-game-files.py's firmware_version. }
+function FirmwareVersion(Dir: String): String;
+var
+  Lines: TArrayOfString;
+  I: Integer;
+  V: String;
+begin
+  Result := '';
+  if not LoadStringsFromFile(AddBackslash(Dir) + 'vsh\etc\version.txt', Lines) then Exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    if Pos('release:', Lines[I]) = 1 then begin
+      V := Copy(Lines[I], 9, 7);   { 04.9300 }
+      if (Length(V) = 7) and (V[3] = '.') then
+        Result := IntToStr(StrToIntDef(Copy(V, 1, 2), 0)) + '.' + Copy(V, 4, 2);
+      Exit;
+    end;
+end;
+
 function FlashOK(Dir: String): Boolean;
 begin
   Result := FileExists(AddBackslash(Dir) + 'sys\external\flashMP3.pic');
@@ -709,6 +729,12 @@ begin
     else if not FlashOK(FlashPage.Values[0]) then begin
       MsgBox('No sys\external\flashMP3.pic in this folder. Pick the firmware''s dev_flash folder, or leave the ' +
         'field empty to go on without the music.', mbError, MB_OK);
+      Result := False;
+    end else if (FirmwareVersion(FlashPage.Values[0]) <> '') and
+                (FirmwareVersion(FlashPage.Values[0]) <> '{#Firmware}') then begin
+      MsgBox('This dev_flash holds PS3 system software ' + FirmwareVersion(FlashPage.Values[0]) + '; the port needs ' +
+        '{#Firmware} (libsre.prx and the music decoder come from it). Install system software {#Firmware} in RPCS3 ' +
+        '(File, Install Firmware), take libsre from it again, then pick its dev_flash.', mbError, MB_OK);
       Result := False;
     end;
   end;
