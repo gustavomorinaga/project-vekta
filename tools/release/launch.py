@@ -14,6 +14,10 @@ copy the setup program installed (vekta-install.ini next to run.cmd) it is %APPD
 is portable ([install] portable=1): then it is the run folder, as in a Git clone or the Windows zip. Saves an earlier
 version left in the run folder are moved there once (migrate), never over a file already there.
 --dry-run prints the command, the folders and the settings and starts nothing.
+--move-data appdata|portable (a setup install only): moves the saves and settings to %APPDATA%/Project Vekta or back
+into the run folder, and records the choice in vekta-install.ini, so a choice made in the setup can be changed later.
+Nothing is overwritten: when the other folder already holds one of those files, nothing moves and it says which.
+After Project Helghast's launch.py switch_data (undecuple, MIT); written here.
 
 The Start menu's other entries (installer/vekta.iss [Icons]) run the launcher with one of these and start no game:
 --repair ("Verify and rebuild"): the install's own files against manifest.json first (a missing or changed one means
@@ -95,6 +99,42 @@ def migrate(run_folder, data):
             shutil.move(src, dst)
             moved.append(name)
     return moved
+
+
+def move_data(root, to, environ=None):
+    """--move-data: (ok, message). to is "appdata" or "portable"; see the docstring."""
+    environ = os.environ if environ is None else environ
+    ini = install_settings(root)
+    if ini is None:
+        return False, "only an install made by the setup program keeps its saves apart; here they are in the run folder"
+    run_folder = kzbuild.resolve(environ, root=root)["KZ_VFS"]
+    old = data_dir(root, run_folder, environ)
+    appdata = environ.get("APPDATA", "")
+    if to == "appdata" and not appdata:
+        return False, "there is no %APPDATA% folder here"
+    new = os.path.join(appdata, SAVE_FOLDER) if to == "appdata" else run_folder
+    if os.path.normcase(os.path.abspath(old)) != os.path.normcase(os.path.abspath(new)):
+        clash = [n for n in PLAYER_FILES if os.path.lexists(os.path.join(old, n)) and
+                 os.path.lexists(os.path.join(new, n))]
+        if clash:
+            return False, (f"{new} already has {', '.join(clash)}: nothing was moved. Move or remove them there "
+                           "first, so no save is overwritten")
+        os.makedirs(new, exist_ok=True)
+        for n in PLAYER_FILES:
+            if os.path.lexists(os.path.join(old, n)):
+                shutil.move(os.path.join(old, n), os.path.join(new, n))
+    c = configparser.ConfigParser(interpolation=None)
+    path = os.path.join(root, INSTALL_INI)
+    try:
+        c.read(path, encoding="utf-8-sig")
+    except (configparser.Error, OSError, UnicodeError):
+        pass
+    if not c.has_section("install"):
+        c.add_section("install")
+    c.set("install", "portable", "1" if to == "portable" else "0")
+    with open(path, "w", encoding="utf-8") as f:
+        c.write(f)
+    return True, f"the saves and settings are now in {new}"
 
 
 def plan(root, environ=None, fullscreen=False):
@@ -378,6 +418,8 @@ def main(argv=None):
     ap.add_argument("--open-data", action="store_true", help='"Open saves folder"')
     ap.add_argument("--support-package", action="store_true", help='"Make a support package": a zip of the logs')
     ap.add_argument("--out", default="", help="with --support-package: the folder for the zip (default: the Desktop)")
+    ap.add_argument("--move-data", choices=("appdata", "portable"),
+                    help="move the saves and settings to %%APPDATA%%\\Project Vekta or into the install folder")
     a = ap.parse_args(argv)
     root = os.path.abspath(a.root)
     if a.repair:
@@ -386,6 +428,10 @@ def main(argv=None):
         return open_data(root)
     if a.support_package:
         return support_package(root, a.out)
+    if a.move_data:
+        ok, text = move_data(root, a.move_data)
+        notify(text, error=not ok)
+        return 0 if ok else 1
     try:
         argv_, cwd, env, log = plan(root, fullscreen=a.fullscreen)
     except ValueError as err:
