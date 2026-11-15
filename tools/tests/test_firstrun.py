@@ -120,7 +120,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     rc, out, calls, r, raw = run(root, game, status=status)
     check(rc == 0 and "RESULT ok=1 step=-" in out, "the first run builds: " + out[-300:])
-    check(calls == ["check", "pip", "patch", "lift", "vfs", "build"], f"every step runs: {calls}")
+    check(calls == ["check", "pip", "patch", "lift", "vfs", "build", "data"], f"every step runs: {calls}")
     check(f"jobs=3 eboot={game}/EBOOT.elf" in raw, f"the steps get the paths and the job count: {raw}")
     pcts = [float(ln.rsplit("pct=", 1)[1]) for ln in out.splitlines() if ln.startswith("PROGRESS ")]
     check(pcts == sorted(pcts) and pcts[-1] == 100.0, f"the progress only grows, to 100: {pcts[-5:]}")
@@ -131,23 +131,23 @@ with tempfile.TemporaryDirectory() as tmp:
     check(firstrun.read_paths(str(root / "work"))["eboot"] == str(game / "EBOOT.elf"), "paths.env keeps the paths")
 
     rc, out, calls, _, _ = run(root, game)
-    check(rc == 0 and calls == ["check", "build"], f"a second run skips the finished steps: {calls}")
+    check(rc == 0 and calls == ["check", "build", "data"], f"a second run skips the finished steps: {calls}")
 
     (root / "re/function_seeds.txt").write_text("changed\n")
     rc, out, calls, _, _ = run(root, game)
-    check(calls == ["check", "lift", "build"], f"a changed lift input re-runs the lift only: {calls}")
+    check(calls == ["check", "lift", "build", "data"], f"a changed lift input re-runs the lift only: {calls}")
 
     (root / "port/patches/series").write_text("changed\n")
     rc, out, calls, _, _ = run(root, game, fail="lift")
     check(rc == 1 and "RESULT ok=0 step=lift" in out and "REASON" in out and "lift broke" in out,
           "a failed step says which and why: " + out[-300:])
     rc, out, calls, _, _ = run(root, game)
-    check(calls == ["check", "lift", "build"], f"the next run resumes at the failed step: {calls}")
+    check(calls == ["check", "lift", "build", "data"], f"the next run resumes at the failed step: {calls}")
 
     (game / "EBOOT.elf").write_text("another EBOOT")
     os.utime(game / "EBOOT.elf", (1, 1))
     rc, out, calls, _, _ = run(root, game)
-    check(calls == ["check", "lift", "vfs", "build"], f"another EBOOT re-runs the lift and the vfs: {calls}")
+    check(calls == ["check", "lift", "vfs", "build", "data"], f"another EBOOT re-runs the lift and the vfs: {calls}")
 
     rc, out, calls, r, _ = run(root, game, fail="check", status=status)
     check(rc == 1 and calls == ["check"] and "REASON MISSING EBOOT.elf" in out, "a failed check stops the run")

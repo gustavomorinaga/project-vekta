@@ -18,6 +18,17 @@ GAME = os.environ.get("KZ_GAME", os.path.join(ROOT, "Game", "NPUA80856"))
 DEV_FLASH = os.environ.get("PS3_DEV_FLASH") or (os.path.join(ROOT, "Game", "dev_flash") if os.name == "nt"
                                                 else os.path.expanduser("~/.config/rpcs3/dev_flash"))
 
+# The data archive: the player's decrypted data_ps3.psarc when there is one (as up to 0.4.0), else the installed
+# game's data_ps3.psarc.edat, which the port opens itself (tools/kzbuild.py data, patch 4014).
+PSARC = os.environ.get("KZ_PSARC", os.path.join(ROOT, "Game", "data_ps3.psarc"))
+PSARC_FILE = ("data_ps3.psarc", PSARC, 3147174243,
+              "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d", b"PSAR", True,
+              "a decrypted data archive (a PSARC); without one the port reads the game's own data_ps3.psarc.edat")
+EDAT_FILE = ("data_ps3.psarc.edat", os.path.join(GAME, "USRDIR", "data_ps3.psarc.edat"), 3153321376,
+             "3c85c5321bccab33079896f5e74c06902e84648154b315af21e14878d93fe58b", b"NPD\x00", True,
+             "the installed game's data archive, USRDIR/data_ps3.psarc.edat, as the package or RPCS3 installs it")
+ARCHIVE = PSARC_FILE if os.path.isfile(PSARC) else EDAT_FILE
+
 # (label, path, size, sha256, magic, required, what it is)
 FILES = [
     ("PARAM.SFO", os.path.join(GAME, "PARAM.SFO"), None,
@@ -29,9 +40,7 @@ FILES = [
     ("EBOOT.elf", os.environ.get("KZ_EBOOT", os.path.join(ROOT, "Game", "EBOOT.elf")), 19706080,
      "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc", b"\x7fELF", True,
      "the decrypted EBOOT of the installed game (an ELF, not the EBOOT.BIN container)"),
-    ("data_ps3.psarc", os.environ.get("KZ_PSARC", os.path.join(ROOT, "Game", "data_ps3.psarc")), 3147174243,
-     "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d", b"PSAR", True,
-     "the decrypted data archive (a PSARC, not the .edat the package installs)"),
+    ARCHIVE,
     ("libsre.prx", os.environ.get("KZ_LIBSRE", os.path.join(ROOT, "Game", "libsre.prx")), 239344,
      "9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6", b"\x7fELF", True,
      "the decrypted libsre from PS3 firmware 4.93 (sys/external/libsre.sprx in dev_flash)"),

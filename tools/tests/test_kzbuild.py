@@ -209,6 +209,61 @@ with tempfile.TemporaryDirectory() as tmp:
           "TROPHY.TRP").is_file(), "PARAM.SFO and TROPDIR are copied")
     check((u / "save.dat").read_text() == "mine", "a second run keeps the saves")
 
+    # vfs and data with only the installed game's data_ps3.psarc.edat (patch 4014: the game opens it itself)
+    (game / "USRDIR").mkdir()
+    (game / "USRDIR" / "data_ps3.psarc.edat").write_bytes(b"NPD\0" + b"x" * 60)
+    env_edat = dict(env, KZ_PSARC=str(files / "none.psarc"))
+    e = kzbuild.resolve(env_edat, root=str(root))
+    sys.stdout = out = io.StringIO()
+    try:
+        kzbuild.cmd_vfs(e, None)
+    finally:
+        sys.stdout = so
+    check(os.path.samefile(u / "data_ps3.psarc.edat", game / "USRDIR" / "data_ps3.psarc.edat")
+          and not os.path.lexists(u / "data_ps3.psarc"), "edat: the .edat is linked, the old archive link removed")
+    check("kzbuild.py data" in out.getvalue(), f"edat: vfs says the movies come with the data step: {out.getvalue()}")
+    shutil.rmtree(u / "Movies")
+    shutil.rmtree(u / "Menu")
+    fake = tmp / "fake-kz1hd"
+    plain = files / "data_ps3.psarc"
+    fake.write_text("#!/bin/sh\n"
+                    'echo "$KZ_PREPARE_DATA $PS3RECOMP_VK_WINDOW $PWD" >> "$KZ_WORK/fake.log"\n'
+                    'mkdir -p "$KZ_WORK/edat-cache" && cp "$FAKE_PLAIN" "$KZ_WORK/edat-cache/0123456789abcdef.dec"\n'
+                    'echo "[kz] data ready: $KZ_WORK/edat-cache/0123456789abcdef.dec"\n')
+    fake.chmod(0o755)
+    e = kzbuild.resolve(dict(env_edat, KZ_BIN=str(fake), FAKE_PLAIN=str(plain)), root=str(root))
+    size0, sha0 = kzbuild.PSARC_SIZE, kzbuild.PSARC_SHA256
+    kzbuild.PSARC_SIZE, kzbuild.PSARC_SHA256 = plain.stat().st_size, kzbuild.sha256_file(plain)
+    sys.stdout = out = io.StringIO()
+    try:
+        kzbuild.cmd_data(e, None)
+        kzbuild.cmd_data(e, None)
+    finally:
+        sys.stdout = so
+    calls = (root / "work" / "fake.log").read_text().splitlines()
+    check(calls == [f"1 0 {root / 'work' / 'vfs'}"], f"data: one headless run from the run folder: {calls}")
+    check((u / "Movies" / "intro.avi").is_file() and "already prepared" in out.getvalue(),
+          f"data: the movies come out of the opened archive, and a second run does nothing: {out.getvalue()}")
+    (root / "work" / "edat-cache" / "data_ps3.psarc.ok").unlink()
+    kzbuild.PSARC_SHA256 = "0" * 64
+    sys.stdout = io.StringIO()
+    try:
+        kzbuild.cmd_data(e, None)
+        check(False, "data: an archive that is not the tested one is refused")
+    except kzbuild.Fail as err:
+        check("not the tested one" in str(err), str(err))
+    finally:
+        sys.stdout = so
+    kzbuild.PSARC_SIZE, kzbuild.PSARC_SHA256 = size0, sha0
+    e = kzbuild.resolve(env, root=str(root))
+    sys.stdout = io.StringIO()
+    try:
+        kzbuild.cmd_vfs(e, None)
+    finally:
+        sys.stdout = so
+    check(os.path.lexists(u / "data_ps3.psarc") and not os.path.lexists(u / "data_ps3.psarc.edat"),
+          "a decrypted data_ps3.psarc wins over the .edat (installs up to 0.4.0)")
+
     # build, with stand-ins for CMake and Ninja
     bin_ = tmp / "bin"
     bin_.mkdir()

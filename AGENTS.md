@@ -39,9 +39,13 @@ Overview: [README.md](README.md) and [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md
   decrypted binaries (`EBOOT.elf`, `libsre.prx`, SPU images), lifted or decompiled game code (`work/lift/`,
   `work/fw/`), extracted assets, movies, saves, keys or firmware. Numbers, names, structure layouts and formulas
   recovered from the game are fine. `Game/` and `work/` stay out of git (`.gitignore`); do not weaken it.
-- **No circumvention.** The repository ships no decryption or copy-protection circumvention tools, no keys and no
-  instructions for decrypting game or firmware files. Do not add any, and do not explain how to make the decrypted
-  files; the docs only say what the player must have ([docs/GETTING-FILES.md](docs/GETTING-FILES.md)).
+- **No circumvention.** The repository ships no keys (title, console or firmware), no decryptor for SELF files
+  (EBOOT, PRX, SPRX) and no instructions for decrypting game or firmware files. Do not add any, and do not explain
+  how to make the decrypted files; the docs only say what the player must have
+  ([docs/GETTING-FILES.md](docs/GETTING-FILES.md)). Two things are allowed, decided for 0.5.0 (#67): ps3recomp's own
+  EDAT reader opens the game's free `data_ps3.psarc.edat` with the key the game passes at run time, as a PS3 does
+  (patch 4014; the port keeps the result in `work/`), and the installer may ask the player's own RPCS3 to decrypt
+  copies of the player's files. Nothing is ever written into the player's game or RPCS3 folders.
 - **ps3recomp stays pristine.** Never edit `third_party/ps3recomp/` or move the pin as part of a fix. Every change
   to it is a new patch in `port/patches/`, named in its area's number block and added at the end of
   `port/patches/series`; `tools/ps3recomp-patched.sh` applies the series in order and fails on a patch that does not

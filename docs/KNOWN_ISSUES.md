@@ -63,6 +63,11 @@ are linked.
 
 ## Windows
 
+- **The game's `.edat` on another drive is copied** (not tried on Windows yet, 2026-11-15): without a decrypted
+  `data_ps3.psarc` the run folder links the game's `data_ps3.psarc.edat`; where Windows can make neither a symbolic
+  nor a hard link (the game on another drive than the port, without Developer Mode) it copies the 3.15 GB file into
+  `work\vfs`, beside the 3.1 GB opened copy in `work\edat-cache`. Workaround: install the port on the same drive as
+  RPCS3's `dev_hdd0`.
 - **Large black blocks over the frame whenever it has bars** (AMD Radeon 8060S, issue #17): the menus and the opening
   movie are partly covered in a 1280×800 window and in borderless 1920×1200 or 1920×1080 on a 1920×1200 desktop, and
   not in fullscreen 1920×1080. The present cleared the bars and copied the frame with no barrier between the two,

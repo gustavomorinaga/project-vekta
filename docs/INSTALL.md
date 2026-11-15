@@ -14,7 +14,8 @@ You need these files from your own game and your own PS3 firmware.
 - The installed game folder of **Killzone HD** (NPUA80856), from the **Killzone Trilogy** disc. It holds
   `PARAM.SFO`, `TROPDIR` and `USRDIR`. In RPCS3 it is `dev_hdd0\game\NPUA80856`.
 - `EBOOT.elf`: the game's executable, decrypted. Not `EBOOT.BIN`.
-- `data_ps3.psarc`: the data archive, decrypted, about 3 GB. Not `data_ps3.psarc.edat`.
+- Optional: `data_ps3.psarc`, the data archive, decrypted, about 3 GB. Without it the port reads the game folder's
+  own `USRDIR\data_ps3.psarc.edat`, once, after the build: about a minute more, and 3.1 GB more disk in `work`.
 - `libsre.prx`: from PS3 system software 4.93, decrypted. Not `libsre.sprx`.
 - Optional: the firmware's `dev_flash` folder, as RPCS3 keeps it. It holds `sys\external\flashMP3.pic`, the game's
   music decoder. Without it, the music and sound stop at the first MP3.
@@ -42,7 +43,8 @@ administrator rights.
    - "Portable": off by default. Ticked, saves and settings stay in the install folder; left off, they go to
      `%APPDATA%\Project Vekta`.
 3. **Your game.** Pick the installed game folder. Picking the folder above it also works.
-4. **Your decrypted files.** Pick `EBOOT.elf`, `data_ps3.psarc` and `libsre.prx`.
+4. **Your decrypted files.** Pick `EBOOT.elf` and `libsre.prx`. Leave `data_ps3.psarc` empty to use the game
+   folder's own `.edat`, or pick a decrypted one you already have.
 5. **PS3 firmware (for the music).** Pick the `dev_flash` folder, or leave it empty.
 6. **NVIDIA DLSS (optional).** The box is unticked by default. Ticking it accepts NVIDIA's DLSS SDK licence, and
    the build then downloads DLSS from NVIDIA's repository. Left unticked, nothing of NVIDIA's is downloaded, and the

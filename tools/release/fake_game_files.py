@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("cgf", os.path.join(os.path.dirname(HERE), "check-game-files.py"))
 cgf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cgf)
-SIZES = {label: size for label, _p, size, *_ in cgf.FILES}
+SIZES = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
 TITLE = "NPUA80856"
 
 

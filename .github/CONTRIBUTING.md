@@ -8,7 +8,9 @@ repository is in English, so that anyone can follow it.
 - **No game material, ever.** Never commit, attach, paste or link to files from the disc or the package, decrypted
   binaries, code lifted or decompiled from the game, extracted assets or movies, saves, keys or firmware. Numbers,
   names, structure layouts and formulas recovered from the game are fine. `tools/check-tree.sh` checks the tree.
-- **No circumvention.** No decryption tools, keys or instructions for decrypting game or firmware files.
+- **No circumvention.** No keys, no SELF decryptor and no instructions for decrypting game or firmware files. The
+  runtime's EDAT reader opening the game's own archive with the key the game passes at run time, and the installer
+  asking the player's own RPCS3 to decrypt copies, are allowed (AGENTS.md has the details).
 - **ps3recomp stays pristine.** Never edit `third_party/ps3recomp/`. A change to it is a new patch in
   `port/patches/`, named in its area's number block (`0xxx` general, `1xxx` SPU and SPURS, `2xxx` graphics, `3xxx`
   lifter and system libraries, `4xxx` input and file system, `5xxx` data and trophies) with the next free number, and
