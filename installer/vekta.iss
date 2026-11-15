@@ -756,7 +756,8 @@ end;
 function StepLabel(Name: String): String;
 begin
   { The steps of tools/release/firstrun.py (tools/tests/test_setup.py checks the names) }
-  if Name = 'check' then Result := 'Checking your game files'
+  if Name = 'rpcs3' then Result := 'Decrypting copies with your RPCS3'
+  else if Name = 'check' then Result := 'Checking your game files'
   else if Name = 'venv' then Result := 'Installing the build tools'
   else if Name = 'patch' then Result := 'Patching ps3recomp'
   else if Name = 'lift' then Result := 'Translating the game''s code'
@@ -799,7 +800,7 @@ var
   Page: TOutputProgressWizardPage;
   Py, Status, Params, L, Name, Pct: String;
   Lines: TArrayOfString;
-  RC, P, I: Integer;
+  RC, P, I, Silent: Integer;
   Finished: Boolean;
 begin
   Py := ExpandConstant('{app}\work\toolchain-cache\python\python.exe');
@@ -828,10 +829,23 @@ begin
       Exit;
     end;
     Finished := False;
+    Silent := 0;
     { SetProgress lets the window answer clicks (the Stop button) and repaint; Sleep alone would not }
     while not Finished do begin
       Sleep(250);
       Page.SetProgress(Page.ProgressBar.Position, 1000);
+      { firstrun.py writes its status file at once and ends with a RESULT line. No file after two minutes means it
+        never got going (or died first): stop waiting instead of hanging the wizard. }
+      if not FileExists(Status) then begin
+        Silent := Silent + 1;
+        if Silent >= 480 then begin
+          Finished := True;
+          BuildOK := False;
+          BuildReason := 'The build did not start (no word from it in two minutes). Start Project Vekta from the ' +
+            'Start menu to build on the first start; its console says what is wrong.';
+          Log('build: ' + BuildReason);
+        end;
+      end;
       if LoadStringsFromFile(Status, Lines) and (GetArrayLength(Lines) >= 2) then begin
         if Pos('LOG ', Lines[0]) = 1 then BuildLog := Copy(Lines[0], 5, MaxInt);
         L := Lines[1];

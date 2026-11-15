@@ -1036,14 +1036,22 @@ def main(argv=None):
         except (KeyboardInterrupt, EOFError):
             print("\nstopped")
             return 130
-    if a.rpcs3 is not None:
-        probs = use_rpcs3(c, a.rpcs3)
-        if probs:
-            print("firstrun: your RPCS3 cannot be used:\n" + "\n".join("  " + p for p in probs), file=sys.stderr)
-            return 1
     log = new_log(c, redactor())
     r = Runner(c, STEPS, log, status_file=a.status_file, bar=a.bar)
     r.emit(f"LOG {log.path}")
+    if a.rpcs3 is not None:
+        # Before the steps, but inside the status protocol: the setup's build page waits for a RESULT line, so a
+        # failure here must end with one (it hung on a failed --rpcs3 that only printed to stderr).
+        r.emit(f"PROGRESS step=0/{len(STEPS)} name=rpcs3 done=0 total=0 elapsed=0 pct=0.0")
+        try:
+            probs = use_rpcs3(c, a.rpcs3, say=r.emit)
+        except Exception as e:   # noqa: BLE001  (any surprise still ends the setup's wait)
+            probs = [f"the RPCS3 step stopped: {type(e).__name__}: {e}"]
+        if probs:
+            print("firstrun: your RPCS3 cannot be used:\n" + "\n".join("  " + p for p in probs), file=sys.stderr)
+            rc = r.failed("rpcs3", *("your RPCS3 cannot be used: " + p for p in probs))
+            log.close()
+            return rc
     if a.stop_file:
         r.watch_stop(a.stop_file)
     rc = r.run()

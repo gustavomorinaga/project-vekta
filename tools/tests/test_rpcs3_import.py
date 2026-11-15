@@ -172,11 +172,20 @@ with tempfile.TemporaryDirectory() as tmp:
     so, sys.stderr = sys.stderr, err
     try:
         os.environ["KZ_WORK"] = str(tmp / "work5")
-        rc = firstrun.main(["--rpcs3", str(tmp / "nowhere"), "--root", str(ROOT)])
+        so2, sys.stdout = sys.stdout, io.StringIO()
+        try:
+            rc = firstrun.main(["--rpcs3", str(tmp / "nowhere"), "--root", str(ROOT), "--status-file",
+                                str(tmp / "status")])
+        finally:
+            sys.stdout = so2
         del os.environ["KZ_WORK"]
     finally:
         sys.stderr = so
     check(rc == 1 and "cannot be used" in err.getvalue(), f"firstrun --rpcs3 with no RPCS3 stops and says why: {rc}")
+    st = (tmp / "status").read_text().splitlines() if (tmp / "status").exists() else []
+    check(len(st) >= 3 and st[0].startswith("LOG ") and st[1].startswith("RESULT ok=0 step=rpcs3")
+          and st[2].startswith("REASON your RPCS3 cannot be used"),
+          f"and its status file ends with RESULT and the reason, which the setup's build page waits for: {st}")
 
 print("test_rpcs3_import:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)
