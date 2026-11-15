@@ -307,5 +307,25 @@ check(w("D:/Profiles/janet/x") == "D:/Profiles/janet/x", "another user's folder 
 red = firstrun.redactor("/srv/players/jane")
 check(red("/srv/players/jane/Games and /srv/players/janet/x") == "~/Games and /srv/players/janet/x", "the log writes the home as ~")
 
+# Little free memory: lower priority for the steps; --cleanup removes only what no later build reads
+check(firstrun.low_memory(6 * firstrun.GIB) and not firstrun.low_memory(16 * firstrun.GIB)
+      and not firstrun.low_memory(None), "under 8 GiB free is low memory; unknown is not")
+check(firstrun.priority_kw(False) == {} and firstrun.priority_kw(True), "a lower priority only when asked")
+if os.name != "nt":
+    import subprocess as _sp
+    r = _sp.run([sys.executable, "-c", "import os; print(os.nice(0))"], capture_output=True, text=True,
+                **firstrun.priority_kw(True))
+    check(r.stdout.strip() == str(min(19, os.nice(0) + 10)),
+          f"the child runs 10 nice levels lower: {r.stdout.strip()}")
+with tempfile.TemporaryDirectory() as tmp:
+    w = pathlib.Path(tmp)
+    for rel in ("toolchain-cache/downloads", "win-deps-build", "toolchain-cache/cmake", "build", "vfs"):
+        (w / rel).mkdir(parents=True)
+        (w / rel / "f.bin").write_bytes(b"x" * 1000)
+    freed = firstrun.cleanup(str(w))
+    check(freed == 2000 and not (w / "toolchain-cache" / "downloads").exists() and not (w / "win-deps-build").exists()
+          and all((w / r / "f.bin").exists() for r in ("toolchain-cache/cmake", "build", "vfs")),
+          f"--cleanup removes the downloads and win-deps-build only: {freed}")
+
 print("test_firstrun:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

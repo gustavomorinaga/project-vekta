@@ -23,6 +23,9 @@ program and folder that build it. Until a release that calls itself playable
   would never end) each stop it with what to do. An encrypted `EBOOT.BIN` or `.sprx`, or the `.edat` given as the
   decrypted archive, is named as such. A port folder that was moved or renamed is built again instead of failing in
   CMake, and the saved paths that pointed inside it follow it.
+- With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles.
+  `firstrun.py --cleanup` (also with `tools/install.sh` and `run.cmd`) removes, after a good build, what no later build
+  reads: the toolchain's downloaded archives and the Windows libraries' build folder.
 - 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world's view is the
   game's own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and
   wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.

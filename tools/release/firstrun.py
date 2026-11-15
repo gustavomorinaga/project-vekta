@@ -153,6 +153,7 @@ class Ctx:
     root: str
     paths: dict                                  # option name -> path (INPUTS)
     jobs: int = 1
+    low_priority: bool = False                   # little free memory: the steps run at a lower priority
     work: str = ""
     python: str = sys.executable
     dlss: str = ""                               # "accept", "decline" or "" (never answered: no DLSS)
@@ -456,6 +457,46 @@ def jobs_for(avail, cores=None):
     return max(1, min(cores, 16, int((avail - 3 * GIB) / GIB)))
 
 
+LOW_MEMORY = 8 * GIB
+
+
+def low_memory(avail):
+    """Little free memory (under 8 GiB when the build starts): the build's processes then run at a lower priority,
+    so the rest of the PC stays usable while every core compiles. After Project Helghast's low_memory_for and
+    lower_priority (undecuple, MIT); written here."""
+    return bool(avail) and avail < LOW_MEMORY
+
+
+def priority_kw(low):
+    """subprocess.Popen arguments for a lower priority (POSIX nice 10, Windows below normal), else none."""
+    if not low:
+        return {}
+    if os.name == "nt":
+        return {"creationflags": 0x00004000}   # BELOW_NORMAL_PRIORITY_CLASS
+    return {"preexec_fn": lambda: os.nice(10)}
+
+
+# Left in work/ after a build and never read again by a later one: the toolchain's downloaded archives (each unpacked
+# tree is kept, and fetch_toolchain.py only downloads again when the tree is gone) and the Windows libraries' build
+# folder (build_win_deps.py keeps what it installs in work/win-deps).
+CLEANUP = (("toolchain-cache", "downloads"), ("win-deps-build",))
+
+
+def cleanup(work):
+    """--cleanup: removes CLEANUP's folders under work; returns the bytes freed."""
+    freed = 0
+    for rel in CLEANUP:
+        p = os.path.join(work, *rel)
+        for d, _, files in os.walk(p):
+            for f in files:
+                try:
+                    freed += os.path.getsize(os.path.join(d, f))
+                except OSError:
+                    pass
+        shutil.rmtree(p, ignore_errors=True)
+    return freed
+
+
 def redactor(home=None, windows=None):
     """The home folder becomes ~ in the log (a log is meant to be attached to an issue). Either slash counts as a
     separator (CMake, Ninja and the game write C:/Users/<name> on Windows too), and on Windows the drive also matches
@@ -637,7 +678,7 @@ class Runner:
         try:
             self.proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                          encoding="utf-8", errors="replace", bufsize=1, env=self.ctx.env(),
-                                         cwd=self.ctx.root)
+                                         cwd=self.ctx.root, **priority_kw(self.ctx.low_priority))
         except OSError as e:
             self.emit(f"cannot start {argv[0]}: {e}")
             return 127, [str(e)]
@@ -914,6 +955,8 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
         r.watch_stop(a.stop_file)
     rc = r.run()
     log.close()
+    if rc == 0 and getattr(a, "cleanup", False):
+        say(f"cleanup: {cleanup(c.work) / GIB:.2f} GB freed")
     if rc == 0:
         say(f"Built. Play with: {play_command(c.root)}")
         if os.name != "nt" and (a.desktop or (a.desktop is None and ask("Add Project Vekta to the applications menu? [Y/n] ").strip()
@@ -936,6 +979,9 @@ def main(argv=None):
                     help="take the game and the firmware from your RPCS3 (DIR, else the usual places); your RPCS3 "
                          "decrypts copies of EBOOT.BIN and libsre.sprx into work/prep")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: from free memory)")
+    ap.add_argument("--cleanup", action="store_true",
+                    help="after a good build, remove what no later build reads (the toolchain's downloaded archives, "
+                         "the Windows libraries' build folder)")
     ap.add_argument("--root", default=ROOT, help="the source tree (the tests use a copy)")
     ap.add_argument("--status-file", help="keep the LOG line and the latest PROGRESS/RESULT line in this file")
     ap.add_argument("--stop-file", help="stop when this file appears; the next run resumes there")
@@ -959,8 +1005,9 @@ def main(argv=None):
         return 2
     root = os.path.abspath(a.root)
     work = os.environ.get("KZ_WORK") or os.path.join(root, "work")
+    avail = available_ram()
     c = Ctx(root=root, paths=resolve_paths(root, work, {n: getattr(a, n) for n, *_ in INPUTS}),
-            jobs=a.jobs or jobs_for(available_ram()), work=work)
+            jobs=a.jobs or jobs_for(avail), work=work, low_priority=low_memory(avail))
     if a.dlss and not a.dry_run:
         write_dlss(work, a.dlss)
     c.dlss = a.dlss or read_dlss(work)
@@ -1001,6 +1048,8 @@ def main(argv=None):
         r.watch_stop(a.stop_file)
     rc = r.run()
     log.close()
+    if rc == 0 and a.cleanup:
+        print(f"cleanup: {cleanup(c.work) / GIB:.2f} GB freed")
     if rc == 0 and a.desktop and os.name != "nt":
         print(f"Menu entry: {install_desktop(c.root)}")
     return rc
