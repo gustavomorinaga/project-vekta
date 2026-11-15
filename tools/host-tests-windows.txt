@@ -5,3 +5,4 @@ tools/tests/test_version_agree.py
 tools/tests/test_check_install.py
 tools/tests/test_firstrun.py
 tools/tests/test_place_checks.py
+tools/tests/test_version_check.py

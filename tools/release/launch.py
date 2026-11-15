@@ -14,6 +14,8 @@ copy the setup program installed (vekta-install.ini next to run.cmd) it is %APPD
 is portable ([install] portable=1): then it is the run folder, as in a Git clone or the Windows zip. Saves an earlier
 version left in the run folder are moved there once (migrate), never over a file already there.
 --dry-run prints the command, the folders and the settings and starts nothing.
+Before the game starts, tools/release/version_check.py's daily check runs when the player turned it on (off by
+default; one anonymous request to GitHub at most once a day) and a newer release is named in a message.
 --move-data appdata|portable (a setup install only): moves the saves and settings to %APPDATA%/Project Vekta or back
 into the run folder, and records the choice in vekta-install.ini, so a choice made in the setup can be changed later.
 Nothing is overwritten: when the other folder already holds one of those files, nothing moves and it says which.
@@ -466,6 +468,10 @@ def main(argv=None):
         return 1
     if moved and sys.stdout is not None:
         print(f"launch: moved {', '.join(moved)} to {cwd}")
+    import version_check   # off unless turned on (version_check.py; README "What goes online")
+    news = version_check.check(root, env["KZ_WORK"], env)
+    if news:
+        notify(news, error=False)
     t0 = time.monotonic()
     rc = run(argv_, cwd, env, log)
     if time.monotonic() - t0 < EARLY_EXIT and not window_closed(log):

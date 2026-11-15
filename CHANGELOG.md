@@ -28,6 +28,9 @@ program and folder that build it. Until a release that calls itself playable
   reads: the toolchain's downloaded archives and the Windows libraries' build folder.
 - The setup's "Portable" choice can be changed after the install: `play.cmd --move-data portable` or `--move-data
   appdata` moves the saves and settings and remembers it; nothing moves when the other folder already has some.
+- A new-version check, off by default: once turned on (`KZ_VERSION_CHECK=1`, or `tools/release/version_check.py
+  --enable`), the launcher asks GitHub for the latest release at most once a day and names a newer one. It sends
+  nothing about you and downloads nothing (README, "What goes online").
 - 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world's view is the
   game's own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and
   wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.

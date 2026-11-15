@@ -107,6 +107,11 @@ Python packages, and these, only when you choose them:
   (`raw.githubusercontent.com/NVIDIA/DLSS`, pinned to v310.9.16 and checked by SHA-256) into
   `work/toolchain-cache/dlss-sdk/`. The question first downloads the licence's text from there, for you to read.
   Declined, nothing is downloaded and the build has no DLSS.
+- **New-version check** (off by default): turned on with `KZ_VERSION_CHECK=1`, or with
+  `tools/release/version_check.py --enable` in an install made by the setup program, the launcher asks GitHub's public
+  API for this project's latest release (`api.github.com/repos/gustavomorinaga/project-vekta/releases`) at most
+  once a day, before the game starts, and names a newer one. The request carries no identifier; nothing is downloaded
+  or installed. `tools/release/version_check.py --disable` or `KZ_VERSION_CHECK=0` turns it off.
 
 ## Where your data goes
 
