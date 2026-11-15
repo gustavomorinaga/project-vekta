@@ -80,6 +80,13 @@ import rpcs3_import  # noqa: E402
 check("rpcs3_import.py')) + ' --resolve --out '" in text and "{tmp}\\rp\\python\\python.exe" in text
       and 'Source: "{#Payload}\\tools\\release\\rpcs3_locate.py"; DestDir: "{tmp}\\rp"; Flags: dontcopy' in text,
       "the RPCS3 check runs before the install, from a temporary copy of the Python and the two modules")
+files_sec = text[text.index("[Files]"):text.index("[Icons]")]
+check(files_sec.index("rpcs3_import.py\"; DestDir: \"{tmp}") < files_sec.index('Source: "{#Payload}\\*"')
+      and 'Source: "{#Payload}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs solidbreak'
+      in files_sec, "the RPCS3 helper is unpacked from its own small solid block, ahead of the payload (no freeze)")
+check("ewWaitUntilTerminated" not in text[text.index("procedure CheckRpcs3;"):text.index("function UseRpcs3")]
+      and "npbstMarquee" in text and "RpcsNote.Caption := 'Your RPCS3 cannot be used:'" in text,
+      "the RPCS3 check shows a progress page, never blocks the window, and prints its reasons on the page")
 check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID))" in text
       and "Result := ' --rpcs3 ' + Quote(RpcsRoot);" in text, "the RPCS3 route skips the file pages and builds with --rpcs3")
 check(all(f"'{k}'" in text for k in ("status", "root", "dev_flash")) and "Pos('problem=', Lines[I]) = 1" in text

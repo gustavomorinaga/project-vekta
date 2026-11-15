@@ -378,9 +378,10 @@ def main(argv=None):
     else:
         res = prepare(a.work, a.rpcs3, a.exe or None, log=lambda line: print(line, file=sys.stderr))
     text = "\n".join(lines(res)) + "\n"
-    if a.out:
-        with open(a.out, "w", encoding="utf-8-sig", newline="\r\n" if WINDOWS else "\n") as f:
+    if a.out:   # written aside and renamed: the setup polls for the file and must never read half of it
+        with open(a.out + ".tmp", "w", encoding="utf-8-sig", newline="\r\n" if WINDOWS else "\n") as f:
             f.write(text)
+        os.replace(a.out + ".tmp", a.out)
     else:
         sys.stdout.write(text)
     return 0 if res["status"] == "ok" else 1
