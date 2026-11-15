@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Use my RPCS3 install: find Killzone HD (NPUA80856) and the PS3 system software in the player's RPCS3, and make the
+two decrypted files the port needs (EBOOT.elf, libsre.prx) by asking that same RPCS3 to decrypt copies of them
+(`rpcs3 --decrypt`) in a folder of the port (work/prep). The data archive needs nothing: the port reads the game's
+own data_ps3.psarc.edat (patch 4014, tools/kzbuild.py data).
+
+    tools/release/rpcs3_import.py --detect  [--rpcs3 DIR] [--out FILE]
+    tools/release/rpcs3_import.py --resolve [--rpcs3 DIR] [--exe PATH] [--out FILE]
+    tools/release/rpcs3_import.py --prepare [--rpcs3 DIR] [--exe PATH] --work DIR [--out FILE]
+
+Results are `key=value` lines, on stdout or in --out (UTF-8 with a BOM, which Inno Setup reads):
+  --detect   status=ok|not_found, root=, source=
+  --resolve  status=ok|problems|not_found, root=, game=, edat=, dev_flash=, exe=, problem=code|text (one per line)
+  --prepare  the same, then status=ok|failed, eboot=, libsre= (the decrypted copies in DIR/prep), problem=
+Exit 0 when status=ok.
+
+Rules (after Project Pyrrhus's rpcs3_import.py):
+  - the player's game and RPCS3 folders are only read: the copies, RPCS3's own settings for this run and the results
+    are all in DIR/prep (RPCS3_CONFIG_DIR on Windows, XDG_CONFIG_HOME and XDG_CACHE_HOME on Linux point there);
+  - no keys and no decryption here: the player's RPCS3 decrypts, with what it already has;
+  - RPCS3's exit code proves nothing (it is 0 after a failure too): each result is judged by its size and SHA-256
+    against the tested files (docs/GETTING-FILES.md); stdin is the null device and a watchdog ends RPCS3 after
+    WATCHDOG seconds without a new result (on Windows it waits on its console for a key when a file does not
+    decrypt);
+  - log text goes through rpcs3_locate.redact().
+
+Built on rpcs3_locate.py, vendored unchanged from Project Pyrrhus (undecuple, MIT, tools/release/rpcs3_locate.py at
+commit 1b11f54; licenses/Project-Pyrrhus-LICENSE.txt). That module is written for disc games listed in RPCS3's
+games.yml; Killzone HD is a game installed in dev_hdd0/game, which it finds as an "update" folder and reports with
+the problems missing_disc and no_decrypted_eboot. This wrapper drops those two for NPUA80856 and does not edit the
+module. The `--decrypt` route (copies, redirected settings, null stdin, watchdog, judged by hash) follows Soulbrandt's
+docs/90 (JonathanDC64, MIT); the code is written here. Standard library only, Python 3.8+ (rpcs3_locate: 3.11+ for
+its own command line; the functions used here run on 3.8).
+"""
+import argparse
+import glob
+import hashlib
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import rpcs3_locate as loc  # noqa: E402  (vendored unchanged from Project Pyrrhus)
+
+TITLE = "NPUA80856"
+# rpcs3_locate's problems that do not apply to a game installed in dev_hdd0/game (see the docstring)
+IGNORED = ("missing_disc", "no_decrypted_eboot")
+# The tested files (docs/GETTING-FILES.md, tools/check-game-files.py): (input, output, size, SHA-256)
+EBOOT = ("EBOOT.BIN", "EBOOT.elf", 19706080, "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc")
+LIBSRE = ("libsre.sprx", "libsre.prx", 239344, "9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6")
+WATCHDOG = 30
+WINDOWS = os.name == "nt"
+FLATPAK_ID = "net.rpcs3.RPCS3"
+
+HELP = {
+    "not_found": "No RPCS3 folder was found. Pick RPCS3's folder (where rpcs3.exe is, or its config folder on "
+                 "Linux), or pick your files yourself.",
+    "not_rpcs3": "That folder is not an RPCS3 folder (no rpcs3.exe, vfs.yml or games.yml).",
+    "no_game": "RPCS3 has no Killzone HD (NPUA80856) installed in dev_hdd0/game. Install the game's package from "
+               "the Killzone Trilogy disc in RPCS3 (see its documentation), then check again.",
+    "game_incomplete": "The Killzone HD folder in RPCS3 is missing a file (named below). Install the game again in "
+                       "RPCS3, then check again.",
+    "no_firmware": "RPCS3 has no PS3 system software installed (no sys/external/libsre.sprx in its dev_flash). "
+                   "Install the firmware in RPCS3 (see its documentation), then check again.",
+    "no_exe": "The RPCS3 program itself was not found (rpcs3.exe, the rpcs3 command, an AppImage or the Flatpak). "
+              "Pick it, or pick your files yourself.",
+    "decrypt_failed": "RPCS3 did not make the file named below. Check that this RPCS3 runs the game, then try again, "
+                      "or pick your files yourself.",
+    "wrong_file": "RPCS3 made the file named below, but it is not the tested one: the game must be NPUA80856 "
+                  "version 01.00, and the firmware 4.93.",
+}
+
+
+def _problem(code, detail=""):
+    return {"code": code, "text": HELP[code] + (f" ({detail})" if detail else "")}
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+# ---------------------------------------------------------------------------------------------------- the program
+def find_exe(root, given=None, home=None):
+    """The command that starts the player's RPCS3, as an argv prefix, or None. given (a file the player picked)
+    first; then rpcs3.exe in the RPCS3 folder (Windows and portable installs); then the rpcs3 command, an AppImage in
+    the usual folders and the Flatpak."""
+    if given:
+        return [given] if os.path.isfile(given) else None
+    home = home or os.path.expanduser("~")
+    if root:
+        for name in ("rpcs3.exe", "rpcs3"):
+            p = os.path.join(root, name)
+            if os.path.isfile(p):
+                return [p]
+    if WINDOWS:
+        return None
+    p = shutil.which("rpcs3")
+    if p:
+        return [p]
+    images = []
+    for d in ("Applications", ".local/bin", "Downloads", "bin", "Games", "AppImages"):
+        images += glob.glob(os.path.join(home, d, "*[Rr][Pp][Cc][Ss]3*.AppImage"))
+    if images:
+        return [max(images, key=os.path.getmtime)]   # the newest one
+    if shutil.which("flatpak"):
+        r = subprocess.run(["flatpak", "info", FLATPAK_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if r.returncode == 0:
+            return ["flatpak", "run", FLATPAK_ID]
+    return None
+
+
+# -------------------------------------------------------------------------------------------------- resolve
+def detect(hint=None):
+    cands = [c for c in loc.find_rpcs3(hint or None) if c.get("root")]
+    if not cands:
+        return {"status": "not_found"}
+    return {"status": "ok", "root": cands[0]["root"], "source": cands[0]["source"]}
+
+
+def resolve(hint=None, exe=None, home=None):
+    """What the player's RPCS3 has for the port: {"status", "root", "game", "edat", "dev_flash", "exe" (argv),
+    "problems": [{"code", "text"}]}. Reads only."""
+    res = loc.locate(hint or None, {TITLE: None})
+    out = {"status": "not_found", "root": res.get("root"), "game": "", "edat": "", "dev_flash": res.get("dev_flash")
+           or "", "exe": None, "problems": []}
+    if not res["ok"]:
+        code = "not_rpcs3" if res.get("code") == "not_rpcs3" else "not_found"
+        out["problems"].append(_problem(code))
+        return out
+    t = res["titles"][TITLE]
+    upd = t.get("update") or {}
+    game = upd.get("path") if upd.get("ok") else next((i["path"] for i in t.get("installs") or []
+                                                       if i.get("name") == TITLE), "")
+    probs = [p for p in t["problems"] if p["code"] not in IGNORED + ("missing_update",)]
+    if not game:
+        probs = [_problem("no_game")]
+    else:
+        out["game"] = game
+        missing = [n for n in ("PARAM.SFO", "USRDIR/EBOOT.BIN", "USRDIR/data_ps3.psarc.edat")
+                   if not os.path.isfile(os.path.join(game, n))]
+        if missing:
+            probs.append(_problem("game_incomplete", ", ".join(missing)))
+        out["edat"] = os.path.join(game, "USRDIR", "data_ps3.psarc.edat")
+    if not os.path.isfile(os.path.join(out["dev_flash"], "sys", "external", LIBSRE[0])):
+        probs.append(_problem("no_firmware"))
+    out["exe"] = find_exe(res["root"], exe, home)
+    if not out["exe"]:
+        probs.append(_problem("no_exe"))
+    out["problems"] = probs
+    out["status"] = "problems" if probs else "ok"
+    return out
+
+
+# -------------------------------------------------------------------------------------------------- decrypt
+def rpcs3_env(cfg, environ=None):
+    """The environment for a child RPCS3 whose settings, cache and log go to cfg, not to the player's own."""
+    e = dict(os.environ if environ is None else environ)
+    e["QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES"] = "1"
+    if WINDOWS:
+        e["RPCS3_CONFIG_DIR"] = os.path.join(cfg, "")   # RPCS3 cuts the value after its last separator
+    else:
+        e["XDG_CONFIG_HOME"] = os.path.join(cfg, "config")
+        e["XDG_CACHE_HOME"] = os.path.join(cfg, "cache")
+        e.setdefault("QT_QPA_PLATFORM", "offscreen")
+    return e
+
+
+def _argv(exe, cfg, inputs):
+    argv = list(exe)
+    if argv[:2] == ["flatpak", "run"]:
+        argv[2:2] = [f"--filesystem={os.path.dirname(cfg)}", f"--env=XDG_CONFIG_HOME={cfg}/config",
+                     f"--env=XDG_CACHE_HOME={cfg}/cache"]
+    for p in inputs:
+        argv += ["--decrypt", p]   # never "--decrypt=": that form misses RPCS3's headless path
+    return argv
+
+
+def _stop(proc):
+    try:
+        if WINDOWS:
+            proc.kill()
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)   # the AppImage's runtime and RPCS3 under it: our group only
+    except OSError:
+        pass
+
+
+def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None):
+    """Copies each (source path, (in name, out name, size, sha)) into prep/in, runs RPCS3 --decrypt on the copies and
+    checks each output. Returns {"ok", "files": {out name: path}, "problems"}. The copies and RPCS3's settings are
+    removed afterwards; the good outputs are moved to prep."""
+    log = log or (lambda line: None)
+    inp, cfg = os.path.join(prep, "in"), os.path.join(prep, "rpcs3")
+    shutil.rmtree(inp, ignore_errors=True)
+    shutil.rmtree(cfg, ignore_errors=True)
+    os.makedirs(inp)
+    os.makedirs(cfg)
+    copies = []
+    for src, spec in sources:
+        dst = os.path.join(inp, spec[0])
+        shutil.copyfile(src, dst)
+        copies.append((dst, spec))
+    argv = _argv(exe, cfg, [d for d, _ in copies])
+    log("rpcs3: " + " ".join(loc.redact(a) if os.path.isabs(a) else a for a in argv))
+    kw: dict = {"creationflags": 0x08000000} if WINDOWS else {"start_new_session": True}   # CREATE_NO_WINDOW
+    outs = [os.path.join(inp, spec[1]) for _, spec in copies]
+    timed_out = False
+    with open(os.path.join(prep, "rpcs3-decrypt.log"), "wb") as f:
+        proc = subprocess.Popen(argv, cwd=prep, env=rpcs3_env(cfg), stdin=subprocess.DEVNULL, stdout=f,
+                                stderr=subprocess.STDOUT, **kw)
+        done, last = 0, time.monotonic()
+        while proc.poll() is None:
+            now = sum(1 for o in outs if os.path.isfile(o))
+            if now != done:
+                done, last = now, time.monotonic()
+            if time.monotonic() - last > watchdog:
+                timed_out = True
+                _stop(proc)
+                proc.wait()
+                break
+            time.sleep(0.25)
+    log(f"rpcs3: exit {proc.returncode}" + (f" (stopped after {watchdog} s without a new file)" if timed_out else ""))
+    res = {"ok": True, "files": {}, "problems": []}
+    for (copy, (_, out_name, size, digest)), out in zip(copies, outs):
+        if not os.path.isfile(out):
+            res["problems"].append(_problem("decrypt_failed", out_name))
+            continue
+        got_size, got = os.path.getsize(out), sha256(out)
+        log(f"rpcs3: {out_name} {got_size} bytes, SHA-256 {got[:16]}...")
+        if got_size != size or got != digest:
+            res["problems"].append(_problem("wrong_file", f"{out_name}: {got_size} bytes, SHA-256 {got[:16]}..."))
+            continue
+        final = os.path.join(prep, out_name)
+        os.replace(out, final)
+        res["files"][out_name] = final
+    shutil.rmtree(inp, ignore_errors=True)
+    shutil.rmtree(cfg, ignore_errors=True)
+    res["ok"] = not res["problems"]
+    return res
+
+
+def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG):
+    """resolve(), then decrypt EBOOT.BIN and libsre.sprx into work/prep. The result of resolve() plus "eboot" and
+    "libsre" (paths) and status ok|failed."""
+    r = resolve(hint, exe)
+    if r["status"] != "ok":
+        return r
+    prep = os.path.join(work, "prep")
+    os.makedirs(prep, exist_ok=True)
+    have = {spec[1]: os.path.join(prep, spec[1]) for spec in (EBOOT, LIBSRE)}
+    want = [(src, spec) for src, spec in ((os.path.join(r["game"], "USRDIR", EBOOT[0]), EBOOT),
+                                          (os.path.join(r["dev_flash"], "sys", "external", LIBSRE[0]), LIBSRE))
+            if not (os.path.isfile(have[spec[1]]) and sha256(have[spec[1]]) == spec[3])]   # kept from a last run
+    d = decrypt(r["exe"], want, prep, watchdog, log) if want else {"ok": True, "problems": []}
+    r["problems"] = d["problems"]
+    r["status"] = "ok" if d["ok"] else "failed"
+    if d["ok"]:
+        r["eboot"], r["libsre"] = have["EBOOT.elf"], have["libsre.prx"]
+    return r
+
+
+# -------------------------------------------------------------------------------------------------- command line
+def lines(res):
+    out = [f"status={res['status']}"]
+    for k in ("root", "source", "game", "edat", "dev_flash", "eboot", "libsre"):
+        if res.get(k):
+            out.append(f"{k}={res[k]}")
+    if res.get("exe"):
+        out.append("exe=" + " ".join(res["exe"]))
+    out += [f"problem={p['code']}|{p['text']}" for p in res.get("problems", [])]
+    return out
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--detect", action="store_true")
+    g.add_argument("--resolve", action="store_true")
+    g.add_argument("--prepare", action="store_true")
+    ap.add_argument("--rpcs3", default="", help="RPCS3's folder (default: the usual places)")
+    ap.add_argument("--exe", default="", help="the RPCS3 program (default: found from the folder, PATH, AppImages, "
+                                              "the Flatpak)")
+    ap.add_argument("--work", help="with --prepare: the port's work folder (the files go to WORK/prep)")
+    ap.add_argument("--out", help="write the key=value lines here (UTF-8 with a BOM) instead of stdout")
+    a = ap.parse_args(argv)
+    if a.prepare and not a.work:
+        ap.error("--prepare needs --work")
+    if a.detect:
+        res = detect(a.rpcs3)
+    elif a.resolve:
+        res = resolve(a.rpcs3, a.exe or None)
+    else:
+        res = prepare(a.work, a.rpcs3, a.exe or None, log=lambda line: print(line, file=sys.stderr))
+    text = "\n".join(lines(res)) + "\n"
+    if a.out:
+        with open(a.out, "w", encoding="utf-8-sig", newline="\r\n" if WINDOWS else "\n") as f:
+            f.write(text)
+    else:
+        sys.stdout.write(text)
+    return 0 if res["status"] == "ok" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

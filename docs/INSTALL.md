@@ -20,7 +20,13 @@ You need these files from your own game and your own PS3 firmware.
 - Optional: the firmware's `dev_flash` folder, as RPCS3 keeps it. It holds `sys\external\flashMP3.pic`, the game's
   music decoder. Without it, the music and sound stop at the first MP3.
 
-This project gives no decryption tools or instructions. The setup and the scripts only read your files.
+**Already playing it in RPCS3?** When RPCS3 has Killzone HD and the PS3 firmware 4.93 installed, the Linux folder's
+`./run.sh` and the zip's `run.cmd` find them and offer to use them: your RPCS3 then decrypts copies of `EBOOT.BIN` and
+`libsre.sprx` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The
+setup program does not offer this yet.
+
+This project gives no decryption tools or instructions. The setup and the scripts only read your files; on the RPCS3
+route your own RPCS3 decrypts copies of them, and nothing is written into the game's or RPCS3's folders.
 
 Your PC: Windows x64 or Linux x64, a CPU with AVX2, and a Vulkan graphics card and driver
 ([requirements.md](requirements.md)). Beside the 4 GB of game files, keep free about 2.4 GB on Windows (3.2 GB

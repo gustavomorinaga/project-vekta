@@ -5,6 +5,7 @@ with one progress bar, and remember where the files are.
     tools/release/firstrun.py [--game DIR] [--eboot FILE] [--psarc FILE] [--libsre FILE] [--dev-flash DIR]
                               [--dlss accept|decline] [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE]
                               [--bar] [--dry-run]
+    tools/release/firstrun.py --rpcs3 [DIR] [other options]   (the game and the firmware from the player's RPCS3)
     tools/release/firstrun.py --interactive [same options: they become the answers it offers]
     tools/release/firstrun.py --remove-desktop
     tools/release/firstrun.py --save-paths [--game DIR] [--eboot FILE] ...   (the Windows setup program)
@@ -22,6 +23,11 @@ The paths: each one from its option, else the environment (the KZ_* variables of
 work/paths.env, else the defaults under Game/ (PS3_DEV_FLASH: RPCS3's dev_flash). Once the check passes they are
 written to work/paths.env, which tools/env.sh reads, so tools/play.sh and the other scripts find them without
 exports (a variable set in the environment still wins).
+
+--rpcs3 [DIR] (tools/release/rpcs3_import.py): the installed game folder, its data_ps3.psarc.edat and dev_flash
+are taken from the player's RPCS3 (DIR, else the usual places), and that RPCS3 decrypts copies of EBOOT.BIN and
+libsre.sprx into work/prep (checked by SHA-256); those paths are then saved like any others. --interactive offers it
+when an RPCS3 with the game is found and no paths were saved before.
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
   check     tools/check-game-files.py (every run; a missing or different required file stops here)
@@ -756,6 +762,42 @@ What each file must be: docs/GETTING-FILES.md. Enter keeps the path in brackets.
 """
 
 
+def rpcs3_import():
+    """tools/release/rpcs3_import.py (beside this file; the tests replace this function with a stand-in)."""
+    import rpcs3_import as m   # noqa: E402
+    return m
+
+
+def use_rpcs3(c, hint=None, say=print):
+    """--rpcs3: the paths from the player's RPCS3 and its decrypted copies (rpcs3_import.prepare); saved in
+    work/paths.env. Returns [] when done, else the problems' texts."""
+    r = rpcs3_import().prepare(c.work, hint or None, log=say)
+    if r["status"] != "ok":
+        return [p["text"] for p in r["problems"]]
+    c.paths.update(game=r["game"], eboot=r["eboot"], libsre=r["libsre"], dev_flash=r["dev_flash"])
+    write_paths(c.work, c.paths)
+    say(f"From RPCS3: the game in {r['game']}, the firmware in {r['dev_flash']}; EBOOT.elf and libsre.prx made by "
+        f"your RPCS3 in {os.path.dirname(r['eboot'])}")
+    return []
+
+
+def offer_rpcs3(c, hint, ask=input, say=print):
+    """--interactive: when an RPCS3 with the game is found, ask whether to use it. True when the paths came from it."""
+    r = rpcs3_import().resolve(hint or None)
+    if r["status"] != "ok":
+        if hint is not None:   # asked for by name: say why not
+            say("Your RPCS3 cannot be used:\n" + "\n".join("  " + p["text"] for p in r["problems"]))
+        return False
+    say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']} and the PS3 firmware.")
+    if ask("Use your RPCS3 install (it decrypts copies of the game's EBOOT and libsre for the port)? [Y/n] ") \
+            .strip().lower() in ("n", "no"):
+        return False
+    probs = use_rpcs3(c, hint, say)
+    if probs:
+        say("That did not work:\n" + "\n".join("  " + p for p in probs) + "\nPick the files yourself instead.")
+    return not probs
+
+
 def ask_paths(paths, only=None, ask=input, say=print):
     """Ask for each input (or only those named), offering the current path; returns the new {option: path}."""
     out = dict(paths)
@@ -805,8 +847,12 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
     """Ask for the paths, run the check until it passes (or the player quits), then build with the bar."""
     say(NOTICE.format(version=read_version(c.root)))
     only = None
+    hint = getattr(a, "rpcs3", None)
+    skip_ask = (hint is not None or not read_paths(c.work)) and offer_rpcs3(c, hint, ask, say)
     while True:
-        c.paths = ask_paths(c.paths, only, ask, say)
+        if not skip_ask:
+            c.paths = ask_paths(c.paths, only, ask, say)
+        skip_ask = False
         log = new_log(c, redactor())
         r = Runner(c, STEPS[:1], log, out=out, status_file=a.status_file, quiet=True)
         rc = r.run()
@@ -844,6 +890,9 @@ def main(argv=None):
                     help="accept: you accept NVIDIA's DLSS SDK licence (" + DLSS_LICENSE_URL + "), and the build "
                          "downloads the SDK from NVIDIA and builds DLSS in; decline: no DLSS. Kept for later runs "
                          "(work/dlss-choice); --interactive asks once when it was never answered")
+    ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
+                    help="take the game and the firmware from your RPCS3 (DIR, else the usual places); your RPCS3 "
+                         "decrypts copies of EBOOT.BIN and libsre.sprx into work/prep")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: from free memory)")
     ap.add_argument("--root", default=ROOT, help="the source tree (the tests use a copy)")
     ap.add_argument("--status-file", help="keep the LOG line and the latest PROGRESS/RESULT line in this file")
@@ -893,6 +942,11 @@ def main(argv=None):
         except (KeyboardInterrupt, EOFError):
             print("\nstopped")
             return 130
+    if a.rpcs3 is not None:
+        probs = use_rpcs3(c, a.rpcs3)
+        if probs:
+            print("firstrun: your RPCS3 cannot be used:\n" + "\n".join("  " + p for p in probs), file=sys.stderr)
+            return 1
     log = new_log(c, redactor())
     r = Runner(c, STEPS, log, status_file=a.status_file, bar=a.bar)
     r.emit(f"LOG {log.path}")

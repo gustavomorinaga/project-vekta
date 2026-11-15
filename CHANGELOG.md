@@ -13,6 +13,11 @@ program and folder that build it. Until a release that calls itself playable
   without a window until the archive is open (about a minute; `tools/kzbuild.py data`), checks it and takes the movies
   out of it. The opened archive is kept in `work/edat-cache` (3.1 GB); nothing is written into the game folder. A
   decrypted `data_ps3.psarc` you already have keeps working as before.
+- Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, `tools/install.sh`
+  and the zip's `run.cmd` find them and offer to use them (`firstrun.py --rpcs3 [DIR]` without asking). Your RPCS3
+  then decrypts copies of the game's `EBOOT.BIN` and the firmware's `libsre.sprx` into `work/prep`, each checked by
+  SHA-256, and no file needs preparing by hand. RPCS3's settings for that run are kept in `work/prep`; nothing is
+  written into the game's or RPCS3's folders. The setup program's own page for this comes later.
 - 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world's view is the
   game's own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and
   wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.

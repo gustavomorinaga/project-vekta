@@ -221,6 +221,9 @@ with tempfile.TemporaryDirectory() as tmp:
                    (["n"] if os.name != "nt" else []))
     real_license = firstrun.fetch_license
     firstrun.fetch_license = lambda c: str(tmp / "LICENSE.txt")   # no network in a test
+    real_import = firstrun.rpcs3_import   # no RPCS3 of this machine: the offer is tested in test_rpcs3_import.py
+    firstrun.rpcs3_import = lambda: type("NoRpcs3", (), {"resolve": staticmethod(
+        lambda hint: {"status": "not_found", "problems": []})})
     asked = []
 
     def ask(q):
@@ -247,6 +250,7 @@ with tempfile.TemporaryDirectory() as tmp:
     rc = firstrun.interactive(c, A(), ask=ask, say=said.append, out=console)
     firstrun.Runner.run = real
     firstrun.fetch_license = real_license
+    firstrun.rpcs3_import = real_import
     os.environ.pop("FAIL_STEP", None)
     check(rc == 0, f"--interactive builds once the check passes: {said[-2:]}")
     if os.name != "nt":
