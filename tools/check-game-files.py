@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Checks the player's own files against what the port was made from (docs/GETTING-FILES.md), before a lift.
 
-    tools/check-game-files.py [--quick]
+    tools/check-game-files.py [--quick] [--root DIR] [--work DIR]
 
 Reads the paths from the same environment variables as tools/env.sh (KZ_GAME, KZ_EBOOT, KZ_PSARC, KZ_LIBSRE,
 PS3_DEV_FLASH), with the same defaults under Game/. Each file is checked by size and SHA-256 (--quick: size and
 magic only, skipping the 3 GB archive's hash). Prints one line per file and what to do about a mismatch; exits 1
 if a required file is missing or different. Standard library only; reads, never writes.
+
+With --root (the port's folder) and --work (its work folder), tools/release/firstrun.py's check step also checks the
+place the build runs in, each FAIL saying what to do: a path holding [ ] or ; (CMake reads them as list syntax and
+stops while configuring), a folder inside OneDrive (it syncs and locks the build's files while they are written), and
+a PC clock behind the port's own files (Ninja then sees them as changed forever). After Project Helghast's
+firstrun_check.py checks P1, O1 and T1 (undecuple, MIT); written here.
 """
 import hashlib
 import os
@@ -58,9 +64,64 @@ def sha256(path):
     return h.hexdigest()
 
 
+CMAKE_BAD_CHARS = "[];"
+CLOCK_SLACK = 24 * 3600   # a day: file times from another time zone are not a wrong clock
+CLOCK_FILES = ("VERSION", "tools/kzbuild.py", "tools/check-game-files.py", "port/kz1hd/main.cpp")
+ONEDRIVE_VARS = ("OneDrive", "OneDriveConsumer", "OneDriveCommercial")
+
+
+def _inside(path, base):
+    p, b = os.path.normcase(os.path.abspath(path)), os.path.normcase(os.path.abspath(base))
+    return p == b or p.startswith(b.rstrip(os.sep) + os.sep)
+
+
+def place_problems(root, work, environ=None, now=None):
+    """The FAIL lines for the place the build runs in (see the docstring); [] when fine."""
+    environ = os.environ if environ is None else environ
+    out = []
+    for what, path in (("port folder", root), ("work folder", work)):
+        if not path:
+            continue
+        bad = sorted({ch for ch in path if ch in CMAKE_BAD_CHARS})
+        if bad:
+            out.append(f"FAIL     the {what} {path} has {' '.join(bad)} in its path: the build tools (CMake) stop on "
+                       "these characters. Move or unpack the port to a folder whose whole path has none of [ ] ;")
+        od = next((environ[v] for v in ONEDRIVE_VARS if environ.get(v) and _inside(path, environ[v])), "")
+        if od:
+            out.append(f"FAIL     the {what} {path} is inside OneDrive ({od}), which syncs and locks the build's files "
+                       "while they are written. Move the port to a folder outside OneDrive")
+    if root:
+        import time
+        now = time.time() if now is None else now
+        times = [os.path.getmtime(os.path.join(root, f)) for f in CLOCK_FILES if os.path.isfile(os.path.join(root, f))]
+        if times and max(times) > now + CLOCK_SLACK:
+            day = lambda t: time.strftime("%Y-%m-%d", time.localtime(t))  # noqa: E731
+            out.append(f"FAIL     the PC's clock ({day(now)}) is behind the port's own files ({day(max(times))}): the "
+                       "build would never finish. Set the date and time right (on Windows: set the time "
+                       "automatically), then run it again")
+    return out
+
+
+def wrong_kind(label, head):
+    """What to say about a file that starts with the wrong bytes, by what it is instead."""
+    if head == b"SCE\0":
+        return ("this is still encrypted (an EBOOT.BIN or .sprx). The port needs the decrypted file; when the game and "
+                "the firmware are installed in RPCS3, `firstrun.py --rpcs3` (offered by run.cmd, run.sh and "
+                "install.sh) has your RPCS3 decrypt a copy")
+    if head == b"NPD\0" and label == "data_ps3.psarc":
+        return ("this is the .edat the package installs. Leave data_ps3.psarc unset (KZ_PSARC, the setup's field "
+                "empty): the port then reads the game folder's own data_ps3.psarc.edat")
+    return f"it starts with {head.hex()}"
+
+
 def main():
-    quick = "--quick" in sys.argv[1:]
+    args = sys.argv[1:]
+    quick = "--quick" in args
+    opt = lambda name: args[args.index(name) + 1] if name in args[:-1] else ""  # noqa: E731
     bad = False
+    for line in place_problems(opt("--root"), opt("--work")):
+        print(line)
+        bad = True
     for label, path, size, digest, magic, required, what in FILES:
         tag = "required" if required else "optional"
         if not os.path.isfile(path):
@@ -71,7 +132,7 @@ def main():
         with open(path, "rb") as f:
             head = f.read(4)
         if magic and head != magic:
-            print(f"WRONG    {label}: {path} starts with {head.hex()}, not {magic.hex()}\n         expected: {what}")
+            print(f"WRONG    {label}: {path}: {wrong_kind(label, head)}\n         expected: {what}")
             bad |= required
             continue
         if size is not None and got_size != size:
@@ -91,7 +152,7 @@ def main():
             continue
         print(f"ok       {label}")
     if bad:
-        print("\nSome required files are missing or differ: see docs/GETTING-FILES.md.")
+        print("\nSomething above stops the build: see docs/GETTING-FILES.md.")
     return 1 if bad else 0
 
 

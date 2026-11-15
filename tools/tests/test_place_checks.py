@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Host test for the first run's checks of the place it builds in and of the kind of each file (parity items A3-A5):
+tools/check-game-files.py refuses a path with [ ] or ;, a folder inside OneDrive and a PC clock behind the port's
+files, names an encrypted file or the .edat given as the archive by what they are, and firstrun.py's check step
+passes on those lines as reasons; a port folder that was moved gets a fresh build and its saved paths pointed at the
+new place. No game data."""
+import importlib.util
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+import time
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "release"))
+import firstrun  # noqa: E402
+
+spec = importlib.util.spec_from_file_location("cgf", ROOT / "tools" / "check-game-files.py")
+cgf = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cgf)
+
+fails = 0
+
+
+def check(cond, what):
+    global fails
+    if not cond:
+        fails += 1
+        print("FAIL:", what)
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = pathlib.Path(tmp)
+    good = tmp / "Games" / "Project Vekta"
+    (good / "tools").mkdir(parents=True)
+    (good / "VERSION").write_text("0.5.0\n")
+    now = time.time()
+    os.utime(good / "VERSION", (now, now))
+    check(cgf.place_problems(str(good), str(good / "work"), environ={}, now=now) == [], "a plain folder: no problem")
+
+    p = cgf.place_problems(str(tmp / "Vekta [v0.5]"), str(tmp / "Vekta [v0.5]" / "work"), environ={}, now=now)
+    check(len(p) == 2 and all(x.startswith("FAIL") and "[ ]" in x and "CMake" in x for x in p),
+          f"[ and ] in the path are refused, for the port and the work folder: {p}")
+    p = cgf.place_problems(str(tmp / "a;b"), "", environ={}, now=now)
+    check(len(p) == 1 and " ; " in p[0] + " ", f"; is refused: {p}")
+
+    od = tmp / "OneDrive - Contoso"
+    p = cgf.place_problems(str(od / "Vekta"), "", environ={"OneDriveCommercial": str(od)}, now=now)
+    check(len(p) == 1 and "OneDrive" in p[0] and str(od) in p[0], f"a folder inside OneDrive is refused: {p}")
+    p = cgf.place_problems(str(tmp / "OneDriveX" / "Vekta"), "", environ={"OneDrive": str(tmp / "OneDrive")}, now=now)
+    check(p == [], f"a sibling whose name only starts like OneDrive's is fine: {p}")
+
+    p = cgf.place_problems(str(good), "", environ={}, now=now - 3 * 86400)
+    check(len(p) == 1 and "clock" in p[0], f"a clock three days behind the port's files is refused: {p}")
+    p = cgf.place_problems(str(good), "", environ={}, now=now - 3600)
+    check(p == [], f"an hour behind (another time zone's file times) is fine: {p}")
+
+    check("still encrypted" in cgf.wrong_kind("EBOOT.elf", b"SCE\0") and "--rpcs3" in cgf.wrong_kind("libsre.prx",
+          b"SCE\0"), "an encrypted EBOOT or libsre is named so, with the RPCS3 route")
+    check("Leave data_ps3.psarc unset" in cgf.wrong_kind("data_ps3.psarc", b"NPD\0"),
+          "the .edat given as the decrypted archive: leave it unset")
+
+    # The script: the FAIL lines come first and stop it; firstrun's check step gives them as reasons
+    env = dict(os.environ, KZ_GAME=str(tmp / "none"), KZ_EBOOT=str(tmp / "none"), KZ_PSARC=str(tmp / "none"),
+               KZ_LIBSRE=str(tmp / "none"))
+    eboot = tmp / "EBOOT.elf"
+    eboot.write_bytes(b"SCE\0" + b"\0" * 60)
+    env["KZ_EBOOT"] = str(eboot)
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "check-game-files.py"), "--quick", "--root",
+                        str(tmp / "x[1]"), "--work", str(tmp / "w")], capture_output=True, text=True, env=env)
+    lines = r.stdout.splitlines()
+    check(r.returncode == 1 and lines[0].startswith("FAIL") and any("WRONG    EBOOT.elf" in x and "still encrypted" in x
+          for x in lines), f"the script: the place first, then the files: {lines[:4]}")
+    c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "work"))
+    runner = firstrun.Runner(c, firstrun.STEPS[:1], log=type("L", (), {"write": lambda self, x: None})(),
+                             out=open(os.devnull, "w"), quiet=True)
+    reasons = runner.why_failed(firstrun.STEPS[0], lines, 1)
+    check(any(x.startswith("FAIL") for x in reasons) and "eboot" in runner.fail_inputs,
+          f"firstrun's check step reports the FAIL line and asks for the EBOOT again: {reasons}")
+    check(firstrun.STEPS[0].commands(c)[0][-4:] == ["--root", str(ROOT), "--work", str(tmp / "work")],
+          "firstrun's check step passes the port and work folders")
+
+    # A moved port folder: the CMake cache names the old one
+    old, new = tmp / "old", tmp / "new"
+    (new / "port" / "kz1hd").mkdir(parents=True)
+    (new / "Game").mkdir()
+    (new / "Game" / "EBOOT.elf").write_text("x")
+    work = new / "work"
+    b = work / ("build-win" if os.name == "nt" else "build")
+    b.mkdir(parents=True)
+    (b / "CMakeCache.txt").write_text(f"CMAKE_HOME_DIRECTORY:INTERNAL={old / 'port' / 'kz1hd'}\n")
+    (b / "old.o").write_text("")
+    elsewhere = tmp / "elsewhere" / "libsre.prx"
+    firstrun.write_paths(str(work), {"eboot": str(old / "Game" / "EBOOT.elf"), "libsre": str(elsewhere)})
+    c = firstrun.Ctx(root=str(new), paths=firstrun.resolve_paths(str(new), str(work), {}), work=str(work))
+    check(firstrun.moved_from(c) == str(old), f"the old folder comes from the CMake cache: {firstrun.moved_from(c)}")
+    check(firstrun.heal_moved_paths(c) == str(old), "heal_moved_paths reports the move")
+    saved = firstrun.read_paths(str(work))
+    check(saved["eboot"] == str(new / "Game" / "EBOOT.elf") and c.paths["eboot"] == saved["eboot"],
+          f"a saved path inside the old folder points into the new one: {saved}")
+    check(saved["libsre"] == str(elsewhere), "a path outside the old folder stays as it was")
+    msg = firstrun.before_compile(c)
+    check(msg and "moved" in msg and not b.exists(), f"the build folder made in the old place is emptied: {msg}")
+    check(firstrun.moved_from(c) == "", "no cache, no move")
+
+print("test_place_checks:", "FAIL" if fails else "ok")
+sys.exit(1 if fails else 0)

@@ -315,6 +315,40 @@ def build_dir(c):
     return os.environ.get("KZ_BUILD") or c.w("build-win" if os.name == "nt" else "build")
 
 
+def moved_from(c):
+    """The port folder the build folder's CMake cache was made in, when that is not this one (the folder was moved or
+    renamed since: CMake refuses such a cache, and Ninja would make the old folders again); else "". After Project
+    Helghast's root_moved (undecuple, MIT); written here."""
+    try:
+        with open(os.path.join(build_dir(c), "CMakeCache.txt"), encoding="utf-8", errors="replace") as f:
+            home = next((ln.split("=", 1)[1].strip() for ln in f if ln.startswith("CMAKE_HOME_DIRECTORY:")), "")
+    except OSError:
+        return ""
+    here = os.path.join(c.root, "port", "kz1hd")
+    if not home or os.path.normcase(os.path.abspath(home)) == os.path.normcase(os.path.abspath(here)):
+        return ""
+    tail = os.path.normcase(os.path.normpath(home)).replace("\\", "/")
+    return os.path.dirname(os.path.dirname(os.path.normpath(home))) if tail.endswith("/port/kz1hd") else home
+
+
+def heal_moved_paths(c):
+    """After a move, the saved paths that pointed inside the old port folder (the defaults under Game/, the RPCS3
+    route's work/prep) and are gone are pointed at the same place in this one, when it is there. Returns the old
+    folder, or ""."""
+    old = moved_from(c)
+    if not old or old.endswith(os.path.join("port", "kz1hd")):
+        return ""
+    saved, changed = read_paths(c.work), False
+    for name, p in saved.items():
+        rel = os.path.relpath(p, old) if os.path.isabs(p) else ""
+        if rel and not rel.startswith("..") and not os.path.exists(p) and os.path.exists(os.path.join(c.root, rel)):
+            saved[name] = c.paths[name] = os.path.join(c.root, rel)
+            changed = True
+    if changed:
+        write_paths(c.work, saved)
+    return old
+
+
 def before_compile(c):
     """A CMake folder left by another version or patch set (an install over an earlier release, the stamp of the
     build it holds says which) is emptied, so nothing that version compiled, configured or cached carries over. A
@@ -327,12 +361,19 @@ def before_compile(c):
     cache = os.path.join(bdir, "CMakeCache.txt")
     if not os.path.isfile(cache):
         return None
+    inside = os.path.normcase(os.path.abspath(bdir)).startswith(os.path.normcase(os.path.abspath(c.work)) + os.sep)
+    old_root = moved_from(c)
+    if old_root:
+        if inside:
+            shutil.rmtree(bdir)
+        else:
+            os.remove(cache)
+        return f"a fresh build: the port folder was moved or renamed (it was {old_root})"
     stamp = read_stamp(c.work) or {}
     want = {"version": read_version(c.root), "patchset": read_patchset(c.work)}
     old = {k: stamp.get(k) for k in want}
     if old == want:
         return None
-    inside = os.path.normcase(os.path.abspath(bdir)).startswith(os.path.normcase(os.path.abspath(c.work)) + os.sep)
     if inside:
         shutil.rmtree(bdir)
         return f"a clean build: the build folder was made from {old}, this tree is {want}"
@@ -354,7 +395,8 @@ def after_stamp(c):
 # Weights from the maintainer's run of a fresh v0.1.0 folder (2026-10-31, 16 threads): check 3 s, patch ~10 s,
 # lift 37 s, vfs 30 s, compile 109 s; the venv's pip about 15 s.
 STEPS = [
-    Step("check", "Checking your game files", 2, lambda c: [[c.python, c.t("check-game-files.py")]], always=True),
+    Step("check", "Checking your game files", 2,
+         lambda c: [[c.python, c.t("check-game-files.py"), "--root", c.root, "--work", c.work]], always=True),
     Step("venv", "Installing the build tools", 6, cmd_venv, keys=("venv",)),
     Step("patch", "Patching ps3recomp", 5, cmd_patch, keys=("patch",)),
     Step("lift", "Translating the game's code", 20, kzbuild("lift"), keys=("files", "patch", "lift")),
@@ -669,9 +711,9 @@ class Runner:
         """The check: one reason per file it found missing or different (and which inputs those are); another step:
         its last error line, else its last line."""
         if step.name == "check":
-            fails = [ln for ln in out if re.match(r"^(MISSING|WRONG|DIFFERENT)\s", ln)]
+            fails = [ln for ln in out if re.match(r"^(MISSING|WRONG|DIFFERENT|FAIL)\s", ln)]
             for ln in fails:
-                label = ln.split()[1]
+                label = ln.split()[1].rstrip(":")   # "WRONG    EBOOT.elf: <path>: ..." names it with a colon
                 if label in INPUT_OF:
                     self.fail_inputs.add(INPUT_OF[label])
             if fails:
@@ -922,6 +964,11 @@ def main(argv=None):
     if a.dlss and not a.dry_run:
         write_dlss(work, a.dlss)
     c.dlss = a.dlss or read_dlss(work)
+    if not a.dry_run:
+        old = heal_moved_paths(c)
+        if old:
+            print(f"The port folder was moved (it was {old}): saved paths inside it now point here, and the build "
+                  "is made again")
     if a.save_paths:
         given = {n: os.path.abspath(os.path.expanduser(getattr(a, n))) for n, *_ in INPUTS if getattr(a, n)}
         if not given:
