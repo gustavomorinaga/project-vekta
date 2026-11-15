@@ -62,6 +62,32 @@ jobs:
       - name: Windows host tests under Wine (the toolchain from tools/release/toolchain.json, SHA-256 checked)
         run: bash tools/wine-host-tests.sh
 
+  release-tools-windows:
+    # The release tools' Python tests on a real Windows (paths, drive letters, os.name == "nt" branches), listed in
+    # tools/host-tests-windows.txt. After Project Helghast's release-tools-windows job (undecuple, MIT).
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Line endings as committed
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Release tools' tests (every one runs; the step names the failed ones)
+        run: |
+          failed=""
+          while read -r t; do
+            case "$t" in ''|'#'*) continue ;; esac
+            echo "== $t"
+            python "$t" || failed="$failed $t"
+          done < tools/host-tests-windows.txt
+          if [ -n "$failed" ]; then echo "failed:$failed"; exit 1; fi
+
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 15
