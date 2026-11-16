@@ -6,6 +6,7 @@ import os
 import pathlib
 import sys
 import tempfile
+import urllib.parse
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "release"))
@@ -83,7 +84,7 @@ with tempfile.TemporaryDirectory() as tmp:
                     b' {"tag_name": "nightly", "html_url": "https://github.com/n"}]')
     check(vc.fetch_latest(opener) == ("v0.6.0", "https://github.com/x"),
           "fetch_latest: the highest version, pre-releases included, drafts and other tags left out")
-    check(seen == [(vc.URL, vc.AGENT, None, vc.TIMEOUT)] and "api.github.com" in vc.URL,
+    check(seen == [(vc.URL, vc.AGENT, None, vc.TIMEOUT)] and urllib.parse.urlsplit(vc.URL).hostname == "api.github.com",
           f"one request to GitHub's API, no cookie, a plain User-Agent: {seen}")
     check(vc.fetch_latest(lambda req, timeout: Resp(b"not json")) is None, "a bad answer is a failed request")
     check("version-check" in (ROOT / "README.md").read_text() or "New-version check" in
