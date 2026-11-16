@@ -53,6 +53,7 @@
 #include "menu_box.h"    /* the list box the mouse drives */
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
+#include "res_list.h"    /* the sizes the Resolution row offers */
 
 extern "C" {
 extern uint8_t* vm_base;
@@ -463,18 +464,11 @@ static int pick(const std::string& v, const char* const* names, int n) { for (in
 static void res_list(void)
 {
     if (!s_res.empty()) return;
-    int sz[32][2];
+    int sz[32][2], out[16][2], w = 0, h = 0;
     const int n = rsx_vulkan_display_sizes(sz, 32);
-    for (int i = 0; i < n; i++) s_res.push_back({ sz[i][0], sz[i][1] });
-    static const int common[][2] = { {3840,2160},{2560,1440},{1920,1080},{1600,900},{1280,720} };
-    if (s_res.empty()) for (auto& c : common) s_res.push_back({ c[0], c[1] });
-    int w, h;
-    if (sscanf(s_ini["resolution"].c_str(), "%dx%d", &w, &h) == 2 &&
-        std::find(s_res.begin(), s_res.end(), std::make_pair(w, h)) == s_res.end()) {
-        s_res.push_back({ w, h });
-        std::sort(s_res.begin(), s_res.end(), [](auto& a, auto& b) { return a.first * a.second > b.first * b.second; });
-    }
-    if (s_res.size() > 16) s_res.resize(16);
+    if (sscanf(s_ini["resolution"].c_str(), "%dx%d", &w, &h) != 2) w = h = 0;
+    for (int i = 0, c = kz_res_list(sz, n, w, h, out, 16); i < c; i++) s_res.push_back({ out[i][0], out[i][1] });
+    fprintf(stderr, "[kz] Resolution row: %d display sizes, %zu offered, setting %dx%d\n", n, s_res.size(), w, h);
 }
 static int res_index(void)
 {
