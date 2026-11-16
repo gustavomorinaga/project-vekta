@@ -38,6 +38,9 @@ are linked.
   problem late in a level may still be found. The lighting at the start of level 11 (Hope) is to be checked.
 - **Slow memory growth** of about 0.24 MB per minute standing still in Level 1 (15 minutes, 2026-10-17). Not a
   problem in a play session.
+- **Film grain fades out in chapter 1's fourth part** (`1.HQGrounds`, 2026-11-16). Not a fault of the port: the game
+  takes its grain from 0.15 to 0 in about 30 seconds there, the same in RPCS3, so the PC page's Film Grain has nothing
+  to scale. The glow likewise shows only where the game draws its source (some spots of Level 11).
 - **No on-screen trophy notice.** Trophies unlock and are logged to `gamedata/trophies/NPWR03819.log`.
 
 ## PC
