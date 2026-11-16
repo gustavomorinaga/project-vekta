@@ -120,8 +120,9 @@ with tempfile.TemporaryDirectory() as tmp:
 
     rc, out, calls, r, raw = run(root, game, status=status)
     check(rc == 0 and "RESULT ok=1 step=-" in out, "the first run builds: " + out[-300:])
-    check(calls == ["check", "pip", "patch", "lift", "vfs", "build", "data"], f"every step runs: {calls}")
-    check(f"jobs=3 eboot={game}/EBOOT.elf" in raw, f"the steps get the paths and the job count: {raw}")
+    pip = ["pip"] if firstrun.cmd_venv(ctx(root, game)) else []   # Windows and the pinned toolchain have no pip step
+    check(calls == ["check"] + pip + ["patch", "lift", "vfs", "build", "data"], f"every step runs: {calls}")
+    check(f"jobs=3 eboot={os.path.join(str(game), 'EBOOT.elf')}" in raw, f"the steps get the paths and the job count: {raw}")
     pcts = [float(ln.rsplit("pct=", 1)[1]) for ln in out.splitlines() if ln.startswith("PROGRESS ")]
     check(pcts == sorted(pcts) and pcts[-1] == 100.0, f"the progress only grows, to 100: {pcts[-5:]}")
     check("name=compile done=2 total=2" in out, "Ninja's [x/y] lines are the compile's progress")
@@ -216,9 +217,8 @@ with tempfile.TemporaryDirectory() as tmp:
     check(sorted(p.name for p in (root / "work").iterdir()) == before and "kzbuild.py" in out.getvalue(),
           "--dry-run prints the plan and writes nothing")
 
-    # --interactive: a failed check asks for the failing file only, then asks once about DLSS (Linux), then builds
-    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", str(game / "EBOOT.elf")] +
-                   (["n"] if os.name != "nt" else []))
+    # --interactive: a failed check asks for the failing file only, then asks once about DLSS, then builds
+    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", str(game / "EBOOT.elf"), "n"])
     real_license = firstrun.fetch_license
     firstrun.fetch_license = lambda c: str(tmp / "LICENSE.txt")   # no network in a test
     real_import = firstrun.rpcs3_import   # no RPCS3 of this machine: the offer is tested in test_rpcs3_import.py
@@ -253,10 +253,9 @@ with tempfile.TemporaryDirectory() as tmp:
     firstrun.rpcs3_import = real_import
     os.environ.pop("FAIL_STEP", None)
     check(rc == 0, f"--interactive builds once the check passes: {said[-2:]}")
-    if os.name != "nt":
-        check(any(firstrun.DLSS_LICENSE_URL in s and str(tmp / "LICENSE.txt") in s for s in said) and
-              c.dlss == "decline" and firstrun.read_dlss(c.work) == "decline" and firstrun.cmd_dlss(c) == [],
-              "--interactive asks about DLSS once, with the licence's link and text; no is kept and fetches nothing")
+    check(any(firstrun.DLSS_LICENSE_URL in s and str(tmp / "LICENSE.txt") in s for s in said) and
+          c.dlss == "decline" and firstrun.read_dlss(c.work) == "decline" and firstrun.cmd_dlss(c) == [],
+          "--interactive asks about DLSS once, with the licence's link and text; no is kept and fetches nothing")
     check("PROGRESS " not in console.getvalue() and "RESULT " not in console.getvalue() and "100.0%" in console.getvalue(),
           "the console shows the bar, not the protocol lines")
     check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 7,
