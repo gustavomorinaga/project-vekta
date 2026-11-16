@@ -33,7 +33,7 @@ each phase's estimated relative effort.
 | 3. SPU and SPURS | 7 | 95 % |
 | 4. RSX on Vulkan | 7 | 75 % |
 | 5. First level | 9 | 90 % |
-| 6. Full campaign | 11 | 50 % |
+| 6. Full campaign | 11 | 80 % |
 | 7. PC: runtime | 7 | 45 % |
 | 8. PC: the game's map | 12 | 30 % |
 | 9. Killzone 2 and Killzone 3 | 22 | 2 % |
@@ -49,8 +49,9 @@ gave no measurable gain, and skipping the redundant commands PSGL emits would gi
 for it (rebased routes, alternating A/B, the store journal for checking native code) stay. State, what was ruled out
 and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 
-1. **Finish Killzone HD's campaign (phase 6).** Play levels 2 to 11 to their end and fix what shows up; check a save
-   made at a checkpoint end to end.
+1. **Finish Killzone HD's campaign (phase 6).** Levels 2 to 11 play from start to end on Linux and on Windows
+   (2026-11-16); left: compare each level with reference footage, the lighting at the start of level 11, and a save
+   made at a checkpoint checked end to end.
 2. ~~**Move to ps3recomp v0.18.0**~~ (done 2026-10-28): the patches re-applied, the 11 levels running, speed at the
    v0.14 level (Level 7 about 131 to 135 fps). The first-person weapon problem in the 144 Hz mode stays open
    ([KNOWN_ISSUES.md](KNOWN_ISSUES.md), [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md)).
@@ -59,7 +60,7 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
    without movies when FFmpeg is missing, and writes `kz1hd.log` when there is no stderr. It also ran on a real
    Windows (2026-10-29). The setup program that builds the port on the player's machine shipped in 0.2.0
    (2026-11-01), after [Project Helghast](https://github.com/undecuple/project-helghast). Left: a clean Windows
-   machine, the campaign on Windows, speed under Wine and Proton (about 100 fps against about 134 on Linux, Level 7),
+   machine, speed under Wine and Proton (about 100 fps against about 134 on Linux, Level 7),
    and the first testers' reports on AMD graphics ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)).
 4. **PC options of the runtime (phase 7):** the remaining items below.
 5. **Talk with the Killzone 2 and Killzone 3 ports (phase 9) and design the launcher (phase 11).**
@@ -118,13 +119,14 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] Lean game logs (about 110 KB per 8-minute session)
 - [x] Part of the campaign played by hand without problems (2026-10-20)
 - [x] Separate test run folder (tests do not delete the player's saves)
-- [ ] Levels 2 to 11 played from start to end and checked against reference footage
+- [x] Levels 2 to 11 played from start to end, on Linux and on Windows (the maintainer, 2026-11-16)
+- [ ] Each level compared with reference footage
 - [ ] To check: the lighting at the start of level 11 (Hope)
 - [x] Saves: the real title (NPUA80856) from PARAM.SFO; the profile loads and Continue returns to the checkpoint
 - [ ] A save made at a checkpoint checked end to end
 - [x] Trophies as a local log: names, grades and platinum from the installed game's `TROPHY.TRP`, one line per trophy
       in `gamedata/trophies/NPWR03819.log` (after Project Pyrrhus's patch 5004). An on-screen notice is missing
-- [ ] Full campaign on Windows
+- [x] Full campaign on Windows (the maintainer, 2026-11-16)
 
 ## PC: Killzone HD
 
@@ -227,7 +229,7 @@ and online modes whose servers were shut down.
 - [ ] Design the architecture (one executable per game or one process, language, interface)
 - [x] "Bring your own game" installer: find the player's files, check them by hash, translate the EBOOT and compile
       on their machine (the Windows setup program and `tools/install.sh` on Linux, 0.2.0; the Linux release folder,
-      0.3.0)
+      0.3.0; from the player's own RPCS3, with "Show me how", 0.5.0)
 - [ ] Library with the games, install state and port updates; global and per-game options; controller profiles
 - [ ] Save and local trophy manager
 - [ ] Windows and Linux builds; its own name, no Killzone branding

@@ -18,7 +18,7 @@ otherwise. Last checked 2026-10-30.
 |---|---|---|---|---|
 | Boot and menus | Logos, opening movie, front end, options, pause menu | as shipped | **works** | every run since 2026-10-14 |
 | Campaign | Level 1 | first level | **works** | played by hand from start to end |
-| Campaign | Levels 2 to 11 | the rest of the campaign | **partial**: all load and reach gameplay; not each played to its end | 2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20 |
+| Campaign | Levels 2 to 11 | the rest of the campaign | **works** on Linux and on Windows | 2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16) |
 | Campaign | Cutscene and level movies | AVI movies through `cellSail` | **works** (FFmpeg) | 30 movies; runs without FFmpeg skip them |
 | Campaign | Game logic timing | 30 Hz | **works** at 30 and 60 Hz; 144 Hz with one known problem ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)) | hints, movement and rate of fire checked at 60 Hz |
 | Saves | Profile, checkpoints, Continue | one profile save | **works**: Continue returns to the checkpoint; a checkpoint save checked end to end is still to do | 2026-10-20 |
@@ -81,6 +81,6 @@ How it is built, how fast it runs and how it reaches players.
 | Item | State | Evidence |
 |---|---|---|
 | Linux x64 build | **works** | built and played on the maintainer's machine; [BUILDING.md](BUILDING.md) |
-| Windows x64 exe (cross-built on Linux) | **partial**: runs under Wine, Proton and on Windows; the campaign not checked there | `tools/wine-test.sh` passes under Wine and GE-Proton 11 (2026-10-30); [KNOWN_ISSUES.md](KNOWN_ISSUES.md) |
+| Windows x64 exe (cross-built on Linux) | **works**: runs under Wine, Proton and on Windows; the whole campaign played there | `tools/wine-test.sh` passes under Wine and GE-Proton 11 (2026-10-30); [KNOWN_ISSUES.md](KNOWN_ISSUES.md); the whole campaign played on a real Windows (the maintainer, reported 2026-11-16) |
 | Frame rate | **works**: a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps | Level 1 and Level 7 on Linux, RTX 3070 Ti; [dev/performance.md](dev/performance.md) |
-| Installer that builds the port on the player's PC | **partial**: `tools/install.sh` on Linux; on Windows a release folder (`tools/release/assemble_payload.py`, `run.cmd`) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0 | [ROADMAP.md](ROADMAP.md), phase 11 |
+| Installer that builds the port on the player's PC | **works**: `tools/install.sh` on Linux; on Windows a release folder (`tools/release/assemble_payload.py`, `run.cmd`) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0 | [ROADMAP.md](ROADMAP.md), phase 11; the 0.5.0 install (from the player's RPCS3 or from prepared files, "Show me how") installed, built and played on Windows and Linux (the maintainer, reported 2026-11-16) |

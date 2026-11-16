@@ -6,7 +6,7 @@
 
 After Project Pyrrhus's and Project Helghast's tools/release/release_notes.py (undecuple, MIT), with this project's
 wording and assets:
-  Project Vekta X.Y.Z, a pre-release: partly playable, see docs/RELEASE-CRITERIA.md.
+  Project Vekta X.Y.Z, a pre-release: playable from start to end, see docs/RELEASE-CRITERIA.md.
   How to install: <a link to docs/INSTALL.md, then the fixed paragraph below>   (after 0.4.0: here, before the lists)
   New in X.Y.Z: <the entry's Added/Changed/... items, one bullet each>
   Fixed: <its fixes>                       (part of the list above for the first published release, which also
@@ -29,7 +29,7 @@ import release_version  # noqa: E402
 
 ROOT = HERE.parents[1]
 REPO = "https://github.com/gustavomorinaga/project-vekta"
-STATUS = "partly playable"   # the page's headline while Levels 2 to 11 are partial (tools/website.py)
+STATUS = "playable from start to end"   # the page's headline since Levels 2 to 11 work (tools/website.py)
 HEADING = re.compile(r"## \[([^\]]+)\](?:[ \t]+-[ \t]+(\d{4}-\d\d-\d\d))?[ \t]*(?:\(([^)]*)\))?[ \t]*$")
 NEW_SECTIONS = ("Added", "Changed", "Removed", "Deprecated", "Security")
 RELEASED = ("pre-release", "release")

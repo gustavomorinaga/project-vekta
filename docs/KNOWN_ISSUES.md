@@ -34,8 +34,9 @@ are linked.
   their edges, as if their alpha test or blending went wrong. Seen once in a player's screenshot; not yet
   investigated (whether it also happens at 16:9 and the game's FOV, and which draws). Low priority. To look into it:
   an F12 capture where it shows, and the leaves' draws in its `draws.txt` (blend, alpha test, texture format).
-- **Levels 2 to 11 not each played to their end.** All load and reach gameplay, and parts were played by hand; a
-  problem late in a level may still be found. The lighting at the start of level 11 (Hope) is to be checked.
+- **The lighting at the start of level 11 (Hope)** is still to be compared with the PS3. The whole campaign plays
+  from start to end on Linux and on Windows (the maintainer, 2026-11-16); the levels are not yet each compared with
+  reference footage.
 - **Slow memory growth** of about 0.24 MB per minute standing still in Level 1 (15 minutes, 2026-10-17). Not a
   problem in a play session.
 - **Film grain fades out in chapter 1's fourth part** (`1.HQGrounds`, 2026-11-16). Not a fault of the port: the game
@@ -95,8 +96,8 @@ are linked.
 - **No MangoHUD row** on the PC page of the Windows exe (MangoHUD is a Linux Vulkan layer; under Proton use it from
   the Linux side).
 - **The setup program was tried on one real Windows** (the maintainer's, 2026-10-31: the first build took about four
-  minutes, then the game held 60 fps; 0.3.0's installed over 0.2.0 there on 2026-11-06 and played), not yet on a
-  clean Windows machine, and the full campaign was not played on Windows.
+  minutes, then the game held 60 fps; 0.3.0's installed over 0.2.0 there on 2026-11-06 and played; 0.5.0's test
+  setup on 2026-11-16, and the whole campaign played there), not yet on a clean Windows machine.
 - **The port is built on the player's PC**, by the setup program or on the first start (about four to five minutes,
   and about 1.6 GB more on disk): the game is not shipped, so it cannot be prebuilt.
 
