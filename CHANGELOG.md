@@ -18,6 +18,11 @@ program and folder that build it. Until a release that calls itself playable
   then decrypts copies of the game's `EBOOT.BIN` and the firmware's `libsre.sprx` into `work/prep`, each checked by
   SHA-256, and no file needs preparing by hand. RPCS3's settings for that run are kept in `work/prep`; nothing is
   written into the game's or RPCS3's folders. The setup program's own page for this comes later.
+- The first run's check also looks at where the port is: a folder path with `[`, `]` or `;` (the build tools stop on
+  them), a folder inside OneDrive (it locks the build's files) and a PC clock behind the port's files (the build
+  would never end) each stop it with what to do. An encrypted `EBOOT.BIN` or `.sprx`, or the `.edat` given as the
+  decrypted archive, is named as such. A port folder that was moved or renamed is built again instead of failing in
+  CMake, and the saved paths that pointed inside it follow it.
 - 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world's view is the
   game's own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and
   wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.
@@ -72,6 +77,8 @@ program and folder that build it. Until a release that calls itself playable
   wizard, as it does.
 
 ### Fixed
+- After a check that found a file of the wrong kind (`WRONG`), `run.cmd` and `tools/install.sh` asked for every file
+  again instead of only that one.
 - Anti-aliasing at any resolution: the game's MLAA, its glow and the sprint motion blur only ran when the frame was
   drawn at exactly 1280x720. With the internal resolution scale, or the default fill to a window of any other size,
   none of the three ran and the picture had no anti-aliasing at all. They now run at the size the frame is drawn

@@ -44,7 +44,9 @@ tools/check-game-files.py --quick  # skips hashing the 3 GB archive
 
 Each line says `ok`, `MISSING`, `WRONG` (not the right kind of file: for example the `.edat` given as the
 decrypted archive, or `EBOOT.BIN` instead of `EBOOT.elf`) or `DIFFERENT` (the right kind of file, but not the version
-the port was made from). With no decrypted archive the check looks at the game's `data_ps3.psarc.edat` instead. A required file that is missing, wrong or different stops the check, and the build with it;
+the port was made from). With no decrypted archive the check looks at the game's `data_ps3.psarc.edat` instead. During the first
+run it also checks the folder the port is in (`--root`, `--work`): no `[`, `]` or `;` in its path, not inside
+OneDrive, and a PC clock not behind the port's files. A required file that is missing, wrong or different stops the check, and the build with it;
 an optional one (the trophy set, `flashMP3.pic`) only gets its line. The tested versions:
 
 | File | Size (bytes) | SHA-256 |
