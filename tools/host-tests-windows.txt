@@ -1,0 +1,8 @@
+# The host tests that also run on Windows (CI's release-tools-windows job, on windows-latest): Python only, no game
+# data, no GPU, no shell scripts. One path per line, run from the repository root with python.
+tools/tests/test_release.py
+tools/tests/test_version_agree.py
+tools/tests/test_check_install.py
+tools/tests/test_firstrun.py
+tools/tests/test_place_checks.py
+tools/tests/test_version_check.py

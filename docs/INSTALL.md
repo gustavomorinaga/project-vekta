@@ -47,7 +47,9 @@ administrator rights.
    - "Create a desktop shortcut".
    - "Build now, in this wizard": on by default. Untick it to build on the first start instead.
    - "Portable": off by default. Ticked, saves and settings stay in the install folder; left off, they go to
-     `%APPDATA%\Project Vekta`.
+     `%APPDATA%\Project Vekta`. To change it later, run `play.cmd --move-data portable` (or `--move-data appdata`)
+     in the install folder: it moves the saves and settings and remembers the choice, and moves nothing when the
+     other folder already has some.
 3. **Your game.** Pick the installed game folder. Picking the folder above it also works.
 4. **Your decrypted files.** Pick `EBOOT.elf` and `libsre.prx`. Leave `data_ps3.psarc` empty to use the game
    folder's own `.edat`, or pick a decrypted one you already have.

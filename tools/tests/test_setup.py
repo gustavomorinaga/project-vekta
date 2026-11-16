@@ -148,6 +148,31 @@ with tempfile.TemporaryDirectory() as tmp:
           f"the old saves and settings moved: {moved}")
     check(pathlib.Path(data, "kz1hd_keys.ini").read_text() == "new keys" and
           pathlib.Path(run_folder, "kz1hd_keys.ini").exists(), "a file already in the data folder is kept")
+
+# --move-data: the saves follow the choice changed after the install, never over a file already there
+with tempfile.TemporaryDirectory() as tmp:
+    t = pathlib.Path(tmp)
+    env = {"APPDATA": str(t / "appdata"), "KZ_WORK": str(t / "work")}
+    run_folder = t / "work" / "vfs"
+    ok, text = launch.move_data(tmp, "appdata", env)
+    check(not ok and "setup program" in text, f"--move-data outside a setup install says so: {text}")
+    (t / launch.INSTALL_INI).write_text("[install]\nportable=1\n")
+    (run_folder / "gamedata").mkdir(parents=True)
+    (run_folder / "kz1hd_pc.ini").write_text("mine")
+    ok, text = launch.move_data(tmp, "appdata", env)
+    data = t / "appdata" / "Project Vekta"
+    check(ok and (data / "kz1hd_pc.ini").read_text() == "mine" and (data / "gamedata").is_dir()
+          and not (run_folder / "kz1hd_pc.ini").exists(), f"portable to %APPDATA%: the saves moved: {text}")
+    check(launch.data_dir(tmp, str(run_folder), env) == str(data), "the choice is recorded in vekta-install.ini")
+    (run_folder / "kz1hd_pc.ini").write_text("another")
+    ok, text = launch.move_data(tmp, "portable", env)
+    check(not ok and "kz1hd_pc.ini" in text and (data / "kz1hd_pc.ini").read_text() == "mine"
+          and launch.data_dir(tmp, str(run_folder), env) == str(data),
+          f"a file on both sides: nothing moves, the choice stays: {text}")
+    (run_folder / "kz1hd_pc.ini").unlink()
+    ok, text = launch.move_data(tmp, "portable", env)
+    check(ok and (run_folder / "kz1hd_pc.ini").read_text() == "mine"
+          and launch.data_dir(tmp, str(run_folder), env) == str(run_folder), f"back to the install folder: {text}")
     check(launch.migrate(run_folder, run_folder) == [], "portable: nothing moves")
 iss_text = (ROOT / "installer" / "vekta.iss").read_text()
 for v in ("1", "0"):
