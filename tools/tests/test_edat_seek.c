@@ -1,4 +1,4 @@
-/* Patch 4015: the EDAT reader seeks with 64-bit offsets. fseek takes a long, 32 bits on Windows, so every block of a
+/* Patches 4015 and 4016: the EDAT reader seeks, and its cache check reads sizes, with 64 bits. fseek takes a long, 32 bits on Windows, so every block of a
  * data archive past 2 GiB (Killzone HD's is 3 GB) failed to read there and nothing was decrypted. This seeks to 2.5 GiB
  * in a sparse 3 GiB file and reads a marker back. Linux: tools/tests/test_edat_seek.sh; Windows: tools/wine-host-tests.sh
  * (the case that failed). Writes only to the folder given as argv[1] (default: the current one). */
@@ -19,7 +19,11 @@ int main(int argc, char** argv)
     f = fopen(path, "rb");
     ok = f && edat_seek(f, at) == 0 && fread(got, 1, sizeof got, f) == sizeof got && memcmp(got, mark, sizeof mark) == 0;
     if (f) fclose(f);
+    int64_t size = edat_file_size(path);   /* patch 4016: the cache check's size, 64 bits on Windows too */
     remove(path);
+    int size_ok = size == (int64_t)(at + sizeof mark);
     puts(ok ? "PASS: edat_seek reads at 2.5 GiB" : "FAIL: edat_seek did not reach 2.5 GiB");
-    return ok ? 0 : 1;
+    printf("%s: edat_file_size gives %lld for a file of %llu bytes\n", size_ok ? "PASS" : "FAIL", (long long)size,
+           (unsigned long long)(at + sizeof mark));
+    return ok && size_ok ? 0 : 1;
 }
