@@ -207,7 +207,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(sh({}) == odd, f"tools/env.sh takes the saved path: {sh({})!r}")
     check(sh({"KZ_EBOOT": "/mine"}) == "/mine", "a variable set in the environment wins")
     check(firstrun.resolve_paths(str(root), str(root / "work"), {})["eboot"] == odd, "a run takes the saved paths")
-    check(firstrun.resolve_paths(str(root), str(root / "work"), {"eboot": "/x"})["eboot"] == "/x",
+    check(firstrun.resolve_paths(str(root), str(root / "work"), {"eboot": "/x"})["eboot"] == os.path.abspath("/x"),
           "an option beats the saved path")
 
     # --dry-run writes nothing
@@ -261,21 +261,22 @@ with tempfile.TemporaryDirectory() as tmp:
     check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 7,
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
 
-# the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again
-with tempfile.TemporaryDirectory() as tmp:
-    os.environ["XDG_DATA_HOME"] = tmp
-    odd = '/opt/my "odd" $dir'
-    p = firstrun.install_desktop(odd)
-    text = pathlib.Path(p).read_text()
-    check(p == os.path.join(tmp, "applications", "project-vekta.desktop"), f"the entry goes to the menu folder: {p}")
-    check('Exec="/opt/my \\\\"odd\\\\" \\\\$dir/tools/play.sh"' in text, f"Exec is quoted and escaped: {text}")
-    check(f"Icon={odd}/assets/icon.svg" in text and "Categories=Game;" in text, "the entry has the icon and category")
-    if shutil.which("desktop-file-validate"):
-        r = subprocess.run(["desktop-file-validate", p], capture_output=True, text=True)
-        check(r.returncode == 0, "desktop-file-validate accepts it: " + r.stdout + r.stderr)
-    check(firstrun.remove_desktop() == p and not os.path.exists(p) and firstrun.remove_desktop() is None,
-          "--remove-desktop removes it, once")
-    del os.environ["XDG_DATA_HOME"]
+# the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again (Linux only)
+if os.name != "nt":
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["XDG_DATA_HOME"] = tmp
+        odd = '/opt/my "odd" $dir'
+        p = firstrun.install_desktop(odd)
+        text = pathlib.Path(p).read_text()
+        check(p == os.path.join(tmp, "applications", "project-vekta.desktop"), f"the entry goes to the menu folder: {p}")
+        check('Exec="/opt/my \\\\"odd\\\\" \\\\$dir/tools/play.sh"' in text, f"Exec is quoted and escaped: {text}")
+        check(f"Icon={odd}/assets/icon.svg" in text and "Categories=Game;" in text, "the entry has the icon and category")
+        if shutil.which("desktop-file-validate"):
+            r = subprocess.run(["desktop-file-validate", p], capture_output=True, text=True)
+            check(r.returncode == 0, "desktop-file-validate accepts it: " + r.stdout + r.stderr)
+        check(firstrun.remove_desktop() == p and not os.path.exists(p) and firstrun.remove_desktop() is None,
+              "--remove-desktop removes it, once")
+        del os.environ["XDG_DATA_HOME"]
 check((ROOT / "assets/icon.svg").is_file(), "the icon the entry names is in the tree")
 
 # --save-paths (the Windows setup program): writes only the paths given, keeps the others, runs no step
@@ -288,7 +289,7 @@ with tempfile.TemporaryDirectory() as tmp:
         check(firstrun.main(["--root", tmp, "--save-paths", "--game", "/g/NPUA80856"]) == 0, "--save-paths writes")
         check(firstrun.main(["--root", tmp, "--save-paths", "--eboot", "/g/EBOOT.elf"]) == 0, "a second one adds")
         saved = firstrun.read_paths(work)
-        check(saved == {"game": "/g/NPUA80856", "eboot": "/g/EBOOT.elf"}, f"both kept, nothing else: {saved}")
+        check(saved == {"game": os.path.abspath("/g/NPUA80856"), "eboot": os.path.abspath("/g/EBOOT.elf")}, f"both kept, nothing else: {saved}")
         firstrun.write_paths(work, {"eboot": win})
         check(firstrun.read_paths(work) == {"eboot": win}, "a Windows path with spaces reads back the same")
         check(sorted(os.listdir(work)) == ["paths.env"], "no step ran: only paths.env in work/")
