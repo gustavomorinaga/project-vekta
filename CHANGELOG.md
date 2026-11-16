@@ -7,6 +7,8 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-16 (pre-release)
+
 ### Added
 - "Show me how" in the installers: the setup's "Your game" page, `run.cmd`, `./run.sh` and `tools/install.sh` now
   offer three choices, "Use my RPCS3 install", "I have the files ready" and "Show me how", which lists the steps to
