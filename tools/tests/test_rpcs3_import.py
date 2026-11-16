@@ -196,6 +196,18 @@ with tempfile.TemporaryDirectory() as tmp:
     c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "work4"))
     check(not firstrun.offer_rpcs3(c, str(rp), ask=lambda q: "n", say=said.append) and "eboot" not in c.paths,
           "the interactive offer, declined, leaves the paths to the questions")
+    c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "work4b"))
+    said = []
+    answers = iter(["3", "1"])
+    check(firstrun.offer_rpcs3(c, str(rp), ask=lambda q: next(answers), say=said.append) and
+          firstrun.SHOW_ME_HOW in said and c.paths.get("eboot", "").endswith("EBOOT.elf"),
+          "Show me how prints the steps and asks again; 1 then uses RPCS3")
+    c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "work4c"))
+    said = []
+    answers = iter(["1", ""])
+    check(not firstrun.offer_rpcs3(c, str(tmp / "nowhere"), ask=lambda q: next(answers), say=said.append) and
+          any("cannot be used" in s for s in said) and "eboot" not in c.paths,
+          "no RPCS3: 1 says why and asks again; Enter picks the files")
     err = io.StringIO()
     so, sys.stderr = sys.stderr, err
     try:

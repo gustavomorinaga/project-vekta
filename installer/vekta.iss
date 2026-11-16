@@ -53,6 +53,7 @@
 #define LibsreSize "239344"
 #define TitleId "NPUA80856"
 #define FilesDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md"
+#define InstallDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
 #define LauncherExe "Project Vekta.exe"
 #define SiteURL "https://gustavomorinaga.github.io/project-vekta/"
 #define IssuesURL "https://github.com/gustavomorinaga/project-vekta/issues"
@@ -512,9 +513,10 @@ begin
     'nothing needs preparing by hand. Your game and RPCS3 folders are only read.', True, False);
   SourcePage.Add('Use my RPCS3 install');
   SourcePage.Add('I will pick the game folder and the decrypted files myself');
+  SourcePage.Add('Show me how');
   SourcePage.SelectedValueIndex := 1;
   { What the RPCS3 check found, or why the RPCS3 option is greyed out, right under the two options }
-  SourcePage.CheckListBox.Height := ScaleY(44);
+  SourcePage.CheckListBox.Height := ScaleY(66);
   RpcsNote := TNewStaticText.Create(SourcePage);
   RpcsNote.Parent := SourcePage.Surface;
   RpcsNote.Left := 0;
@@ -745,6 +747,17 @@ begin
       MsgBox(Problem, mbError, MB_OK);
       Result := False;
     end;
+  end else if (CurPageID = SourcePage.ID) and (SourcePage.SelectedValueIndex = 2) then begin
+    { "Show me how": the steps (the same as firstrun.py's SHOW_ME_HOW), then the page again }
+    MsgBox('The easy way, through RPCS3:' + #13#10 +
+      '1. In RPCS3, install PS3 system software {#Firmware} (File, Install Firmware).' + #13#10 +
+      '2. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc.' + #13#10 +
+      '3. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
+      'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
+      'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +
+      'myself" and give the installed game folder, EBOOT.elf, libsre.prx and the firmware''s dev_flash.' + #13#10#13#10 +
+      'Every step: {#InstallDoc}' + #13#10 + 'What each file must be: {#FilesDoc}', mbInformation, MB_OK);
+    Result := False;
   end else if CurPageID = GamePage.ID then begin
     GamePage.Values[0] := ResolveGame(GamePage.Values[0]);
     Problem := GameProblem(GamePage.Values[0]);

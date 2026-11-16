@@ -8,6 +8,9 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- "Show me how" in the installers: the setup's "Your game" page, `run.cmd`, `./run.sh` and `tools/install.sh` now
+  offer three choices, "Use my RPCS3 install", "I have the files ready" and "Show me how", which lists the steps to
+  get the game and the firmware into RPCS3 and asks again. Without RPCS3 the scripts say why it cannot be used.
 - The decrypted `data_ps3.psarc` is no longer needed: without it the port reads the installed game's own
   `USRDIR/data_ps3.psarc.edat`, as the package or RPCS3 installs it. After the build the install runs the game once
   without a window until the archive is open (about a minute; `tools/kzbuild.py data`), checks it and takes the movies

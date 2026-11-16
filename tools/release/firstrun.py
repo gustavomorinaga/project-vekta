@@ -865,21 +865,45 @@ def use_rpcs3(c, hint=None, say=print):
     return []
 
 
+INSTALL_DOC = "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
+SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, also at """ + INSTALL_DOC + """):
+  The easy way, through RPCS3:
+    1. In RPCS3, install PS3 system software 4.93 (File > Install Firmware).
+    2. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc.
+    3. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
+       Nothing is written into the game's or RPCS3's folders.
+  Or, with the decrypted files you already have: choose "I have the files ready" and give the installed game
+  folder, EBOOT.elf, libsre.prx and the firmware's dev_flash (docs/GETTING-FILES.md says what each must be)."""
+
+
 def offer_rpcs3(c, hint, ask=input, say=print):
-    """--interactive: when an RPCS3 with the game is found, ask whether to use it. True when the paths came from it."""
+    """--interactive: "Use my RPCS3 install" (when RPCS3 has the game), "I have the files ready" or "Show me how".
+    True when the paths came from RPCS3; False leaves them to the questions."""
     r = rpcs3_import().resolve(hint or None)
-    if r["status"] != "ok":
-        if hint is not None:   # asked for by name: say why not
-            say("Your RPCS3 cannot be used:\n" + "\n".join("  " + p["text"] for p in r["problems"]))
-        return False
-    say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']} and the PS3 firmware.")
-    if ask("Use your RPCS3 install (it decrypts copies of the game's EBOOT and libsre for the port)? [Y/n] ") \
-            .strip().lower() in ("n", "no"):
-        return False
-    probs = use_rpcs3(c, hint, say)
-    if probs:
-        say("That did not work:\n" + "\n".join("  " + p for p in probs) + "\nPick the files yourself instead.")
-    return not probs
+    found = r["status"] == "ok"
+    if found:
+        say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']} and the PS3 firmware.")
+    else:
+        say("Your RPCS3 cannot be used:\n" + "\n".join("  " + p["text"] for p in r["problems"])
+            if r["problems"] else "No RPCS3 with Killzone HD and the PS3 firmware was found.")
+    while True:
+        say("  1. Use my RPCS3 install (it decrypts copies of the game's EBOOT and libsre for the port)"
+            + ("" if found else ": not available")
+            + "\n  2. I have the files ready\n  3. Show me how")
+        got = ask(f"Your choice [{1 if found else 2}]: ").strip().lower()
+        if got in ("3", "?", "h", "how"):
+            say(SHOW_ME_HOW)
+            continue
+        if got in ("2", "n", "no") or (not got and not found):
+            return False
+        if not found:
+            say("RPCS3 cannot be used (above). Fix that and run this again, or choose 2.")
+            continue
+        probs = use_rpcs3(c, hint, say)
+        if not probs:
+            return True
+        say("That did not work:\n" + "\n".join("  " + p for p in probs) + "\nChoose 2 to pick the files yourself.")
+        found = False
 
 
 def ask_paths(paths, only=None, ask=input, say=print):
