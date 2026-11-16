@@ -9,7 +9,8 @@ The payload keeps the repository's own layout, so tools/kzbuild.py and tools/rel
 run in a clone (the player's files, the lift and the build go to its work/ like in a clone):
 
   tools/          kzbuild.py, check-game-files.py, psarc_ls.py, extract_spu_modules.py and, in tools/release/,
-                  firstrun.py, launch.py, support.py, fetch_toolchain.py, build_win_deps.py, toolchain.json
+                  firstrun.py, launch.py, rpcs3_import.py, rpcs3_locate.py, support.py, fetch_toolchain.py,
+                  build_win_deps.py, toolchain.json
   re/             function_seeds.txt (the lift's seeds)
   port/           port/kz1hd (its sources, no tests) and port/cmake/*.cmake
   third_party/fidelityfx-fsr3/  AMD FSR 3.1's vendored sources (MIT), which the build compiles, and in tools/ffx/
@@ -70,6 +71,8 @@ RULES = [
     ("tools/extract_spu_modules.py", "tools/extract_spu_modules.py", "file", {}),
     ("tools/release/firstrun.py", "tools/release/firstrun.py", "file", {}),
     ("tools/release/launch.py", "tools/release/launch.py", "file", {}),
+    ("tools/release/rpcs3_import.py", "tools/release/rpcs3_import.py", "file", {}),
+    ("tools/release/rpcs3_locate.py", "tools/release/rpcs3_locate.py", "file", {}),
     ("tools/release/support.py", "tools/release/support.py", "file", {}),
     ("tools/release/fetch_toolchain.py", "tools/release/fetch_toolchain.py", "file", {}),
     ("tools/release/build_win_deps.py", "tools/release/build_win_deps.py", "file", {}),
