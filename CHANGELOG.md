@@ -8,6 +8,11 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- The decrypted `data_ps3.psarc` is no longer needed: without it the port reads the installed game's own
+  `USRDIR/data_ps3.psarc.edat`, as the package or RPCS3 installs it. After the build the install runs the game once
+  without a window until the archive is open (about a minute; `tools/kzbuild.py data`), checks it and takes the movies
+  out of it. The opened archive is kept in `work/edat-cache` (3.1 GB); nothing is written into the game folder. A
+  decrypted `data_ps3.psarc` you already have keeps working as before.
 - 4:3 and 16:10 screens: the picture now fills the window instead of showing 16:9 with bars. The world's view is the
   game's own 4:3 one (its vertical FOV is 100 divided by the aspect: 75 degrees at 4:3, 62.5 at 16:10; 16:9 and
   wider unchanged), the HUD sits in the corners, menus and movies stay 16:9 with bars above and below.

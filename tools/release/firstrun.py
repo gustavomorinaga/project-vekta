@@ -42,6 +42,9 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
             install over an earlier release), the build folder in work/ is emptied first and everything is
             compiled again: the release files all carry one fixed date, older than the objects an earlier build
             left, so Ninja would take those objects as up to date (outside work/ only CMakeCache.txt is removed)
+  data      only when there is no decrypted data_ps3.psarc: the built game runs once, without a window, until it
+            has opened the game folder's USRDIR/data_ps3.psarc.edat into work/edat-cache (kzbuild.py data; it
+            checks the result's SHA-256 and takes the movies out of it; every run, done at once after the first)
   stamp     work/build-stamp.json: the version, the patch set and the inputs this build was made from
 
 After a build, --desktop (or a yes to --interactive's question) writes the applications-menu entry
@@ -87,13 +90,15 @@ INPUTS = [
     ("game", "KZ_GAME", "the installed game folder (NPUA80856: PARAM.SFO, TROPDIR, USRDIR)",
      ("Game", "NPUA80856")),
     ("eboot", "KZ_EBOOT", "the decrypted EBOOT (EBOOT.elf)", ("Game", "EBOOT.elf")),
-    ("psarc", "KZ_PSARC", "the decrypted data archive (data_ps3.psarc)", ("Game", "data_ps3.psarc")),
+    ("psarc", "KZ_PSARC", "the decrypted data archive (data_ps3.psarc; optional: without it the game folder's own "
+     "USRDIR/data_ps3.psarc.edat is read)", ("Game", "data_ps3.psarc")),
     ("libsre", "KZ_LIBSRE", "the decrypted libsre from PS3 firmware 4.93 (libsre.prx)", ("Game", "libsre.prx")),
     ("dev_flash", "PS3_DEV_FLASH", "RPCS3's dev_flash folder (for the MP3 decoder; optional)" +
      (": in RPCS3's own folder, beside rpcs3.exe" if os.name == "nt" else ""), None),
 ]
 # What check-game-files.py names each input in its MISSING / WRONG / DIFFERENT lines.
-INPUT_OF = {"PARAM.SFO": "game", "TROPHY.TRP": "game", "EBOOT.elf": "eboot", "data_ps3.psarc": "psarc",
+INPUT_OF = {"PARAM.SFO": "game", "TROPHY.TRP": "game", "data_ps3.psarc.edat": "game", "EBOOT.elf": "eboot",
+            "data_ps3.psarc": "psarc",
             "libsre.prx": "libsre", "flashMP3.pic": "dev_flash"}
 
 
@@ -179,7 +184,9 @@ class Ctx:
         if key not in self.cache:
             r = self.root
             if key == "files":
-                v = _h16(json.dumps({n: file_id(self.paths.get(n, "")) for n, *_ in INPUTS}, sort_keys=True))
+                ids = {n: file_id(self.paths.get(n, "")) for n, *_ in INPUTS}
+                ids["edat"] = file_id(os.path.join(self.paths.get("game", ""), "USRDIR", "data_ps3.psarc.edat"))
+                v = _h16(json.dumps(ids, sort_keys=True))
             elif key == "venv":
                 v = tree_hash(r, ["third_party/ps3recomp/requirements.txt"]) + sys.version.split()[0]
             elif key == "patch":
@@ -348,6 +355,9 @@ STEPS = [
     Step("vfs", "Preparing the game folder", 15, kzbuild("vfs"), keys=("files", "vfs")),
     Step("dlss", "Downloading NVIDIA DLSS", 3, cmd_dlss, keys=("dlss",), always=True),
     Step("compile", "Compiling", 51, kzbuild("build"), always=True, ninja=True, before=before_compile),
+    # Only with the game's own data_ps3.psarc.edat: the built game opens it once (36 s on an NVMe drive; it returns
+    # at once when that was done before, or with a decrypted data_ps3.psarc).
+    Step("data", "Preparing the game's data", 8, kzbuild("data"), always=True),
     Step("stamp", "Finishing", 1, lambda c: [], always=True, after=after_stamp),
 ]
 

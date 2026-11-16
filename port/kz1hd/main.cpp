@@ -44,6 +44,7 @@
 #include "view.h"        /* KZ_POKE xhair, hudsize */
 #include "win_dpi.h"     /* Windows display scaling */
 #include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
+#include "../libs/filesystem/edat.h"   /* via the include directory: the EDAT cache folder (patch 4014) */
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
 #include <sanitizer/lsan_interface.h>
@@ -548,6 +549,32 @@ static void derive_vfs_root(const char* eboot)
     ppu_vfs_root = s_vfs_root;
 }
 
+/* The game reads data_ps3.psarc.edat as the player's RPCS3 installed it; the runtime decrypts it once with the
+ * klicensee the game passes to sceNpDrmIsAvailable2 (about 36 s on an NVMe drive) and keeps the 3 GB plaintext in a
+ * port folder, never beside the player's game files: $PS3_EDAT_CACHE, default <VFS root>/../edat-cache (work/edat-cache).
+ * KZ_PREPARE_DATA=1 (default off): the install's "prepare the data" step; exit once the archive's plaintext is ready
+ * and print "[kz] data ready: <path>" for tools/kzbuild.py. */
+static std::string s_edat_cache;
+
+static void edat_ready(const char* src, const char* dec)
+{
+    const char* base = src;
+    for (const char* q = src; *q; q++) if (*q == '/' || *q == '\\') base = q + 1;
+    if (strcmp(base, "data_ps3.psarc.edat") != 0) return;
+    printf("[kz] data ready: %s\n", dec);
+    fflush(stdout); fflush(stderr);
+    _exit(0);   /* the game's threads are mid-boot: no destructors, no saves */
+}
+
+static void set_edat_cache()
+{
+    const char* e = getenv("PS3_EDAT_CACHE");
+    s_edat_cache = (e && *e) ? e : std::string(ppu_vfs_root) + "/../edat-cache";
+    edat_set_cache_dir(s_edat_cache.c_str());
+    const char* p = getenv("KZ_PREPARE_DATA");
+    if (p && p[0] == '1') edat_set_ready_hook(edat_ready);
+}
+
 /* ---------------------------------------------------------------------------
  * Guest VM
  * -----------------------------------------------------------------------*/
@@ -699,6 +726,7 @@ int main(int argc, char** argv)
 
     derive_vfs_root(argv[1]);
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
+    set_edat_cache();
     /* The title id (NPUA80856) names the save directory, as on the PS3. */
     { std::string sfo = std::string(ppu_vfs_root) + "/PS3_GAME/PARAM.SFO";
       cellGame_init_from_paramsfo(sfo.c_str()); }

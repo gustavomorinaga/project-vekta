@@ -1,0 +1,217 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sun, 15 Nov 2026 05:46:22 -0300
+Subject: [PATCH] EDAT reader: a cache folder of the port, short fixed names, a
+ ready hook
+
+Symptom: edat_resolve wrote the plaintext of a decrypted EDAT as "<file>.dec" beside the source. For a game the
+player keeps in RPCS3's dev_hdd0 that is the player's game folder, which the port must never write to, and on
+Windows, where the port's run folder is reached through copies, it doubled the disk use (a copied 3 GB .edat plus
+the 3 GB plaintext).
+
+Fix: with $PS3_EDAT_CACHE, else edat_set_cache_dir(dir), the plaintext goes to <dir>/<16 hex digits>.dec, the
+digits a 64-bit FNV-1a hash of the header's content id and the file name. The name is short and of fixed length so a
+deep install folder stays under Windows' 260-character path limit (the failure Project Helghast fixed in its 0.1.10
+for its own disk cache, its issue #38). A "<...>.dec.key" sidecar (header digest, dev_hash and plaintext size) must
+match for the cache to be reused, so a changed source is decrypted again; writes go to ".part" and are renamed into
+place. With a cache folder set nothing is written beside the source, also when decryption fails (before the title
+has passed its klicensee, the source is handed back as before). Without one the old behaviour stays.
+edat_cache_name() gives the cache path for a header, and edat_set_ready_hook() names a function called each time a
+plaintext file is handed out (decrypted now or reused), so a port can tell when its data is ready.
+
+After Project Helghast patch 5002 (edat-writable-cache, MIT, by undecuple): the cache folder, the sidecar and the
+.part/rename are taken from it; the short hashed names, no fallback beside the source and the ready hook are written
+here. Test: tools/tests/test_edat_cache.sh (synthetic EDAT from ps3recomp's own
+libs/filesystem/tests/test_edat_guest_klicensee.c). Upstream candidate.
+---
+ libs/filesystem/edat.c | 125 +++++++++++++++++++++++++++++++++++++++++
+ libs/filesystem/edat.h |  17 +++++-
+ 2 files changed, 141 insertions(+), 1 deletion(-)
+
+diff --git a/libs/filesystem/edat.c b/libs/filesystem/edat.c
+index edb4ac5..9ea7355 100644
+--- a/libs/filesystem/edat.c
++++ b/libs/filesystem/edat.c
+@@ -24,6 +24,9 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/stat.h>
++#ifdef _WIN32
++#include <direct.h>   /* _mkdir */
++#endif
+ 
+ /* ---------------------------------------------------------------------------
+  * AES-128
+@@ -668,6 +671,119 @@ int edat_decrypt_file(const char* in_path, const char* out_path)
+     return rc;
+ }
+ 
++/* Writable cache for decrypted EDATs.
++ *
++ * "<file>.dec" beside the source needs the source's folder to be writable, and a
++ * game install should never be written to. With a cache directory set
++ * ($PS3_EDAT_CACHE, else edat_set_cache_dir) the plaintext goes to
++ *   <cache>/<16 hex digits>.dec
++ * where the digits are a 64-bit FNV-1a hash of the content id and the file name:
++ * short and fixed-length, so a deep cache folder stays under Windows' 260-character
++ * path limit. A "<...>.dec.key" sidecar holds header bytes 0x40..0x6F (digest and
++ * dev_hash) and the plaintext size; the cache is reused only while it matches the
++ * source's header and the .dec has the header's size, so a changed source is
++ * decrypted again. Writes go to "<...>.part" and are renamed into place. When a
++ * cache directory is set nothing is written beside the source, even on failure.
++ * Without one the old behaviour stays. */
++static char s_edat_cache_dir[1024];
++static void (*s_edat_ready_hook)(const char* src, const char* dec);
++
++void edat_set_cache_dir(const char* dir)
++{
++    snprintf(s_edat_cache_dir, sizeof s_edat_cache_dir, "%s", dir ? dir : "");
++}
++
++void edat_set_ready_hook(void (*fn)(const char* src, const char* dec))
++{
++    s_edat_ready_hook = fn;
++}
++
++static const char* edat_cache_dir(void)
++{
++    const char* e = getenv("PS3_EDAT_CACHE");
++    if (e && *e) return e;
++    return s_edat_cache_dir[0] ? s_edat_cache_dir : NULL;
++}
++
++static void edat_mkdirs(const char* file_path)   /* every parent directory of file_path */
++{
++    char tmp[1024];
++    snprintf(tmp, sizeof tmp, "%s", file_path);
++    for (char* p = tmp + 1; *p; p++) {
++        if (*p != '/' && *p != '\\') continue;
++        char c = *p; *p = 0;
++#ifdef _WIN32
++        _mkdir(tmp);
++#else
++        mkdir(tmp, 0755);
++#endif
++        *p = c;
++    }
++}
++
++static uint64_t edat_fnv1a(uint64_t h, const char* s, size_t n)
++{
++    for (size_t i = 0; i < n && s[i]; i++) { h ^= (uint8_t)s[i]; h *= 0x100000001B3ull; }
++    return h;
++}
++
++/* The cache file for host_path: "<dir>/<hash>.dec". 0 on success. */
++int edat_cache_name(const char* dir, const char* host_path, const uint8_t hdr[0x90], char* buf, size_t cap)
++{
++    const char* base = host_path;
++    for (const char* p = host_path; *p; p++) if (*p == '/' || *p == '\\') base = p + 1;
++    uint64_t h = edat_fnv1a(0xCBF29CE484222325ull, (const char*)hdr + 0x10, 0x30);
++    h = edat_fnv1a(h ^ '/', base, (size_t)-1);
++    return (size_t)snprintf(buf, cap, "%s/%016llx.dec", dir, (unsigned long long)h) >= cap ? -1 : 0;
++}
++
++static void edat_cache_key(const uint8_t hdr[0x90], uint8_t key[0x38])
++{
++    memcpy(key, hdr + 0x40, 0x30);
++    memcpy(key + 0x30, hdr + 0x88, 8);
++}
++
++static int edat_cache_valid(const char* dec, const char* keyf, const uint8_t key[0x38], uint64_t size)
++{
++    struct stat ds;
++    if (stat(dec, &ds) != 0 || (uint64_t)ds.st_size != size) return 0;
++    FILE* k = fopen(keyf, "rb");
++    if (!k) return 0;
++    uint8_t got[0x38];
++    size_t n = fread(got, 1, sizeof got, k);
++    fclose(k);
++    return n == sizeof got && memcmp(got, key, sizeof got) == 0;
++}
++
++static const char* edat_resolve_cached(const char* dir, const char* host_path, char* buf, size_t cap)
++{
++    uint8_t hdr[0x90];
++    FILE* f = fopen(host_path, "rb");
++    if (!f) return NULL;
++    size_t n = fread(hdr, 1, sizeof hdr, f);
++    fclose(f);
++    if (n != sizeof hdr || edat_cache_name(dir, host_path, hdr, buf, cap) != 0) return NULL;
++
++    char keyf[1100], part[1100];
++    snprintf(keyf, sizeof keyf, "%s.key", buf);
++    snprintf(part, sizeof part, "%s.part", buf);
++    uint8_t key[0x38];
++    edat_cache_key(hdr, key);
++    if (edat_cache_valid(buf, keyf, key, be64(hdr + 0x88))) return buf;   /* cache hit */
++
++    edat_mkdirs(buf);
++    remove(keyf);                                  /* a stale sidecar must not outlive its .dec */
++    if (edat_decrypt_file(host_path, part) != 0) { remove(part); return NULL; }
++    remove(buf);                                   /* rename does not replace on Windows */
++    if (rename(part, buf) != 0) { remove(part); return NULL; }
++    FILE* k = fopen(keyf, "wb");
++    int ok = k && fwrite(key, 1, sizeof key, k) == sizeof key;
++    if (k) ok = (fclose(k) == 0) && ok;
++    if (!ok) remove(keyf);                         /* plaintext still usable this run */
++    fprintf(stderr, "[edat] cached %s\n", buf);
++    return buf;
++}
++
+ const char* edat_resolve(const char* host_path, char* buf, size_t cap)
+ {
+     static int enabled = -1;
+@@ -677,6 +793,14 @@ const char* edat_resolve(const char* host_path, char* buf, size_t cap)
+     }
+     if (!enabled || !host_path || !edat_is_npd(host_path)) return host_path;
+ 
++    const char* dir = edat_cache_dir();
++    if (dir) {
++        const char* r = edat_resolve_cached(dir, host_path, buf, cap);
++        if (!r) return host_path;                  /* never write beside the source */
++        if (s_edat_ready_hook) s_edat_ready_hook(host_path, r);
++        return r;
++    }
++
+     if ((size_t)snprintf(buf, cap, "%s.dec", host_path) >= cap) return host_path;
+ 
+     struct stat ss, ds;
+@@ -684,5 +808,6 @@ const char* edat_resolve(const char* host_path, char* buf, size_t cap)
+         return buf;                                    /* cache still valid */
+ 
+     if (edat_decrypt_file(host_path, buf) != 0) return host_path;
++    if (s_edat_ready_hook) s_edat_ready_hook(host_path, buf);
+     return buf;
+ }
+diff --git a/libs/filesystem/edat.h b/libs/filesystem/edat.h
+index 6f4fd64..6e6264d 100644
+--- a/libs/filesystem/edat.h
++++ b/libs/filesystem/edat.h
+@@ -43,10 +43,25 @@ int edat_decrypt_file(const char* in_path, const char* out_path);
+  * Returns host_path unchanged when it is not an EDAT, or when decryption fails (the
+  * caller then opens the original and the guest reports its own error -- better than
+  * an open() failure it cannot attribute). Otherwise returns a cache path, written
+- * into `buf`. The cache lives beside the source as "<name>.dec" and is reused while
++ * into `buf`. With a cache directory ($PS3_EDAT_CACHE, else edat_set_cache_dir) the
++ * cache is <dir>/<16 hex digits>.dec, reused while its sidecar <...>.dec.key matches
++ * the source header (digest, dev_hash, size), and nothing is written beside the
++ * source. Without one it lives beside the source as "<name>.dec" and is reused while
+  * it is newer than the source. Set PS3_EDAT=0 to disable the whole path. */
+ const char* edat_resolve(const char* host_path, char* buf, size_t cap);
+ 
++/* Where edat_resolve writes plaintext when $PS3_EDAT_CACHE is not set: a writable
++ * directory of the port. NULL or "" = beside the source. */
++void edat_set_cache_dir(const char* dir);
++
++/* The cache file name for host_path under dir, from the first 0x90 header bytes:
++ * "<dir>/<16 hex digits>.dec". 0 on success, -1 when it does not fit in cap. */
++int edat_cache_name(const char* dir, const char* host_path, const uint8_t hdr[0x90], char* buf, size_t cap);
++
++/* Called each time edat_resolve hands out a plaintext file (decrypted now or
++ * reused), with the source and the plaintext path. NULL = none. */
++void edat_set_ready_hook(void (*fn)(const char* src, const char* dec));
++
+ /* Hand the runtime a klicensee the guest supplied. On hardware a game that owns
+  * free (license type 3) or disc-bound EDATs passes its own klicensee to
+  * sceNpDrmIsAvailable / sceNpDrmIsAvailable2 before opening them; the kernel keeps

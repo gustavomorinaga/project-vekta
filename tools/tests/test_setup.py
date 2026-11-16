@@ -57,10 +57,11 @@ import importlib.util  # noqa: E402
 spec = importlib.util.spec_from_file_location("cgf", ROOT / "tools" / "check-game-files.py")
 cgf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cgf)
-sizes = {label: size for label, _p, size, *_ in cgf.FILES}
+sizes = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
 for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc"), ("LibsreSize", "libsre.prx")):
     m = re.search(r'#define %s "(\d+)"' % define, text)
     check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
+check("'USRDIR\\data_ps3.psarc.edat'" in text, "the wizard takes the game's .edat when the archive is left empty")
 # The build in the wizard runs firstrun.py with options it has, and names its steps
 import firstrun  # noqa: E402
 opts = set(re.findall(r"' --([a-z-]+)", text))
@@ -258,6 +259,19 @@ with tempfile.TemporaryDirectory() as tmp:
     for label in ("PARAM.SFO", "EBOOT.elf", "libsre.prx"):
         check(f"DIFFERENT {label}" in q.stdout, f"{label}: the right kind and size, another hash: {q.stdout}")
     check("ok       data_ps3.psarc" in q.stdout and q.returncode == 1, "the archive passes --quick; the check fails")
+    # Without a decrypted archive the game folder's own .edat is checked instead (patch 4014)
+    q = subprocess.run([sys.executable, str(ROOT / "tools/check-game-files.py"), "--quick"], capture_output=True,
+                       text=True, env=dict(env, KZ_PSARC=os.path.join(tmp, "none.psarc")))
+    check("MISSING  data_ps3.psarc.edat (required)" in q.stdout and "data_ps3.psarc (" not in q.stdout,
+          f"no archive: the game's .edat is required instead: {q.stdout}")
+    usr = os.path.join(sw["GAME"], "USRDIR")
+    os.makedirs(usr, exist_ok=True)
+    with open(os.path.join(usr, "data_ps3.psarc.edat"), "wb") as f:
+        f.write(b"NPD\0")
+        f.truncate(3153321376)
+    q = subprocess.run([sys.executable, str(ROOT / "tools/check-game-files.py"), "--quick"], capture_output=True,
+                       text=True, env=dict(env, KZ_PSARC=os.path.join(tmp, "none.psarc")))
+    check("ok       data_ps3.psarc.edat" in q.stdout, f"the game's .edat of the tested size passes --quick: {q.stdout}")
 
 print("test_setup:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

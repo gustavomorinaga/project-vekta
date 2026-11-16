@@ -7,6 +7,8 @@ Ninja and llvm-mingw):
     tools/kzbuild.py vfs          work/vfs: the folder the game runs from
     tools/kzbuild.py build        work/build/KZ1HD (Linux, clang) or work/build-win/KZ1HD.exe (Windows, llvm-mingw)
     tools/kzbuild.py build --win  work/build-win/KZ1HD.exe from Linux, with the pinned llvm-mingw
+    tools/kzbuild.py data         once, when the game folder has only data_ps3.psarc.edat: runs the built game until it
+                                  has opened the archive (work/edat-cache), checks it and takes the movies out of it
     tools/kzbuild.py env          the paths below, as the steps see them
 
 tools/ps3recomp-patched.sh, tools/lift.sh, tools/setup-vfs.sh, tools/build.sh and tools/build-win.sh run these.
@@ -36,6 +38,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINDOWS = os.name == "nt"
 PATH_VARS = ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_LIBSRE", "KZ_WORK", "KZ_VFS", "PS3RECOMP_DIR", "PS3_DEV_FLASH",
              "KZ_PY")
+# The data archive the port was made from (docs/GETTING-FILES.md): the decrypted data_ps3.psarc, which the game reads
+# either as the player's own file (KZ_PSARC) or, when there is none, from the installed game's data_ps3.psarc.edat,
+# decrypted by the runtime into work/edat-cache on the first open (patch 4014).
+PSARC_SIZE, PSARC_SHA256 = 3147174243, "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d"
+EDAT_NAME = "data_ps3.psarc.edat"
 
 
 class Fail(Exception):
@@ -93,6 +100,16 @@ def resolve(environ=None, root=ROOT):
     if os.path.isdir(venv_bin(w)):
         e["PATH"] = venv_bin(w) + os.pathsep + e.get("PATH", "")
     return e
+
+
+def archive(e):
+    """("psarc", path) for the player's decrypted archive, else ("edat", path) for the installed game's .edat."""
+    if os.path.isfile(e["KZ_PSARC"]):
+        return "psarc", e["KZ_PSARC"]
+    edat = os.path.join(e["KZ_GAME"], "USRDIR", EDAT_NAME)
+    if os.path.isfile(edat):
+        return "edat", edat
+    raise Fail(f"no {e['KZ_PSARC']} and no {edat} (KZ_PSARC, KZ_GAME; docs/GETTING-FILES.md)")
 
 
 def jobs(e):
@@ -409,11 +426,12 @@ def link_or_copy(src, dst):
 
 
 def cmd_vfs(e, a):
-    root, j = e["KZ_ROOT"], os.path.join
+    j = os.path.join
     game, vfs = e["KZ_GAME"], e["KZ_VFS"]
-    for f in (j(game, "PARAM.SFO"), e["KZ_EBOOT"], e["KZ_PSARC"]):
+    for f in (j(game, "PARAM.SFO"), e["KZ_EBOOT"]):
         if not os.path.isfile(f):
-            raise Fail(f"no {f} (KZ_GAME, KZ_EBOOT, KZ_PSARC; docs/GETTING-FILES.md)")
+            raise Fail(f"no {f} (KZ_GAME, KZ_EBOOT; docs/GETTING-FILES.md)")
+    kind, src = archive(e)
     u = j(vfs, "PS3_GAME", "USRDIR")
     os.makedirs(u, exist_ok=True)
     shutil.copyfile(j(game, "PARAM.SFO"), j(vfs, "PS3_GAME", "PARAM.SFO"))
@@ -421,13 +439,91 @@ def cmd_vfs(e, a):
         shutil.copytree(j(game, "TROPDIR"), j(vfs, "PS3_GAME", "TROPDIR"), dirs_exist_ok=True)
     else:
         print(f"no TROPDIR in {game}: trophies are logged without their names", flush=True)
-    how = {link_or_copy(e["KZ_EBOOT"], j(u, "EBOOT.elf")), link_or_copy(e["KZ_PSARC"], j(u, "data_ps3.psarc"))}
+    # The game opens data_ps3.psarc and, when there is none, data_ps3.psarc.edat: only one of them is placed.
+    name = "data_ps3.psarc" if kind == "psarc" else EDAT_NAME
+    other = j(u, EDAT_NAME if kind == "psarc" else "data_ps3.psarc")
+    if os.path.lexists(other):
+        os.remove(other)
+    how = {link_or_copy(e["KZ_EBOOT"], j(u, "EBOOT.elf")), link_or_copy(src, j(u, name))}
     if "copy" in how:
-        print("note: no links on this file system: EBOOT.elf and data_ps3.psarc were copied into the game folder",
-              flush=True)
-    run([sys.executable, j(root, "tools", "psarc_ls.py"), e["KZ_PSARC"], u, ".avi"], e, "null")
+        print(f"note: no links on this file system: EBOOT.elf and {name} were copied into the game folder", flush=True)
+    if kind == "psarc":
+        extract_movies(e, src, u)
+    else:
+        dec = prepared_archive(e)
+        if dec:
+            extract_movies(e, dec, u)
+        else:
+            print(f"vfs: {vfs} (the movies come out of the archive with `kzbuild.py data`, after the build)", flush=True)
+
+
+def extract_movies(e, psarc, u):
+    run([sys.executable, os.path.join(e["KZ_ROOT"], "tools", "psarc_ls.py"), psarc, u, ".avi"], e, "null")
     n = sum(1 for _, _, fs in os.walk(u) for f in fs if f.endswith(".avi"))
-    print(f"vfs: {vfs} ({n} movies)", flush=True)
+    print(f"vfs: {e['KZ_VFS']} ({n} movies)", flush=True)
+
+
+def edat_cache(e):
+    """Where the runtime keeps the archive's plaintext: $PS3_EDAT_CACHE, else work/edat-cache (main.cpp's default,
+    the VFS root's sibling)."""
+    return e.get("PS3_EDAT_CACHE") or os.path.join(os.path.dirname(os.path.abspath(e["KZ_VFS"])), "edat-cache")
+
+
+def prepared_archive(e):
+    """The cached plaintext of data_ps3.psarc.edat when an earlier `data` step checked it, else None."""
+    ok = os.path.join(edat_cache(e), "data_ps3.psarc.ok")
+    try:
+        with open(ok, encoding="utf-8") as f:
+            dec = f.read().strip()
+    except OSError:
+        return None
+    return dec if os.path.isfile(dec) and os.path.getsize(dec) == PSARC_SIZE else None
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 22), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def cmd_data(e, a):
+    if archive(e)[0] == "psarc":
+        print("data: the decrypted data_ps3.psarc is used as it is; nothing to prepare", flush=True)
+        return
+    u = os.path.join(e["KZ_VFS"], "PS3_GAME", "USRDIR")
+    if prepared_archive(e) and any(f.endswith(".avi") for _, _, fs in os.walk(u) for f in fs):
+        print("data: already prepared", flush=True)
+        return
+    sys.path.insert(0, os.path.join(ROOT, "tools", "release"))
+    import launch   # noqa: E402  (tools/release imports this module: import it only here)
+    argv, _, env, _ = launch.plan(e["KZ_ROOT"], e)
+    log = os.path.join(e["KZ_WORK"], "prepare-data.log")
+    # The run folder, not the saves folder: the game stops at the archive's first open, before it reads a save.
+    env.update(KZ_PREPARE_DATA="1", PS3RECOMP_VK_WINDOW="0", KZ_LOG=log, PS3_VFS_ROOT=e["KZ_VFS"].replace("\\", "/"))
+    secs = int(e.get("KZ_DATA_TIMEOUT") or 900)   # 36 s on an NVMe drive; a slow hard disk takes several minutes
+    print(f"data: opening the game's archive once ({log})", flush=True)
+    try:
+        with open(log, "w", encoding="utf-8", errors="replace") as f:
+            rc = subprocess.run(argv, env=env, cwd=e["KZ_VFS"], stdin=subprocess.DEVNULL, stdout=f,
+                                stderr=subprocess.STDOUT, timeout=secs).returncode
+    except subprocess.TimeoutExpired:
+        raise Fail(f"the game had not opened its archive after {secs} s (KZ_DATA_TIMEOUT); see {log}")
+    with open(log, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    m = re.search(r"^\[kz\] data ready: (.+)$", text, re.M)
+    if not m:
+        raise Fail(f"the game stopped (exit {rc}) before it opened its archive; the last lines of {log}:\n"
+                   + "\n".join(text.splitlines()[-12:]))
+    dec = m.group(1).strip()
+    size = os.path.getsize(dec) if os.path.isfile(dec) else -1
+    if size != PSARC_SIZE or sha256_file(dec) != PSARC_SHA256:
+        raise Fail(f"the opened archive {dec} is not the tested one ({size} bytes; docs/GETTING-FILES.md); "
+                   "is the installed game NPUA80856 version 01.00?")
+    with open(os.path.join(edat_cache(e), "data_ps3.psarc.ok"), "w", encoding="utf-8") as f:
+        f.write(dec + "\n")
+    extract_movies(e, dec, u)
 
 
 # ---------------------------------------------------------------------------------------------------------- build
@@ -608,7 +704,7 @@ def cmd_env(e, a):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sp = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("patch", "lift", "vfs", "env"):
+    for name in ("patch", "lift", "vfs", "data", "env"):
         sp.add_parser(name)
     bp = sp.add_parser("build")
     bp.add_argument("--win", action="store_true", help="the Windows exe, cross-built with the pinned llvm-mingw")
@@ -618,7 +714,7 @@ def main(argv=None):
             s.reconfigure(errors="replace")
     e = resolve()
     try:
-        {"patch": cmd_patch, "lift": cmd_lift, "vfs": cmd_vfs, "build": cmd_build, "env": cmd_env}[a.cmd](e, a)
+        {"patch": cmd_patch, "lift": cmd_lift, "vfs": cmd_vfs, "data": cmd_data, "build": cmd_build, "env": cmd_env}[a.cmd](e, a)
     except Fail as err:
         print(f"kzbuild {a.cmd}: {err}", file=sys.stderr)
         return 1

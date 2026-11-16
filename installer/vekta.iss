@@ -170,6 +170,9 @@ Type: files; Name: "{app}\work\play.log"
 Type: files; Name: "{app}\launcher-dry-run.txt"
 Type: files; Name: "{app}\work\vfs\PS3_GAME\USRDIR\EBOOT.elf"
 Type: files; Name: "{app}\work\vfs\PS3_GAME\USRDIR\data_ps3.psarc"
+Type: files; Name: "{app}\work\vfs\PS3_GAME\USRDIR\data_ps3.psarc.edat"
+Type: filesandordirs; Name: "{app}\work\edat-cache"
+Type: files; Name: "{app}\work\prepare-data.log"
 Type: files; Name: "{app}\work\vfs\PS3_GAME\PARAM.SFO"
 Type: filesandordirs; Name: "{app}\work\vfs\PS3_GAME\TROPDIR"
 Type: filesandordirs; Name: "{app}\work\vfs\PS3_GAME\USRDIR\Movies"
@@ -345,8 +348,13 @@ begin
   Result := '';
   P := FileProblem(FilesPage.Values[0], 'EBOOT.elf', 'ELF', StrToInt64('{#EbootSize}'));
   if P <> '' then Result := Result + P + #13#10;
-  P := FileProblem(FilesPage.Values[1], 'data_ps3.psarc', 'PSAR', StrToInt64('{#PsarcSize}'));
-  if P <> '' then Result := Result + P + #13#10;
+  { The decrypted archive is optional: without it the port reads the game folder's own USRDIR\data_ps3.psarc.edat
+    (tools/kzbuild.py data, after the build). }
+  if (FilesPage.Values[1] <> '') or not FileExists(AddBackslash(GamePage.Values[0]) + 'USRDIR\data_ps3.psarc.edat') then
+  begin
+    P := FileProblem(FilesPage.Values[1], 'data_ps3.psarc', 'PSAR', StrToInt64('{#PsarcSize}'));
+    if P <> '' then Result := Result + P + ' (Or leave it empty when the game folder has USRDIR\data_ps3.psarc.edat.)' + #13#10;
+  end;
   P := FileProblem(FilesPage.Values[2], 'libsre.prx', 'ELF', StrToInt64('{#LibsreSize}'));
   if P <> '' then Result := Result + P + #13#10;
 end;
@@ -454,10 +462,11 @@ begin
   GamePage.Add('Installed game folder ({#TitleId}):');
   FilesPage := CreateInputFilePage(GamePage.ID, 'Your decrypted files',
     'Three files made from your own game and PS3 firmware.',
-    'Decrypted, as docs/GETTING-FILES.md says: not EBOOT.BIN, not the .edat archive, not the .sprx. This installer ' +
+    'Decrypted, as docs/GETTING-FILES.md says: not EBOOT.BIN, not the .sprx. The data archive may stay empty: the ' +
+    'port then reads the game folder''s own data_ps3.psarc.edat. This installer ' +
     'includes no decryption tools and downloads nothing for them; the files are only read.');
   FilesPage.Add('EBOOT.elf (the game''s executable, decrypted):', 'ELF files (*.elf)|*.elf|All files|*.*', '.elf');
-  FilesPage.Add('data_ps3.psarc (the data archive, decrypted; about 3 GB):', 'PSARC files (*.psarc)|*.psarc|All files|*.*', '.psarc');
+  FilesPage.Add('data_ps3.psarc (optional: the data archive, decrypted; empty = the game''s own .edat):', 'PSARC files (*.psarc)|*.psarc|All files|*.*', '.psarc');
   FilesPage.Add('libsre.prx (SPURS, from PS3 system software 4.93, decrypted):', 'PRX files (*.prx)|*.prx|All files|*.*', '.prx');
   FlashPage := CreateInputQueryPage(FilesPage.ID, 'PS3 firmware (for the music)',
     'The firmware''s dev_flash folder, as RPCS3 keeps it.',
@@ -653,6 +662,7 @@ begin
   else if Name = 'vfs' then Result := 'Preparing the game folder'
   else if Name = 'dlss' then Result := 'Downloading NVIDIA DLSS'
   else if Name = 'compile' then Result := 'Compiling'
+  else if Name = 'data' then Result := 'Preparing the game''s data'
   else Result := 'Finishing';
 end;
 

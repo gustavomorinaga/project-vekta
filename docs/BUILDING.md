@@ -98,6 +98,7 @@ tools/ps3recomp-patched.sh   # work/ps3recomp-patched: ps3recomp v0.19.0 + port/
 tools/lift.sh                # work/lift (the game's code as C++) and work/fw (libsre); a few minutes
 tools/setup-vfs.sh           # work/vfs: the folder the game runs from, with the movies taken out of the archive
 tools/build.sh               # work/build/KZ1HD
+python3 tools/kzbuild.py data  # only without a decrypted data_ps3.psarc: opens the game's .edat once (about a minute)
 ```
 
 - `tools/lift.sh` translates with all your cores; the build has about 220 steps, and the lifted PPU code takes
@@ -212,7 +213,8 @@ tools/release/build_setup.py --payload work/release/payload   # work/release/pro
 `build_setup.py` compiles `installer/vekta.iss` with the pinned Inno Setup (installed on the first run, checked by
 SHA-256; under Wine on Linux). The setup program installs per user into `%LOCALAPPDATA%\Programs\ProjectVekta`. It
 asks where your files are, on pages of its own: the installed game folder (NPUA80856), the decrypted `EBOOT.elf`,
-`data_ps3.psarc` and `libsre.prx`, and the firmware's `dev_flash`. It checks their kind and size before copying
+`data_ps3.psarc` (optional: empty, the game folder's own `.edat` is read) and `libsre.prx`, and the firmware's
+`dev_flash`. It checks their kind and size before copying
 anything and keeps them in `work\paths.env`. Then it builds the port in the wizard, with a progress bar and a Stop
 button; the build's first step checks the files' SHA-256, and when it stops the wizard says why and opens its log. The
 launcher (`Project Vekta.exe`) builds on its first start when that did not happen, then starts the game. A silent
