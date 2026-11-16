@@ -45,6 +45,7 @@
 #include "win_dpi.h"     /* Windows display scaling */
 #include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
 #include "../libs/filesystem/edat.h"   /* via the include directory: the EDAT cache folder (patch 4014) */
+#include "window_icon.h" /* the window's icon, from installer/art/vekta.ico (tools/icon_header.py) */
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
 #include <sanitizer/lsan_interface.h>
@@ -114,6 +115,7 @@ int      ppu_run(uint32_t entry_opd, uint32_t stack_top);
 void     ps3_load_prx_modules(void);
 
 extern const char* ppu_vfs_root;              /* host dir the PS3 mount points map into */
+extern "C" void rsx_vulkan_set_window_identity(const char* app_id, const uint32_t* rgba, int w, int h);   /* 2081 */
 
 /* The status the guest handed to sys_process_exit. A title that exits that way
  * never returns through ppu_run, so this is only read on the path where the
@@ -727,6 +729,10 @@ int main(int argc, char** argv)
     derive_vfs_root(argv[1]);
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
     set_edat_cache();
+    /* The window's icon and application id (ps3recomp patch 2081): "project-vekta" is also the name of the Linux menu
+     * entry (tools/release/firstrun.py desktop_entry), where a Wayland desktop takes the icon from. */
+    rsx_vulkan_set_window_identity("project-vekta", reinterpret_cast<const uint32_t*>(kz_window_icon),
+                                   KZ_WINDOW_ICON_SIZE, KZ_WINDOW_ICON_SIZE);
     /* The title id (NPUA80856) names the save directory, as on the PS3. */
     { std::string sfo = std::string(ppu_vfs_root) + "/PS3_GAME/PARAM.SFO";
       cellGame_init_from_paramsfo(sfo.c_str()); }

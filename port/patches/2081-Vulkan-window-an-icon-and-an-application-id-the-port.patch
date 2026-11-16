@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sun, 15 Nov 2026 22:53:25 -0300
+Subject: [PATCH] Vulkan window: an icon and an application id the port gives
+
+Symptom: the game window had no icon, in its title bar or in the taskbar, on Windows and on Linux (reported on the
+maintainer's Windows PC 2026-11-16).
+
+Fix: rsx_vulkan_set_window_identity(app_id, rgba, w, h), called by the port before the window opens. The app id goes
+to SDL's hints for X11's WM_CLASS and Wayland's app_id (SDL_VIDEO_X11_WMCLASS, SDL_VIDEO_WAYLAND_WMCLASS, SDL_APP_ID;
+an SDL that does not know a hint ignores it), so a desktop shell can match the window with the .desktop entry of that
+name, which is where Wayland takes the icon from. The RGBA image becomes the window's icon (SDL_SetWindowIcon: the
+title bar and taskbar icon on Windows and X11). Without a call nothing changes. ENHANCEMENT: the PS3 has no window.
+Written here. Upstream candidate.
+---
+ libs/video/rsx_vulkan_backend.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 5c7ffbc..1d4f067 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2305,10 +2305,31 @@ static void vk_window_drop(const char* why)
+     s_vk.windowed = 0;
+ }
+ 
++/* The window's identity, given by the port before the window opens (rsx_vulkan_set_window_identity): an application
++ * id (X11's WM_CLASS, Wayland's app_id: the desktop shell matches it with the .desktop entry of that name, which is
++ * where Wayland takes the icon from) and an RGBA icon (title bar and taskbar on Windows and X11). Without it, SDL's
++ * defaults: no icon and the program's name. */
++static char            s_win_app_id[64];
++static const uint32_t* s_win_icon;
++static int             s_win_icon_w, s_win_icon_h;
++
++void rsx_vulkan_set_window_identity(const char* app_id, const uint32_t* rgba, int w, int h)
++{
++    snprintf(s_win_app_id, sizeof s_win_app_id, "%s", app_id ? app_id : "");
++    s_win_icon = (rgba && w > 0 && h > 0) ? rgba : NULL;
++    s_win_icon_w = w;
++    s_win_icon_h = h;
++}
++
+ static void vk_read_display_sizes(void);
+ static void vk_window_open(const char* title)
+ {
+     if (!vk_env_on("PS3RECOMP_VK_WINDOW")) return;
++    if (s_win_app_id[0]) {   /* read when SDL's video starts; hint names an older SDL does not know are ignored */
++        SDL_SetHint("SDL_VIDEO_X11_WMCLASS", s_win_app_id);
++        SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", s_win_app_id);
++        SDL_SetHint("SDL_APP_ID", s_win_app_id);
++    }
+     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
+         VK_LOG("window disabled, continuing headless: SDL video init failed: %s\n", SDL_GetError());
+         return;
+@@ -2338,6 +2359,14 @@ static void vk_window_open(const char* title)
+     }
+     if (s_vk.window && fs) SDL_SetWindowFullscreen(s_vk.window, s_vk.fs_flags);
+     if (s_vk.window) vk_read_display_sizes();
++    if (s_vk.window && s_win_icon) {
++        SDL_Surface* icon = SDL_CreateRGBSurfaceWithFormatFrom((void*)s_win_icon, s_win_icon_w, s_win_icon_h, 32,
++                                                               s_win_icon_w * 4, SDL_PIXELFORMAT_RGBA32);
++        if (icon) {
++            SDL_SetWindowIcon(s_vk.window, icon);   /* SDL copies it */
++            SDL_FreeSurface(icon);
++        }
++    }
+     s_vk.windowed = 1;          /* so vk_window_drop also shuts SDL video down */
+     if (!s_vk.window) {
+         char why[256];
