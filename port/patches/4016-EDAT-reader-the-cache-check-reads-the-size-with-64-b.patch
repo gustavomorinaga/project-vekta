@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sun, 15 Nov 2026 22:11:31 -0300
+Subject: [PATCH] EDAT reader: the cache check reads the size with 64 bits
+
+Symptom: on Windows every start of the game took as long as the install's data step (36 s under Wine, longer on a
+hard disk) before the first movie: the 3 GB data archive was decrypted again each time (found on the maintainer's
+Windows PC 2026-11-16, reproduced with the Windows build under Wine: a second start printed "[edat] decrypted" again).
+
+Cause: patch 4014's cache check compared the cached file's size from stat() with the header's. On MinGW stat's
+st_size is a 32-bit _off_t, so a 3 GB file never matched and the cache was always taken as stale (ppu_fs.cpp already
+uses _stat64 for the same reason).
+
+Fix: edat_file_size(), _stat64 on Windows and stat elsewhere, for the cache check. Written here. Test:
+tools/tests/test_edat_seek.c (the size of a sparse 2.5 GiB file), on Linux and in tools/wine-host-tests.sh.
+Upstream candidate together with 4014.
+---
+ libs/filesystem/edat.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/libs/filesystem/edat.c b/libs/filesystem/edat.c
+index 26d375c..459c00d 100644
+--- a/libs/filesystem/edat.c
++++ b/libs/filesystem/edat.c
+@@ -408,6 +408,19 @@ int edat_selftest(void)
+  * -----------------------------------------------------------------------*/
+ /* A 64-bit seek. fseek takes a long, which is 32 bits on Windows: past 2 GiB
+  * (a 3 GB data archive) it fails, and every later block read with it. */
++/* A file's size as 64 bits; -1 when it is not there. stat's st_size is a 32-bit _off_t on MinGW: a 3 GB cache never
++ * matched its header's size, so every start decrypted the archive again. */
++static int64_t edat_file_size(const char* path)
++{
++#ifdef _WIN32
++    struct _stat64 st;
++    return _stat64(path, &st) == 0 ? (int64_t)st.st_size : -1;
++#else
++    struct stat st;
++    return stat(path, &st) == 0 ? (int64_t)st.st_size : -1;
++#endif
++}
++
+ static int edat_seek(FILE* f, uint64_t off)
+ {
+ #ifdef _WIN32
+@@ -760,8 +773,7 @@ static void edat_cache_key(const uint8_t hdr[0x90], uint8_t key[0x38])
+ 
+ static int edat_cache_valid(const char* dec, const char* keyf, const uint8_t key[0x38], uint64_t size)
+ {
+-    struct stat ds;
+-    if (stat(dec, &ds) != 0 || (uint64_t)ds.st_size != size) return 0;
++    if (edat_file_size(dec) != (int64_t)size) return 0;
+     FILE* k = fopen(keyf, "rb");
+     if (!k) return 0;
+     uint8_t got[0x38];

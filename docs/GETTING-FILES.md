@@ -46,7 +46,9 @@ Each line says `ok`, `MISSING`, `WRONG` (not the right kind of file: for example
 decrypted archive, or `EBOOT.BIN` instead of `EBOOT.elf`) or `DIFFERENT` (the right kind of file, but not the version
 the port was made from). With no decrypted archive the check looks at the game's `data_ps3.psarc.edat` instead. During the first
 run it also checks the folder the port is in (`--root`, `--work`): no `[`, `]` or `;` in its path, not inside
-OneDrive, and a PC clock not behind the port's files. A required file that is missing, wrong or different stops the check, and the build with it;
+OneDrive, and a PC clock not behind the port's files. When `dev_flash` is there, its system software version
+(`vsh/etc/version.txt`) must be 4.93: another one stops the check, and the setup's firmware page and the RPCS3 route
+refuse it too, naming the version they found. A required file that is missing, wrong or different stops the check, and the build with it;
 an optional one (the trophy set, `flashMP3.pic`) only gets its line. The tested versions:
 
 | File | Size (bytes) | SHA-256 |

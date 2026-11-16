@@ -56,6 +56,23 @@ with tempfile.TemporaryDirectory() as tmp:
     p = cgf.place_problems(str(good), "", environ={}, now=now - 3600)
     check(p == [], f"an hour behind (another time zone's file times) is fine: {p}")
 
+    fl = tmp / "dev_flash"
+    (fl / "vsh" / "etc").mkdir(parents=True)
+    check(cgf.firmware_version(str(fl)) is None, "no version.txt: no firmware version")
+    (fl / "vsh" / "etc" / "version.txt").write_text("release:04.9000:\nbuild:1:x\n")
+    check(cgf.firmware_version(str(fl)) == "4.90", "version.txt's release line gives 4.90")
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "check-game-files.py"), "--quick"], capture_output=True,
+                       text=True, env=dict(os.environ, PS3_DEV_FLASH=str(fl), KZ_GAME=str(tmp / "none")))
+    check(r.returncode == 1 and "WRONG    firmware:" in r.stdout and "4.90" in r.stdout and "4.93" in r.stdout,
+          f"a dev_flash of another system software stops the check and names both versions: {r.stdout[:300]}")
+    reasons = firstrun.Runner(firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "w")), firstrun.STEPS[:1],
+                              log=type("L", (), {"write": lambda self, x: None})(), out=open(os.devnull, "w"),
+                              quiet=True)
+    reasons.why_failed(firstrun.STEPS[0], r.stdout.splitlines(), 1)
+    check("dev_flash" in reasons.fail_inputs, "firstrun asks for dev_flash again after a wrong firmware")
+    (fl / "vsh" / "etc" / "version.txt").write_text("release:04.9300:\n")
+    check(cgf.firmware_version(str(fl)) == "4.93", "and 4.93")
+
     check("still encrypted" in cgf.wrong_kind("EBOOT.elf", b"SCE\0") and "--rpcs3" in cgf.wrong_kind("libsre.prx",
           b"SCE\0"), "an encrypted EBOOT or libsre is named so, with the RPCS3 route")
     check("Leave data_ps3.psarc unset" in cgf.wrong_kind("data_ps3.psarc", b"NPD\0"),

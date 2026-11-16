@@ -36,7 +36,9 @@ iss = (ROOT / "installer" / "vekta.iss").read_bytes()
 check(b"\r\n" in iss and b"\n" not in iss.replace(b"\r\n", b""), "vekta.iss has CRLF line endings")
 text = iss.decode()
 for ref in re.findall(r'\{#Payload\}\\\\?([^"\s;]+)', text):
-    check(ref == "*" or ref == "VERSION" or ref == "LICENSE" or (ROOT / ref.replace("\\", "/")).exists(),
+    # work\toolchain-cache\python: the bundled Python assemble_payload.py fetches into the Windows payload (run.cmd's)
+    check(ref == "*" or ref == "VERSION" or ref == "LICENSE" or ref.startswith("work\\toolchain-cache\\python\\")
+          or (ROOT / ref.replace("\\", "/")).exists(),
           f"vekta.iss names a payload file the payload has: {ref}")
 check('Source: "{#Payload}\\work\\ps3recomp-patched\\.patchset"' in text,
       "vekta.iss names .patchset itself (a wildcard skips hidden files)")
@@ -61,12 +63,36 @@ sizes = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
 for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc"), ("LibsreSize", "libsre.prx")):
     m = re.search(r'#define %s "(\d+)"' % define, text)
     check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
+m_fw = re.search(r'#define Firmware "([^"]+)"', text)
+check(m_fw and m_fw.group(1) == cgf.FIRMWARE and "FirmwareVersion(FlashPage.Values[0]) <> '{#Firmware}'" in text,
+      "the firmware page refuses a dev_flash of another system software than check-game-files.py's")
 check("'USRDIR\\data_ps3.psarc.edat'" in text, "the wizard takes the game's .edat when the archive is left empty")
 # The build in the wizard runs firstrun.py with options it has, and names its steps
 import firstrun  # noqa: E402
-opts = set(re.findall(r"' --([a-z-]+)", text))
-known = {n.replace("_", "-") for n, *_ in firstrun.INPUTS} | {"root", "status-file", "stop-file", "save-paths", "dlss"}
-check(opts and opts <= known, f"vekta.iss passes only firstrun.py's options: {sorted(opts - known)}")
+opts = set(re.findall(r"' --([a-z0-9-]+)", text))
+known = {n.replace("_", "-") for n, *_ in firstrun.INPUTS} | {"root", "status-file", "stop-file", "save-paths", "dlss",
+                                                              "rpcs3"}
+known |= {"resolve", "out"}   # the "Your game" page's call of rpcs3_import.py
+check(opts and opts <= known, f"vekta.iss passes only firstrun.py's and rpcs3_import.py's options: {sorted(opts - known)}")
+# "Your game": the RPCS3 route asks rpcs3_import.py --resolve with the bundled Python before installing, skips the
+# file pages when it is chosen, and hands the build --rpcs3 instead of the file paths
+import rpcs3_import  # noqa: E402
+check("rpcs3_import.py')) + ' --resolve --out '" in text and "{tmp}\\rp\\python\\python.exe" in text
+      and 'Source: "{#Payload}\\tools\\release\\rpcs3_locate.py"; DestDir: "{tmp}\\rp"; Flags: dontcopy' in text,
+      "the RPCS3 check runs before the install, from a temporary copy of the Python and the two modules")
+files_sec = text[text.index("[Files]"):text.index("[Icons]")]
+check(files_sec.index("rpcs3_import.py\"; DestDir: \"{tmp}") < files_sec.index('Source: "{#Payload}\\*"')
+      and 'Source: "{#Payload}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs solidbreak'
+      in files_sec, "the RPCS3 helper is unpacked from its own small solid block, ahead of the payload (no freeze)")
+check("ewWaitUntilTerminated" not in text[text.index("procedure CheckRpcs3;"):text.index("function UseRpcs3")]
+      and "npbstMarquee" in text and "RpcsNote.Caption := 'Your RPCS3 cannot be used:'" in text,
+      "the RPCS3 check shows a progress page, never blocks the window, and prints its reasons on the page")
+check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID))" in text
+      and "Result := ' --rpcs3 ' + Quote(RpcsRoot);" in text, "the RPCS3 route skips the file pages and builds with --rpcs3")
+check(all(f"'{k}'" in text for k in ("status", "root", "dev_flash")) and "Pos('problem=', Lines[I]) = 1" in text
+      and set(rpcs3_import.lines({"status": "ok", "root": "r", "game": "g", "dev_flash": "d", "exe": ["x"],
+              "problems": []})[0].split("=")[:1]) == {"status"},
+      "the page reads the keys rpcs3_import.py writes")
 src = (ROOT / "tools/release/firstrun.py").read_text()
 for opt in ("root", "status-file", "stop-file", "save-paths"):
     check(f'"--{opt}"' in src, f"firstrun.py has --{opt}")

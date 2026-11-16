@@ -102,6 +102,23 @@ def place_problems(root, work, environ=None, now=None):
     return out
 
 
+FIRMWARE = "4.93"   # the PS3 system software libsre.prx and flashMP3.pic were tested from
+
+
+def firmware_version(dev_flash):
+    """The system software version installed in a dev_flash folder ("4.93"), from vsh/etc/version.txt's
+    "release:04.9300:" line; None when the file is not there or not readable."""
+    try:
+        with open(os.path.join(dev_flash, "vsh", "etc", "version.txt"), encoding="ascii", errors="replace") as f:
+            for line in f:
+                if line.startswith("release:"):
+                    v = line.split(":")[1]
+                    return f"{int(v.split('.')[0])}.{v.split('.')[1][:2]}"
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
 def wrong_kind(label, head):
     """What to say about a file that starts with the wrong bytes, by what it is instead."""
     if head == b"SCE\0":
@@ -122,6 +139,14 @@ def main():
     for line in place_problems(opt("--root"), opt("--work")):
         print(line)
         bad = True
+    fw = firmware_version(DEV_FLASH) if os.path.isdir(DEV_FLASH) else None
+    if fw and fw != FIRMWARE:
+        print(f"WRONG    firmware: {DEV_FLASH} holds PS3 system software {fw}; the port needs {FIRMWARE} (libsre.prx and "
+              f"flashMP3.pic come from it)\n         install system software {FIRMWARE} in RPCS3 (File, Install "
+              "Firmware), then take dev_flash and libsre from it again")
+        bad = True
+    elif fw:
+        print(f"ok       firmware {fw}")
     for label, path, size, digest, magic, required, what in FILES:
         tag = "required" if required else "optional"
         if not os.path.isfile(path):

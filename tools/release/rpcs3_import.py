@@ -52,6 +52,7 @@ IGNORED = ("missing_disc", "no_decrypted_eboot")
 # The tested files (docs/GETTING-FILES.md, tools/check-game-files.py): (input, output, size, SHA-256)
 EBOOT = ("EBOOT.BIN", "EBOOT.elf", 19706080, "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc")
 LIBSRE = ("libsre.sprx", "libsre.prx", 239344, "9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6")
+FIRMWARE = "4.93"   # the system software libsre.prx and flashMP3.pic were tested from (docs/GETTING-FILES.md)
 WATCHDOG = 30
 WINDOWS = os.name == "nt"
 FLATPAK_ID = "net.rpcs3.RPCS3"
@@ -66,8 +67,14 @@ HELP = {
                        "RPCS3, then check again.",
     "no_firmware": "RPCS3 has no PS3 system software installed (no sys/external/libsre.sprx in its dev_flash). "
                    "Install the firmware in RPCS3 (see its documentation), then check again.",
+    "wrong_firmware": "RPCS3 has PS3 system software {found} installed; the port needs 4.93 (its libsre and MP3 "
+                      "decoder were tested from it). Install firmware 4.93 in RPCS3 (File, Install Firmware), then "
+                      "check again.",
     "no_exe": "The RPCS3 program itself was not found (rpcs3.exe, the rpcs3 command, an AppImage or the Flatpak). "
               "Pick it, or pick your files yourself.",
+    "no_license": "RPCS3 needs this game's licence file (a .rap in its dev_hdd0/home/00000001/exdata folder) to "
+                  "decrypt the file named below, and did not find it. Your copy is the PSN version of the game: "
+                  "install its licence in RPCS3 as for playing it (see RPCS3's documentation), then try again.",
     "decrypt_failed": "RPCS3 did not make the file named below. Check that this RPCS3 runs the game, then try again, "
                       "or pick your files yourself.",
     "wrong_file": "RPCS3 made the file named below, but it is not the tested one: the game must be NPUA80856 "
@@ -75,8 +82,21 @@ HELP = {
 }
 
 
-def _problem(code, detail=""):
-    return {"code": code, "text": HELP[code] + (f" ({detail})" if detail else "")}
+def _problem(code, detail="", **fmt):
+    return {"code": code, "text": HELP[code].format(**fmt) + (f" ({detail})" if detail else "")}
+
+
+def firmware_version(dev_flash):
+    """dev_flash's system software version ("4.93") from vsh/etc/version.txt, or None."""
+    try:
+        with open(os.path.join(dev_flash, "vsh", "etc", "version.txt"), encoding="ascii", errors="replace") as f:
+            for line in f:
+                if line.startswith("release:"):
+                    v = line.split(":")[1]
+                    return f"{int(v.split('.')[0])}.{v.split('.')[1][:2]}"
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
 
 
 def sha256(path):
@@ -129,7 +149,8 @@ def resolve(hint=None, exe=None, home=None):
     """What the player's RPCS3 has for the port: {"status", "root", "game", "edat", "dev_flash", "exe" (argv),
     "problems": [{"code", "text"}]}. Reads only."""
     res = loc.locate(hint or None, {TITLE: None})
-    out = {"status": "not_found", "root": res.get("root"), "game": "", "edat": "", "dev_flash": res.get("dev_flash")
+    out = {"status": "not_found", "root": res.get("root"), "dev_hdd0": res.get("dev_hdd0") or "", "game": "", "edat": "",
+           "dev_flash": res.get("dev_flash")
            or "", "exe": None, "problems": []}
     if not res["ok"]:
         code = "not_rpcs3" if res.get("code") == "not_rpcs3" else "not_found"
@@ -149,8 +170,12 @@ def resolve(hint=None, exe=None, home=None):
         if missing:
             probs.append(_problem("game_incomplete", ", ".join(missing)))
         out["edat"] = os.path.join(game, "USRDIR", "data_ps3.psarc.edat")
-    if not os.path.isfile(os.path.join(out["dev_flash"], "sys", "external", LIBSRE[0])):
+    fw = firmware_version(out["dev_flash"])
+    out["firmware"] = fw or ""
+    if not os.path.isfile(os.path.join(out["dev_flash"], "sys", "external", LIBSRE[0])) or not fw:
         probs.append(_problem("no_firmware"))
+    elif fw != FIRMWARE:
+        probs.append(_problem("wrong_firmware", found=fw))
     out["exe"] = find_exe(res["root"], exe, home)
     if not out["exe"]:
         probs.append(_problem("no_exe"))
@@ -193,54 +218,107 @@ def _stop(proc):
         pass
 
 
-def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None):
-    """Copies each (source path, (in name, out name, size, sha)) into prep/in, runs RPCS3 --decrypt on the copies and
-    checks each output. Returns {"ok", "files": {out name: path}, "problems"}. The copies and RPCS3's settings are
-    removed afterwards; the good outputs are moved to prep."""
+EXDATA = ("home", "00000001", "exdata")   # where RPCS3 looks for a game's licence (.rap) for its first user
+
+
+def _link_dir(link, target):
+    """A directory link (a symbolic link, or on Windows without that right a junction, which needs none)."""
+    os.makedirs(os.path.dirname(link), exist_ok=True)
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except OSError:
+        if not WINDOWS:
+            raise
+        import _winapi
+        _winapi.CreateJunction(target, link)
+
+
+def _unlink_dir(link):
+    """Removes the link itself, never what it points at."""
+    try:
+        if os.path.islink(link):
+            os.unlink(link)
+        elif os.path.isdir(link):
+            os.rmdir(link)   # a junction: rmdir removes the link, and refuses a real folder that is not empty
+    except OSError:
+        pass
+
+
+def _exdata_links(cfg, hdd0):
+    """Where RPCS3 looks for exdata under the redirected settings (RPCS3_CONFIG_DIR's dev_hdd0 on Windows,
+    XDG_CONFIG_HOME/rpcs3/dev_hdd0 on Linux), linked to the player's own dev_hdd0/home/00000001/exdata: a PSN copy
+    of the game needs its .rap to decrypt the EBOOT, and RPCS3 reads it through the link. This module never opens a
+    .rap, and RPCS3's own start-up folders go to cfg, not into the player's dev_hdd0. Returns the links made."""
+    target = os.path.join(hdd0, *EXDATA)
+    if not os.path.isdir(target):
+        return []
+    links = [os.path.join(cfg, "dev_hdd0", *EXDATA), os.path.join(cfg, "config", "rpcs3", "dev_hdd0", *EXDATA)]
+    for link in links:
+        _link_dir(link, target)
+    return links
+
+
+def _run_one(exe, cfg, src, out, prep, logf, watchdog):
+    """One RPCS3 --decrypt run on one copy (RPCS3 stops a batch at its first failure). -> (exit code, timed out)."""
+    argv = _argv(exe, cfg, [src])
+    kw: dict = {"creationflags": 0x08000000} if WINDOWS else {"start_new_session": True}   # CREATE_NO_WINDOW
+    proc = subprocess.Popen(argv, cwd=prep, env=rpcs3_env(cfg), stdin=subprocess.DEVNULL, stdout=logf,
+                            stderr=subprocess.STDOUT, **kw)
+    t0 = time.monotonic()
+    while proc.poll() is None:
+        if not os.path.isfile(out) and time.monotonic() - t0 > watchdog:
+            _stop(proc)
+            proc.wait()
+            return proc.returncode, True
+        time.sleep(0.25)
+    return proc.returncode, False
+
+
+def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
+    """Copies each (source path, (in name, out name, size, sha)) into prep/in, runs RPCS3 --decrypt on each copy and
+    checks each output. hdd0: the player's dev_hdd0, for the licence RPCS3 may need (see _exdata_links). Returns {"ok",
+    "files": {out name: path}, "problems"}. The copies and RPCS3's settings are removed afterwards; the good outputs
+    are moved to prep; RPCS3's own lines are kept in prep/rpcs3-decrypt.log."""
     log = log or (lambda line: None)
     inp, cfg = os.path.join(prep, "in"), os.path.join(prep, "rpcs3")
     shutil.rmtree(inp, ignore_errors=True)
     shutil.rmtree(cfg, ignore_errors=True)
     os.makedirs(inp)
     os.makedirs(cfg)
-    copies = []
-    for src, spec in sources:
-        dst = os.path.join(inp, spec[0])
-        shutil.copyfile(src, dst)
-        copies.append((dst, spec))
-    argv = _argv(exe, cfg, [d for d, _ in copies])
-    log("rpcs3: " + " ".join(loc.redact(a) if os.path.isabs(a) else a for a in argv))
-    kw: dict = {"creationflags": 0x08000000} if WINDOWS else {"start_new_session": True}   # CREATE_NO_WINDOW
-    outs = [os.path.join(inp, spec[1]) for _, spec in copies]
-    timed_out = False
-    with open(os.path.join(prep, "rpcs3-decrypt.log"), "wb") as f:
-        proc = subprocess.Popen(argv, cwd=prep, env=rpcs3_env(cfg), stdin=subprocess.DEVNULL, stdout=f,
-                                stderr=subprocess.STDOUT, **kw)
-        done, last = 0, time.monotonic()
-        while proc.poll() is None:
-            now = sum(1 for o in outs if os.path.isfile(o))
-            if now != done:
-                done, last = now, time.monotonic()
-            if time.monotonic() - last > watchdog:
-                timed_out = True
-                _stop(proc)
-                proc.wait()
-                break
-            time.sleep(0.25)
-    log(f"rpcs3: exit {proc.returncode}" + (f" (stopped after {watchdog} s without a new file)" if timed_out else ""))
+    links = []
+    if hdd0:
+        try:
+            links = _exdata_links(cfg, hdd0)
+        except OSError as e:
+            log(f"rpcs3: no link to the licence folder ({e}); a PSN copy of the game may not decrypt")
     res = {"ok": True, "files": {}, "problems": []}
-    for (copy, (_, out_name, size, digest)), out in zip(copies, outs):
-        if not os.path.isfile(out):
-            res["problems"].append(_problem("decrypt_failed", out_name))
-            continue
-        got_size, got = os.path.getsize(out), sha256(out)
-        log(f"rpcs3: {out_name} {got_size} bytes, SHA-256 {got[:16]}...")
-        if got_size != size or got != digest:
-            res["problems"].append(_problem("wrong_file", f"{out_name}: {got_size} bytes, SHA-256 {got[:16]}..."))
-            continue
-        final = os.path.join(prep, out_name)
-        os.replace(out, final)
-        res["files"][out_name] = final
+    logpath = os.path.join(prep, "rpcs3-decrypt.log")
+    with open(logpath, "wb") as logf:
+        for src, (in_name, out_name, size, digest) in sources:
+            copy, out = os.path.join(inp, in_name), os.path.join(inp, out_name)
+            shutil.copyfile(src, copy)
+            log("rpcs3: " + " ".join(loc.redact(a) if os.path.isabs(a) else a for a in _argv(exe, cfg, [copy])))
+            logf.flush()
+            before = logf.tell()
+            rc, timed_out = _run_one(exe, cfg, copy, out, prep, logf, watchdog)
+            log(f"rpcs3: exit {rc}" + (f" (stopped after {watchdog} s without the file)" if timed_out else ""))
+            if not os.path.isfile(out):
+                with open(logpath, "rb") as f:
+                    f.seek(before)
+                    said = f.read().decode("utf-8", "replace")
+                code = "no_license" if "license file" in said or ".rap" in said else "decrypt_failed"
+                res["problems"].append(_problem(code, out_name))
+                continue
+            got_size, got = os.path.getsize(out), sha256(out)
+            log(f"rpcs3: {out_name} {got_size} bytes, SHA-256 {got[:16]}...")
+            if got_size != size or got != digest:
+                res["problems"].append(_problem("wrong_file", f"{out_name}: {got_size} bytes, SHA-256 {got[:16]}..."))
+                continue
+            final = os.path.join(prep, out_name)
+            os.replace(out, final)
+            res["files"][out_name] = final
+    for link in links:
+        _unlink_dir(link)   # first, so the clean-up below cannot reach the player's folder through it
     shutil.rmtree(inp, ignore_errors=True)
     shutil.rmtree(cfg, ignore_errors=True)
     res["ok"] = not res["problems"]
@@ -259,7 +337,7 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG):
     want = [(src, spec) for src, spec in ((os.path.join(r["game"], "USRDIR", EBOOT[0]), EBOOT),
                                           (os.path.join(r["dev_flash"], "sys", "external", LIBSRE[0]), LIBSRE))
             if not (os.path.isfile(have[spec[1]]) and sha256(have[spec[1]]) == spec[3])]   # kept from a last run
-    d = decrypt(r["exe"], want, prep, watchdog, log) if want else {"ok": True, "problems": []}
+    d = decrypt(r["exe"], want, prep, watchdog, log, r.get("dev_hdd0")) if want else {"ok": True, "problems": []}
     r["problems"] = d["problems"]
     r["status"] = "ok" if d["ok"] else "failed"
     if d["ok"]:
@@ -270,7 +348,7 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG):
 # -------------------------------------------------------------------------------------------------- command line
 def lines(res):
     out = [f"status={res['status']}"]
-    for k in ("root", "source", "game", "edat", "dev_flash", "eboot", "libsre"):
+    for k in ("root", "source", "game", "edat", "dev_flash", "firmware", "eboot", "libsre"):
         if res.get(k):
             out.append(f"{k}={res[k]}")
     if res.get("exe"):
@@ -300,9 +378,10 @@ def main(argv=None):
     else:
         res = prepare(a.work, a.rpcs3, a.exe or None, log=lambda line: print(line, file=sys.stderr))
     text = "\n".join(lines(res)) + "\n"
-    if a.out:
-        with open(a.out, "w", encoding="utf-8-sig", newline="\r\n" if WINDOWS else "\n") as f:
+    if a.out:   # written aside and renamed: the setup polls for the file and must never read half of it
+        with open(a.out + ".tmp", "w", encoding="utf-8-sig", newline="\r\n" if WINDOWS else "\n") as f:
             f.write(text)
+        os.replace(a.out + ".tmp", a.out)
     else:
         sys.stdout.write(text)
     return 0 if res["status"] == "ok" else 1

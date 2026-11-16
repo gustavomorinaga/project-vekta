@@ -41,13 +41,17 @@ FAKE = r'''#!/usr/bin/env python3
 import os, sys, time
 mode = os.environ.get("FAKE_MODE", "ok")
 with open(os.environ["FAKE_LOG"], "a") as f:
+    ex = os.path.join(os.environ.get("XDG_CONFIG_HOME", ""), "rpcs3", "dev_hdd0", "home", "00000001", "exdata")
     f.write("|".join([os.environ.get("XDG_CONFIG_HOME", ""), os.environ.get("XDG_CACHE_HOME", ""),
-                      repr(sys.stdin.read()), " ".join(sys.argv[1:])]) + "\n")
+                      repr(sys.stdin.read()), " ".join(sys.argv[1:]),
+                      ",".join(sorted(os.listdir(ex))) if os.path.isdir(ex) else "-"]) + "\n")
+if mode == "norap":
+    print("RPCS3: SELF: Failed to locate the game license file: x/exdata/UP9000-NPUA80856_00-X.rap.")
 if mode == "hang":
     time.sleep(60)
 args = sys.argv[1:]
 for i, a in enumerate(args):
-    if a == "--decrypt" and mode != "none":
+    if a == "--decrypt" and mode not in ("none", "norap"):
         src = args[i + 1]
         out = src[: src.rfind(".")] + (".elf" if src.endswith(".BIN") else ".prx")
         with open(out, "wb") as f:
@@ -86,6 +90,12 @@ with tempfile.TemporaryDirectory() as tmp:
     ext = rp / "dev_flash" / "sys" / "external"
     ext.mkdir(parents=True)
     (ext / "libsre.sprx").write_bytes(b"SCE\0 encrypted libsre")
+    ver = rp / "dev_flash" / "vsh" / "etc" / "version.txt"
+    ver.parent.mkdir(parents=True)
+    ver.write_text("release:04.9300:\nbuild:1,20260101:x\n")
+    exdata = rp / "dev_hdd0" / "home" / "00000001" / "exdata"   # the player's licences (a made-up name; never read)
+    exdata.mkdir(parents=True)
+    (exdata / "UP9000-TEST00000_00-NOTAREALLICENCE.rap").write_bytes(b"x" * 16)
     exe = rp / "rpcs3"
     exe.write_text(FAKE)
     exe.chmod(0o755)
@@ -110,13 +120,17 @@ with tempfile.TemporaryDirectory() as tmp:
     check((prep / "EBOOT.elf").read_bytes() == b"plain EBOOT.BIN", "prepare: the EBOOT made by RPCS3 is kept")
     call = flog.read_text().splitlines()
     cfg = str(prep / "rpcs3")
-    check(len(call) == 1 and call[0].startswith(f"{cfg}/config|{cfg}/cache|''|--decrypt {prep}/in/EBOOT.BIN "
-                                                f"--decrypt {prep}/in/libsre.sprx"),
-          f"prepare: one RPCS3 run on the copies, its settings in work/prep, stdin empty: {call}")
+    check(len(call) == 2 and call[0].startswith(f"{cfg}/config|{cfg}/cache|''|--decrypt {prep}/in/EBOOT.BIN|")
+          and call[1].startswith(f"{cfg}/config|{cfg}/cache|''|--decrypt {prep}/in/libsre.sprx|"),
+          f"prepare: one RPCS3 run per copy (a failure stops a batch), settings in work/prep, stdin empty: {call}")
+    check(all(c.endswith("|UP9000-TEST00000_00-NOTAREALLICENCE.rap") for c in call),
+          f"RPCS3 sees the player's exdata (licences) through a link in its redirected settings: {call}")
     check(not (prep / "in").exists() and not (prep / "rpcs3").exists(), "prepare: the copies and settings are removed")
     check(tree_state(rp) == before, "prepare: nothing written into RPCS3's or the game's folders")
     p = ri.prepare(str(work), str(rp))
-    check(p["status"] == "ok" and len(flog.read_text().splitlines()) == 1, "prepare again: the kept files are reused")
+    check(p["status"] == "ok" and len(flog.read_text().splitlines()) == 2, "prepare again: the kept files are reused")
+    check((exdata / "UP9000-TEST00000_00-NOTAREALLICENCE.rap").read_bytes() == b"x" * 16,
+          "the player's licence folder is still there after the clean-up (only the link was removed)")
 
     # results judged by their hash, not by RPCS3's exit code
     for f in ("EBOOT.elf", "libsre.prx"):
@@ -129,12 +143,26 @@ with tempfile.TemporaryDirectory() as tmp:
     p = ri.prepare(str(work), str(rp))
     check(p["status"] == "failed" and [x["code"] for x in p["problems"]] == ["decrypt_failed", "decrypt_failed"],
           f"no result (exit 0 all the same): decrypt_failed: {p['problems']}")
+    os.environ["FAKE_MODE"] = "norap"
+    p = ri.prepare(str(work), str(rp))
+    check(p["status"] == "failed" and p["problems"][0]["code"] == "no_license" and ".rap" in p["problems"][0]["text"],
+          f"RPCS3 asking for the .rap is named as the missing licence: {p['problems']}")
     os.environ["FAKE_MODE"] = "hang"
     t0 = time.monotonic()
     p = ri.prepare(str(work), str(rp), watchdog=1)
     check(p["status"] == "failed" and time.monotonic() - t0 < 20, "the watchdog stops an RPCS3 that never finishes")
     os.environ["FAKE_MODE"] = "ok"
     check(tree_state(rp) == before, "after the failures too, nothing written into RPCS3's or the game's folders")
+
+    # the firmware's version: another one than 4.93 is named, with the version found
+    ver.write_text("release:04.9000:\n")
+    r = ri.resolve(str(rp))
+    check([x["code"] for x in r["problems"]] == ["wrong_firmware"] and "4.90" in r["problems"][0]["text"]
+          and "4.93" in r["problems"][0]["text"], f"firmware 4.90: wrong_firmware names both versions: {r['problems']}")
+    ver.unlink()
+    check([x["code"] for x in ri.resolve(str(rp))["problems"]] == ["no_firmware"], "no version.txt: no_firmware")
+    ver.write_text("release:04.9300:\n")
+    check(ri.resolve(str(rp))["firmware"] == "4.93", "resolve reports the firmware's version")
 
     # what resolve reports when a piece is missing
     (ext / "libsre.sprx").rename(tmp / "libsre.sprx")
@@ -172,11 +200,20 @@ with tempfile.TemporaryDirectory() as tmp:
     so, sys.stderr = sys.stderr, err
     try:
         os.environ["KZ_WORK"] = str(tmp / "work5")
-        rc = firstrun.main(["--rpcs3", str(tmp / "nowhere"), "--root", str(ROOT)])
+        so2, sys.stdout = sys.stdout, io.StringIO()
+        try:
+            rc = firstrun.main(["--rpcs3", str(tmp / "nowhere"), "--root", str(ROOT), "--status-file",
+                                str(tmp / "status")])
+        finally:
+            sys.stdout = so2
         del os.environ["KZ_WORK"]
     finally:
         sys.stderr = so
     check(rc == 1 and "cannot be used" in err.getvalue(), f"firstrun --rpcs3 with no RPCS3 stops and says why: {rc}")
+    st = (tmp / "status").read_text().splitlines() if (tmp / "status").exists() else []
+    check(len(st) >= 3 and st[0].startswith("LOG ") and st[1].startswith("RESULT ok=0 step=rpcs3")
+          and st[2].startswith("REASON your RPCS3 cannot be used"),
+          f"and its status file ends with RESULT and the reason, which the setup's build page waits for: {st}")
 
 print("test_rpcs3_import:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

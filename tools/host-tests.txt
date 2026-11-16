@@ -60,3 +60,4 @@ tools/tests/test_edat_cache.sh
 tools/tests/test_rpcs3_import.py
 tools/tests/test_place_checks.py
 tools/tests/test_version_check.py
+tools/tests/test_edat_seek.sh

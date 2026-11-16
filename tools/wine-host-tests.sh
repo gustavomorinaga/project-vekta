@@ -46,6 +46,8 @@ run() { local name=$1; shift; n=$((n + 1))
 run test_mlaa_ref -std=c11 -frounding-math "$KZ_ROOT/tools/tests/test_mlaa_ref.c" "$KZ_ROOT/port/kz1hd/native/mlaa_ref.c"
 run test_spu_put_recheck -std=gnu17 -I "$P/include" -I "$S" -I "$P/runtime/platform" \
   "$KZ_ROOT/tools/tests/test_spu_put_recheck.c" "${spu[@]}" "$P/runtime/platform/win32_compat.c" -pthread
+# 64-bit seeks in the EDAT reader on Windows (patch 4015): a long is 32 bits there
+run test_edat_seek -std=gnu17 -I "$P/include" -I "$P/libs/filesystem/tests" "$KZ_ROOT/tools/tests/test_edat_seek.c"
 # SDL2's hints on Windows (patch 4012): the Raw Input joystick driver off unless the environment says otherwise
 run test_pad_rawinput -std=gnu17 -DPS3RECOMP_PAD_USE_SDL2 -I "$P/include" -I "$P/libs/input" -I "$SD/include" -I "$SD/include/SDL2" \
   "$KZ_ROOT/tools/tests/test_pad_rawinput.c" -L "$SD/lib" -lSDL2 -pthread
