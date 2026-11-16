@@ -94,6 +94,10 @@ program and folder that build it. Until a release that calls itself playable
 ### Fixed
 - After a check that found a file of the wrong kind (`WRONG`), `run.cmd` and `tools/install.sh` asked for every file
   again instead of only that one.
+- Resolution on a display with many modes (Windows at 3440x1440): the Resolution row offers at most 16 sizes, and the
+  one saved in `kz1hd_pc.ini` could fall off the end of the list. The row then showed the largest size while the
+  window and the fullscreen mode stayed at the saved one (1280x720 by default), and choosing the size the row already
+  showed changed nothing. The saved size is now always in the list. Borderless was not affected.
 - Anti-aliasing at any resolution: the game's MLAA, its glow and the sprint motion blur only ran when the frame was
   drawn at exactly 1280x720. With the internal resolution scale, or the default fill to a window of any other size,
   none of the three ran and the picture had no anti-aliasing at all. They now run at the size the frame is drawn
