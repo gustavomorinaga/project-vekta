@@ -34,6 +34,12 @@ check('rsx_vulkan_set_window_identity("project-vekta"' in main and '#include "wi
 entry = firstrun.desktop_entry("/opt/vekta")
 check("StartupWMClass=project-vekta" in entry, "the Linux menu entry names the window's class")
 check(firstrun.desktop_path().endswith("project-vekta.desktop"), "and is named after the app id (Wayland's match)")
+rc = (ROOT / "port" / "kz1hd" / "app.rc").read_text()
+check('1 ICON "../../installer/art/vekta.ico"' in rc and (ROOT / "port" / "kz1hd" / "../../installer/art/vekta.ico")
+      .resolve().is_file(), "KZ1HD.exe gets vekta.ico as its icon (app.rc)")
+import assemble_payload  # noqa: E402
+check(any(r[0] == "installer/art/vekta.ico" for r in assemble_payload.RULES),
+      "the Windows payload ships the .ico the player's build needs for app.rc")
 series = (ROOT / "port" / "patches" / "series").read_text()
 check(any(line.startswith("2081-") for line in series.splitlines()), "patch 2081 is in the series")
 
