@@ -201,6 +201,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Added</span>&quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, <code>run.cmd</code>, <code>./run.sh</code> and <code>tools/install.sh</code> now offer three choices, &quot;Use my RPCS3 install&quot;, &quot;I have the files ready&quot; and &quot;Show me how&quot;, which lists the steps to get the game and the firmware into RPCS3 and asks again. Without RPCS3 the scripts say why it cannot be used.</li>
 <li><span class="sec">Added</span>The decrypted <code>data_ps3.psarc</code> is no longer needed: without it the port reads the installed game&#x27;s own <code>USRDIR/data_ps3.psarc.edat</code>, as the package or RPCS3 installs it. After the build the install runs the game once without a window until the archive is open (about a minute; <code>tools/kzbuild.py data</code>), checks it and takes the movies out of it. The opened archive is kept in <code>work/edat-cache</code> (3.1 GB); nothing is written into the game folder. A decrypted <code>data_ps3.psarc</code> you already have keeps working as before.</li>
 <li><span class="sec">Added</span>Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, <code>tools/install.sh</code> and the zip&#x27;s <code>run.cmd</code> find them and offer to use them (<code>firstrun.py --rpcs3 [DIR]</code> without asking). Your RPCS3 then decrypts copies of the game&#x27;s <code>EBOOT.BIN</code> and the firmware&#x27;s <code>libsre.sprx</code> into <code>work/prep</code>, each checked by SHA-256, and no file needs preparing by hand. RPCS3&#x27;s settings for that run are kept in <code>work/prep</code>; nothing is written into the game&#x27;s or RPCS3&#x27;s folders. The setup program offers it on its new &quot;Your game&quot; page, which skips the file pages when it is chosen and says why when RPCS3 cannot be used.</li>
 <li><span class="sec">Added</span>The first run&#x27;s check also looks at where the port is: a folder path with <code>[</code>, <code>]</code> or <code>;</code> (the build tools stop on them), a folder inside OneDrive (it locks the build&#x27;s files) and a PC clock behind the port&#x27;s files (the build would never end) each stop it with what to do. An encrypted <code>EBOOT.BIN</code> or <code>.sprx</code>, or the <code>.edat</code> given as the decrypted archive, is named as such. A port folder that was moved or renamed is built again instead of failing in CMake, and the saved paths that pointed inside it follow it.</li>
@@ -304,6 +305,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, tools/install.sh and...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The first run&#x27;s check also looks at where the port is: a folder path with [, ] or ; (the build tools stop on them), a...</span></li>
@@ -311,7 +313,6 @@
 <li><time>next</time><span><b>Unreleased</b> With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles....</span></li>
 <li><time>next</time><span><b>Unreleased</b> The setup&#x27;s &quot;Portable&quot; choice can be changed after the install: play.cmd --move-data portable or --move-data appdata...</span></li>
 <li><time>next</time><span><b>Unreleased</b> A new-version check, off by default: once turned on (KZ_VERSION_CHECK=1, or tools/release/version_check.py --enable)...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The game window has the project&#x27;s icon, in its title bar and in the taskbar (Windows, Linux on X11). On Wayland the...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

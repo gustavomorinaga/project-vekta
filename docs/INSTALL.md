@@ -21,7 +21,8 @@ You need these files from your own game and your own PS3 firmware.
   music decoder. Without it, the music and sound stop at the first MP3.
 
 **Already playing it in RPCS3?** When RPCS3 has Killzone HD and the PS3 firmware 4.93 installed, the Linux folder's
-`./run.sh` and the zip's `run.cmd` find them and offer to use them: your RPCS3 then decrypts copies of `EBOOT.BIN` and
+`./run.sh` and the zip's `run.cmd` find them and offer to use them ("Use my RPCS3 install", "I have the files
+ready" or "Show me how", which lists these steps): your RPCS3 then decrypts copies of `EBOOT.BIN` and
 `libsre.sprx` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The
 setup program offers the same on its "Your game" page ("Use my RPCS3 install").
 
@@ -51,7 +52,8 @@ administrator rights.
      in the install folder: it moves the saves and settings and remembers the choice, and moves nothing when the
      other folder already has some.
 3. **Your game.** "Use my RPCS3 install" when the setup found RPCS3 with the game and the firmware: the next two
-   pages are skipped. Otherwise, pick the installed game folder. Picking the folder above it also works.
+   pages are skipped. "Show me how" lists the steps to get there, and stays on the page. Otherwise, pick the
+   installed game folder. Picking the folder above it also works.
 4. **Your decrypted files.** Pick `EBOOT.elf` and `libsre.prx`. Leave `data_ps3.psarc` empty to use the game
    folder's own `.edat`, or pick a decrypted one you already have.
 5. **PS3 firmware (for the music).** Pick the `dev_flash` folder, or leave it empty.
