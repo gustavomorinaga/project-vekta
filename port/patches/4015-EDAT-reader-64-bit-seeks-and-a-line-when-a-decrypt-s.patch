@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sun, 15 Nov 2026 21:45:54 -0300
+Subject: [PATCH] EDAT reader: 64-bit seeks, and a line when a decrypt stops
+
+Symptom: on Windows the port never opened Killzone HD's data_ps3.psarc.edat (3 GB): the install's data step ran the
+game for 900 s and gave up (found on the maintainer's Windows PC 2026-11-15, reproduced with the Windows build under
+Wine). The log showed the title's klicensee verified, then no "decrypted" line, then FIOS failing on the archive.
+
+Cause: edat_decrypt_file seeked with fseek(in, (long)offset). A long is 32 bits on Windows, so the first block past
+2 GiB failed to seek, the loop stopped with -9 and the half-written cache was removed, all without a word. On Linux a
+long is 64 bits, which is why it worked there.
+
+Fix: edat_seek(), _fseeki64 on Windows and fseeko elsewhere, for both seeks. A decrypt that stops now says where and
+why ("a read failed", "a write failed", "a block did not verify"). Written here. Test: tools/tests/test_edat_seek.c
+(a sparse 3 GiB file, a marker at 2.5 GiB), run on Linux and, where it failed, built for Windows under Wine
+(tools/wine-host-tests.sh). Upstream candidate.
+---
+ libs/filesystem/edat.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/libs/filesystem/edat.c b/libs/filesystem/edat.c
+index 9ea7355..26d375c 100644
+--- a/libs/filesystem/edat.c
++++ b/libs/filesystem/edat.c
+@@ -406,6 +406,17 @@ int edat_selftest(void)
+ /* ---------------------------------------------------------------------------
+  * EDAT
+  * -----------------------------------------------------------------------*/
++/* A 64-bit seek. fseek takes a long, which is 32 bits on Windows: past 2 GiB
++ * (a 3 GB data archive) it fails, and every later block read with it. */
++static int edat_seek(FILE* f, uint64_t off)
++{
++#ifdef _WIN32
++    return _fseeki64(f, (__int64)off, SEEK_SET);
++#else
++    return fseeko(f, (off_t)off, SEEK_SET);
++#endif
++}
++
+ int edat_is_npd(const char* host_path)
+ {
+     FILE* f = fopen(host_path, "rb");
+@@ -595,7 +606,7 @@ int edat_decrypt_file(const char* in_path, const char* out_path)
+                                        : data_base + (uint64_t)b * block_size;
+ 
+         uint8_t meta[0x20];
+-        if (fseek(in, (long)meta_off, SEEK_SET) != 0 ||
++        if (edat_seek(in, meta_off) != 0 ||
+             fread(meta, 1, meta_size, in) != meta_size) { rc = -9; break; }
+ 
+         /* With FLAG_0x20 the stored hash is the xor of the two halves. */
+@@ -610,7 +621,7 @@ int edat_decrypt_file(const char* in_path, const char* out_path)
+             len = file_size % block_size;
+         uint64_t padded = (len + 15) & ~(uint64_t)15;
+ 
+-        if (fseek(in, (long)data_off, SEEK_SET) != 0 ||
++        if (edat_seek(in, data_off) != 0 ||
+             fread(enc, 1, (size_t)padded, in) != padded) { rc = -10; break; }
+ 
+         /* Block key. Version 0/1 seeds from zero and uses a zero CBC IV;
+@@ -666,8 +677,12 @@ int edat_decrypt_file(const char* in_path, const char* out_path)
+     if (rc == 0)
+         fprintf(stderr, "[edat] decrypted %llu bytes -> %s\n",
+                 (unsigned long long)written, out_path);
+-    else
++    else {
++        fprintf(stderr, "[edat] %s: stopped after %llu bytes (%s, %d)\n", in_path, (unsigned long long)written,
++                rc == -9 || rc == -10 ? "a read failed" : rc == -12 ? "a write failed" : "a block did not verify",
++                rc);
+         remove(out_path);   /* never leave a half-written cache behind */
++    }
+     return rc;
+ }
+ 
