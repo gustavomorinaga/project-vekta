@@ -120,8 +120,9 @@ with tempfile.TemporaryDirectory() as tmp:
 
     rc, out, calls, r, raw = run(root, game, status=status)
     check(rc == 0 and "RESULT ok=1 step=-" in out, "the first run builds: " + out[-300:])
-    check(calls == ["check", "pip", "patch", "lift", "vfs", "build", "data"], f"every step runs: {calls}")
-    check(f"jobs=3 eboot={game}/EBOOT.elf" in raw, f"the steps get the paths and the job count: {raw}")
+    pip = ["pip"] if firstrun.cmd_venv(ctx(root, game)) else []   # Windows and the pinned toolchain have no pip step
+    check(calls == ["check"] + pip + ["patch", "lift", "vfs", "build", "data"], f"every step runs: {calls}")
+    check(f"jobs=3 eboot={os.path.join(str(game), 'EBOOT.elf')}" in raw, f"the steps get the paths and the job count: {raw}")
     pcts = [float(ln.rsplit("pct=", 1)[1]) for ln in out.splitlines() if ln.startswith("PROGRESS ")]
     check(pcts == sorted(pcts) and pcts[-1] == 100.0, f"the progress only grows, to 100: {pcts[-5:]}")
     check("name=compile done=2 total=2" in out, "Ninja's [x/y] lines are the compile's progress")
@@ -206,7 +207,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(sh({}) == odd, f"tools/env.sh takes the saved path: {sh({})!r}")
     check(sh({"KZ_EBOOT": "/mine"}) == "/mine", "a variable set in the environment wins")
     check(firstrun.resolve_paths(str(root), str(root / "work"), {})["eboot"] == odd, "a run takes the saved paths")
-    check(firstrun.resolve_paths(str(root), str(root / "work"), {"eboot": "/x"})["eboot"] == "/x",
+    check(firstrun.resolve_paths(str(root), str(root / "work"), {"eboot": "/x"})["eboot"] == os.path.abspath("/x"),
           "an option beats the saved path")
 
     # --dry-run writes nothing
@@ -216,9 +217,8 @@ with tempfile.TemporaryDirectory() as tmp:
     check(sorted(p.name for p in (root / "work").iterdir()) == before and "kzbuild.py" in out.getvalue(),
           "--dry-run prints the plan and writes nothing")
 
-    # --interactive: a failed check asks for the failing file only, then asks once about DLSS (Linux), then builds
-    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", str(game / "EBOOT.elf")] +
-                   (["n"] if os.name != "nt" else []))
+    # --interactive: a failed check asks for the failing file only, then asks once about DLSS, then builds
+    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", str(game / "EBOOT.elf"), "n"])
     real_license = firstrun.fetch_license
     firstrun.fetch_license = lambda c: str(tmp / "LICENSE.txt")   # no network in a test
     real_import = firstrun.rpcs3_import   # no RPCS3 of this machine: the offer is tested in test_rpcs3_import.py
@@ -253,30 +253,30 @@ with tempfile.TemporaryDirectory() as tmp:
     firstrun.rpcs3_import = real_import
     os.environ.pop("FAIL_STEP", None)
     check(rc == 0, f"--interactive builds once the check passes: {said[-2:]}")
-    if os.name != "nt":
-        check(any(firstrun.DLSS_LICENSE_URL in s and str(tmp / "LICENSE.txt") in s for s in said) and
-              c.dlss == "decline" and firstrun.read_dlss(c.work) == "decline" and firstrun.cmd_dlss(c) == [],
-              "--interactive asks about DLSS once, with the licence's link and text; no is kept and fetches nothing")
+    check(any(firstrun.DLSS_LICENSE_URL in s and str(tmp / "LICENSE.txt") in s for s in said) and
+          c.dlss == "decline" and firstrun.read_dlss(c.work) == "decline" and firstrun.cmd_dlss(c) == [],
+          "--interactive asks about DLSS once, with the licence's link and text; no is kept and fetches nothing")
     check("PROGRESS " not in console.getvalue() and "RESULT " not in console.getvalue() and "100.0%" in console.getvalue(),
           "the console shows the bar, not the protocol lines")
     check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 7,
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
 
-# the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again
-with tempfile.TemporaryDirectory() as tmp:
-    os.environ["XDG_DATA_HOME"] = tmp
-    odd = '/opt/my "odd" $dir'
-    p = firstrun.install_desktop(odd)
-    text = pathlib.Path(p).read_text()
-    check(p == os.path.join(tmp, "applications", "project-vekta.desktop"), f"the entry goes to the menu folder: {p}")
-    check('Exec="/opt/my \\\\"odd\\\\" \\\\$dir/tools/play.sh"' in text, f"Exec is quoted and escaped: {text}")
-    check(f"Icon={odd}/assets/icon.svg" in text and "Categories=Game;" in text, "the entry has the icon and category")
-    if shutil.which("desktop-file-validate"):
-        r = subprocess.run(["desktop-file-validate", p], capture_output=True, text=True)
-        check(r.returncode == 0, "desktop-file-validate accepts it: " + r.stdout + r.stderr)
-    check(firstrun.remove_desktop() == p and not os.path.exists(p) and firstrun.remove_desktop() is None,
-          "--remove-desktop removes it, once")
-    del os.environ["XDG_DATA_HOME"]
+# the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again (Linux only)
+if os.name != "nt":
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["XDG_DATA_HOME"] = tmp
+        odd = '/opt/my "odd" $dir'
+        p = firstrun.install_desktop(odd)
+        text = pathlib.Path(p).read_text()
+        check(p == os.path.join(tmp, "applications", "project-vekta.desktop"), f"the entry goes to the menu folder: {p}")
+        check('Exec="/opt/my \\\\"odd\\\\" \\\\$dir/tools/play.sh"' in text, f"Exec is quoted and escaped: {text}")
+        check(f"Icon={odd}/assets/icon.svg" in text and "Categories=Game;" in text, "the entry has the icon and category")
+        if shutil.which("desktop-file-validate"):
+            r = subprocess.run(["desktop-file-validate", p], capture_output=True, text=True)
+            check(r.returncode == 0, "desktop-file-validate accepts it: " + r.stdout + r.stderr)
+        check(firstrun.remove_desktop() == p and not os.path.exists(p) and firstrun.remove_desktop() is None,
+              "--remove-desktop removes it, once")
+        del os.environ["XDG_DATA_HOME"]
 check((ROOT / "assets/icon.svg").is_file(), "the icon the entry names is in the tree")
 
 # --save-paths (the Windows setup program): writes only the paths given, keeps the others, runs no step
@@ -289,7 +289,7 @@ with tempfile.TemporaryDirectory() as tmp:
         check(firstrun.main(["--root", tmp, "--save-paths", "--game", "/g/NPUA80856"]) == 0, "--save-paths writes")
         check(firstrun.main(["--root", tmp, "--save-paths", "--eboot", "/g/EBOOT.elf"]) == 0, "a second one adds")
         saved = firstrun.read_paths(work)
-        check(saved == {"game": "/g/NPUA80856", "eboot": "/g/EBOOT.elf"}, f"both kept, nothing else: {saved}")
+        check(saved == {"game": os.path.abspath("/g/NPUA80856"), "eboot": os.path.abspath("/g/EBOOT.elf")}, f"both kept, nothing else: {saved}")
         firstrun.write_paths(work, {"eboot": win})
         check(firstrun.read_paths(work) == {"eboot": win}, "a Windows path with spaces reads back the same")
         check(sorted(os.listdir(work)) == ["paths.env"], "no step ran: only paths.env in work/")
