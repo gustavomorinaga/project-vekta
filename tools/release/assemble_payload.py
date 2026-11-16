@@ -80,6 +80,7 @@ RULES = [
     ("tools/release/toolchain.json", "tools/release/toolchain.json", "file", {}),
     ("re/function_seeds.txt", "re/function_seeds.txt", "file", {}),
     ("port/kz1hd", "port/kz1hd", "tree", {"exclude_dirs": ["tests"]}),
+    ("installer/art/vekta.ico", "installer/art/vekta.ico", "file", {}),   # KZ1HD.exe's icon (port/kz1hd/app.rc)
     ("port/cmake", "port/cmake", "tree", {"include": ["*.cmake"]}),
     (TOOLKIT, TOOLKIT, "tree", {"exclude_dirs": [".github", "docs", "packaging", "scratch"],
                                 "exclude": ["*.pyc"]}),

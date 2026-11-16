@@ -1,0 +1,3 @@
+// The icon of KZ1HD.exe (Explorer, the taskbar before the game window has its own, shortcuts): the project's own
+// installer/art/vekta.ico, which the launcher also uses. Built on Windows only (CMakeLists.txt, enable_language(RC)).
+1 ICON "../../installer/art/vekta.ico"

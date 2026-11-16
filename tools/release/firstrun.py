@@ -818,6 +818,7 @@ def desktop_entry(root):
         "Terminal=false",
         "Categories=Game;ActionGame;",
         "StartupNotify=true",
+        "StartupWMClass=project-vekta",   # the game window's class / app id (main.cpp, ps3recomp patch 2081)
         "",
     ])
 
