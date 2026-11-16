@@ -81,6 +81,19 @@ with tempfile.TemporaryDirectory() as tmp:
     check(kzbuild.resolve(base, root=str(root))["KZ_EBOOT"] == odd, "work/paths.env is read, odd characters and all")
     check(kzbuild.resolve(dict(base, KZ_EBOOT="/mine"), root=str(root))["KZ_EBOOT"] == "/mine",
           "a variable set in the environment wins over paths.env")
+    linux_flash = os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
+    was = kzbuild.WINDOWS
+    try:
+        kzbuild.WINDOWS = False
+        check(kzbuild.resolve(base, root=str(root))["PS3_DEV_FLASH"] == linux_flash,
+              "Linux: dev_flash is RPCS3's, in ~/.config/rpcs3")
+        kzbuild.WINDOWS = True
+        check(kzbuild.default_dev_flash(str(root)) == os.path.join(str(root), "Game", "dev_flash"),
+              "Windows: dev_flash defaults to Game/dev_flash, not a Linux path (RPCS3 keeps it beside rpcs3.exe)")
+    finally:
+        kzbuild.WINDOWS = was
+    check(kzbuild.resolve(dict(base, PS3_DEV_FLASH="/flash"), root=str(root))["PS3_DEV_FLASH"] == "/flash",
+          "PS3_DEV_FLASH set in the environment wins")
 
     # patch
     sub = root / "third_party" / "ps3recomp"

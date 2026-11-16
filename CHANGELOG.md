@@ -56,6 +56,10 @@ program and folder that build it. Until a release that calls itself playable
   runs only the work the game asked for, without probing idle SPUs, which used 4.6 to 6 % less CPU for the whole game
   on the Level 7 and Level 1 test routes with the same frame rates (`PS3_SPURS_WANTED=0` goes back to the old way;
   after Project Helghast's patch 1074) ([docs/dev/performance.md](docs/dev/performance.md)).
+- Release notes: from 0.5.0 they start with how to install, the downloads and a link to the install page
+  ([docs/INSTALL.md](docs/INSTALL.md)), before what is new; until 0.4.0 that paragraph came last
+  (`tools/release/release_notes.py`). The Windows setup's line now says it asks for the files and builds in the
+  wizard, as it does.
 
 ### Fixed
 - Anti-aliasing at any resolution: the game's MLAA, its glow and the sprint motion blur only ran when the frame was
@@ -92,6 +96,17 @@ program and folder that build it. Until a release that calls itself playable
 - Vulkan: a start without DLSS or FSR 3.1 after one with them no longer builds the upscaler's pipelines ahead, which
   the Vulkan validation layer reported as an error (`VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605`);
   `independentBlend` is now on whenever the GPU has it (patch 2061).
+- Windows, `run.cmd`: the `dev_flash` folder it offers was a Linux path (`~/.config/rpcs3/dev_flash`). RPCS3 keeps
+  `dev_flash` in its own folder, beside `rpcs3.exe`, so on Windows the default is now `Game\dev_flash` in the
+  install folder, as for the other files, and the question says where RPCS3 keeps it.
+- `tools/check-game-files.py`: a required file that is not the tested version said "it may still work" on the line
+  before the check stopped on it. It now says the check stops there; an optional file (the trophy set,
+  `flashMP3.pic`) still only gets its line ([docs/GETTING-FILES.md](docs/GETTING-FILES.md)).
+- [docs/BUILDING.md](docs/BUILDING.md) said building on Windows was not supported yet; the setup program and the zip
+  have built the port on Windows since 0.2.0. It now says so, and that the page is for building from a clone.
+- [docs/requirements.md](docs/requirements.md): the disk space is now measured instead of "a few GB": beside the
+  4 GB of game files, about 2.4 GB on Windows (and 3.2 GB more where links cannot be made, for copies of the EBOOT
+  and the archive) and about 1.9 GB on Linux.
 
 ## [0.4.0] - 2026-11-09 (pre-release)
 

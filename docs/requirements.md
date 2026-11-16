@@ -14,7 +14,7 @@ No PlayStation Network account is used.
 | CPU | the maintainer's desktop CPU with AVX-512 (`KZ_MARCH=x86-64-v4`) | x86-64 with AVX2 (`x86-64-v3`, Intel Haswell or AMD Zen and newer), the default build target; `KZ_MARCH=""` builds for any x86-64, untested |
 | GPU | NVIDIA GeForce RTX 3070 Ti, driver 615 | a Vulkan GPU and driver; NVIDIA DLSS needs an NVIDIA RTX GPU, AMD FSR 3.1 runs on any; a tester's AMD Radeon 8060S on Windows runs it with open problems ([KNOWN_ISSUES.md](KNOWN_ISSUES.md), issues #17 and #18), other GPUs not tried yet |
 | Memory | | building: several GB for the lifted code (use fewer jobs on small machines); playing: not measured |
-| Disk | | about 4 GB for the game files, plus the build (`work/`), a few GB |
+| Disk | measured 2026-11-14 on the maintainer's machine (main at 698c28c), and the v0.4.0 downloads unpacked | about 4 GB for your game files, plus, free: Windows about 2.4 GB (the release folder 0.75 GB, then the build: lifted code 0.13 GB, `work\build-win` 0.38 GB, `work\win-deps` 0.20 GB, the game folder `work\vfs` with the movies taken out of the archive 0.92 GB), and about 3.2 GB more where Windows cannot make links, for copies of the EBOOT and the archive (the setup program reserves 5.8 GB); Linux about 1.9 GB (the folder 0.57 GB, lifted code 0.13 GB, `work/build` 0.26 GB, `work/vfs` 0.92 GB; the EBOOT and the archive are linked) |
 
 How fast it runs: 60 fps steady at the default settings; about 131 to 134 fps in the 144 Hz mode in Level 1 and
 Level 7 (Linux, RTX 3070 Ti). The main PPU thread is the limit, so a faster CPU core matters most.

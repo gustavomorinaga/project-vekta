@@ -107,6 +107,12 @@ def run(root, game, fail=None, status=None):
 for var in ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_LIBSRE", "PS3_DEV_FLASH", "KZ_WORK"):
     os.environ.pop(var, None)
 
+check(firstrun.default_dev_flash("/r", windows=True) == os.path.join("/r", "Game", "dev_flash"),
+      "Windows: dev_flash is offered under Game/, not as a Linux path (RPCS3 keeps it beside rpcs3.exe)")
+check(firstrun.default_dev_flash("/r", windows=False) == os.path.join(os.path.expanduser("~"), ".config", "rpcs3",
+                                                                      "dev_flash"),
+      "Linux: dev_flash is RPCS3's, in ~/.config/rpcs3")
+
 with tempfile.TemporaryDirectory() as tmp:
     tmp = pathlib.Path(tmp)
     root, game = fake_tree(tmp)

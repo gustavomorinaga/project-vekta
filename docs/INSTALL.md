@@ -22,7 +22,8 @@ You need these files from your own game and your own PS3 firmware.
 This project gives no decryption tools or instructions. The setup and the scripts only read your files.
 
 Your PC: Windows x64 or Linux x64, a CPU with AVX2, and a Vulkan graphics card and driver
-([requirements.md](requirements.md)). Keep a few GB free for the build, beside the 4 GB of game files.
+([requirements.md](requirements.md)). Beside the 4 GB of game files, keep free about 2.4 GB on Windows (3.2 GB
+more where Windows cannot make links, so the setup asks for 5.8 GB) or about 1.9 GB on Linux.
 
 Download from the [releases page](https://github.com/gustavomorinaga/project-vekta/releases). Each file has a
 `.sha256` beside it, and `SHA256SUMS` lists them all.

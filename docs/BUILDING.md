@@ -1,8 +1,13 @@
 # Building
 
-The tested route is Linux x64: a native Linux build, and a Windows x64 exe cross-built on Linux. Building on
-Windows itself is not supported yet (the installer that will do it is on the [roadmap](ROADMAP.md)). As of
-2026-10-30 every step below was run on the maintainer's machine (CachyOS, clang 23, an NVIDIA RTX 3070 Ti).
+This page is for building from a Git clone or the source archive. To play, the release downloads build the port on
+your PC with their own tools, on Windows too: [INSTALL.md](INSTALL.md).
+
+The tested route from a clone is Linux x64: a native Linux build, and a Windows x64 exe cross-built on Linux. On
+Windows, the release's setup program and zip build the port with the toolchain they carry, since 0.2.0
+([Building on Windows or macOS](#building-on-windows-or-macos)); building from a clone on Windows itself is not
+supported. As of 2026-10-30 every step below was run on the maintainer's machine (CachyOS, clang 23, an NVIDIA RTX
+3070 Ti).
 
 ## The short way
 
@@ -183,8 +188,9 @@ no release carries them ([dev/upscalers.md](dev/upscalers.md), "Distribution").
 - **On a Windows PC:** copy a folder with the exe and its DLLs, `work/fw/out/libsre_image.bin`, your `dev_flash`,
   and `work/vfs` with real files instead of links (`cp -L`: Windows does not follow these links), about 4.2 GB, and
   start the exe from inside `vfs` with the path of `PS3_GAME/USRDIR/EBOOT.elf`, setting the same variables as
-  `tools/play.sh` (`KZ_LIBSRE_IMAGE` and `PS3_DEV_FLASH` pointing into the folder). This is a test setup, not a
-  release; the installer will replace it.
+  `tools/play.sh` (`KZ_LIBSRE_IMAGE` and `PS3_DEV_FLASH` pointing into the folder). This is a test setup for an exe
+  built here; a player uses the setup program or the zip
+  ([Building on Windows or macOS](#building-on-windows-or-macos)).
 
 Notes from the Windows bring-up (what changed, speed under Wine and on Windows):
 [docs/dev/windows-build.md](dev/windows-build.md).

@@ -12,7 +12,7 @@ or keys and gives no such instructions. The files below come from your own disc 
 | `EBOOT.elf` | the game's executable, decrypted: an ELF file, not the `EBOOT.BIN` container in `USRDIR` | `Game/EBOOT.elf` (`KZ_EBOOT`) | yes |
 | `data_ps3.psarc` | the game's data archive, decrypted: a PSARC file, not the `data_ps3.psarc.edat` the package installs | `Game/data_ps3.psarc` (`KZ_PSARC`) | yes |
 | `libsre.prx` | the SPURS library from PS3 system software 4.93, decrypted (in the firmware it is `sys/external/libsre.sprx`) | `Game/libsre.prx` (`KZ_LIBSRE`) | yes |
-| `dev_flash` | an installed PS3 system software 4.93, as RPCS3 keeps it; the port reads `sys/external/flashMP3.pic` from it as it is | `~/.config/rpcs3/dev_flash` (`PS3_DEV_FLASH`) | for music and sound |
+| `dev_flash` | an installed PS3 system software 4.93, as RPCS3 keeps it; the port reads `sys/external/flashMP3.pic` from it as it is | `~/.config/rpcs3/dev_flash`; on Windows `Game\dev_flash`, since RPCS3 keeps it in its own folder, beside `rpcs3.exe` (`PS3_DEV_FLASH`) | for music and sound |
 
 Why the firmware pieces: the game sends work to an SPU task through a SPURS queue whose PPU side is code in
 `libsre`, and its music decoder is loaded from `flashMP3.pic`. The port runs that code, translated like the game's,
@@ -30,7 +30,8 @@ tools/check-game-files.py --quick  # skips hashing the 3 GB archive
 
 Each line says `ok`, `MISSING`, `WRONG` (not the right kind of file: for example the `.edat` instead of the
 decrypted archive, or `EBOOT.BIN` instead of `EBOOT.elf`) or `DIFFERENT` (the right kind of file, but not the version
-the port was made from). The tested versions:
+the port was made from). A required file that is missing, wrong or different stops the check, and the build with it;
+an optional one (the trophy set, `flashMP3.pic`) only gets its line. The tested versions:
 
 | File | Size (bytes) | SHA-256 |
 |---|---|---|
@@ -42,8 +43,9 @@ the port was made from). The tested versions:
 | `flashMP3.pic` (4.93) | 69,695 | `adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a` |
 
 The lift has addresses of this EBOOT built in (`tools/lift.sh`, `re/function_seeds.txt`, the native functions in
-`port/kz1hd/`), so a different EBOOT will not work. The firmware pieces from another system software version may
-work but have not been tried (`ASSUMPTION:` their code is unchanged across late versions).
+`port/kz1hd/`), so a different EBOOT will not work. The firmware pieces from another system software version have
+not been tried, so the check stops on a `libsre.prx` other than 4.93's (`ASSUMPTION:` their code is unchanged across
+late versions, so another one may work, but nobody has tried).
 
 ## Then
 

@@ -41,7 +41,8 @@ Each player translates and builds the game's code on their own machine, from the
   software 4.93. What each file must be, and how the scripts check them: [docs/GETTING-FILES.md](docs/GETTING-FILES.md).
 - **A PC:** Windows x64 or Linux x64, a CPU with AVX2 (x86-64-v3), and a Vulkan graphics card and driver
   ([docs/requirements.md](docs/requirements.md)).
-- **Disk space:** about 4 GB for the game files, plus a few GB for the build.
+- **Disk space:** about 4 GB for the game files, plus, free, about 2.4 GB on Windows (5.6 GB where Windows cannot
+  make links) or 1.9 GB on Linux for the port and its build ([docs/requirements.md](docs/requirements.md)).
 
 The release downloads bring their own build tools: nothing else to install on Windows, and on Linux only Python 3.10
 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
