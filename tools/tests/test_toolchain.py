@@ -4,7 +4,8 @@ sound; entries are picked by host; a download is checked against its pin, unpack
 without the top folder) and kept for the next run; a wrong hash is refused and deleted; a TO-FILL hash is refused
 unless --fill, which writes the hash into the manifest; --offline never opens a URL; unsafe archive members (an
 absolute path, "..", a zip symlink, a tar link out of the tree) are refused; build_win_deps.py names what is not
-fetched yet. No network: the downloads come from a stand-in opener."""
+fetched yet; an entry served from our own releases (upstream_url) is sound, and mirror_deps.py stages its upstream
+file only when the hash is the pin. No network: the downloads come from a stand-in opener."""
 import hashlib
 import io
 import json
@@ -174,6 +175,49 @@ with tempfile.TemporaryDirectory() as tmp:
                         "--prefix", str(tmp / "deps")], capture_output=True, text=True)
     check(r.returncode == 1 and "llvm-mingw-linux" in r.stderr and "glslang" in r.stderr,
           "build_win_deps names what is not fetched: " + r.stderr)
+
+# entries served from this repository's own releases (upstream_url) and tools/release/mirror_deps.py
+import mirror_deps as md  # noqa: E402
+
+real = ft.load()
+for name in ("ffmpeg", "ffmpeg-linux"):
+    e = next(c for c in real["components"] if c["name"] == name)
+    check("upstream_url" in e and ft.expand(e)["url"].startswith(ft.OWN_RELEASES),
+          f"{name} is served from this repository's own release")
+with tempfile.TemporaryDirectory() as td:
+    tmp = pathlib.Path(td)
+    data = zip_bytes({"bin/a.dll": b"dll"})
+    own = ft.OWN_RELEASES + "deps-pkg-{version}/pkg-{version}.zip"
+
+    def mirrored(sha, url=own, up="https://example.org/up/pkg-{version}.zip"):
+        return {"format": 1, "components": [{"name": "pkg", "host": "any", "version": "1.0", "pin": "confirmed",
+                "release_page": "https://example.org", "url": url, "upstream_url": up, "sha256": sha,
+                "archive": "zip", "license": "MIT"}]}
+    good = hashlib.sha256(data).hexdigest()
+    check(ft.validate(mirrored(good)) == [], "an upstream_url entry under our releases is sound")
+    check(any("upstream_url" in p for p in ft.validate(mirrored(good, url="https://example.org/pkg-{version}.zip"))),
+          "an upstream_url entry whose url is not our release is refused")
+    check(any("different files" in p for p in ft.validate(mirrored(good, up="https://example.org/other.zip"))),
+          "url and upstream_url must name the same file")
+    op = Opener({"https://example.org/up/pkg-1.0.zip": data})
+    out = io.StringIO()
+    tag = md.stage(mirrored(good), ["pkg"], str(tmp / "out"), str(tmp / "cache"), opener=op, out=out)
+    check(tag == "deps-pkg-1.0", "the release tag comes from the url: " + tag)
+    check((tmp / "out" / "pkg-1.0.zip").read_bytes() == data, "the upstream bytes are staged unchanged")
+    check((tmp / "out" / "pkg-1.0.zip.sha256").read_text() == f"{good}  pkg-1.0.zip\n", "a .sha256 beside it")
+    try:
+        md.stage(mirrored("0" * 64), ["pkg"], str(tmp / "out2"), str(tmp / "cache2"), opener=op, out=out)
+        check(False, "an upstream file whose hash is not the pin is refused")
+    except ValueError:
+        check(not (tmp / "out2" / "pkg-1.0.zip").exists(), "nothing staged on a wrong hash")
+    try:
+        md.stage(mirrored(good), ["nope"], str(tmp / "out3"), str(tmp / "cache"), opener=op, out=out)
+        check(False, "a name without an upstream_url is refused")
+    except ValueError:
+        pass
+    n = len(op.calls)
+    md.stage(mirrored(good), ["pkg"], str(tmp / "out4"), str(tmp / "cache"), offline=True, opener=op, out=out)
+    check(len(op.calls) == n, "--offline uses the download already in the cache")
 
 r = subprocess.run([sys.executable, str(REL / "fetch_toolchain.py"), "--check"], capture_output=True, text=True)
 check(r.returncode == 0 and "manifest ok" in r.stdout, "--check passes on the real manifest")

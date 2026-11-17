@@ -54,7 +54,8 @@ BSD-3-Clause).
 They come from your system or toolchain; see [docs/BUILDING.md](docs/BUILDING.md). The release folders carry the
 pinned toolchain unmodified, each part with its own licence files: on Windows llvm-mingw (Apache-2.0 with LLVM
 exceptions, and the MinGW-w64 licences), CMake (BSD-3-Clause), Ninja (Apache-2.0), Python (PSF) and FFmpeg's LGPL
-build from BtbN/FFmpeg-Builds; on Linux [Zig](https://ziglang.org) (MIT, with the licences of the libc headers and
+build from BtbN/FFmpeg-Builds (served unchanged from this repository's `deps-ffmpeg-*` release, with FFmpeg's
+source for that build; [docs/dev/deps-mirror.md](docs/dev/deps-mirror.md)); on Linux [Zig](https://ziglang.org) (MIT, with the licences of the libc headers and
 libc++ it bundles), CMake, Ninja, SDL2's source and FFmpeg's LGPL shared libraries from BtbN/FFmpeg-Builds.
 
 ## The game

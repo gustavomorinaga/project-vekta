@@ -653,7 +653,8 @@ def build_windows(e):
         e["PATH"] = os.pathsep.join([j(cache, "cmake", "bin"), j(cache, "ninja"), e.get("PATH", "")])
     run([sys.executable, j(rel, "fetch_toolchain.py"), "--only",
          ",".join(tools + ["sdl2", "zlib", "glslang", "vulkan-headers"])], e, "null")
-    # FFmpeg: when its download is gone (its pin names a dated build), the host's headers and no DLLs.
+    # FFmpeg (served from this repository's deps-ffmpeg-* release): when it cannot be fetched (offline), the host's
+    # headers and no DLLs.
     try:
         run([sys.executable, j(rel, "fetch_toolchain.py"), "--only", "ffmpeg"], e, "null")
     except Fail:
@@ -666,7 +667,7 @@ def build_windows(e):
         if not os.path.isdir(j(ff, "libavcodec")):
             if WINDOWS or not os.path.isdir("/usr/include/libavcodec"):
                 raise Fail("no FFmpeg headers: fetch the pinned FFmpeg (tools/release/fetch_toolchain.py --only "
-                           "ffmpeg), or move its pin to a build that is still published")
+                           "ffmpeg; docs/dev/deps-mirror.md)")
             for h in FFMPEG_HEADERS:
                 shutil.copytree(j("/usr/include", h), j(ff, h), dirs_exist_ok=True)
     run(["cmake", "-G", "Ninja", "-S", j(root, "port", "kz1hd"), "-B", b,

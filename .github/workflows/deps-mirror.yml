@@ -1,0 +1,140 @@
+# Deps mirror: serve the pinned FFmpeg build from this repository's own release, so a release never depends on a
+# third-party download that can disappear (BtbN/FFmpeg-Builds removes most dated builds; that left 0.5.0 unbuildable).
+#
+# Trigger: workflow_dispatch only. Inputs: names (toolchain.json entries with an upstream_url, default both FFmpeg
+# pins) and publish (default off: a dry run that only uploads the workflow artifact).
+# stage   (read-only) downloads each entry's upstream_url and refuses it unless its SHA-256 is the pin
+#         (tools/release/mirror_deps.py), writes a .sha256 beside each file, and builds FFmpeg's corresponding source
+#         for the LGPL (git archive of the commit the build names, as ffmpeg-<version>-source.tar.xz).
+# publish (publish = true only) is the one job that may write: it creates the release deps-<name>-<version> (a
+#         pre-release, never "latest", tagged at the dispatched commit) when it is not there yet, and uploads the
+#         files it does not have yet. An asset already there is downloaded and checked against the pin, never
+#         replaced; a tag is never moved or deleted. release-check.yml skips deps-* tags.
+# A re-pin is a new version, so a new tag; see docs/dev/deps-mirror.md.
+# Third-party: actions/checkout and actions/upload-artifact (GitHub, MIT), the gh CLI (MIT, on the image), git and
+# xz (on the image), the upstream downloads (each checked against its SHA-256 in toolchain.json).
+name: deps-mirror
+
+on:
+  workflow_dispatch:
+    inputs:
+      names:
+        description: "toolchain.json entries to mirror (comma-separated, one release tag)"
+        required: true
+        default: "ffmpeg,ffmpeg-linux"
+        type: string
+      publish:
+        description: "Create or complete the release (off: dry run, artifact only)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deps-mirror
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.stage.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Upstream files, checked against their pins
+        id: stage
+        env:
+          NAMES: ${{ inputs.names }}
+        run: |
+          set -euo pipefail
+          python3 tools/release/fetch_toolchain.py --check --strict
+          python3 tools/release/mirror_deps.py --names "$NAMES" --out mirror --cache "$RUNNER_TEMP/cache" \
+            | tee "$RUNNER_TEMP/stage.log"
+          grep '^tag=deps-' "$RUNNER_TEMP/stage.log" >> "$GITHUB_OUTPUT"
+
+      - name: FFmpeg's source (LGPL), from the commit the build names
+        env:
+          NAMES: ${{ inputs.names }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          read -r ver src < <(python3 - <<'EOF'
+          import json, os
+          m = json.load(open("tools/release/toolchain.json"))
+          names = os.environ["NAMES"].split(",")
+          for e in m["components"]:
+              if e["name"] in names and e.get("source_git"):
+                  print(e["version"], e["source_git"]); break
+          EOF
+          ) || { echo "no entry with source_git: no source archive"; exit 0; }
+          commit="${ver##*-g}"
+          case "$commit" in *[!0-9a-f]*|"") echo "::error::$ver names no commit"; exit 1 ;; esac
+          case "$src" in https://github.com/*) ;; *) echo "::error::source_git $src is not on GitHub"; exit 1 ;; esac
+          full=$(gh api "repos/${src#https://github.com/}/commits/$commit" --jq .sha)
+          case "$full" in "$commit"*) ;; *) echo "::error::$commit resolved to '$full'"; exit 1 ;; esac
+          git init -q "$RUNNER_TEMP/src" && cd "$RUNNER_TEMP/src"
+          git fetch -q --depth 1 "$src" "$full"
+          f="ffmpeg-$ver-source.tar.xz"
+          git archive --format=tar --prefix="ffmpeg-$ver/" "$full" | xz -T1 -9 > "$GITHUB_WORKSPACE/mirror/$f"
+          cd "$GITHUB_WORKSPACE/mirror" && sha256sum "$f" > "$f.sha256" && cat "$f.sha256"
+          echo "$full" > "ffmpeg-$ver-source.commit"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: deps-mirror
+          path: mirror/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [stage]
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write   # gh release create/upload; nothing else is written
+      actions: read     # gh run download: the stage job's artifact
+    steps:
+      - name: Create or complete the release (never replaces an asset)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.stage.outputs.tag }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in deps-*) ;; *) echo "::error::tag '$TAG' is not deps-*"; exit 1 ;; esac
+          mkdir assets && cd assets
+          gh run download "$GITHUB_RUN_ID" --name deps-mirror --dir .
+          for s in *.sha256; do sha256sum -c "$s"; done
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            printf '%s\n' \
+              "Third-party files the port's build downloads, served here so a release never depends on a download" \
+              "that can disappear. Each is the upstream file byte for byte; its SHA-256 is pinned in" \
+              "tools/release/toolchain.json and beside it as a .sha256. FFmpeg is LGPL-2.1-or-later; its source is" \
+              "the -source.tar.xz. Not a release of the port. See docs/dev/deps-mirror.md." > notes.md
+            gh release create "$TAG" --prerelease --latest=false --target "$GITHUB_SHA" --title "$TAG" \
+              --notes-file notes.md
+          fi
+          have=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          mkdir -p ../existing
+          for f in *; do
+            [ "$f" = notes.md ] || [ "${f%.commit}" != "$f" ] && continue
+            if printf '%s\n' "$have" | grep -qxF "$f" && case "$f" in *-source.tar.xz*) true ;; *) false ;; esac; then
+              echo "kept: $f (the source archive is built here, so the first one published stays)"
+            elif printf '%s\n' "$have" | grep -qxF "$f"; then
+              gh release download "$TAG" --pattern "$f" --dir ../existing
+              cmp -s "$f" "../existing/$f" || { echo "::error::$f on the release differs from the pin"; exit 1; }
+              echo "kept: $f"
+            else
+              gh release upload "$TAG" "$f"
+              echo "uploaded: $f"
+            fi
+          done

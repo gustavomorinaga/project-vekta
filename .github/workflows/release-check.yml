@@ -30,6 +30,8 @@ concurrency:
 
 jobs:
   check:
+    # deps-* releases hold third-party downloads (deps-mirror.yml), not a version of the port: nothing to check here.
+    if: ${{ !startsWith(github.event.release.tag_name || inputs.tag, 'deps-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

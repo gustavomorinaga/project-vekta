@@ -54,6 +54,8 @@ REQUIRED = ("name", "host", "version", "pin", "release_page", "url", "sha256", "
 SET_REQUIRED = ("name", "version", "pin", "release_page", "url", "license", "files")
 SET_OS = ("any", "linux", "windows")
 MAX_DOWNLOAD = 1 << 30
+# Where the downloads this repository re-serves live (an entry with upstream_url): its own GitHub releases.
+OWN_RELEASES = "https://github.com/gustavomorinaga/project-vekta/releases/download/"
 
 
 def load(path=MANIFEST):
@@ -91,6 +93,13 @@ def validate(m, strict=False):
             out.append(f"{name}: sha256 is neither 64 hex digits nor {TO_FILL}")
         if TO_CONFIRM not in e["url"] and not e["url"].startswith("https://"):
             out.append(f"{name}: url must be https")
+        if "upstream_url" in e:   # a download this repository serves from its own release (tools/release/mirror_deps.py)
+            up, x = e["upstream_url"], expand(e)
+            if not up.startswith("https://") or not x["url"].startswith(OWN_RELEASES):
+                out.append(f"{name}: an upstream_url needs an https upstream and a url under {OWN_RELEASES}")
+            elif up.format(**{k: v for k, v in e.items() if isinstance(v, str)}).rsplit("/", 1)[1] != \
+                    x["url"].rsplit("/", 1)[1]:
+                out.append(f"{name}: url and upstream_url name different files")
         if strict and e["sha256"] == TO_FILL:
             out.append(f"{name}: sha256 is {TO_FILL}")
         if strict and TO_CONFIRM in (e["pin"], e["version"], e["url"]):
