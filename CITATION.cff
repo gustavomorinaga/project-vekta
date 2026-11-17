@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this work, please cite it as below and keep the MIT licence notice with any copied code."
 title: "Project Vekta: an unofficial PC port of Killzone HD by static recompilation"
-version: "0.5.0"
+version: "0.5.1"
 date-released: "2026-11-17"
 type: software
 authors:

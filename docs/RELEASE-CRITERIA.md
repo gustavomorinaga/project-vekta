@@ -16,9 +16,10 @@ is measured against. The first preview will be v0.1.0.
    maintainer's decision, 2026-11-01): it was installed, built and played on the maintainer's machine, on Linux and on
    Windows; its notes say so and ask for reports. **Relaxed a third time for v0.3.0** (the maintainer's decision,
    2026-11-06): its setup program was installed over 0.2.0, built and played on the maintainer's Windows, and its notes
-   say so and ask for reports. **Relaxed a fourth time for v0.5.0** (the maintainer's decision, 2026-11-16): its test
-   setup was installed, built and played on the maintainer's Windows, and the release on Linux on the same PC; its
-   notes say so and ask for reports. For every other release the gate applies as written.
+   say so and ask for reports. **Relaxed a fourth time for v0.5.0 and v0.5.1** (the maintainer's decision,
+   2026-11-16; v0.5.0 was tagged, its release build stopped at a toolchain download, and v0.5.1 is that release): its
+   test setup was installed, built and played on the maintainer's Windows, and the release on Linux on the same PC;
+   its notes say so and ask for reports. For every other release the gate applies as written.
 3. **Known issues listed** in [KNOWN_ISSUES.md](KNOWN_ISSUES.md), and a `CHANGELOG.md` section for the version.
 4. **One version string** in the tag, `CHANGELOG.md` and `CITATION.cff`.
 5. **SHA256SUMS** published beside any file the release carries.

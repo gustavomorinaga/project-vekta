@@ -45,7 +45,8 @@ SETUP_BUILD_NOTE = ("The setup program has been tried only on the maintainer's m
 OVER_020_NOTE = ("This release has been tried only on the maintainer's machine (Linux, and Windows on the same PC: "
                  "installed over 0.2.0, built and played); no other machine has built it yet. Reports of an install "
                  "or a build elsewhere, working or not, are welcome as issues.")
-# v0.5.0: gate 2 relaxed a fourth time (maintainer's decision, 2026-11-16), for the simplified install.
+# v0.5.0 and v0.5.1 (0.5.0's release build failed, 0.5.1 is that release): gate 2 relaxed a fourth time (maintainer's
+# decision, 2026-11-16), for the simplified install.
 INSTALL_050_NOTE = ("This release has been tried only on the maintainer's machine (Linux, and Windows on the same PC: "
                     "the new install, from RPCS3 and from prepared files, built and played); no other machine has built "
                     "it yet. Reports of an install or a build elsewhere, working or not, are welcome as issues.")
@@ -152,7 +153,7 @@ def notes(version, entry, first=False):
         *lists,
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
         *([] if install_first else [files]),
-        *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE], "0.5.0": [INSTALL_050_NOTE]}.get(version, [])),
+        *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE], "0.5.0": [INSTALL_050_NOTE], "0.5.1": [INSTALL_050_NOTE]}.get(version, [])),
     ]) + "\n"
 
 

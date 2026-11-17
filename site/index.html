@@ -24,7 +24,7 @@
 <header id="top" class="box">
 <div class="logo"><img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320" alt="Project Vekta: Killzone HD PC"><span class="sticker">Work in progress</span></div>
 <ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li></ul>
-<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.5.0</b>source pre-release</a></nav>
+<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.5.1</b>source pre-release</a></nav>
 <div class="intro">
 <h1>Project Vekta<span>Killzone HD: Unofficial PC Port (static recompilation)</span></h1>
 <p class="lead">A native Linux and Windows x64 port of the 2011 PS3 remaster of the first Killzone, made by static recompilation: the game's PowerPC and SPU code is translated to C++ ahead of time and compiled into a PC program on your machine; graphics go through Vulkan. No emulator runs at play time.</p>
@@ -198,7 +198,7 @@
 </article>
 <div id="news">
 <article class="news rel">
-<h2>0.5.0</h2>
+<h2>0.5.1</h2>
 <p class="meta">17 Nov 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="sec">Added</span>&quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, <code>run.cmd</code>, <code>./run.sh</code> and <code>tools/install.sh</code> now offer three choices, &quot;Use my RPCS3 install&quot;, &quot;I have the files ready&quot; and &quot;Show me how&quot;, which lists the steps to get the game and the firmware into RPCS3 and asks again. Without RPCS3 the scripts say why it cannot be used.</li>
@@ -221,6 +221,7 @@
 <li><span class="sec">Changed</span><code>tools/pgo.sh</code> (optional profile-guided build): it makes its own play folder (<code>work/vfs-test</code>) from <code>work/vfs</code> instead of failing on a fresh clone, ends with a check that the profile matches the lifted code (a stale profile was silently ignored), shows a failing step&#x27;s log instead of hiding it, and can train on recorded routes (<code>KZ_PGO_ROUTES</code>). An instrumented build now writes its profile when the game quits, so a route replay that ends on its own leaves one. Measured gain on ps3recomp v0.19.0: about +2 % average fps with the default play, about +4 % trained on combat routes (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">docs/BUILDING.md</a>).</li>
 <li><span class="sec">Changed</span>Less CPU while the game waits for its next frame: at the default 60 fps the main thread spun through the wait and stayed about 99 % busy; it now sleeps until shortly before the next tick of the game clock and takes the tick exactly as before, about half a core less (<code>KZ_FRAME_WAIT_SPIN=1</code> goes back to spinning). The SPURS scheduler now runs only the work the game asked for, without probing idle SPUs, which used 4.6 to 6 % less CPU for the whole game on the Level 7 and Level 1 test routes with the same frame rates (<code>PS3_SPURS_WANTED=0</code> goes back to the old way; after Project Helghast&#x27;s patch 1074) (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/performance.md">docs/dev/performance.md</a>).</li>
 <li><span class="sec">Changed</span>Release notes: from 0.5.0 they start with how to install, the downloads and a link to the install page (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md">docs/INSTALL.md</a>), before what is new; until 0.4.0 that paragraph came last (<code>tools/release/release_notes.py</code>). The Windows setup&#x27;s line now says it asks for the files and builds in the wizard, as it does.</li>
+<li><span class="sec">Fixed</span>The release files build again: the FFmpeg the Windows and Linux folders bundle is now taken from BtbN&#x27;s autobuild-2026-11-16-15-29 (FFmpeg 9.0, n9.0.2-57-gd838f9f9ae); the earlier build had been removed, so 0.5.0 was tagged but never released. 0.5.1 is that release.</li>
 <li><span class="sec">Fixed</span>After a check that found a file of the wrong kind (<code>WRONG</code>), <code>run.cmd</code> and <code>tools/install.sh</code> asked for every file again instead of only that one.</li>
 <li><span class="sec">Fixed</span>Resolution on a display with many modes (Windows at 3440x1440): the Resolution row offers at most 16 sizes, and the one saved in <code>kz1hd_pc.ini</code> could fall off the end of the list. The row then showed the largest size while the window and the fullscreen mode stayed at the saved one (1280x720 by default), and choosing the size the row already showed changed nothing. The saved size is now always in the list. Borderless was not affected.</li>
 <li><span class="sec">Fixed</span>Anti-aliasing at any resolution: the game&#x27;s MLAA, its glow and the sprint motion blur only ran when the frame was drawn at exactly 1280x720. With the internal resolution scale, or the default fill to a window of any other size, none of the three ran and the picture had no anti-aliasing at all. They now run at the size the frame is drawn (ps3recomp patch 2080), with the same rules as the game&#x27;s MLAA; at 1280x720 the result is unchanged.</li>
@@ -305,14 +306,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, tools/install.sh and...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The first run&#x27;s check also looks at where the port is: a folder path with [, ] or ; (the build tools stop on them), a...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The PS3 system software version is checked where it is picked: RPCS3 with another firmware than 4.93, or a dev_flash...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles....</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The setup&#x27;s &quot;Portable&quot; choice can be changed after the install: play.cmd --move-data portable or --move-data appdata...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> A new-version check, off by default: once turned on (KZ_VERSION_CHECK=1, or tools/release/version_check.py --enable)...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, tools/install.sh and...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The first run&#x27;s check also looks at where the port is: a folder path with [, ] or ; (the build tools stop on them), a...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The PS3 system software version is checked where it is picked: RPCS3 with another firmware than 4.93, or a dev_flash...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles....</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The setup&#x27;s &quot;Portable&quot; choice can be changed after the install: play.cmd --move-data portable or --move-data appdata...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> A new-version check, off by default: once turned on (KZ_VERSION_CHECK=1, or tools/release/version_check.py --enable)...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -342,10 +343,10 @@
 <section id="install" class="promo">
 <h2>Install</h2>
 <div class="dl">
-<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.0">v0.5.0</a> <span>pre-release</span></p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.1">v0.5.1</a> <span>pre-release</span></p>
 <p class="small">17 Nov 2026 · playable · source for Linux x64</p>
-<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.0">Download v0.5.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
-<p>The release page has project-vekta-0.5.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.1">Download v0.5.1</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has project-vekta-0.5.1-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
 </div>
 <p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <pre>git clone --recurse-submodules \
