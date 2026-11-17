@@ -134,15 +134,15 @@
   {
    "name": "ffmpeg",
    "host": "any",
-   "version": "n9.0.2-36-g6882969ce9",
+   "version": "n9.0.2-57-gd838f9f9ae",
    "pin": "confirmed",
    "release_page": "https://github.com/BtbN/FFmpeg-Builds/releases",
-   "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-27-18-38/ffmpeg-{version}-win64-lgpl-shared-9.0.zip",
-   "sha256": "f70e43c4f5670fbbf2dc4eb667b0d6b3743d68386f766c08bb2e0ec3edece398",
+   "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-16-15-29/ffmpeg-{version}-win64-lgpl-shared-9.0.zip",
+   "sha256": "bc661777e3aeb29cbd9e68f8b29a4ea1b54cc0db0373ff447085e5cb4ef307b3",
    "archive": "zip",
    "strip_top": true,
    "license": "LGPL-2.1-or-later (the lgpl-shared build: headers and DLLs; its source is named in the build's own files)",
-   "about": "FFmpeg 9 for Windows, BtbN's lgpl-shared build of autobuild-2026-10-27-18-38: the headers the movie player's run-time loader compiles against, and the DLLs it loads beside the exe (avcodec-63, avformat-63, avutil-61, swresample-7, swscale-10; without them the movies are skipped). The maintainer's tested build, byte for byte. BtbN removes most dated builds after a while (keeping the month's last): when this url stops working, move the pin to a kept build and fill its hash again."
+   "about": "FFmpeg 9 for Windows, BtbN's lgpl-shared build of autobuild-2026-11-16-15-29: the headers the movie player's run-time loader compiles against, and the DLLs it loads beside the exe (avcodec-63, avformat-63, avutil-61, swresample-7, swscale-10; without them the movies are skipped). The maintainer's tested build, byte for byte. BtbN removes most dated builds after a while (keeping the month's last): when this url stops working, move the pin to a kept build and fill its hash again."
   },
   {
    "name": "zig",
@@ -199,11 +199,11 @@
   {
    "name": "ffmpeg-linux",
    "host": "native",
-   "version": "n9.0.2-36-g6882969ce9",
+   "version": "n9.0.2-57-gd838f9f9ae",
    "pin": "confirmed",
    "release_page": "https://github.com/BtbN/FFmpeg-Builds/releases",
-   "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-27-18-38/ffmpeg-{version}-linux64-lgpl-shared-9.0.tar.xz",
-   "sha256": "ee15d7315e6c04a80b0c5874e9c6c677bc45630579977775209ff333435b9a21",
+   "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-16-15-29/ffmpeg-{version}-linux64-lgpl-shared-9.0.tar.xz",
+   "sha256": "a59db9c73b941f2b3c961967419a91403b020d8e378c6d190cfa00ef8768afe8",
    "archive": "tar.xz",
    "strip_top": true,
    "license": "LGPL-2.1-or-later (the lgpl-shared build: headers and shared libraries; its source is named in the build's own files)",
