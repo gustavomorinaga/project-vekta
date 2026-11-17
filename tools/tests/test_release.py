@@ -102,6 +102,12 @@ with tempfile.TemporaryDirectory() as tmp:
           "v0.3.0's notes say it was installed over 0.2.0 on the maintainer's machine")
     later = release_notes.notes("0.3.1", es["0.2.0"])
     check("only on the maintainer's machine" not in later, "later notes do not")
+    check("the new install, from RPCS3" in release_notes.notes("0.5.0", es["0.2.0"]) and
+          "the new install" not in release_notes.notes("0.4.0", es["0.2.0"]),
+          "v0.5.0's notes say only the maintainer's machine has tried the new install")
+    check("your RPCS3 makes the decrypted copies" in release_notes.notes("0.5.0", es["0.2.0"]) and
+          "decrypted EBOOT and data archive" in release_notes.notes("0.4.0", es["0.2.0"]),
+          "from 0.5.0 the notes name the installed game and the RPCS3 route, not a prepared data archive")
     old, new = release_notes.notes("0.4.0", es["0.2.0"]), release_notes.notes("0.5.0", es["0.2.0"])
     check("How to install" not in old and old.index("New in") < old.index("setup.exe"),
           "notes up to 0.4.0 keep the downloads after the lists")

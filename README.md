@@ -36,20 +36,24 @@ Each player translates and builds the game's code on their own machine, from the
 
 ## What you need
 
-- **Your own game:** Killzone HD (NPUA80856), installed from your own **Killzone Trilogy** disc, with its decrypted
-  EBOOT and data archive, and the decrypted `libsre` (and, for the music, `dev_flash`) of your own PS3 system
-  software 4.93. What each file must be, and how the scripts check them: [docs/GETTING-FILES.md](docs/GETTING-FILES.md).
+- **Your own game:** Killzone HD (NPUA80856), installed from your own **Killzone Trilogy** disc, and PS3 system
+  software 4.93 (its `dev_flash`, for the music). When both are installed in your RPCS3, the installers use them and
+  your RPCS3 makes decrypted copies of the game's EBOOT and the firmware's `libsre`; otherwise you give those two
+  decrypted files yourself. The game's data archive is read as it is installed. What each file must be, and how the
+  scripts check them: [docs/GETTING-FILES.md](docs/GETTING-FILES.md); every install step:
+  [docs/INSTALL.md](docs/INSTALL.md).
 - **A PC:** Windows x64 or Linux x64, a CPU with AVX2 (x86-64-v3), and a Vulkan graphics card and driver
   ([docs/requirements.md](docs/requirements.md)).
 - **Disk space:** about 4 GB for the game files, plus, free, about 2.4 GB on Windows (5.6 GB where Windows cannot
-  make links) or 1.9 GB on Linux for the port and its build ([docs/requirements.md](docs/requirements.md)).
+  make links) or 1.9 GB on Linux for the port and its build, and 3.1 GB more when the game's data archive is opened
+  from the installed game ([docs/requirements.md](docs/requirements.md)).
 
 The release downloads bring their own build tools: nothing else to install on Windows, and on Linux only Python 3.10
 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 
 ## How to play
 
-Latest release: <!-- release -->[v0.4.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.4.0), a pre-release<!-- /release -->.
+Latest release: <!-- release -->[v0.5.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.0), a pre-release<!-- /release -->.
 Every download builds the port on your PC from your own files, once, in about five minutes. Each download has its
 SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
 
@@ -64,16 +68,16 @@ the source archive instead: [For developers](#for-developers-building-from-sourc
 
 ## Status
 
-As of 2026-10-30, on Linux x64 with an NVIDIA RTX 3070 Ti, the maintainer's machine:
+As of 2026-11-16, on Linux x64 with an NVIDIA RTX 3070 Ti, the maintainer's machine:
 
 | | |
 |---|---|
 | Code translation | the whole EBOOT is translated (about 23,400 PPU functions) plus the SPU programs, job modules and the firmware pieces the game loads; this repository's scripts rebuild it byte for byte from the player's files |
 | Boot, menus, movies | work: intro movies, front end, options, pause menu, saves and Continue |
-| Campaign | Level 1 played by hand from start to end; all 11 levels load and reach gameplay; parts of the campaign played by hand on 2026-10-20; levels 2 to 11 not yet each played to their end |
+| Campaign | the whole campaign, levels 1 to 11, played from start to end on Linux and on Windows (2026-11-16); the levels are not yet each compared with reference footage |
 | Frame rate | a steady 60 frames per second by default (the game logic runs at 60 Hz instead of the PS3's 30); an optional 144 Hz mode reaches about 131 to 134 frames per second in Level 1 and Level 7 |
 | Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music through the firmware's MP3 decoder |
-| Windows | the Windows exe is cross-built on Linux and runs under Wine, Proton and on a real Windows; the full campaign on Windows is not checked yet, and speed under Wine and Proton is lower (about 100 frames per second in Level 7) |
+| Windows | the Windows exe is cross-built on Linux and runs under Wine, Proton and on a real Windows; the whole campaign plays there from start to end (2026-11-16); speed under Wine and Proton is lower (about 100 frames per second in Level 7) |
 | Distribution | you build the port from your own files: on Windows the setup program or folder builds it on your PC (since 0.2.0); on Linux from source, or (since 0.3.0) a Linux folder with its own toolchain (no compiler or packages needed) |
 
 What works and what does not, item by item: [docs/FEATURES.md](docs/FEATURES.md). Open problems:

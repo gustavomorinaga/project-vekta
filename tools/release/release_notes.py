@@ -6,7 +6,7 @@
 
 After Project Pyrrhus's and Project Helghast's tools/release/release_notes.py (undecuple, MIT), with this project's
 wording and assets:
-  Project Vekta X.Y.Z, a pre-release: partly playable, see docs/RELEASE-CRITERIA.md.
+  Project Vekta X.Y.Z, a pre-release: playable from start to end, see docs/RELEASE-CRITERIA.md.
   How to install: <a link to docs/INSTALL.md, then the fixed paragraph below>   (after 0.4.0: here, before the lists)
   New in X.Y.Z: <the entry's Added/Changed/... items, one bullet each>
   Fixed: <its fixes>                       (part of the list above for the first published release, which also
@@ -29,7 +29,7 @@ import release_version  # noqa: E402
 
 ROOT = HERE.parents[1]
 REPO = "https://github.com/gustavomorinaga/project-vekta"
-STATUS = "partly playable"   # the page's headline while Levels 2 to 11 are partial (tools/website.py)
+STATUS = "playable from start to end"   # the page's headline since Levels 2 to 11 work (tools/website.py)
 HEADING = re.compile(r"## \[([^\]]+)\](?:[ \t]+-[ \t]+(\d{4}-\d\d-\d\d))?[ \t]*(?:\(([^)]*)\))?[ \t]*$")
 NEW_SECTIONS = ("Added", "Changed", "Removed", "Deprecated", "Security")
 RELEASED = ("pre-release", "release")
@@ -45,6 +45,10 @@ SETUP_BUILD_NOTE = ("The setup program has been tried only on the maintainer's m
 OVER_020_NOTE = ("This release has been tried only on the maintainer's machine (Linux, and Windows on the same PC: "
                  "installed over 0.2.0, built and played); no other machine has built it yet. Reports of an install "
                  "or a build elsewhere, working or not, are welcome as issues.")
+# v0.5.0: gate 2 relaxed a fourth time (maintainer's decision, 2026-11-16), for the simplified install.
+INSTALL_050_NOTE = ("This release has been tried only on the maintainer's machine (Linux, and Windows on the same PC: "
+                    "the new install, from RPCS3 and from prepared files, built and played); no other machine has built "
+                    "it yet. Reports of an install or a build elsewhere, working or not, are welcome as issues.")
 
 # v0.1.0 carried the source archive only; later releases also carry the Windows setup program and folder (release.yml).
 SOURCE_ONLY = (
@@ -69,11 +73,16 @@ FILES = (
     "\"Build now\" and the first start builds); its launcher, Project Vekta.exe, plays. "
     "project-vekta-{version}-windows.zip is the same folder without the "
     "setup program: run.cmd builds, play.cmd plays. {linux}"
-    "None of the files holds anything of the game: you need your own Killzone HD (NPUA80856) from the Killzone "
-    "Trilogy disc with its decrypted EBOOT and data archive, and the decrypted libsre and dev_flash of your own PS3 "
-    "firmware; none of them is included or downloaded. What each must contain: "
+    "None of the files holds anything of the game: {need}; none of them is included or downloaded. What each must "
+    "contain: "
     "[docs/GETTING-FILES.md]({blob}/docs/GETTING-FILES.md). SHA-256 sums: SHA256SUMS (and a .sha256 beside each "
     "file).")
+NEED_PREPARED = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc with its decrypted EBOOT "
+                 "and data archive, and the decrypted libsre and dev_flash of your own PS3 firmware")
+# From 0.5.0 the installed game is read as it is, and the player's own RPCS3 can make the decrypted copies.
+NEED_050 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
+            "4.93; when both are installed in your RPCS3, the installers use them and your RPCS3 makes the decrypted "
+            "copies of the EBOOT and libsre, otherwise you give those two decrypted files yourself")
 # After 0.4.0 the paragraph on the downloads comes first, under this heading, with the player's install page.
 INSTALL_FIRST = (0, 4, 0)
 INSTALL_PAGE = ("How to install, step by step, with what each step asks and shows: "
@@ -134,7 +143,7 @@ def notes(version, entry, first=False):
         lists = ([f"New in {version}:\n{bullets(new)}"] if new else []) + ([f"Fixed:\n{bullets(fixed)}"] if fixed else [])
     v = tuple(int(x) for x in version.split("."))
     files = (SOURCE_ONLY.format(version=version, blob=blob) if version == "0.1.0" else
-             FILES.format(version=version, blob=blob, linux=(
+             FILES.format(version=version, blob=blob, need=NEED_050 if v >= (0, 5, 0) else NEED_PREPARED, linux=(
                  LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE).format(version=version, blob=blob)))
     install_first = v > INSTALL_FIRST
     return "\n\n".join([
@@ -143,7 +152,7 @@ def notes(version, entry, first=False):
         *lists,
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
         *([] if install_first else [files]),
-        *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE]}.get(version, [])),
+        *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE], "0.5.0": [INSTALL_050_NOTE]}.get(version, [])),
     ]) + "\n"
 
 

@@ -24,11 +24,11 @@
 <header id="top" class="box">
 <div class="logo"><img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320" alt="Project Vekta: Killzone HD PC"><span class="sticker">Work in progress</span></div>
 <ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li></ul>
-<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.4.0</b>source pre-release</a></nav>
+<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.5.0</b>source pre-release</a></nav>
 <div class="intro">
 <h1>Project Vekta<span>Killzone HD: Unofficial PC Port (static recompilation)</span></h1>
 <p class="lead">A native Linux and Windows x64 port of the 2011 PS3 remaster of the first Killzone, made by static recompilation: the game's PowerPC and SPU code is translated to C++ ahead of time and compiled into a PC program on your machine; graphics go through Vulkan. No emulator runs at play time.</p>
-<p class="headline">Status: <strong>Partly playable</strong></p>
+<p class="headline">Status: <strong>Playable</strong></p>
 <p class="note">You need your own copy of the game. This project ships no game code, data, assets or keys.</p>
 <p class="btns"><a class="btn" href="#status">See the status</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta">Source on GitHub</a></p>
 </div>
@@ -48,26 +48,26 @@
 <div class="cols">
 <main class="main">
 <article id="status" class="news">
-<h2>Status: Partly playable</h2>
+<h2>Status: Playable</h2>
 <p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 26 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Level 1</b><span class="blurb">played by hand from start to end</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Levels 2 to 11</b><span class="blurb">all load and reach gameplay; not each played to its end</span></div><span class="st st-part">Partial</span></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Levels 2 to 11</b><span class="blurb">2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16)</span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Movies</b><span class="blurb">30 movies; runs without FFmpeg skip them</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Saves</b><span class="blurb">Continue returns to the checkpoint; a checkpoint save checked end to end is still to do</span></div><span class="st st-ok">Works</span></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Saves</b><span class="blurb">Continue returns to the checkpoint</span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Sound</b><span class="blurb">the firmware&#x27;s MP3 decoder runs translated</span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Trophies</b><span class="blurb">unlocked and logged locally with names, grades and platinum; no on-screen notice</span></div><span class="st st-part">Partial</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Linux build</b><span class="blurb">built and played on the maintainer&#x27;s machine; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a></span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the campaign not checked there</span></div><span class="st st-part">Partial</span></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the whole campaign played there</span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Frame rate</b><span class="blurb">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</span></div><span class="st st-part">Partial</span></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</span></div><span class="st st-ok">Works</span></li>
 </ul>
 <h3>The PS3 game, feature by feature</h3>
 <ul class="meters">
-<li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span><b>15</b></li>
-<li class="m-part"><span class="ml">Partial</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>2</b></li>
+<li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span><b>16</b></li>
+<li class="m-part"><span class="ml">Partial</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
 <li class="m-no"><span class="ml">Not yet</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
 <li class="m-na"><span class="ml">Not applicable</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
 </ul>
@@ -83,7 +83,7 @@
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
 <tr><td>Level 1</td><td>first level</td><td></td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Levels 2 to 11</td><td>the rest of the campaign</td><td>all load and reach gameplay; not each played to its end</td><td><span class="st st-part">Partial</span></td></tr>
+<tr><td>Levels 2 to 11</td><td>the rest of the campaign</td><td>on Linux and on Windows</td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>Cutscene and level movies</td><td>AVI movies through <code>cellSail</code></td><td>(FFmpeg)</td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>Game logic timing</td><td>30 Hz</td><td>at 30 and 60 Hz; 144 Hz with one known problem (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>)</td><td><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
@@ -92,7 +92,7 @@
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>Profile, checkpoints, Continue</td><td>one profile save</td><td>Continue returns to the checkpoint; a checkpoint save checked end to end is still to do</td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td>Profile, checkpoints, Continue</td><td>one profile save</td><td>Continue returns to the checkpoint</td><td><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Controls</summary>
@@ -189,17 +189,17 @@
 <thead><tr><th>Feature</th><th>Notes</th><th>State</th></tr></thead>
 <tbody>
 <tr><td>Linux x64 build</td><td></td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Windows x64 exe (cross-built on Linux)</td><td>runs under Wine, Proton and on Windows; the campaign not checked there</td><td><span class="st st-part">Partial</span></td></tr>
+<tr><td>Windows x64 exe (cross-built on Linux)</td><td>runs under Wine, Proton and on Windows; the whole campaign played there</td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>Frame rate</td><td>a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Installer that builds the port on the player&#x27;s PC</td><td><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</td><td><span class="st st-part">Partial</span></td></tr>
+<tr><td>Installer that builds the port on the player&#x27;s PC</td><td><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</td><td><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">Every feature, with evidence<span aria-hidden="true"> &gt;</span></a></p>
 </article>
 <div id="news">
 <article class="news rel">
-<h2>Unreleased</h2>
-<p class="meta">not released yet</p>
+<h2>0.5.0</h2>
+<p class="meta">17 Nov 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="sec">Added</span>&quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, <code>run.cmd</code>, <code>./run.sh</code> and <code>tools/install.sh</code> now offer three choices, &quot;Use my RPCS3 install&quot;, &quot;I have the files ready&quot; and &quot;Show me how&quot;, which lists the steps to get the game and the firmware into RPCS3 and asks again. Without RPCS3 the scripts say why it cannot be used.</li>
 <li><span class="sec">Added</span>The decrypted <code>data_ps3.psarc</code> is no longer needed: without it the port reads the installed game&#x27;s own <code>USRDIR/data_ps3.psarc.edat</code>, as the package or RPCS3 installs it. After the build the install runs the game once without a window until the archive is open (about a minute; <code>tools/kzbuild.py data</code>), checks it and takes the movies out of it. The opened archive is kept in <code>work/edat-cache</code> (3.1 GB); nothing is written into the game folder. A decrypted <code>data_ps3.psarc</code> you already have keeps working as before.</li>
@@ -305,14 +305,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, tools/install.sh and...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The first run&#x27;s check also looks at where the port is: a folder path with [, ] or ; (the build tools stop on them), a...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The PS3 system software version is checked where it is picked: RPCS3 with another firmware than 4.93, or a dev_flash...</span></li>
-<li><time>next</time><span><b>Unreleased</b> With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles....</span></li>
-<li><time>next</time><span><b>Unreleased</b> The setup&#x27;s &quot;Portable&quot; choice can be changed after the install: play.cmd --move-data portable or --move-data appdata...</span></li>
-<li><time>next</time><span><b>Unreleased</b> A new-version check, off by default: once turned on (KZ_VERSION_CHECK=1, or tools/release/version_check.py --enable)...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, tools/install.sh and...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The first run&#x27;s check also looks at where the port is: a folder path with [, ] or ; (the build tools stop on them), a...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The PS3 system software version is checked where it is picked: RPCS3 with another firmware than 4.93, or a dev_flash...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles....</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The setup&#x27;s &quot;Portable&quot; choice can be changed after the install: play.cmd --move-data portable or --move-data appdata...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> A new-version check, off by default: once turned on (KZ_VERSION_CHECK=1, or tools/release/version_check.py --enable)...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -320,10 +320,7 @@
 <h2>Objectives</h2>
 <ul class="todo">
 <li class="o-no"><span class="box" aria-hidden="true"></span>&quot;One / Two Player&quot; in the menu <em>(not yet)</em></li>
-<li class="o-part"><span class="box" aria-hidden="true"></span>Levels 2 to 11 <em>(partial)</em></li>
 <li class="o-part"><span class="box" aria-hidden="true"></span>Trophy unlocks <em>(partial)</em></li>
-<li class="o-part"><span class="box" aria-hidden="true"></span>Windows x64 exe (cross-built on Linux) <em>(partial)</em></li>
-<li class="o-part"><span class="box" aria-hidden="true"></span>Installer that builds the port on the player&#x27;s PC <em>(partial)</em></li>
 </ul>
 <p class="small">The next features still open; all of them: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, and the plan: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">ROADMAP.md</a>.</p>
 </section>
@@ -333,10 +330,10 @@
 <a class="promo pic" href="#install"><img src="../docs/screenshots/20261030_level1-helghast-advance.png" alt="" loading="lazy"><span class="pt">Your own copy</span><span class="pb">How to build it</span></a>
 <section class="promo">
 <h2>At a glance</h2>
-<p class="headline">Status: <strong>Partly playable</strong></p>
+<p class="headline">Status: <strong>Playable</strong></p>
 <ul class="glance">
-<li><span class="st st-ok">Works</span> <b>15</b></li>
-<li><span class="st st-part">Partial</span> <b>2</b></li>
+<li><span class="st st-ok">Works</span> <b>16</b></li>
+<li><span class="st st-part">Partial</span> <b>1</b></li>
 <li><span class="st st-no">Not yet</span> <b>1</b></li>
 <li><span class="st st-na">Not applicable</span> <b>1</b></li>
 </ul>
@@ -345,10 +342,10 @@
 <section id="install" class="promo">
 <h2>Install</h2>
 <div class="dl">
-<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.4.0">v0.4.0</a> <span>pre-release</span></p>
-<p class="small">9 Nov 2026 · partly playable · source for Linux x64</p>
-<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.4.0">Download v0.4.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
-<p>The release page has project-vekta-0.4.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.0">v0.5.0</a> <span>pre-release</span></p>
+<p class="small">17 Nov 2026 · playable · source for Linux x64</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.0">Download v0.5.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has project-vekta-0.5.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
 </div>
 <p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <pre>git clone --recurse-submodules \
