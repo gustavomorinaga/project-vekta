@@ -199,7 +199,7 @@
 <div id="news">
 <article class="news rel">
 <h2>0.5.0</h2>
-<p class="meta">16 Nov 2026 · pre-release</p>
+<p class="meta">17 Nov 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="sec">Added</span>&quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, <code>run.cmd</code>, <code>./run.sh</code> and <code>tools/install.sh</code> now offer three choices, &quot;Use my RPCS3 install&quot;, &quot;I have the files ready&quot; and &quot;Show me how&quot;, which lists the steps to get the game and the firmware into RPCS3 and asks again. Without RPCS3 the scripts say why it cannot be used.</li>
 <li><span class="sec">Added</span>The decrypted <code>data_ps3.psarc</code> is no longer needed: without it the port reads the installed game&#x27;s own <code>USRDIR/data_ps3.psarc.edat</code>, as the package or RPCS3 installs it. After the build the install runs the game once without a window until the archive is open (about a minute; <code>tools/kzbuild.py data</code>), checks it and takes the movies out of it. The opened archive is kept in <code>work/edat-cache</code> (3.1 GB); nothing is written into the game folder. A decrypted <code>data_ps3.psarc</code> you already have keeps working as before.</li>
@@ -305,14 +305,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time datetime="2026-11-16">11-16</time><span><b>0.5.0</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
-<li><time datetime="2026-11-16">11-16</time><span><b>0.5.0</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
-<li><time datetime="2026-11-16">11-16</time><span><b>0.5.0</b> Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, tools/install.sh and...</span></li>
-<li><time datetime="2026-11-16">11-16</time><span><b>0.5.0</b> The first run&#x27;s check also looks at where the port is: a folder path with [, ] or ; (the build tools stop on them), a...</span></li>
-<li><time datetime="2026-11-16">11-16</time><span><b>0.5.0</b> The PS3 system software version is checked where it is picked: RPCS3 with another firmware than 4.93, or a dev_flash...</span></li>
-<li><time datetime="2026-11-16">11-16</time><span><b>0.5.0</b> With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles....</span></li>
-<li><time datetime="2026-11-16">11-16</time><span><b>0.5.0</b> The setup&#x27;s &quot;Portable&quot; choice can be changed after the install: play.cmd --move-data portable or --move-data appdata...</span></li>
-<li><time datetime="2026-11-16">11-16</time><span><b>0.5.0</b> A new-version check, off by default: once turned on (KZ_VERSION_CHECK=1, or tools/release/version_check.py --enable)...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, tools/install.sh and...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The first run&#x27;s check also looks at where the port is: a folder path with [, ] or ; (the build tools stop on them), a...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The PS3 system software version is checked where it is picked: RPCS3 with another firmware than 4.93, or a dev_flash...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles....</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> The setup&#x27;s &quot;Portable&quot; choice can be changed after the install: play.cmd --move-data portable or --move-data appdata...</span></li>
+<li><time datetime="2026-11-17">11-17</time><span><b>0.5.0</b> A new-version check, off by default: once turned on (KZ_VERSION_CHECK=1, or tools/release/version_check.py --enable)...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -343,7 +343,7 @@
 <h2>Install</h2>
 <div class="dl">
 <p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.0">v0.5.0</a> <span>pre-release</span></p>
-<p class="small">16 Nov 2026 · playable · source for Linux x64</p>
+<p class="small">17 Nov 2026 · playable · source for Linux x64</p>
 <p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.0">Download v0.5.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
 <p>The release page has project-vekta-0.5.0-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
 </div>

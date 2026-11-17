@@ -7,7 +7,7 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-11-16 (pre-release)
+## [0.5.0] - 2026-11-17 (pre-release)
 
 ### Added
 - "Show me how" in the installers: the setup's "Your game" page, `run.cmd`, `./run.sh` and `tools/install.sh` now
