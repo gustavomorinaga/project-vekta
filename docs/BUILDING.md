@@ -157,7 +157,7 @@ and the Vulkan headers. On the first run `tools/release/fetch_toolchain.py` down
 `work/toolchain-cache` and checks each against its SHA-256, and `tools/release/build_win_deps.py` builds zlib and
 glslang with that compiler into `work/win-deps` (about half a minute); later runs reuse both. The exe links its C++
 runtime statically, so only `SDL2.dll` and FFmpeg's DLLs go beside it (FFmpeg 9, BtbN's LGPL build, the one the
-maintainer tested; the movies need them); `vulkan-1.dll` comes with the GPU driver. On the maintainer's machine the
+maintainer tested, served from this repository's own release, [dev/deps-mirror.md](dev/deps-mirror.md); the movies need them); `vulkan-1.dll` comes with the GPU driver. On the maintainer's machine the
 first run took two minutes, and the exe held 144 fps under Wine and Proton (`tools/wine-test.sh`). `KZ_WIN_TOOLCHAIN=system` builds the earlier way,
 with the system clang and the distribution's MinGW-w64 packages (`port/cmake/clang-mingw.cmake`). clang's native TLS
 avoids the cost of the thread-locals MinGW's GCC emulates.

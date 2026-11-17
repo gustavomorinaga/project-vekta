@@ -7,6 +7,12 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- The FFmpeg the Windows and Linux builds download is now served from this repository's own release
+  (`deps-ffmpeg-n9.0.2-57-gd838f9f9ae`, BtbN's autobuild-2026-11-16-15-29 byte for byte, same SHA-256 pins), with
+  FFmpeg's source for that build beside it, so a removed upstream build can no longer break a release as it did
+  0.5.0. A new `deps-mirror` workflow publishes a re-pin ([docs/dev/deps-mirror.md](docs/dev/deps-mirror.md)).
+
 ## [0.5.1] - 2026-11-17 (pre-release)
 
 ### Added
