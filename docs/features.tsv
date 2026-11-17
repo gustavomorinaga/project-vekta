@@ -5,7 +5,7 @@ ps3	Campaign	Level 1	first level	works		played by hand from start to end	Level 1
 ps3	Campaign	Levels 2 to 11	the rest of the campaign	works	 on Linux and on Windows	2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16)	Levels 2 to 11
 ps3	Campaign	Cutscene and level movies	AVI movies through `cellSail`	works	 (FFmpeg)	30 movies; runs without FFmpeg skip them	Movies
 ps3	Campaign	Game logic timing	30 Hz	works	 at 30 and 60 Hz; 144 Hz with one known problem ([KNOWN_ISSUES.md](KNOWN_ISSUES.md))	hints, movement and rate of fire checked at 60 Hz	
-ps3	Saves	Profile, checkpoints, Continue	one profile save	works	: Continue returns to the checkpoint; a checkpoint save checked end to end is still to do	2026-10-20	Saves
+ps3	Saves	Profile, checkpoints, Continue	one profile save	works	: Continue returns to the checkpoint	2026-10-20; a checkpoint save checked end to end: quit, Continue, play on to the next checkpoint and the next part, twice, also from a part in the middle of a chapter (the maintainer, 2026-11-17)	Saves
 ps3	Controls	DualShock 3 layout	pad	works	 with any SDL controller	Xbox, DualSense/DualShock, 8BitDo, generic	
 ps3	Controls	Rumble	pad vibration	works		SDL	
 ps3	Controls	Controller options (sensitivity, invert)	Pause > Controls	works		the game's own menu	

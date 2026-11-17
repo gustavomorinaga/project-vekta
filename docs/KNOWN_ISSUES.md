@@ -34,9 +34,9 @@ are linked.
   their edges, as if their alpha test or blending went wrong. Seen once in a player's screenshot; not yet
   investigated (whether it also happens at 16:9 and the game's FOV, and which draws). Low priority. To look into it:
   an F12 capture where it shows, and the leaves' draws in its `draws.txt` (blend, alpha test, texture format).
-- **The lighting at the start of level 11 (Hope)** is still to be compared with the PS3. The whole campaign plays
-  from start to end on Linux and on Windows (the maintainer, 2026-11-16); the levels are not yet each compared with
-  reference footage.
+- **The levels are not yet each compared with reference footage** of the PS3 game. The whole campaign plays from
+  start to end on Linux and on Windows (the maintainer, 2026-11-16), the start of level 11 (Hope) is lit as in RPCS3,
+  and a checkpoint save works end to end (2026-11-17).
 - **Slow memory growth** of about 0.24 MB per minute standing still in Level 1 (15 minutes, 2026-10-17). Not a
   problem in a play session.
 - **Film grain fades out in chapter 1's fourth part** (`1.HQGrounds`, 2026-11-16). Not a fault of the port: the game

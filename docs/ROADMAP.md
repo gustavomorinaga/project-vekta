@@ -33,7 +33,7 @@ each phase's estimated relative effort.
 | 3. SPU and SPURS | 7 | 95 % |
 | 4. RSX on Vulkan | 7 | 75 % |
 | 5. First level | 9 | 90 % |
-| 6. Full campaign | 11 | 80 % |
+| 6. Full campaign | 11 | 90 % |
 | 7. PC: runtime | 7 | 45 % |
 | 8. PC: the game's map | 12 | 30 % |
 | 9. Killzone 2 and Killzone 3 | 22 | 2 % |
@@ -50,8 +50,8 @@ for it (rebased routes, alternating A/B, the store journal for checking native c
 and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 
 1. **Finish Killzone HD's campaign (phase 6).** Levels 2 to 11 play from start to end on Linux and on Windows
-   (2026-11-16); left: compare each level with reference footage, the lighting at the start of level 11, and a save
-   made at a checkpoint checked end to end.
+   (2026-11-16), the lighting at the start of level 11 matches RPCS3 and a checkpoint save works end to end
+   (2026-11-17); left: compare each level with reference footage.
 2. ~~**Move to ps3recomp v0.18.0**~~ (done 2026-10-28): the patches re-applied, the 11 levels running, speed at the
    v0.14 level (Level 7 about 131 to 135 fps). The first-person weapon problem in the 144 Hz mode stays open
    ([KNOWN_ISSUES.md](KNOWN_ISSUES.md), [dev/ps3recomp-v018-migration.md](dev/ps3recomp-v018-migration.md)).
@@ -121,9 +121,9 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] Separate test run folder (tests do not delete the player's saves)
 - [x] Levels 2 to 11 played from start to end, on Linux and on Windows (the maintainer, 2026-11-16)
 - [ ] Each level compared with reference footage
-- [ ] To check: the lighting at the start of level 11 (Hope)
+- [x] The lighting at the start of level 11 (Hope): the same as in RPCS3 (the maintainer, 2026-11-17)
 - [x] Saves: the real title (NPUA80856) from PARAM.SFO; the profile loads and Continue returns to the checkpoint
-- [ ] A save made at a checkpoint checked end to end
+- [x] A save made at a checkpoint checked end to end (the maintainer, 2026-11-17)
 - [x] Trophies as a local log: names, grades and platinum from the installed game's `TROPHY.TRP`, one line per trophy
       in `gamedata/trophies/NPWR03819.log` (after Project Pyrrhus's patch 5004). An on-screen notice is missing
 - [x] Full campaign on Windows (the maintainer, 2026-11-16)
