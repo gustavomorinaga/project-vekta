@@ -3,11 +3,11 @@
 
     tools/release/fake_game_files.py DIR
 
-Writes into DIR a game folder NPUA80856 whose PARAM.SFO holds only TITLE_ID, and EBOOT.elf, data_ps3.psarc and
-libsre.prx with the right first bytes and the tested sizes (tools/check-game-files.py; the archive is a sparse 3 GB
+Writes into DIR a game folder NPUA80856 whose PARAM.SFO holds only TITLE_ID, and EBOOT.elf and data_ps3.psarc
+with the right first bytes and the tested sizes (tools/check-game-files.py; the archive is a sparse 3 GB
 file where the file system allows) but no content. The setup program takes them, and the build's first step then
 refuses them by their SHA-256: release.yml runs that path on the Windows runner. Nothing here comes from the game.
-Prints the five setup switches (/GAME= ... /DEVFLASH=), one per line. Standard library only.
+Prints the four setup switches (/GAME= ... /DEVFLASH=), one per line. Standard library only.
 """
 import importlib.util
 import os
@@ -53,8 +53,7 @@ def main(argv=None):
     os.makedirs(os.path.join(game, "USRDIR"), exist_ok=True)
     with open(os.path.join(game, "PARAM.SFO"), "wb") as f:
         f.write(sfo({"TITLE_ID": TITLE}))
-    files = {"eboot": ("EBOOT.elf", b"\x7fELF"), "psarc": ("data_ps3.psarc", b"PSAR"),
-             "libsre": ("libsre.prx", b"\x7fELF")}
+    files = {"eboot": ("EBOOT.elf", b"\x7fELF"), "psarc": ("data_ps3.psarc", b"PSAR")}
     out = {"GAME": game}
     for opt, (name, magic) in files.items():
         out[opt.upper()] = os.path.join(d, name)

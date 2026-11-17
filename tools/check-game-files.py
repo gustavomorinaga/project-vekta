@@ -3,7 +3,7 @@
 
     tools/check-game-files.py [--quick] [--root DIR] [--work DIR]
 
-Reads the paths from the same environment variables as tools/env.sh (KZ_GAME, KZ_EBOOT, KZ_PSARC, KZ_LIBSRE,
+Reads the paths from the same environment variables as tools/env.sh (KZ_GAME, KZ_EBOOT, KZ_PSARC,
 PS3_DEV_FLASH), with the same defaults under Game/. Each file is checked by size and SHA-256 (--quick: size and
 magic only, skipping the 3 GB archive's hash). Prints one line per file and what to do about a mismatch; exits 1
 if a required file is missing or different. Standard library only; reads, never writes.
@@ -47,9 +47,6 @@ FILES = [
      "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc", b"\x7fELF", True,
      "the decrypted EBOOT of the installed game (an ELF, not the EBOOT.BIN container)"),
     ARCHIVE,
-    ("libsre.prx", os.environ.get("KZ_LIBSRE", os.path.join(ROOT, "Game", "libsre.prx")), 239344,
-     "9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6", b"\x7fELF", True,
-     "the decrypted libsre from PS3 firmware 4.93 (sys/external/libsre.sprx in dev_flash)"),
     ("flashMP3.pic", os.path.join(DEV_FLASH, "sys", "external", "flashMP3.pic"), 69695,
      "adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a", None, False,
      "the firmware's MP3 decoder, read as installed (without it the music and sound stop at the first MP3)"),
@@ -102,7 +99,7 @@ def place_problems(root, work, environ=None, now=None):
     return out
 
 
-FIRMWARE = "4.93"   # the PS3 system software libsre.prx and flashMP3.pic were tested from
+FIRMWARE = "4.93"   # the PS3 system software flashMP3.pic was tested from
 
 
 def firmware_version(dev_flash):
@@ -147,8 +144,8 @@ def edat_license(path):
 def wrong_kind(label, head):
     """What to say about a file that starts with the wrong bytes, by what it is instead."""
     if head == b"SCE\0":
-        return ("this is still encrypted (an EBOOT.BIN or .sprx). The port needs the decrypted file; when the game and "
-                "the firmware are installed in RPCS3, `firstrun.py --rpcs3` (offered by run.cmd, run.sh and "
+        return ("this is still encrypted (an EBOOT.BIN). The port needs the decrypted file; when the game is "
+                "installed in RPCS3, `firstrun.py --rpcs3` (offered by run.cmd, run.sh and "
                 "install.sh) has your RPCS3 decrypt a copy")
     if head == b"NPD\0" and label == "data_ps3.psarc":
         return ("this is the .edat the package installs. Leave data_ps3.psarc unset (KZ_PSARC, the setup's field "
@@ -166,9 +163,9 @@ def main():
         bad = True
     fw = firmware_version(DEV_FLASH) if os.path.isdir(DEV_FLASH) else None
     if fw and fw != FIRMWARE:
-        print(f"WRONG    firmware: {DEV_FLASH} holds PS3 system software {fw}; the port needs {FIRMWARE} (libsre.prx and "
-              f"flashMP3.pic come from it)\n         install system software {FIRMWARE} in RPCS3 (File, Install "
-              "Firmware), then take dev_flash and libsre from it again")
+        print(f"WRONG    firmware: {DEV_FLASH} holds PS3 system software {fw}; the port needs {FIRMWARE} (the music "
+              f"decoder, flashMP3.pic, comes from it)\n         install system software {FIRMWARE} in RPCS3 (File, "
+              "Install Firmware), then take dev_flash from it again")
         bad = True
     elif fw:
         print(f"ok       firmware {fw}")

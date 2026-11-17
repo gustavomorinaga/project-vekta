@@ -101,8 +101,7 @@ What changes under RenderDoc (RenderDoc 1.46 on Linux, 2026-11-13):
 - **Linux**: `KZ_RENDERDOC=1 tools/play.sh` starts the game under `renderdoccmd` (RenderDoc installed, `renderdoccmd`
   on the PATH); captures go to `work/renderdoc/kz1hd_frameN.rdc`, to open in `qrenderdoc`. From `qrenderdoc` itself
   (Launch Application): executable `work/build/KZ1HD`, arguments `<run folder>/PS3_GAME/USRDIR/EBOOT.elf`, working
-  directory the run folder (`work/vfs`), and the environment `tools/play.sh` exports (`KZ_LIBSRE_IMAGE`,
-  `PS3RECOMP_VK_GUEST_PROGRAMS=1`, `GCM_PARK_SKIP=1`, `PS3RECOMP_VK_WINDOW=1`).
+  directory the run folder (`work/vfs`), and the environment `tools/play.sh` exports (`PS3RECOMP_VK_GUEST_PROGRAMS=1`, `GCM_PARK_SKIP=1`, `PS3RECOMP_VK_WINDOW=1`).
 - **Windows**: RenderDoc's Launch Application on `KZ1HD.exe` in the installed folder, working directory that folder,
   arguments as `play.cmd` passes them.
 - In the game, **F12** takes a RenderDoc capture of the next frame together with the port's own pass capture

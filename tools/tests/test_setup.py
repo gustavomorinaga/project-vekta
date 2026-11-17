@@ -60,7 +60,7 @@ spec = importlib.util.spec_from_file_location("cgf", ROOT / "tools" / "check-gam
 cgf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cgf)
 sizes = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
-for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc"), ("LibsreSize", "libsre.prx")):
+for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc")):
     m = re.search(r'#define %s "(\d+)"' % define, text)
     check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
 m_fw = re.search(r'#define Firmware "([^"]+)"', text)
@@ -106,8 +106,9 @@ steps = {st.name for st in firstrun.STEPS}
 check(labels and labels <= steps and steps - labels <= {"stamp"}, f"StepLabel names firstrun.py's steps: {labels} {steps}")
 check("tools\\release\\firstrun.py" in text and "work\\toolchain-cache\\python\\python.exe" in text,
       "the wizard runs the payload's firstrun.py with its Python")
-for param in ("GAME", "EBOOT", "PSARC", "LIBSRE", "DEVFLASH", "DLSS"):
+for param in ("GAME", "EBOOT", "PSARC", "DEVFLASH", "DLSS"):
     check(f"Pick('{param}'" in text, f"/{param}= is taken on the command line")
+check("LIBSRE" not in text and "libsre" not in text.lower(), "no libsre.prx is asked for (the runtime's own LFQueue)")
 # NVIDIA DLSS: an optional page whose box, unticked unless accepted before, accepts the licence firstrun.py shows;
 # its answer goes to firstrun.py and work\dlss-choice, and setup ships no NVIDIA file
 m_url = re.search(r'#define DlssLicenseURL "([^"]+)"', text)
@@ -307,12 +308,11 @@ with tempfile.TemporaryDirectory() as tmp:
     r = subprocess.run([sys.executable, str(ROOT / "tools/release/fake_game_files.py"), tmp], capture_output=True,
                        text=True)
     sw = dict(line[1:].split("=", 1) for line in r.stdout.split())
-    check(r.returncode == 0 and set(sw) == {"GAME", "EBOOT", "PSARC", "LIBSRE", "DEVFLASH"}, f"five switches: {sw}")
-    env = dict(os.environ, KZ_GAME=sw["GAME"], KZ_EBOOT=sw["EBOOT"], KZ_PSARC=sw["PSARC"], KZ_LIBSRE=sw["LIBSRE"],
-               PS3_DEV_FLASH=sw["DEVFLASH"])
+    check(r.returncode == 0 and set(sw) == {"GAME", "EBOOT", "PSARC", "DEVFLASH"}, f"four switches: {sw}")
+    env = dict(os.environ, KZ_GAME=sw["GAME"], KZ_EBOOT=sw["EBOOT"], KZ_PSARC=sw["PSARC"], PS3_DEV_FLASH=sw["DEVFLASH"])
     q = subprocess.run([sys.executable, str(ROOT / "tools/check-game-files.py"), "--quick"], capture_output=True,
                        text=True, env=env)
-    for label in ("PARAM.SFO", "EBOOT.elf", "libsre.prx"):
+    for label in ("PARAM.SFO", "EBOOT.elf"):
         check(f"DIFFERENT {label}" in q.stdout, f"{label}: the right kind and size, another hash: {q.stdout}")
     check("ok       data_ps3.psarc" in q.stdout and q.returncode == 1, "the archive passes --quick; the check fails")
     # Without a decrypted archive the game folder's own .edat is checked instead (patch 4014)

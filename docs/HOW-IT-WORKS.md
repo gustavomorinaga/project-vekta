@@ -9,7 +9,7 @@ program is translated to C++ ahead of time, compiled for x64, and given a PC sta
 | Game code (PPU, PowerPC) | about 23,400 functions in the EBOOT | lifted to C++ by ps3recomp's `ppu_lifter.py`, compiled with clang; a handful of hot functions reimplemented in `port/kz1hd/native_ppu/` |
 | SPU programs | 3 SPU ELFs, the WWS job manager's policy module and 11 job modules, plus the firmware's MP3 decoder | lifted to C by ps3recomp's SPU tools; SPURS workloads run on host threads; some job loops reimplemented in `port/kz1hd/native/` |
 | System libraries (lv2, `cell*`) | the PS3 system software | reimplemented on PC APIs by ps3recomp (high-level emulation), with this project's patches |
-| SPURS LFQueue | firmware `libsre` | the firmware's own code, translated like the game's (`tools/lift.sh`) and called for two functions |
+| SPURS LFQueue | firmware `libsre` | reimplemented in ps3recomp's runtime (patch 1022), checked against the firmware's own code |
 | Graphics (RSX) | the game's GCM command stream | replayed on Vulkan by ps3recomp's draw engine and this project's Vulkan backend (window, present, scaling, FSR 1) |
 | Movies | `cellSail` playing AVI files | `port/kz1hd/sail.cpp`, decoding with FFmpeg loaded at run time |
 | Input | DualShock 3 through `cellPad` | SDL controllers, keyboard and mouse through `cellPad`, with mouse look written straight into the game's camera |
@@ -22,7 +22,7 @@ program is translated to C++ ahead of time, compiled for x64, and given a PC sta
 2. `tools/lift.sh` reads your decrypted EBOOT: ps3recomp's loader lists its segments, imports and the functions its
    tables name; `find_functions.py` completes the list with the seeds in `re/function_seeds.txt`; the PPU lifter
    writes the C++ (`work/lift/gen`). The SPU images and job modules are extracted and lifted (`work/lift/spu`), and so
-   are the firmware's MP3 decoder and `libsre` (`work/fw`).
+   is the firmware's MP3 decoder.
 3. `tools/build.sh` compiles the lifted code, ps3recomp's runtime and the port (`port/kz1hd`) into one program.
 4. `tools/setup-vfs.sh` makes the folder the program runs in: the game's files where the PS3 would have them.
 

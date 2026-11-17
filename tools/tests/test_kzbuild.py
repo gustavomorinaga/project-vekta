@@ -3,8 +3,8 @@
 tools/build.sh run (and the installer runs on Windows): the paths come from the environment, else work/paths.env,
 else the defaults, as in tools/env.sh; patch applies the series to a copy, rewrites only the files that changed and
 writes .patchset, and refuses a patch left out of the series; lift calls ps3recomp's lifters (stand-ins here) with
-the arguments and native-function lists of the shell script it replaced, and writes seeds.json and libsre's
---hle-stubs file; vfs copies PARAM.SFO and TROPDIR, links the EBOOT and the archive, takes the movies out of a small
+the arguments and native-function lists of the shell script it replaced, writes seeds.json and removes the work/fw
+of earlier versions (the firmware libsre's lift); vfs copies PARAM.SFO and TROPDIR, links the EBOOT and the archive, takes the movies out of a small
 PSARC and keeps the saves; build configures and runs Ninja (stand-ins on PATH). No game data, no compiler."""
 import io
 import json
@@ -52,11 +52,6 @@ name = os.path.basename(sys.argv[0])
 with open(os.path.join(os.environ["KZ_WORK"], "argv.log"), "a") as f:
     f.write(json.dumps([name, sys.argv[1:], os.environ.get("PPU_LIFT_NATIVE"), os.environ.get("SPU_LIFT_NATIVE")])
             + "\n")
-if name == "lift_prx.py":
-    out = sys.argv[sys.argv.index("--output") + 1]
-    os.makedirs(out, exist_ok=True)
-    json.dump({"cellSpurs": {"0x1": "a", "0x2": "b"}, "sysPrx": {"0x3": "c"}},
-              open(os.path.join(out, "libsre_imports.json"), "w"))
 for i in range(3):
     print(name + " line " + str(i))
 if name == "spu_lifter.py":
@@ -132,7 +127,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # lift, with stand-ins for ps3recomp's lifters
     for t in ("ppu_loader", "find_functions", "ppu_lifter", "ppu_regcache", "extract_spu_images", "lift_jobmods",
-              "build_spu_workloads", "rebase_spu_elf", "spu_lifter", "lift_prx"):
+              "build_spu_workloads", "rebase_spu_elf", "spu_lifter"):
         (pt / "tools" / f"{t}.py").write_text(STUB)
     (root / "tools").mkdir()
     (root / "tools" / "extract_spu_modules.py").write_text(STUB)
@@ -145,9 +140,8 @@ with tempfile.TemporaryDirectory() as tmp:
         (root / "port" / "kz1hd" / d / f).write_text(text)
     files = tmp / "files"
     (files / "dev").mkdir(parents=True)
-    for f in ("EBOOT.elf", "libsre.prx"):
-        (files / f).write_text(f)
-    env = dict(base, KZ_EBOOT=str(files / "EBOOT.elf"), KZ_LIBSRE=str(files / "libsre.prx"), KZ_JOBS="5",
+    (files / "EBOOT.elf").write_text("EBOOT.elf")
+    env = dict(base, KZ_EBOOT=str(files / "EBOOT.elf"), KZ_JOBS="5",
                PS3_DEV_FLASH=str(files / "dev"))
     e = kzbuild.resolve(env, root=str(root))
     try:
@@ -157,7 +151,7 @@ with tempfile.TemporaryDirectory() as tmp:
     calls = [json.loads(line) for line in (root / "work" / "argv.log").read_text().splitlines()]
     check([c[0] for c in calls] == ["ppu_loader.py", "find_functions.py", "ppu_lifter.py", "ppu_regcache.py",
                                     "extract_spu_images.py", "extract_spu_modules.py", "lift_jobmods.py",
-                                    "build_spu_workloads.py", "lift_prx.py", "ppu_lifter.py"],
+                                    "build_spu_workloads.py"],
           f"the lifters run in lift.sh's order (no flashMP3.pic: no MP3 lift): {[c[0] for c in calls]}")
     ppu = calls[2]
     check(ppu[2] == "func_0012,func_00AB" and ppu[3] is None, f"PPU_LIFT_NATIVE in file order, then line: {ppu[2:]}")
@@ -165,9 +159,6 @@ with tempfile.TemporaryDirectory() as tmp:
     check(calls[5][3] == "ab05_spu_func_01F0" and calls[5][2] == "func_0012,func_00AB", "SPU_LIFT_NATIVE from SPU on")
     check(json.loads((root / "work" / "lift" / "analysis" / "seeds.json").read_text()) == ["0x10", "0x20"],
           "seeds.json: the seed lines without comments or blanks")
-    stubs = json.loads((root / "work" / "fw" / "out" / "libsre_hle_stubs.json").read_text())
-    check(stubs == [{"library": "cellSpurs", "nid": "0x1", "stub": "a"}, {"library": "cellSpurs", "nid": "0x2",
-                     "stub": "b"}, {"library": "sysPrx", "nid": "0x3", "stub": "c"}], f"libsre's --hle-stubs: {stubs}")
     (files / "dev" / "sys" / "external").mkdir(parents=True)
     (files / "dev" / "sys" / "external" / "flashMP3.pic").write_text("mp3")
     (root / "work" / "argv.log").unlink()
@@ -178,8 +169,9 @@ with tempfile.TemporaryDirectory() as tmp:
     kzbuild.cmd_lift(e, None)
     names = [json.loads(line)[0] for line in (root / "work" / "argv.log").read_text().splitlines()]
     check("rebase_spu_elf.py" in names and "spu_lifter.py" in names, "with flashMP3.pic the MP3 decoder is lifted")
-    check(not any((root / "work" / d / "gen" / "old_recomp_099.cpp").exists() for d in ("lift", "fw")),
-          "a lift leaves no source of an earlier lift in work/lift/gen or work/fw/gen")
+    check(not (root / "work" / "lift" / "gen" / "old_recomp_099.cpp").exists(),
+          "a lift leaves no source of an earlier lift in work/lift/gen")
+    check(not (root / "work" / "fw").exists(), "a lift removes the firmware libsre's work/fw of earlier versions")
 
     # vfs
     game = files / "NPUA80856"

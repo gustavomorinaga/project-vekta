@@ -36,7 +36,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINDOWS = os.name == "nt"
-PATH_VARS = ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_LIBSRE", "KZ_WORK", "KZ_VFS", "PS3RECOMP_DIR", "PS3_DEV_FLASH",
+PATH_VARS = ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_WORK", "KZ_VFS", "PS3RECOMP_DIR", "PS3_DEV_FLASH",
              "KZ_PY")
 # The data archive the port was made from (docs/GETTING-FILES.md): the decrypted data_ps3.psarc, which the game reads
 # either as the player's own file (KZ_PSARC) or, when there is none, from the installed game's data_ps3.psarc.edat,
@@ -85,8 +85,7 @@ def resolve(environ=None, root=ROOT):
         e.setdefault(k, v)
     j = os.path.join
     d = {"KZ_GAME": j(root, "Game", "NPUA80856"), "KZ_EBOOT": j(root, "Game", "EBOOT.elf"),
-         "KZ_PSARC": j(root, "Game", "data_ps3.psarc"), "KZ_LIBSRE": j(root, "Game", "libsre.prx"),
-         "KZ_WORK": work0}
+         "KZ_PSARC": j(root, "Game", "data_ps3.psarc"), "KZ_WORK": work0}
     for k, v in d.items():
         e[k] = e.get(k) or v
     w = e["KZ_WORK"]
@@ -308,14 +307,6 @@ def read_seeds(path):
         return [line.strip() for line in f if not line.startswith("#") and line.strip()]
 
 
-def libsre_hle_stubs(src, dst):
-    with open(src, encoding="utf-8") as f:
-        imports = json.load(f)
-    with open(dst, "w", encoding="utf-8") as f:
-        json.dump([{"library": lib, "nid": nid, "stub": stub} for lib, nids in imports.items()
-                   for nid, stub in nids.items()], f, indent=1)
-
-
 def cmd_lift(e, a):
     root, py = e["KZ_ROOT"], e["KZ_PY"]
     j = os.path.join
@@ -386,22 +377,8 @@ def cmd_lift(e, a):
     else:
         print(f"no {mp3} (PS3_DEV_FLASH): the game's music and sound stop at the first MP3", flush=True)
 
-    print("== libsre", flush=True)
-    # The firmware's libsre runs for the two SPURS LFQueue calls the runtime does not reimplement (stubs.cpp): its
-    # image, function list and imports from lift_prx.py, the imports in the lifter's --hle-stubs form, then the lift.
-    fw = j(e["KZ_WORK"], "fw")
-    shutil.rmtree(j(fw, "gen"), ignore_errors=True)   # globbed by the build, as work/lift/gen
-    need_file(e["KZ_LIBSRE"], "libsre.prx (KZ_LIBSRE; docs/GETTING-FILES.md)")
-    os.makedirs(j(fw, "out"), exist_ok=True)
-    run([py, j(t, "lift_prx.py"), e["KZ_LIBSRE"], "--base", "0x02000000", "--output", j(fw, "out") + os.sep], e,
-        "null")
-    libsre_hle_stubs(j(fw, "out", "libsre_imports.json"), j(fw, "out", "libsre_hle_stubs.json"))
-    run([py, j(t, "ppu_lifter.py"), j(fw, "out", "libsre_image.bin"), "--raw", "--base", "0x02000000", "--toc",
-         "0x02039AB0", "--code-end", "0x0201DD4C", "--functions", j(fw, "out", "libsre_functions.json"),
-         "--hle-stubs", j(fw, "out", "libsre_hle_stubs.json"), "--symbol-prefix", "libsre_", "--header-name",
-         "libsre_recomp.h", "--source-name", "libsre_recomp", "--output", j(fw, "gen") + os.sep], e,
-        j(fw, "lift.log"))
-    tail_file(j(fw, "lift.log"), 1)
+    # work/fw held the firmware libsre lifted by the port before 0.6.0; the SPURS queue it ran is in the runtime now.
+    shutil.rmtree(j(e["KZ_WORK"], "fw"), ignore_errors=True)
 
 
 # ------------------------------------------------------------------------------------------------------------ vfs
@@ -532,7 +509,7 @@ def lift_defs(e):
     if not os.path.isfile(os.path.join(w, "lift", "gen", "ppu_recomp.h")):
         raise Fail(f"no lift in {os.path.join(w, 'lift')}: run tools/lift.sh first")
     return [f"-DPS3RECOMP_DIR={e['PS3RECOMP_DIR']}", f"-DRECOMP_DIR={os.path.join(w, 'lift', 'gen')}",
-            f"-DSPU_DIR={os.path.join(w, 'lift', 'spu')}", f"-DLIBSRE_DIR={os.path.join(w, 'fw', 'gen')}"]
+            f"-DSPU_DIR={os.path.join(w, 'lift', 'spu')}"]
 
 
 def ninja(e, b):

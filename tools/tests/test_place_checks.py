@@ -73,14 +73,13 @@ with tempfile.TemporaryDirectory() as tmp:
     (fl / "vsh" / "etc" / "version.txt").write_text("release:04.9300:\n")
     check(cgf.firmware_version(str(fl)) == "4.93", "and 4.93")
 
-    check("still encrypted" in cgf.wrong_kind("EBOOT.elf", b"SCE\0") and "--rpcs3" in cgf.wrong_kind("libsre.prx",
-          b"SCE\0"), "an encrypted EBOOT or libsre is named so, with the RPCS3 route")
+    check("still encrypted" in cgf.wrong_kind("EBOOT.elf", b"SCE\0") and "--rpcs3" in cgf.wrong_kind("EBOOT.elf",
+          b"SCE\0"), "an encrypted EBOOT is named so, with the RPCS3 route")
     check("Leave data_ps3.psarc unset" in cgf.wrong_kind("data_ps3.psarc", b"NPD\0"),
           "the .edat given as the decrypted archive: leave it unset")
 
     # The script: the FAIL lines come first and stop it; firstrun's check step gives them as reasons
-    env = dict(os.environ, KZ_GAME=str(tmp / "none"), KZ_EBOOT=str(tmp / "none"), KZ_PSARC=str(tmp / "none"),
-               KZ_LIBSRE=str(tmp / "none"))
+    env = dict(os.environ, KZ_GAME=str(tmp / "none"), KZ_EBOOT=str(tmp / "none"), KZ_PSARC=str(tmp / "none"))
     eboot = tmp / "EBOOT.elf"
     eboot.write_bytes(b"SCE\0" + b"\0" * 60)
     env["KZ_EBOOT"] = str(eboot)
@@ -108,15 +107,15 @@ with tempfile.TemporaryDirectory() as tmp:
     b.mkdir(parents=True)
     (b / "CMakeCache.txt").write_text(f"CMAKE_HOME_DIRECTORY:INTERNAL={old / 'port' / 'kz1hd'}\n")
     (b / "old.o").write_text("")
-    elsewhere = tmp / "elsewhere" / "libsre.prx"
-    firstrun.write_paths(str(work), {"eboot": str(old / "Game" / "EBOOT.elf"), "libsre": str(elsewhere)})
+    elsewhere = tmp / "elsewhere" / "dev_flash"
+    firstrun.write_paths(str(work), {"eboot": str(old / "Game" / "EBOOT.elf"), "dev_flash": str(elsewhere)})
     c = firstrun.Ctx(root=str(new), paths=firstrun.resolve_paths(str(new), str(work), {}), work=str(work))
     check(firstrun.moved_from(c) == str(old), f"the old folder comes from the CMake cache: {firstrun.moved_from(c)}")
     check(firstrun.heal_moved_paths(c) == str(old), "heal_moved_paths reports the move")
     saved = firstrun.read_paths(str(work))
     check(saved["eboot"] == str(new / "Game" / "EBOOT.elf") and c.paths["eboot"] == saved["eboot"],
           f"a saved path inside the old folder points into the new one: {saved}")
-    check(saved["libsre"] == str(elsewhere), "a path outside the old folder stays as it was")
+    check(saved["dev_flash"] == str(elsewhere), "a path outside the old folder stays as it was")
     msg = firstrun.before_compile(c)
     check(msg and "moved" in msg and not b.exists(), f"the build folder made in the old place is emptied: {msg}")
     check(firstrun.moved_from(c) == "", "no cache, no move")
