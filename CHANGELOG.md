@@ -7,7 +7,7 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-11-17 (pre-release)
+## [0.5.1] - 2026-11-17 (pre-release)
 
 ### Added
 - "Show me how" in the installers: the setup's "Your game" page, `run.cmd`, `./run.sh` and `tools/install.sh` now
@@ -97,6 +97,9 @@ program and folder that build it. Until a release that calls itself playable
   wizard, as it does.
 
 ### Fixed
+- The release files build again: the FFmpeg the Windows and Linux folders bundle is now taken from BtbN's
+  autobuild-2026-11-16-15-29 (FFmpeg 9.0, n9.0.2-57-gd838f9f9ae); the earlier build had been removed, so 0.5.0 was
+  tagged but never released. 0.5.1 is that release.
 - After a check that found a file of the wrong kind (`WRONG`), `run.cmd` and `tools/install.sh` asked for every file
   again instead of only that one.
 - Resolution on a display with many modes (Windows at 3440x1440): the Resolution row offers at most 16 sizes, and the
