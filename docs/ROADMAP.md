@@ -114,6 +114,7 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] All 11 levels load and reach gameplay
 - [x] Crash on a Lua script error fixed (the game's own setjmp/longjmp lifted)
 - [x] Continuous music and sound: the firmware's MP3 decoder (flashMP3.pic) translated
+- [x] The MP3 decoder's call answered by minimp3, checked against the firmware's decoder ([dev/flashmp3-native.md](dev/flashmp3-native.md), 2026-11-18)
 - [x] Hang with sound on (a zlib queue with two producers; PPU reservations per cache line)
 - [x] Hang in Strange Company (level 4) with sound on: libsre runs on the calling thread's stack
 - [x] Cutscene sound (`cellAudioAdd2chData`)

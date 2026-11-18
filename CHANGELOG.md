@@ -8,6 +8,10 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Changed
+- The music and the other MP3 streams are decoded by the port itself (minimp3, CC0), in place of the PS3 system
+  software's MP3 decoder, which ran translated. Compared with it in Levels 1 and 4: the same frames, the same
+  silences, samples within 50 dB SNR. `KZ_MP3_PIC=1` runs the firmware's decoder instead. The firmware's
+  `flashMP3.pic` is still read when the game starts its sound.
 - The firmware's `libsre.prx` is no longer needed: the SPURS queue the game sends its compressed data requests
   through, which ran the firmware's own libsre code, is now in the port's runtime (ps3recomp patch 1022, checked
   against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it,

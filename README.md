@@ -77,7 +77,7 @@ As of 2026-11-16, on Linux x64 with an NVIDIA RTX 3070 Ti, the maintainer's mach
 | Boot, menus, movies | work: intro movies, front end, options, pause menu, saves and Continue |
 | Campaign | the whole campaign, levels 1 to 11, played from start to end on Linux and on Windows (2026-11-16); the levels are not yet each compared with reference footage |
 | Frame rate | a steady 60 frames per second by default (the game logic runs at 60 Hz instead of the PS3's 30); an optional 144 Hz mode reaches about 131 to 134 frames per second in Level 1 and Level 7 |
-| Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music through the firmware's MP3 decoder |
+| Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music decoded with minimp3 in place of the firmware's MP3 decoder |
 | Windows | the Windows exe is cross-built on Linux and runs under Wine, Proton and on a real Windows; the whole campaign plays there from start to end (2026-11-16); speed under Wine and Proton is lower (about 100 frames per second in Level 7) |
 | Distribution | you build the port from your own files: on Windows the setup program or folder builds it on your PC (since 0.2.0); on Linux from source, or (since 0.3.0) a Linux folder with its own toolchain (no compiler or packages needed) |
 

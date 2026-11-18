@@ -41,6 +41,9 @@ an existing profile changes the menu flow.
   (`[kz-script]`; 30 on the PS3 and at every clock rate); `KZ_SCRIPT_EVERY_FRAME=1` calls it once per frame again, as
   before the fix, and `KZ_SCRIPT_SMOOTH=0` lets objects the scripts move jump once per 1/30 s instead of sliding
   (`port/kz1hd/native_ppu/script_update.cpp`).
+- `KZ_MP3_PIC=1` (default off) runs the firmware's own MP3 decoder (`flashMP3.pic`, lifted) instead of
+  `port/kz1hd/native/flashmp3.c`; `KZ_NO_MP3=1` registers neither (the sound stops at the first MP3). See
+  [flashmp3-native.md](flashmp3-native.md).
 
 ## Pictures
 

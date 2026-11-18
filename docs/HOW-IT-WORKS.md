@@ -7,7 +7,7 @@ program is translated to C++ ahead of time, compiled for x64, and given a PC sta
 | Layer | On the PS3 | In the port |
 |---|---|---|
 | Game code (PPU, PowerPC) | about 23,400 functions in the EBOOT | lifted to C++ by ps3recomp's `ppu_lifter.py`, compiled with clang; a handful of hot functions reimplemented in `port/kz1hd/native_ppu/` |
-| SPU programs | 3 SPU ELFs, the WWS job manager's policy module and 11 job modules, plus the firmware's MP3 decoder | lifted to C by ps3recomp's SPU tools; SPURS workloads run on host threads; some job loops reimplemented in `port/kz1hd/native/` |
+| SPU programs | 3 SPU ELFs, the WWS job manager's policy module and 11 job modules, plus the firmware's MP3 decoder | lifted to C by ps3recomp's SPU tools; SPURS workloads run on host threads; some job loops reimplemented in `port/kz1hd/native/`; the MP3 decoder's call answered by minimp3 (`port/kz1hd/native/flashmp3.c`) |
 | System libraries (lv2, `cell*`) | the PS3 system software | reimplemented on PC APIs by ps3recomp (high-level emulation), with this project's patches |
 | SPURS LFQueue | firmware `libsre` | reimplemented in ps3recomp's runtime (patch 1022), checked against the firmware's own code |
 | Graphics (RSX) | the game's GCM command stream | replayed on Vulkan by ps3recomp's draw engine and this project's Vulkan backend (window, present, scaling, FSR 1) |

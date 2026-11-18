@@ -29,6 +29,8 @@ void kz_pc_options_register(void);   /* pcoptions.cpp: mouse look, PC options */
 #include "route.h"
 extern "C" void spu_begin_image(int image_id);
 extern "C" void kzmp3_spu_recomp_register(void) __attribute__((weak));   /* <SPU_DIR>/flashmp3, lift.sh */
+extern "C" void spu_register_function(uint32_t addr, void (*fn)(spu_context*));
+extern "C" void kz_flashmp3_entry(spu_context* ctx);   /* native/flashmp3.c */
 
 extern "C" void ps3_load_prx_modules(void)
 {
@@ -79,10 +81,13 @@ extern "C" void ps3_load_prx_modules(void)
     /* MultiStream (SPU image 3) decodes the music with the firmware's MP3
      * decoder, flashMP3.pic, which the game reads from dev_flash and loads at
      * LS 0x1A880 (its entry, 0x74A0 in the file, is called at LS 0x21D20).
-     * lift.sh lifts it at that base; its functions join image 3's. Without it
-     * the audio task ends at the first MP3 and every sound stops. */
+     * The call goes to native/flashmp3.c (minimp3) unless KZ_MP3_PIC=1 (default
+     * off) asks for the firmware's own decoder, which lift.sh lifts at that base:
+     * the first registration of an address wins. Without either the audio task
+     * ends at the first MP3 and every sound stops. */
     if (kzmp3_spu_recomp_register && !getenv("KZ_NO_MP3")) {
         spu_begin_image(3);
+        if (!getenv("KZ_MP3_PIC")) spu_register_function(0x21D20, kz_flashmp3_entry);
         kzmp3_spu_recomp_register();
         spu_begin_image(0);
     } else fprintf(stderr, "[kz] flashMP3.pic not lifted (lift.sh): no music or sound after the first MP3\n");
