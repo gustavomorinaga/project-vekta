@@ -33,7 +33,10 @@ static void env_set(const char* v)
     snprintf(b, sizeof b, "SDL_JOYSTICK_RAWINPUT=%s", v ? v : "");
     _putenv(b);   /* "NAME=" removes it */
 #else
-    if (v) setenv("SDL_JOYSTICK_RAWINPUT", v, 1); else unsetenv("SDL_JOYSTICK_RAWINPUT");
+    /* SDL_setenv, not setenv: SDL3 (under sdl2-compat, as Arch ships SDL2) copies the
+     * environment on first use and never sees a later setenv. A player's variable is
+     * set before the process starts, so the port itself is not affected. */
+    if (v) SDL_setenv("SDL_JOYSTICK_RAWINPUT", v, 1); else unsetenv("SDL_JOYSTICK_RAWINPUT");
 #endif
 }
 
