@@ -22,9 +22,11 @@ You need these files from your own game and your own PS3 firmware.
 
 **Already playing it in RPCS3?** When RPCS3 has Killzone HD and the PS3 firmware 4.93 installed, the Linux folder's
 `./run.sh` and the zip's `run.cmd` find them and offer to use them ("Use my RPCS3 install", "I have the files
-ready" or "Show me how", which lists these steps): your RPCS3 then decrypts copies of `EBOOT.BIN` and
-`libsre.sprx` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The
-setup program offers the same on its "Your game" page ("Use my RPCS3 install").
+ready", "Show me how", which lists these steps, or "My RPCS3 is somewhere else", which asks for its folder): your
+RPCS3 then decrypts copies of `EBOOT.BIN` and `libsre.sprx` into the port's own `work\prep` folder, the data archive
+is read as it is, and you pick no file. The setup program offers the same on its "Your game" page ("Use my RPCS3
+install"), with a "Find RPCS3..." button for an RPCS3 it did not find by itself. Either way the folder can be where
+`rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`).
 
 This project gives no decryption tools or instructions. The setup and the scripts only read your files; on the RPCS3
 route your own RPCS3 decrypts copies of them, and nothing is written into the game's or RPCS3's folders.
@@ -52,7 +54,7 @@ administrator rights.
      in the install folder: it moves the saves and settings and remembers the choice, and moves nothing when the
      other folder already has some.
 3. **Your game.** "Use my RPCS3 install" when the setup found RPCS3 with the game and the firmware: the next two
-   pages are skipped. "Show me how" lists the steps to get there, and stays on the page. Otherwise, pick the
+   pages are skipped. When it did not find yours, press "Find RPCS3..." and pick its folder. "Show me how" lists the steps to get there, and stays on the page. Otherwise, pick the
    installed game folder. Picking the folder above it also works.
 4. **Your decrypted files.** Pick `EBOOT.elf` and `libsre.prx`. Leave `data_ps3.psarc` empty to use the game
    folder's own `.edat`, or pick a decrypted one you already have.

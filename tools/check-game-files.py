@@ -119,6 +119,22 @@ def firmware_version(dev_flash):
     return None
 
 
+RPCS3_ROUTE = ("when the game and the firmware are installed in RPCS3, run the first run again (run.cmd, run.sh or "
+               "install.sh) and choose \"Use my RPCS3 install\": your RPCS3 makes the decrypted copies")
+
+
+def folder_note(label, path):
+    """What to say when a folder was given where a file is wanted (the setup asks for files, a player may give the
+    game's folder for each)."""
+    usr = os.path.join(path, "USRDIR") if os.path.isdir(os.path.join(path, "USRDIR")) else path
+    if os.path.isfile(os.path.join(usr, "EBOOT.BIN")) or os.path.isfile(os.path.join(usr, "data_ps3.psarc.edat")):
+        return (f"{path} is the installed game's folder, which holds only the encrypted EBOOT.BIN and .edat, not "
+                f"{label}; {RPCS3_ROUTE}")
+    if os.path.isdir(os.path.join(path, "sys", "external")):
+        return f"{path} is a firmware folder (dev_flash), which holds the encrypted .sprx, not {label}; {RPCS3_ROUTE}"
+    return f"{path} is a folder; give the file {label} itself"
+
+
 def wrong_kind(label, head):
     """What to say about a file that starts with the wrong bytes, by what it is instead."""
     if head == b"SCE\0":
@@ -150,7 +166,11 @@ def main():
     for label, path, size, digest, magic, required, what in FILES:
         tag = "required" if required else "optional"
         if not os.path.isfile(path):
-            print(f"MISSING  {label} ({tag}): nothing at {path}\n         expected: {what}")
+            where = folder_note(label, path) if os.path.isdir(path) else f"nothing at {path}"
+            if label == "flashMP3.pic" and os.path.isdir(DEV_FLASH) and not os.path.isdir(os.path.join(DEV_FLASH, "sys")):
+                where = (f"{DEV_FLASH} is not a dev_flash folder (no sys{os.sep}external in it); RPCS3 keeps dev_flash "
+                         "in its own folder, beside rpcs3.exe")
+            print(f"MISSING  {label} ({tag}): {where}\n         expected: {what}")
             bad |= required
             continue
         got_size = os.path.getsize(path)

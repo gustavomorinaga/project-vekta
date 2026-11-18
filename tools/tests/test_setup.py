@@ -77,16 +77,21 @@ check(opts and opts <= known, f"vekta.iss passes only firstrun.py's and rpcs3_im
 # "Your game": the RPCS3 route asks rpcs3_import.py --resolve with the bundled Python before installing, skips the
 # file pages when it is chosen, and hands the build --rpcs3 instead of the file paths
 import rpcs3_import  # noqa: E402
-check("rpcs3_import.py')) + ' --resolve --out '" in text and "{tmp}\\rp\\python\\python.exe" in text
+check("rpcs3_import.py')) + ' --resolve' + Args + ' --out '" in text and "{tmp}\\rp\\python\\python.exe" in text
       and 'Source: "{#Payload}\\tools\\release\\rpcs3_locate.py"; DestDir: "{tmp}\\rp"; Flags: dontcopy' in text,
       "the RPCS3 check runs before the install, from a temporary copy of the Python and the two modules")
 files_sec = text[text.index("[Files]"):text.index("[Icons]")]
 check(files_sec.index("rpcs3_import.py\"; DestDir: \"{tmp}") < files_sec.index('Source: "{#Payload}\\*"')
       and 'Source: "{#Payload}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs solidbreak'
       in files_sec, "the RPCS3 helper is unpacked from its own small solid block, ahead of the payload (no freeze)")
-check("ewWaitUntilTerminated" not in text[text.index("procedure CheckRpcs3;"):text.index("function UseRpcs3")]
+check("ewWaitUntilTerminated" not in text[text.index("procedure CheckRpcs3(Hint: String);\r\nvar"):text.index("function UseRpcs3")]
       and "npbstMarquee" in text and "RpcsNote.Caption := 'Your RPCS3 cannot be used:'" in text,
       "the RPCS3 check shows a progress page, never blocks the window, and prints its reasons on the page")
+check("RpcsBrowse.OnClick := @RpcsBrowseClick;" in text and "CheckRpcs3(D);" in text
+      and "if Hint <> '' then Args := ' --rpcs3 ' + Quote(Hint);" in text and "DeleteFile(Res);" in text
+      and "SourcePage.CheckListBox.ItemEnabled[0] := True;" in text
+      and "CheckRpcs3(Pick('RPCS3', 'Rpcs3Dir'))" in text and "'Rpcs3Dir', RpcsHint" in text,
+      "the page searches by itself and has Find RPCS3... for a folder the player picks (kept for next time)")
 check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID))" in text
       and "Result := ' --rpcs3 ' + Quote(RpcsRoot);" in text, "the RPCS3 route skips the file pages and builds with --rpcs3")
 check(all(f"'{k}'" in text for k in ("status", "root", "dev_flash")) and "Pos('problem=', Lines[I]) = 1" in text

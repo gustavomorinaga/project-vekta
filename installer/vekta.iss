@@ -22,7 +22,8 @@
 ; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>
 ; /LIBSRE=<file> [/DEVFLASH=<dir>]] [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with all four
 ; files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
-; asks. The saves and settings go to %APPDATA%\Project Vekta, or with the "portable" task (/MERGETASKS="portable")
+; asks. /RPCS3=<dir> (or the folder picked with "Find RPCS3..." last time) is where the "Your game" page looks for
+; RPCS3 first. The saves and settings go to %APPDATA%\Project Vekta, or with the "portable" task (/MERGETASKS="portable")
 ; to the install folder's work\vfs; vekta-install.ini [install] portable tells launch.py which. The uninstaller removes
 ; what the build made (the lift, the build, the logs, the copies of your game files in the game folder) and keeps your
 ; saves and settings in both places.
@@ -195,8 +196,9 @@ Type: filesandordirs; Name: "{app}\work\toolchain-cache\python\__pycache__"
 var
   SourcePage: TInputOptionWizardPage;
   RpcsNote: TNewStaticText;
+  RpcsBrowse: TNewButton;
   RpcsLooked, RpcsOK: Boolean;
-  RpcsRoot, RpcsGame, RpcsFlash, RpcsProblems: String;
+  RpcsHint, RpcsRoot, RpcsGame, RpcsFlash, RpcsProblems: String;
   GamePage: TInputDirWizardPage;
   FilesPage: TInputFileWizardPage;
   FlashPage: TInputQueryWizardPage;
@@ -504,6 +506,20 @@ begin
   if Result = '' then Result := GetPreviousData(Prev, '');
 end;
 
+procedure CheckRpcs3(Hint: String); forward;
+
+{ "Find RPCS3...": the player picks RPCS3's folder (where rpcs3.exe is, its config folder, or the game folder RPCS3
+  installed), and the page looks there instead of the usual places }
+procedure RpcsBrowseClick(Sender: TObject);
+var
+  D: String;
+begin
+  D := RpcsHint;
+  if BrowseForFolder('RPCS3''s folder (where rpcs3.exe is), or the game folder RPCS3 installed ' +
+                     '(dev_hdd0\game\{#TitleId}):', D, False) then
+    CheckRpcs3(D);
+end;
+
 procedure InitializeWizard;
 begin
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
@@ -515,12 +531,21 @@ begin
   SourcePage.Add('I will pick the game folder and the decrypted files myself');
   SourcePage.Add('Show me how');
   SourcePage.SelectedValueIndex := 1;
-  { What the RPCS3 check found, or why the RPCS3 option is greyed out, right under the two options }
+  { The automatic search runs when the page is first shown; "Find RPCS3..." looks in the folder the player picks }
   SourcePage.CheckListBox.Height := ScaleY(66);
+  RpcsBrowse := TNewButton.Create(SourcePage);
+  RpcsBrowse.Parent := SourcePage.Surface;
+  RpcsBrowse.Left := 0;
+  RpcsBrowse.Top := SourcePage.CheckListBox.Top + SourcePage.CheckListBox.Height + ScaleY(6);
+  RpcsBrowse.Width := ScaleX(150);
+  RpcsBrowse.Height := ScaleY(23);
+  RpcsBrowse.Caption := '&Find RPCS3...';
+  RpcsBrowse.OnClick := @RpcsBrowseClick;
+  { What the RPCS3 check found, or why the RPCS3 option is greyed out, under the button }
   RpcsNote := TNewStaticText.Create(SourcePage);
   RpcsNote.Parent := SourcePage.Surface;
   RpcsNote.Left := 0;
-  RpcsNote.Top := SourcePage.CheckListBox.Top + SourcePage.CheckListBox.Height + ScaleY(10);
+  RpcsNote.Top := RpcsBrowse.Top + RpcsBrowse.Height + ScaleY(8);
   RpcsNote.Width := SourcePage.SurfaceWidth;
   RpcsNote.AutoSize := False;
   RpcsNote.WordWrap := True;
@@ -575,13 +600,15 @@ begin
   SetPreviousData(PreviousDataKey, 'Libsre', FilesPage.Values[2]);
   SetPreviousData(PreviousDataKey, 'DevFlash', FlashPage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Dlss', DlssChoice);
+  SetPreviousData(PreviousDataKey, 'Rpcs3Dir', RpcsHint);   { the folder picked with Find RPCS3..., else '' }
 end;
 
 { "Your game": what the player's RPCS3 has (tools/release/rpcs3_import.py --resolve: read-only, under a second; all
-  the logic is there and host-tested). Run once, when the page is first shown. }
-procedure CheckRpcs3;
+  the logic is there and host-tested). Run when the page is first shown (Hint: /RPCS3= or last time's pick, else
+  the usual places), and again for the folder picked with "Find RPCS3...". }
+procedure CheckRpcs3(Hint: String);
 var
-  Py, Res, Problem, Fw: String;
+  Py, Res, Problem, Fw, Args: String;
   Lines: TArrayOfString;
   RC, I, Waited: Integer;
   Wait: TOutputProgressWizardPage;
@@ -589,7 +616,11 @@ begin
   RpcsLooked := True;
   RpcsOK := False;
   RpcsProblems := '';
+  RpcsHint := Hint;
   Res := ExpandConstant('{tmp}\rp\resolve.txt');
+  DeleteFile(Res);   { a second look (Find RPCS3...) must not read the first one's answer }
+  Args := '';
+  if Hint <> '' then Args := ' --rpcs3 ' + Quote(Hint);
   { A progress page while the helper is unpacked and runs (a second or two): the wizard keeps answering, and the
     player sees that something is happening }
   Wait := CreateOutputProgressPage('Your game', 'Looking for RPCS3, Killzone HD and the PS3 firmware...');
@@ -602,7 +633,7 @@ begin
       Log('rpcs3: the helper could not be unpacked: ' + GetExceptionMessage);
     end;
     Py := ExpandConstant('{tmp}\rp\python\python.exe');
-    if Exec(Py, Quote(ExpandConstant('{tmp}\rp\rpcs3_import.py')) + ' --resolve --out ' + Quote(Res),
+    if Exec(Py, Quote(ExpandConstant('{tmp}\rp\rpcs3_import.py')) + ' --resolve' + Args + ' --out ' + Quote(Res),
             ExpandConstant('{tmp}\rp'), SW_HIDE, ewNoWait, RC) then begin
       { rpcs3_import.py writes --out in one rename, so the file is whole once it is there }
       Waited := 0;
@@ -637,8 +668,10 @@ begin
   end;
   if RpcsOK then begin
     SourcePage.CheckListBox.ItemCaption[0] := 'Use my RPCS3 install (' + RpcsRoot + ')';
+    SourcePage.CheckListBox.ItemEnabled[0] := True;
     SourcePage.SelectedValueIndex := 0;
-    if GetPreviousData('Source', '') = 'files' then SourcePage.SelectedValueIndex := 1;
+    if (Hint = GetPreviousData('Rpcs3Dir', '')) and (GetPreviousData('Source', '') = 'files') then
+      SourcePage.SelectedValueIndex := 1;
     RpcsNote.Font.Color := clWindowText;
     RpcsNote.Caption := 'Found: Killzone HD in ' + RpcsGame + ', PS3 system software ' + Fw + ' in ' + RpcsFlash + '.';
   end else begin
@@ -647,7 +680,8 @@ begin
     SourcePage.SelectedValueIndex := 1;
     RpcsNote.Font.Color := clRed;
     RpcsNote.Caption := 'Your RPCS3 cannot be used:' + #13#10 + RpcsProblems + #13#10 +
-      'Fix that and run the setup again, or pick your files yourself below.';
+      'If your RPCS3 is elsewhere, press "Find RPCS3..." and pick its folder. Or fix that and run the setup ' +
+      'again, or pick your files yourself.';
   end;
 end;
 
@@ -659,7 +693,7 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if (CurPageID = SourcePage.ID) and not RpcsLooked then CheckRpcs3;
+  if (CurPageID = SourcePage.ID) and not RpcsLooked then CheckRpcs3(Pick('RPCS3', 'Rpcs3Dir'));
   if CurPageID = FilesPage.ID then FillFiles;
 end;
 
