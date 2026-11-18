@@ -7,6 +7,8 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-18 (pre-release)
+
 ### Added
 - Finding RPCS3 by hand: the setup's "Your game" page has a "Find RPCS3..." button, and `run.cmd`, `./run.sh` and
   `tools/install.sh` a fourth choice, "My RPCS3 is somewhere else", for an RPCS3 the automatic search did not find.
@@ -14,6 +16,9 @@ program and folder that build it. Until a release that calls itself playable
   it for the next run (`/RPCS3=<dir>` gives it on the command line).
 
 ### Fixed
+- The build works in an install folder with a space in its path (as `D:\Games\My Games\Project Vekta`): the
+  force-included headers and the Windows toolchain's include and library folders are now quoted, where clang
+  stopped with "no such file" on the part of the path after the space.
 - "Use my RPCS3 install" finds a portable RPCS3 unzipped two folders down a drive or the home folder (as
   `D:\Games\PS3\rpcs3-...`), and a path anywhere inside RPCS3 (its `dev_hdd0\game\NPUA80856`, `dev_flash` or a
   file in them, or its game folder where `vfs.yml` keeps it outside RPCS3) now counts as pointing at that RPCS3.

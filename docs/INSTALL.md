@@ -1,6 +1,6 @@
 # Installing Project Vekta
 
-This page is for players. It describes version <!-- version -->0.5.1<!-- /version -->: the Windows setup program, the Windows zip,
+This page is for players. It describes version <!-- version -->0.5.2<!-- /version -->: the Windows setup program, the Windows zip,
 and the Linux folder. Building from a Git clone is in [BUILDING.md](BUILDING.md).
 
 Every download builds the port on your own PC, from your own game. Nothing of the game is in them, and nothing of the
