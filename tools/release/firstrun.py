@@ -859,6 +859,8 @@ def use_rpcs3(c, hint=None, say=print):
     if r["status"] != "ok":
         return [p["text"] for p in r["problems"]]
     c.paths.update(game=r["game"], eboot=r["eboot"], libsre=r["libsre"], dev_flash=r["dev_flash"])
+    if c.paths.get("psarc") and not os.path.isfile(c.paths["psarc"]):
+        c.paths.pop("psarc")   # a wrong saved path (a folder): the port reads the game's own .edat instead
     write_paths(c.work, c.paths)
     say(f"From RPCS3: the game in {r['game']}, the firmware in {r['dev_flash']}; EBOOT.elf and libsre.prx made by "
         f"your RPCS3 in {os.path.dirname(r['eboot'])}")
@@ -918,8 +920,43 @@ def ask_paths(paths, only=None, ask=input, say=print):
         if not sys.stdin.isatty():
             say("")   # answers from a pipe are not echoed: end the prompt's line
         if got:
-            out[name] = os.path.abspath(os.path.expanduser(got.strip("'\"")))
+            out[name] = in_folder(name, os.path.abspath(os.path.expanduser(got.strip("'\""))))
     return out
+
+
+# The file each file input names; a folder given for one is looked into for it (in_folder).
+FILE_OF = {"eboot": "EBOOT.elf", "psarc": "data_ps3.psarc", "libsre": "libsre.prx"}
+
+
+def in_folder(name, path):
+    """A folder given where a file is asked for: the file of that name in it (or in its USRDIR) when there is one,
+    else the folder itself, which the check then names as a folder."""
+    want = FILE_OF.get(name)
+    if want and os.path.isdir(path):
+        for p in (os.path.join(path, want), os.path.join(path, "USRDIR", want)):
+            if os.path.isfile(p):
+                return p
+    return path
+
+
+def rpcs3_hint(paths):
+    """The RPCS3 folder one of the given paths lies in (the player pointed into RPCS3's dev_hdd0 or dev_flash), else
+    None."""
+    m = rpcs3_import()
+    root_of = getattr(m, "rpcs3_root_of", None)
+    for name in ("game", "eboot", "libsre", "dev_flash", "psarc"):
+        r = root_of(paths.get(name)) if root_of and paths.get(name) else None
+        if r:
+            return r
+    # a game folder that RPCS3's vfs.yml keeps outside the RPCS3 folder: the RPCS3 that has that very folder
+    game_of = getattr(m, "_game_of", None)
+    for name in ("game", "eboot", "libsre"):
+        p = paths.get(name)
+        if game_of and p and game_of(p):
+            r = m.resolve(p)
+            if r.get("root") and r.get("game"):
+                return p
+    return None
 
 
 DLSS_QUESTION = """NVIDIA DLSS (optional, for NVIDIA RTX graphics cards): this build can download the DLSS SDK from
@@ -956,7 +993,8 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
     say(NOTICE.format(version=read_version(c.root)))
     only = None
     hint = getattr(a, "rpcs3", None)
-    skip_ask = (hint is not None or not read_paths(c.work)) and offer_rpcs3(c, hint, ask, say)
+    offered = hint is not None or not read_paths(c.work)
+    skip_ask = offered and offer_rpcs3(c, hint, ask, say)
     while True:
         if not skip_ask:
             c.paths = ask_paths(c.paths, only, ask, say)
@@ -968,6 +1006,18 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
         if rc == 0:
             break
         say("\nThe check did not pass:\n" + "\n".join("  " + x for x in r.reasons))
+        # Paths from an older install (no offer above), or paths into RPCS3's own folders (the game as RPCS3
+        # installed it holds only the encrypted EBOOT.BIN): offer the RPCS3 route once more, with that RPCS3
+        found = rpcs3_hint(c.paths)
+        if found or not offered:
+            offered = True
+            if found:
+                say(f"\nThose paths point at the game as your RPCS3 installed it ({found}), which holds the encrypted "
+                    "EBOOT.BIN and .edat; your RPCS3 can make the decrypted copies the port needs.")
+            if offer_rpcs3(c, found, ask, say):
+                skip_ask = True
+                only = None
+                continue
         if ask("Enter to choose the files again, q to quit: ").strip().lower() == "q":
             return 1
         only = r.fail_inputs or None

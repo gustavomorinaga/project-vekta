@@ -111,6 +111,27 @@ with tempfile.TemporaryDirectory() as tmp:
           and r["dev_flash"] == str(rp / "dev_flash") and r["exe"] == [str(exe)], f"resolve: the paths: {r}")
     check(ri.lines(r)[0] == "status=ok" and f"game={game}" in ri.lines(r), "resolve: key=value lines")
 
+    # a path into RPCS3 (the game as it installed it, a file in it, dev_flash) means that RPCS3: a player who gave the
+    # game's folder for every file (as in a report on 0.5.1) still gets the RPCS3 route
+    check(ri.rpcs3_root_of(str(game)) == str(rp) and ri.rpcs3_root_of(str(game / "USRDIR" / "EBOOT.BIN")) == str(rp)
+          and ri.rpcs3_root_of(str(ext)) == str(rp) and ri.rpcs3_root_of(str(tmp / "nowhere")) is None,
+          "rpcs3_root_of climbs from dev_hdd0/game/NPUA80856, a file in it and dev_flash to the RPCS3 folder")
+    r = ri.resolve(str(game))
+    check(r["status"] == "ok" and r["game"] == str(game), f"resolve with the game's own folder as the hint: {r}")
+    check(firstrun.rpcs3_hint({"eboot": str(game), "libsre": str(game)}) == str(rp)
+          and firstrun.rpcs3_hint({"eboot": str(tmp / "nowhere")}) is None,
+          "firstrun finds the RPCS3 the player's paths point into")
+    check(firstrun.in_folder("eboot", str(game)) == str(game) and firstrun.in_folder("game", str(game)) == str(game),
+          "a game folder given for EBOOT.elf (no EBOOT.elf in it) is kept, for the check to name")
+    # check-game-files names the folder for what it is instead of "nothing at"
+    env = dict(os.environ, KZ_GAME=str(game), KZ_EBOOT=str(game), KZ_PSARC=str(game), KZ_LIBSRE=str(game),
+               PS3_DEV_FLASH=str(game))
+    out = __import__("subprocess").run([sys.executable, str(ROOT / "tools" / "check-game-files.py"), "--quick"],
+                                       capture_output=True, text=True, env=env).stdout
+    check("MISSING  EBOOT.elf (required): " + str(game) + " is the installed game's folder" in out
+          and "Use my RPCS3 install" in out and "is not a dev_flash folder" in out and f"nothing at {game}\n" not in out,
+          f"check-game-files on the report's paths says the folder is the encrypted game and how to go on: {out}")
+
     # prepare: the copies decrypted in work/prep, settings redirected there, stdin empty, folders untouched
     work = tmp / "work"
     p = ri.prepare(str(work), str(rp))
@@ -226,6 +247,52 @@ with tempfile.TemporaryDirectory() as tmp:
     check(len(st) >= 3 and st[0].startswith("LOG ") and st[1].startswith("RESULT ok=0 step=rpcs3")
           and st[2].startswith("REASON your RPCS3 cannot be used"),
           f"and its status file ends with RESULT and the reason, which the setup's build page waits for: {st}")
+
+# A portable RPCS3 unzipped two folders down a drive (D:\\Games\\PS3\\rpcs3-v0.0.28-..._win64, as in the report),
+# deeper than rpcs3_locate looks
+with tempfile.TemporaryDirectory() as tmp:
+    deep = pathlib.Path(tmp) / "Games" / "PS3" / "rpcs3-v0.0.28-15171-c0e97b4e_win64"
+    (deep / "dev_hdd0").mkdir(parents=True)
+    (deep / "rpcs3.exe").write_bytes(b"MZ")
+    (pathlib.Path(tmp) / "Games" / "other").mkdir()
+    check(ri.nested_portables([tmp]) == [str(deep)], f"nested_portables finds Games/PS3/rpcs3-*: "
+          f"{ri.nested_portables([tmp])}")
+    check(ri.nested_portables([str(pathlib.Path(tmp) / "Games")]) == [], "and only two folders down")
+
+# The game folder outside the RPCS3 folder (vfs.yml puts dev_hdd0 elsewhere, as on the maintainer's machine): the
+# game folder given as the hint finds the RPCS3 that has that very folder, and no other
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = pathlib.Path(tmp)
+    hdd0 = tmp / "PS3"
+    game2 = hdd0 / "game" / "NPUA80856"
+    (game2 / "USRDIR").mkdir(parents=True)
+    (game2 / "PARAM.SFO").write_bytes(fake_game_files.sfo({"APP_VER": "01.00", "CATEGORY": "HG",
+                                                           "TITLE_ID": "NPUA80856"}))
+    (game2 / "USRDIR" / "EBOOT.BIN").write_bytes(b"SCE\0 encrypted eboot")
+    (game2 / "USRDIR" / "data_ps3.psarc.edat").write_bytes(b"NPD\0 archive")
+    rp2 = tmp / "rpcs3cfg"
+    (rp2 / "config").mkdir(parents=True)
+    (rp2 / "config" / "vfs.yml").write_text(f"/dev_hdd0/: {hdd0}/\n/dev_flash/: $(EmulatorDir)dev_flash/\n")
+    (rp2 / "config" / "games.yml").write_text("")
+    real_nested = ri.nested_portables
+    ri.nested_portables = lambda bases=None: [str(rp2)]   # stands for the usual places of this machine
+    try:
+        check(ri.rpcs3_root_of(str(game2)) is None, "the game folder is in no RPCS3 folder")
+        r = ri.resolve(str(game2))
+        check(r["root"] == str(rp2) and r["game"] == str(game2), f"resolve from that game folder finds its RPCS3: {r}")
+        check(ri.detect(str(game2))["status"] == "ok", "detect from that game folder too")
+        other = tmp / "other" / "NPUA80856"
+        other.mkdir(parents=True)
+        (other / "PARAM.SFO").write_bytes((game2 / "PARAM.SFO").read_bytes())
+        r = ri.resolve(str(other))
+        check(r["status"] != "ok" or r["game"] != str(other), f"another copy of the game is not that RPCS3's: {r}")
+        check(firstrun.rpcs3_hint({"eboot": str(game2)}) == str(game2), "firstrun takes it as the RPCS3 hint")
+        r = ri.resolve(str(tmp / "nowhere"))
+        check(r["status"] == "not_found" and r["problems"] and r["problems"][0]["code"] == "not_rpcs3"
+              and ri.detect(str(tmp / "nowhere"))["status"] == "not_found",
+              f"a folder that is neither RPCS3 nor a game folder is refused, not swapped for another RPCS3: {r}")
+    finally:
+        ri.nested_portables = real_nested
 
 print("test_rpcs3_import:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

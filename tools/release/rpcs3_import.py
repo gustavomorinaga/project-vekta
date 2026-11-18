@@ -138,17 +138,123 @@ def find_exe(root, given=None, home=None):
 
 
 # -------------------------------------------------------------------------------------------------- resolve
+def rpcs3_root_of(path, depth=6):
+    """The RPCS3 folder a path lies in (the first of it and its parents, up to depth levels, that rpcs3_locate takes
+    for RPCS3), else None. A player who points at RPCS3's dev_hdd0/game/NPUA80856, dev_flash or any file in them
+    means that RPCS3: rpcs3_locate itself only climbs out of config/, dev_hdd0/ and dev_flash/."""
+    if not path:
+        return None
+    p = os.path.abspath(os.path.expanduser(str(path)))
+    if os.path.isfile(p):
+        p = os.path.dirname(p)
+    for _ in range(depth + 1):
+        if os.path.isdir(p) and loc.is_rpcs3(p):
+            return p
+        up = os.path.dirname(p)
+        if up == p:
+            break
+        p = up
+    return None
+
+
+# Where a portable RPCS3 is unzipped one level deeper than rpcs3_locate looks (it checks D:\Games\*rpcs3* and
+# D:\PS3\*rpcs3*, not D:\Games\PS3\*rpcs3*): <fixed drive or home>\<one of these>\<one of these>\*rpcs3*\
+NESTED = ("Games", "Emulators", "Emulator", "Emulation", "PS3")
+
+
+def nested_portables(bases=None):
+    """Portable RPCS3 folders (rpcs3.exe beside them) two folders down a drive root or the home folder, as
+    D:/Games/PS3/rpcs3-v0.0.28-...; Windows only, reads directory listings only."""
+    if bases is None:
+        if not WINDOWS:
+            return []
+        bases = [d for d, _ in loc._portable_bases() if os.path.splitdrive(d)[1] in ("\\", "/")]
+        if os.environ.get("USERPROFILE"):
+            bases.append(os.environ["USERPROFILE"])
+    out = []
+    for b in bases:
+        for a in NESTED:
+            for c in NESTED:
+                if a == c:
+                    continue
+                for exe in sorted(glob.glob(os.path.join(glob.escape(b), a, c, "*[Rr][Pp][Cc][Ss]3*", "rpcs3.exe"))):
+                    d = os.path.dirname(exe)
+                    if d not in out:
+                        out.append(d)
+    return out
+
+
+def _hints(hint):
+    """The hints to try in turn: the RPCS3 folder the given path lies in (or the path itself); with none given, the
+    usual places (None) and then the nested portable folders. A given path that is in no RPCS3 folder (a game folder
+    that RPCS3's vfs.yml puts elsewhere) is tried as it is, then the usual places; see _game_of."""
+    if hint:
+        root = rpcs3_root_of(hint)
+        if root:
+            return [root]
+        # only a game folder falls back to the usual places; any other folder must be RPCS3 itself, so a wrong pick
+        # says "not an RPCS3 folder" instead of quietly using another RPCS3
+        return [hint] + [None] + nested_portables() if _game_of(hint) else [hint]
+    return [None] + nested_portables()
+
+
+def _game_of(hint):
+    """The game folder a hint names when it is not in an RPCS3 folder: the hint itself or the folder it is in, when
+    a PARAM.SFO is there (else None). An RPCS3 found elsewhere counts only when its NPUA80856 is that folder."""
+    if not hint or rpcs3_root_of(hint):
+        return None
+    p = os.path.abspath(os.path.expanduser(str(hint)))
+    for d in (p, os.path.dirname(p), os.path.dirname(os.path.dirname(p))):
+        if os.path.isfile(os.path.join(d, "PARAM.SFO")):
+            return os.path.normcase(os.path.realpath(d))
+    return None
+
+
+def _game_path(res):
+    t = res["titles"].get(TITLE) or {}
+    upd = t.get("update") or {}
+    return upd.get("path") if upd.get("ok") else next((i["path"] for i in t.get("installs") or []
+                                                       if i.get("name") == TITLE), "")
+
+
+def _has_game(res):
+    t = res["titles"].get(TITLE) or {}
+    return bool((t.get("update") or {}).get("ok") or any(i.get("name") == TITLE for i in t.get("installs") or []))
+
+
 def detect(hint=None):
-    cands = [c for c in loc.find_rpcs3(hint or None) if c.get("root")]
-    if not cands:
-        return {"status": "not_found"}
-    return {"status": "ok", "root": cands[0]["root"], "source": cands[0]["source"]}
+    game = _game_of(hint)
+    for h in _hints(hint):
+        if game and h != hint:
+            r = loc.locate(h, {TITLE: None})
+            if not (r["ok"] and _same(_game_path(r), game)):
+                continue
+            return {"status": "ok", "root": r["root"], "source": r["source"]}
+        # rpcs3_locate lists the usual places after a given folder: with one given, only that folder counts
+        cands = [c for c in loc.find_rpcs3(h) if c.get("root") and (h is None or c.get("source") == "hint")]
+        if cands:
+            return {"status": "ok", "root": cands[0]["root"], "source": cands[0]["source"]}
+    return {"status": "not_found"}
+
+
+def _same(a, b):
+    return bool(a) and os.path.normcase(os.path.realpath(a)) == b
 
 
 def resolve(hint=None, exe=None, home=None):
     """What the player's RPCS3 has for the port: {"status", "root", "game", "edat", "dev_flash", "exe" (argv),
     "problems": [{"code", "text"}]}. Reads only."""
-    res = loc.locate(hint or None, {TITLE: None})
+    res = None
+    game = _game_of(hint)
+    for h in _hints(hint):
+        r = loc.locate(h, {TITLE: None})
+        if game and h != hint and not (r["ok"] and _same(_game_path(r), game)):
+            continue   # the game folder was given: only the RPCS3 that has that very folder
+        if r["ok"] and _has_game(r):
+            res = r
+            break
+        if res is None or (r["ok"] and not res["ok"]):
+            res = r   # the first RPCS3 found (without the game) explains the problem best
     out = {"status": "not_found", "root": res.get("root"), "dev_hdd0": res.get("dev_hdd0") or "", "game": "", "edat": "",
            "dev_flash": res.get("dev_flash")
            or "", "exe": None, "problems": []}

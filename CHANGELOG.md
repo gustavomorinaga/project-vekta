@@ -7,6 +7,16 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- "Use my RPCS3 install" finds a portable RPCS3 unzipped two folders down a drive or the home folder (as
+  `D:\Games\PS3\rpcs3-...`), and a path anywhere inside RPCS3 (its `dev_hdd0\game\NPUA80856`, `dev_flash` or a
+  file in them, or its game folder where `vfs.yml` keeps it outside RPCS3) now counts as pointing at that RPCS3.
+- The first run (`run.cmd`, `./run.sh`, `tools/install.sh`) offers "Use my RPCS3 install" again after a failed check
+  when the paths came from an earlier install or point into RPCS3, and takes `EBOOT.elf`, `data_ps3.psarc` or
+  `libsre.prx` from a folder given for them. The check now says what a folder given for a file is (the installed
+  game's folder holds only the encrypted `EBOOT.BIN` and `.edat`; a folder that is not `dev_flash`) instead of
+  "nothing at", and how to go on.
+
 ### Changed
 - The FFmpeg the Windows and Linux builds download is now served from this repository's own release
   (`deps-ffmpeg-n9.0.2-57-gd838f9f9ae`, BtbN's autobuild-2026-11-16-15-29 byte for byte, same SHA-256 pins), with

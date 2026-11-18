@@ -201,6 +201,8 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Fixed</span>&quot;Use my RPCS3 install&quot; finds a portable RPCS3 unzipped two folders down a drive or the home folder (as <code>D:\Games\PS3\rpcs3-...</code>), and a path anywhere inside RPCS3 (its <code>dev_hdd0\game\NPUA80856</code>, <code>dev_flash</code> or a file in them, or its game folder where <code>vfs.yml</code> keeps it outside RPCS3) now counts as pointing at that RPCS3.</li>
+<li><span class="sec">Fixed</span>The first run (<code>run.cmd</code>, <code>./run.sh</code>, <code>tools/install.sh</code>) offers &quot;Use my RPCS3 install&quot; again after a failed check when the paths came from an earlier install or point into RPCS3, and takes <code>EBOOT.elf</code>, <code>data_ps3.psarc</code> or <code>libsre.prx</code> from a folder given for them. The check now says what a folder given for a file is (the installed game&#x27;s folder holds only the encrypted <code>EBOOT.BIN</code> and <code>.edat</code>; a folder that is not <code>dev_flash</code>) instead of &quot;nothing at&quot;, and how to go on.</li>
 <li><span class="sec">Changed</span>The FFmpeg the Windows and Linux builds download is now served from this repository&#x27;s own release (<code>deps-ffmpeg-n9.0.2-57-gd838f9f9ae</code>, BtbN&#x27;s autobuild-2026-11-16-15-29 byte for byte, same SHA-256 pins), with FFmpeg&#x27;s source for that build beside it, so a removed upstream build can no longer break a release as it did 0.5.0. A new <code>deps-mirror</code> workflow publishes a re-pin (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/deps-mirror.md">docs/dev/deps-mirror.md</a>).</li>
 </ul>
 </article>
@@ -287,14 +289,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> &quot;Use my RPCS3 install&quot; finds a portable RPCS3 unzipped two folders down a drive or the home folder (as...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The first run (run.cmd, ./run.sh, tools/install.sh) offers &quot;Use my RPCS3 install&quot; again after a failed check when the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The FFmpeg the Windows and Linux builds download is now served from this repository&#x27;s own release...</span></li>
 <li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
 <li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
 <li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> Use your RPCS3 install: when RPCS3 has Killzone HD (NPUA80856) and the PS3 firmware installed, tools/install.sh and...</span></li>
 <li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The first run&#x27;s check also looks at where the port is: a folder path with [, ] or ; (the build tools stop on them), a...</span></li>
 <li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The PS3 system software version is checked where it is picked: RPCS3 with another firmware than 4.93, or a dev_flash...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> With less than 8 GB of free memory the build runs at a lower priority, so the PC stays usable while it compiles....</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The setup&#x27;s &quot;Portable&quot; choice can be changed after the install: play.cmd --move-data portable or --move-data appdata...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

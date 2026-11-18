@@ -217,8 +217,9 @@ with tempfile.TemporaryDirectory() as tmp:
     check(sorted(p.name for p in (root / "work").iterdir()) == before and "kzbuild.py" in out.getvalue(),
           "--dry-run prints the plan and writes nothing")
 
-    # --interactive: a failed check asks for the failing file only, then asks once about DLSS, then builds
-    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", str(game / "EBOOT.elf"), "n"])
+    # --interactive: a failed check asks for the failing file only, then asks once about DLSS, then builds. With paths
+    # saved by an earlier install (no offer at the start), a failed check offers the RPCS3 route once (Enter: no)
+    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", "", str(game / "EBOOT.elf"), "n"])
     real_license = firstrun.fetch_license
     firstrun.fetch_license = lambda c: str(tmp / "LICENSE.txt")   # no network in a test
     real_import = firstrun.rpcs3_import   # no RPCS3 of this machine: the offer is tested in test_rpcs3_import.py
@@ -258,8 +259,10 @@ with tempfile.TemporaryDirectory() as tmp:
           "--interactive asks about DLSS once, with the licence's link and text; no is kept and fetches nothing")
     check("PROGRESS " not in console.getvalue() and "RESULT " not in console.getvalue() and "100.0%" in console.getvalue(),
           "the console shows the bar, not the protocol lines")
-    check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 7,
+    check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 8,
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
+    check(sum(q.startswith("Your choice") for q in asked) == 1 and any("I have the files ready" in s for s in said),
+          f"a failed check with saved paths offers the RPCS3 route once: {asked}")
 
 # the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again (Linux only)
 if os.name != "nt":
