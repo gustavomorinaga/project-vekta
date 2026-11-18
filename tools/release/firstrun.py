@@ -879,33 +879,47 @@ SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, al
 
 
 def offer_rpcs3(c, hint, ask=input, say=print):
-    """--interactive: "Use my RPCS3 install" (when RPCS3 has the game), "I have the files ready" or "Show me how".
-    True when the paths came from RPCS3; False leaves them to the questions."""
-    r = rpcs3_import().resolve(hint or None)
-    found = r["status"] == "ok"
-    if found:
-        say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']} and the PS3 firmware.")
-    else:
-        say("Your RPCS3 cannot be used:\n" + "\n".join("  " + p["text"] for p in r["problems"])
-            if r["problems"] else "No RPCS3 with Killzone HD and the PS3 firmware was found.")
+    """--interactive: "Use my RPCS3 install" (when RPCS3 has the game), "I have the files ready", "Show me how" or
+    "My RPCS3 is elsewhere" (the player types its folder, which is looked at instead of the usual places). True when
+    the paths came from RPCS3; False leaves them to the questions."""
+    def look(h):
+        r = rpcs3_import().resolve(h or None)
+        if r["status"] == "ok":
+            say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']} and the PS3 firmware.")
+        else:
+            say("Your RPCS3 cannot be used:\n" + "\n".join("  " + p["text"] for p in r["problems"])
+                if r["problems"] else "No RPCS3 with Killzone HD and the PS3 firmware was found.")
+        return r["status"] == "ok"
+    found = look(hint)
     while True:
         say("  1. Use my RPCS3 install (it decrypts copies of the game's EBOOT and libsre for the port)"
             + ("" if found else ": not available")
-            + "\n  2. I have the files ready\n  3. Show me how")
+            + "\n  2. I have the files ready\n  3. Show me how"
+            + "\n  4. My RPCS3 is somewhere else: type its folder")
         got = ask(f"Your choice [{1 if found else 2}]: ").strip().lower()
         if got in ("3", "?", "h", "how"):
             say(SHOW_ME_HOW)
             continue
+        if got == "4":
+            d = ask(RPCS3_FOLDER_QUESTION).strip().strip("'\"")
+            if d:
+                hint = os.path.abspath(os.path.expanduser(d))
+                found = look(hint)
+            continue
         if got in ("2", "n", "no") or (not got and not found):
             return False
         if not found:
-            say("RPCS3 cannot be used (above). Fix that and run this again, or choose 2.")
+            say("RPCS3 cannot be used (above). Fix that and run this again, choose 4 to give its folder, or choose 2.")
             continue
         probs = use_rpcs3(c, hint, say)
         if not probs:
             return True
         say("That did not work:\n" + "\n".join("  " + p for p in probs) + "\nChoose 2 to pick the files yourself.")
         found = False
+
+
+RPCS3_FOLDER_QUESTION = ("RPCS3's folder: where rpcs3.exe is (a portable RPCS3), RPCS3's config folder (on Linux "
+                         "~/.config/rpcs3), or the game folder RPCS3 installed (dev_hdd0/game/NPUA80856): ")
 
 
 def ask_paths(paths, only=None, ask=input, say=print):

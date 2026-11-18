@@ -229,6 +229,14 @@ with tempfile.TemporaryDirectory() as tmp:
     check(not firstrun.offer_rpcs3(c, str(tmp / "nowhere"), ask=lambda q: next(answers), say=said.append) and
           any("cannot be used" in s for s in said) and "eboot" not in c.paths,
           "no RPCS3: 1 says why and asks again; Enter picks the files")
+    # "4. My RPCS3 is somewhere else": the player types its folder (here the game folder RPCS3 installed), then 1
+    c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "work4d"))
+    said = []
+    answers = iter(["4", str(tmp / "nowhere"), "4", f'"{game}"', "1"])
+    check(firstrun.offer_rpcs3(c, str(tmp / "nowhere"), ask=lambda q: next(answers), say=said.append)
+          and sum("cannot be used" in s for s in said) == 2 and any(s.startswith("Found RPCS3 in") for s in said)
+          and c.paths.get("eboot", "").endswith("EBOOT.elf") and c.paths.get("game") == str(game),
+          f"4 asks for RPCS3's folder: a wrong one says why, the right one (even the game folder) is then used: {said}")
     err = io.StringIO()
     so, sys.stderr = sys.stderr, err
     try:

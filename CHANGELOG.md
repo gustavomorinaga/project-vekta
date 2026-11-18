@@ -7,6 +7,12 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- Finding RPCS3 by hand: the setup's "Your game" page has a "Find RPCS3..." button, and `run.cmd`, `./run.sh` and
+  `tools/install.sh` a fourth choice, "My RPCS3 is somewhere else", for an RPCS3 the automatic search did not find.
+  The folder can be where `rpcs3.exe` is, RPCS3's config folder or the game folder RPCS3 installed; the setup keeps
+  it for the next run (`/RPCS3=<dir>` gives it on the command line).
+
 ### Fixed
 - "Use my RPCS3 install" finds a portable RPCS3 unzipped two folders down a drive or the home folder (as
   `D:\Games\PS3\rpcs3-...`), and a path anywhere inside RPCS3 (its `dev_hdd0\game\NPUA80856`, `dev_flash` or a
