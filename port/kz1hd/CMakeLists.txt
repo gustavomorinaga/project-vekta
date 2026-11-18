@@ -113,7 +113,7 @@ if(KZ_FSR3 AND NOT PS3RECOMP_FFX_DIR AND PS3RECOMP_RSX_VULKAN)
         set(_ffx_compat ffx_linux_compat.h)
     endif()
     target_compile_options(kz_ffx_fsr3 PRIVATE -O2 -w
-        "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/../../tools/ffx/${_ffx_compat}")
+        "SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/../../tools/ffx/${_ffx_compat}\"")
     set_target_properties(kz_ffx_fsr3 PROPERTIES CXX_STANDARD 17 POSITION_INDEPENDENT_CODE ON)
     set(PS3RECOMP_FFX_TARGET kz_ffx_fsr3 CACHE STRING "CMake target of the FidelityFX FSR 3 library" FORCE)
 elseif(PS3RECOMP_FFX_TARGET STREQUAL "kz_ffx_fsr3")
@@ -329,7 +329,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 if(WIN32)
     # POSIX names (setenv) in the port's own sources: win_compat.h
     target_compile_options(${PROJECT_NAME} PRIVATE
-        "$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/win_compat.h>")
+        "$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/win_compat.h\">")
     target_link_libraries(${PROJECT_NAME} PRIVATE
         psapi
         dbghelp
