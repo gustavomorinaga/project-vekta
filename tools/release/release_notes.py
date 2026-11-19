@@ -54,6 +54,10 @@ INSTALL_050_NOTE = ("This release has been tried only on the maintainer's machin
 FIXES_052_NOTE = ("This release has been tried only on the maintainer's machine (Windows: the test setup with both "
                   "fixes installed and built); no other machine has built it yet. Reports of an install or a "
                   "build elsewhere, working or not, are welcome as issues.")
+# v0.5.3: gate 2 relaxed a sixth time (maintainer's decision, 2026-11-19), for the PlayStation Store copy.
+FIXES_053_NOTE = ("This release has been tried only on the maintainer's machine (Windows: the test setup installed, "
+                  "built and played from both the disc and the PlayStation Store copies); no other machine has built "
+                  "it yet. Reports of an install or a build elsewhere, working or not, are welcome as issues.")
 
 # v0.1.0 carried the source archive only; later releases also carry the Windows setup program and folder (release.yml).
 SOURCE_ONLY = (
@@ -158,7 +162,7 @@ def notes(version, entry, first=False):
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
         *([] if install_first else [files]),
         *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE], "0.5.0": [INSTALL_050_NOTE], "0.5.1": [INSTALL_050_NOTE],
-           "0.5.2": [FIXES_052_NOTE]}.get(version, [])),
+           "0.5.2": [FIXES_052_NOTE], "0.5.3": [FIXES_053_NOTE]}.get(version, [])),
     ]) + "\n"
 
 

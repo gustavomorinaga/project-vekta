@@ -21,7 +21,9 @@ is measured against. The first preview will be v0.1.0.
    test setup was installed, built and played on the maintainer's Windows, and the release on Linux on the same PC;
    its notes say so and ask for reports. **Relaxed a fifth time for v0.5.2** (the maintainer's decision, 2026-11-18):
    its test setup, with both fixes, was installed and built on the maintainer's Windows; its notes say so and
-   ask for reports. For every other release the gate applies as written.
+   ask for reports. **Relaxed a sixth time for v0.5.3** (the maintainer's decision, 2026-11-19): its test setup was
+   installed, built and played on the maintainer's Windows from both the disc and the PlayStation Store copies; its
+   notes say so and ask for reports. For every other release the gate applies as written.
 3. **Known issues listed** in [KNOWN_ISSUES.md](KNOWN_ISSUES.md), and a `CHANGELOG.md` section for the version.
 4. **One version string** in the tag, `CHANGELOG.md` and `CITATION.cff`.
 5. **SHA256SUMS** published beside any file the release carries.
