@@ -853,10 +853,10 @@ def rpcs3_import():
     return m
 
 
-def use_rpcs3(c, hint=None, say=print):
+def use_rpcs3(c, hint=None, say=print, step=None):
     """--rpcs3: the paths from the player's RPCS3 and its decrypted copies (rpcs3_import.prepare); saved in
     work/paths.env. Returns [] when done, else the problems' texts."""
-    r = rpcs3_import().prepare(c.work, hint or None, log=say)
+    r = rpcs3_import().prepare(c.work, hint or None, log=say, step=step)
     if r["status"] != "ok":
         return [p["text"] for p in r["problems"]]
     c.paths.update(game=r["game"], eboot=r["eboot"], libsre=r["libsre"], dev_flash=r["dev_flash"])
@@ -1138,8 +1138,14 @@ def main(argv=None):
         # Before the steps, but inside the status protocol: the setup's build page waits for a RESULT line, so a
         # failure here must end with one (it hung on a failed --rpcs3 that only printed to stderr).
         r.emit(f"PROGRESS step=0/{len(STEPS)} name=rpcs3 done=0 total=0 elapsed=0 pct=0.0")
+        t0 = time.monotonic()
+        # one PROGRESS line per file RPCS3 decrypts, naming it: the setup shows which one (the PSN archive takes a
+        # minute or more, and the page would otherwise look stuck)
+        step = lambda i, n, name: r.emit(  # noqa: E731
+            f"PROGRESS step=0/{len(STEPS)} name=rpcs3 done={i} total={n} elapsed={int(time.monotonic() - t0)} "
+            f"pct=0.0 file={name}")
         try:
-            probs = use_rpcs3(c, a.rpcs3, say=r.emit)
+            probs = use_rpcs3(c, a.rpcs3, say=r.emit, step=step)
         except Exception as e:   # noqa: BLE001  (any surprise still ends the setup's wait)
             probs = [f"the RPCS3 step stopped: {type(e).__name__}: {e}"]
         if probs:

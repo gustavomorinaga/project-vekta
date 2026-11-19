@@ -864,6 +864,16 @@ begin
   if FlashPage.Values[0] <> '' then Result := Result + ' --dev-flash ' + Quote(FlashPage.Values[0]);
 end;
 
+{ The file firstrun.py's rpcs3 step is decrypting (its PROGRESS line's file=, rpcs3_import.py's output names) }
+function RpcsFile(Name: String): String;
+begin
+  if Name = 'EBOOT.elf' then Result := 'the game''s EBOOT'
+  else if Name = 'libsre.prx' then Result := 'libsre, from the firmware'
+  else if Name = 'data_ps3.psarc.edat.unedat' then
+    Result := 'the data archive of your PlayStation Store copy (3 GB: a minute or more)'
+  else Result := Name;
+end;
+
 function StepLabel(Name: String): String;
 begin
   { The steps of tools/release/firstrun.py (tools/tests/test_setup.py checks the names) }
@@ -972,7 +982,11 @@ begin
           Pct := Field(L, 'pct');
           P := Pos('.', Pct);
           if P > 0 then Pct := Copy(Pct, 1, P - 1);
-          if Name = 'compile' then
+          if (Name = 'rpcs3') and (Field(L, 'file') <> '') then
+            Page.SetText(StepLabel(Name) + ': ' + RpcsFile(Field(L, 'file')) + ' (' +
+              IntToStr(StrToIntDef(Field(L, 'done'), 0) + 1) + ' / ' + Field(L, 'total') + ')',
+              'Step ' + Field(L, 'step') + ', ' + Clock(StrToIntDef(Field(L, 'elapsed'), 0)))
+          else if Name = 'compile' then
             Page.SetText(StepLabel(Name) + ' ' + Field(L, 'done') + ' / ' + Field(L, 'total'),
               'Step ' + Field(L, 'step') + ', ' + Clock(StrToIntDef(Field(L, 'elapsed'), 0)))
           else

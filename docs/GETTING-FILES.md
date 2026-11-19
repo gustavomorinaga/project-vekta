@@ -38,7 +38,8 @@ but they decrypt to the same `EBOOT.elf` and `data_ps3.psarc` (measured on 2026-
 buyer's licence (licence type 2 in its header, where the disc package's says 3), so the port's own reader cannot
 open it. With "Use my RPCS3 install", your RPCS3, which already has the game's licence (`.rap`) to run it, decrypts a
 copy of the `.edat` into `work/prep/data_ps3.psarc` (it must match the `data_ps3.psarc` row below; about 3 GB more
-in `work`, and 3 GB more while the copy is made). Without RPCS3 the check names the Store copy and stops.
+in `work`). On the same drive as the game the copy is a hard link, so no second 3 GB file is written; on another
+drive it is a real copy for the length of the step. Without RPCS3 the check names the Store copy and stops.
 
 The European edition (NPEA00418, and the disc BCES-01743) is not supported: its executable is another build.
 

@@ -216,8 +216,10 @@ with tempfile.TemporaryDirectory() as tmp:
     check(ri.edat_license(str(edat)) == 2, "licence type 2 read from the NPD header")
     ri.PSARC = spec("data_ps3.psarc.edat", "data_ps3.psarc.edat.unedat")
     before = tree_state(rp)
-    said = []
-    p = ri.prepare(str(psn_work), str(rp), log=said.append)
+    said, steps = [], []
+    p = ri.prepare(str(psn_work), str(rp), log=said.append, step=lambda i, n, name: steps.append((i, n, name)))
+    check(steps == [(0, 1, "data_ps3.psarc.edat.unedat")], f"the step callback names each file RPCS3 decrypts: {steps}")
+    check(os.stat(edat).st_nlink == 1, "the hard link to the game's .edat is gone after the run")
     call = flog.read_text().splitlines()
     check(any(x.startswith("rpcs3: 1 licence file(s) for NPUA80856 found in") for x in said),
           f"the log says whether RPCS3 can see a licence for the game (names only): {said}")

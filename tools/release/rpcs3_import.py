@@ -382,7 +382,16 @@ def _run_one(exe, cfg, src, out, prep, logf, watchdog):
     return proc.returncode, False
 
 
-def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
+def _place(src, copy):
+    """The input RPCS3 decrypts: a hard link when src is on the same drive (instant, no second copy of a 3 GB file;
+    RPCS3 only reads its input and writes the result beside it), else a copy. Removing it never touches src."""
+    try:
+        os.link(src, copy)
+    except OSError:
+        shutil.copyfile(src, copy)
+
+
+def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None, step=None):
     """Copies each (source path, (in name, out name, size, sha)) into prep/in, runs RPCS3 --decrypt on each copy and
     checks each output. hdd0: the player's dev_hdd0, for the licence RPCS3 may need (see _exdata_copies). Returns {"ok",
     "files": {out name: path}, "problems"}. The copies and RPCS3's settings are removed afterwards; the good outputs
@@ -405,9 +414,11 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
     res = {"ok": True, "files": {}, "problems": []}
     logpath = os.path.join(prep, "rpcs3-decrypt.log")
     with open(logpath, "wb") as logf:
-        for src, (in_name, out_name, size, digest) in sources:
+        for i, (src, (in_name, out_name, size, digest)) in enumerate(sources):
+            if step:
+                step(i, len(sources), out_name)   # firstrun.py's PROGRESS line: the setup names the file
             copy, out = os.path.join(inp, in_name), os.path.join(inp, out_name)
-            shutil.copyfile(src, copy)
+            _place(src, copy)
             log("rpcs3: " + " ".join(loc.redact(a) if os.path.isabs(a) else a for a in _argv(exe, cfg, [copy])))
             logf.flush()
             before = logf.tell()
@@ -434,7 +445,7 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
     return res
 
 
-def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG):
+def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG, step=None):
     """resolve(), then decrypt EBOOT.BIN and libsre.sprx into work/prep. The result of resolve() plus "eboot" and
     "libsre" (paths) and status ok|failed."""
     log = log or (lambda line: None)
@@ -453,7 +464,7 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG):
         log("rpcs3: the game's .edat is a PSN copy's (bound to your licence); your RPCS3 opens it too (3 GB, a minute "
             "or two)")
         want.append((r["edat"], PSARC))
-    d = decrypt(r["exe"], want, prep, watchdog, log, r.get("dev_hdd0")) if want else {"ok": True, "problems": []}
+    d = decrypt(r["exe"], want, prep, watchdog, log, r.get("dev_hdd0"), step) if want else {"ok": True, "problems": []}
     if PSARC[1] in d.get("files", {}):
         os.replace(d["files"][PSARC[1]], psarc)
     r["problems"] = d["problems"]
