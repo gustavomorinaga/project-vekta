@@ -202,6 +202,8 @@
 <p class="meta">not released yet</p>
 <ul class="rlist">
 <li><span class="sec">Fixed</span>The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its <code>data_ps3.psarc.edat</code> is bound to the buyer&#x27;s licence, which the port cannot open, so the first-run check stopped on it with &quot;DIFFERENT&quot; (#67). &quot;Use my RPCS3 install&quot; now has your RPCS3 decrypt a copy of it too, with the licence (<code>.rap</code>) it already uses for the game, into <code>work/prep/data_ps3.psarc</code>: the same archive as the disc copy&#x27;s, checked by its SHA-256. Without RPCS3, the check names the Store copy and says to use that route.</li>
+<li><span class="sec">Fixed</span>Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows &quot;The game stopped right after it started&quot;: the launcher now takes the game&#x27;s own quit line as the player&#x27;s choice.</li>
+<li><span class="sec">Changed</span>&quot;Use my RPCS3 install&quot; names, on the setup&#x27;s build page, each file your RPCS3 is decrypting, and links instead of copying the game&#x27;s files it decrypts when they are on the same drive as the port (no second 3 GB copy).</li>
 </ul>
 </article>
 <article class="news rel">
@@ -273,13 +275,13 @@
 <h2>Changelog</h2>
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its data_ps3.psarc.edat is bound to the buyer&#x27;s...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows &quot;The game...</span></li>
+<li><time>next</time><span><b>Unreleased</b> &quot;Use my RPCS3 install&quot; names, on the setup&#x27;s build page, each file your RPCS3 is decrypting, and links instead of...</span></li>
 <li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> Finding RPCS3 by hand: the setup&#x27;s &quot;Your game&quot; page has a &quot;Find RPCS3...&quot; button, and run.cmd, ./run.sh and...</span></li>
 <li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> The build works in an install folder with a space in its path (as D:\Games\My Games\Project Vekta): the force-included...</span></li>
 <li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> &quot;Use my RPCS3 install&quot; finds a portable RPCS3 unzipped two folders down a drive or the home folder (as...</span></li>
 <li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> The first run (run.cmd, ./run.sh, tools/install.sh) offers &quot;Use my RPCS3 install&quot; again after a failed check when the...</span></li>
 <li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> The FFmpeg the Windows and Linux builds download is now served from this repository&#x27;s own release...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> &quot;Show me how&quot; in the installers: the setup&#x27;s &quot;Your game&quot; page, run.cmd, ./run.sh and tools/install.sh now offer three...</span></li>
-<li><time datetime="2026-11-17">11-17</time><span><b>0.5.1</b> The decrypted data_ps3.psarc is no longer needed: without it the port reads the installed game&#x27;s own...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
