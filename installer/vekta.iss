@@ -552,7 +552,7 @@ begin
   RpcsNote.Height := SourcePage.SurfaceHeight - RpcsNote.Top;
   RpcsNote.Caption := '';
   GamePage := CreateInputDirPage(SourcePage.ID, 'Your game',
-    'The installed Killzone HD ({#TitleId}), from your own Killzone Trilogy disc.',
+    'The installed Killzone HD ({#TitleId}), from your own Killzone Trilogy disc or PlayStation Store copy.',
     'Pick the installed game folder: it holds PARAM.SFO, TROPDIR and USRDIR (in RPCS3: dev_hdd0\game\{#TitleId}; ' +
     'picking the folder it is in also works). Setup only reads it.', False, '');
   GamePage.Add('Installed game folder ({#TitleId}):');
@@ -785,7 +785,8 @@ begin
     { "Show me how": the steps (the same as firstrun.py's SHOW_ME_HOW), then the page again }
     MsgBox('The easy way, through RPCS3:' + #13#10 +
       '1. In RPCS3, install PS3 system software {#Firmware} (File, Install Firmware).' + #13#10 +
-      '2. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc.' + #13#10 +
+      '2. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc, or your PlayStation Store ' +
+      'copy with its licence.' + #13#10 +
       '3. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
       'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
       'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +
@@ -861,6 +862,16 @@ begin
   if FilesPage.Values[1] <> '' then Result := Result + ' --psarc ' + Quote(FilesPage.Values[1]);
   if FilesPage.Values[2] <> '' then Result := Result + ' --libsre ' + Quote(FilesPage.Values[2]);
   if FlashPage.Values[0] <> '' then Result := Result + ' --dev-flash ' + Quote(FlashPage.Values[0]);
+end;
+
+{ The file firstrun.py's rpcs3 step is decrypting (its PROGRESS line's file=, rpcs3_import.py's output names) }
+function RpcsFile(Name: String): String;
+begin
+  if Name = 'EBOOT.elf' then Result := 'the game''s EBOOT'
+  else if Name = 'libsre.prx' then Result := 'libsre, from the firmware'
+  else if Name = 'data_ps3.psarc.edat.unedat' then
+    Result := 'the data archive of your PlayStation Store copy (3 GB: a minute or more)'
+  else Result := Name;
 end;
 
 function StepLabel(Name: String): String;
@@ -971,7 +982,11 @@ begin
           Pct := Field(L, 'pct');
           P := Pos('.', Pct);
           if P > 0 then Pct := Copy(Pct, 1, P - 1);
-          if Name = 'compile' then
+          if (Name = 'rpcs3') and (Field(L, 'file') <> '') then
+            Page.SetText(StepLabel(Name) + ': ' + RpcsFile(Field(L, 'file')) + ' (' +
+              IntToStr(StrToIntDef(Field(L, 'done'), 0) + 1) + ' / ' + Field(L, 'total') + ')',
+              'Step ' + Field(L, 'step') + ', ' + Clock(StrToIntDef(Field(L, 'elapsed'), 0)))
+          else if Name = 'compile' then
             Page.SetText(StepLabel(Name) + ' ' + Field(L, 'done') + ' / ' + Field(L, 'total'),
               'Step ' + Field(L, 'step') + ', ' + Clock(StrToIntDef(Field(L, 'elapsed'), 0)))
           else

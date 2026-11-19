@@ -26,7 +26,8 @@ exports (a variable set in the environment still wins).
 
 --rpcs3 [DIR] (tools/release/rpcs3_import.py): the installed game folder, its data_ps3.psarc.edat and dev_flash
 are taken from the player's RPCS3 (DIR, else the usual places), and that RPCS3 decrypts copies of EBOOT.BIN and
-libsre.sprx into work/prep (checked by SHA-256); those paths are then saved like any others. --interactive offers it
+libsre.sprx into work/prep (checked by SHA-256), and of the .edat too for a PlayStation Store copy (bound to the
+buyer's licence, which the port cannot open); those paths are then saved like any others. --interactive offers it
 when an RPCS3 with the game is found and no paths were saved before.
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
@@ -852,17 +853,20 @@ def rpcs3_import():
     return m
 
 
-def use_rpcs3(c, hint=None, say=print):
+def use_rpcs3(c, hint=None, say=print, step=None):
     """--rpcs3: the paths from the player's RPCS3 and its decrypted copies (rpcs3_import.prepare); saved in
     work/paths.env. Returns [] when done, else the problems' texts."""
-    r = rpcs3_import().prepare(c.work, hint or None, log=say)
+    r = rpcs3_import().prepare(c.work, hint or None, log=say, step=step)
     if r["status"] != "ok":
         return [p["text"] for p in r["problems"]]
     c.paths.update(game=r["game"], eboot=r["eboot"], libsre=r["libsre"], dev_flash=r["dev_flash"])
-    if c.paths.get("psarc") and not os.path.isfile(c.paths["psarc"]):
+    if r.get("psarc"):
+        c.paths["psarc"] = r["psarc"]   # a PSN copy: its .edat is bound to the licence, RPCS3 opened it
+    elif c.paths.get("psarc") and not os.path.isfile(c.paths["psarc"]):
         c.paths.pop("psarc")   # a wrong saved path (a folder): the port reads the game's own .edat instead
     write_paths(c.work, c.paths)
-    say(f"From RPCS3: the game in {r['game']}, the firmware in {r['dev_flash']}; EBOOT.elf and libsre.prx made by "
+    made = "EBOOT.elf, libsre.prx and data_ps3.psarc" if r.get("psarc") else "EBOOT.elf and libsre.prx"
+    say(f"From RPCS3: the game in {r['game']}, the firmware in {r['dev_flash']}; {made} made by "
         f"your RPCS3 in {os.path.dirname(r['eboot'])}")
     return []
 
@@ -871,7 +875,8 @@ INSTALL_DOC = "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/I
 SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, also at """ + INSTALL_DOC + """):
   The easy way, through RPCS3:
     1. In RPCS3, install PS3 system software 4.93 (File > Install Firmware).
-    2. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc.
+    2. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc, or your PlayStation Store copy
+       with its licence.
     3. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
        Nothing is written into the game's or RPCS3's folders.
   Or, with the decrypted files you already have: choose "I have the files ready" and give the installed game
@@ -892,7 +897,8 @@ def offer_rpcs3(c, hint, ask=input, say=print):
         return r["status"] == "ok"
     found = look(hint)
     while True:
-        say("  1. Use my RPCS3 install (it decrypts copies of the game's EBOOT and libsre for the port)"
+        say("  1. Use my RPCS3 install (it decrypts copies of the game's EBOOT and libsre, and of a PlayStation Store "
+            "copy's data archive, for the port)"
             + ("" if found else ": not available")
             + "\n  2. I have the files ready\n  3. Show me how"
             + "\n  4. My RPCS3 is somewhere else: type its folder")
@@ -1132,8 +1138,14 @@ def main(argv=None):
         # Before the steps, but inside the status protocol: the setup's build page waits for a RESULT line, so a
         # failure here must end with one (it hung on a failed --rpcs3 that only printed to stderr).
         r.emit(f"PROGRESS step=0/{len(STEPS)} name=rpcs3 done=0 total=0 elapsed=0 pct=0.0")
+        t0 = time.monotonic()
+        # one PROGRESS line per file RPCS3 decrypts, naming it: the setup shows which one (the PSN archive takes a
+        # minute or more, and the page would otherwise look stuck)
+        step = lambda i, n, name: r.emit(  # noqa: E731
+            f"PROGRESS step=0/{len(STEPS)} name=rpcs3 done={i} total={n} elapsed={int(time.monotonic() - t0)} "
+            f"pct=0.0 file={name}")
         try:
-            probs = use_rpcs3(c, a.rpcs3, say=r.emit)
+            probs = use_rpcs3(c, a.rpcs3, say=r.emit, step=step)
         except Exception as e:   # noqa: BLE001  (any surprise still ends the setup's wait)
             probs = [f"the RPCS3 step stopped: {type(e).__name__}: {e}"]
         if probs:

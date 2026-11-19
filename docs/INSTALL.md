@@ -11,8 +11,10 @@ game is downloaded. The first build takes about five minutes.
 You need these files from your own game and your own PS3 firmware.
 [GETTING-FILES.md](GETTING-FILES.md) says what each one must be and lists the tested sizes and SHA-256 sums.
 
-- The installed game folder of **Killzone HD** (NPUA80856), from the **Killzone Trilogy** disc. It holds
-  `PARAM.SFO`, `TROPDIR` and `USRDIR`. In RPCS3 it is `dev_hdd0\game\NPUA80856`.
+- The installed game folder of **Killzone HD** (NPUA80856, the US edition), from the **Killzone Trilogy** disc or
+  bought on the PlayStation Store. It holds `PARAM.SFO`, `TROPDIR` and `USRDIR`. In RPCS3 it is
+  `dev_hdd0\game\NPUA80856`. The Store copy's data archive is bound to your licence: use "Use my RPCS3 install",
+  which has your RPCS3 open it (with the `.rap` it already uses for the game) into `data_ps3.psarc`.
 - `EBOOT.elf`: the game's executable, decrypted. Not `EBOOT.BIN`.
 - Optional: `data_ps3.psarc`, the data archive, decrypted, about 3 GB. Without it the port reads the game folder's
   own `USRDIR\data_ps3.psarc.edat`, once, after the build: about a minute more, and 3.1 GB more disk in `work`.

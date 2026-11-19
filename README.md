@@ -36,10 +36,11 @@ Each player translates and builds the game's code on their own machine, from the
 
 ## What you need
 
-- **Your own game:** Killzone HD (NPUA80856), installed from your own **Killzone Trilogy** disc, and PS3 system
-  software 4.93 (its `dev_flash`, for the music). When both are installed in your RPCS3, the installers use them and
-  your RPCS3 makes decrypted copies of the game's EBOOT and the firmware's `libsre`; otherwise you give those two
-  decrypted files yourself. The game's data archive is read as it is installed. What each file must be, and how the
+- **Your own game:** Killzone HD (NPUA80856, the US edition), installed from your own **Killzone Trilogy** disc or
+  bought on the PlayStation Store, and PS3 system software 4.93 (its `dev_flash`, for the music). When both are
+  installed in your RPCS3, the installers use them and your RPCS3 makes decrypted copies of the game's EBOOT and the
+  firmware's `libsre`; otherwise you give those two decrypted files yourself. The disc copy's data archive is read
+  as it is installed; the Store copy's is bound to your licence, so your RPCS3 opens a copy of it too. What each file must be, and how the
   scripts check them: [docs/GETTING-FILES.md](docs/GETTING-FILES.md); every install step:
   [docs/INSTALL.md](docs/INSTALL.md).
 - **A PC:** Windows x64 or Linux x64, a CPU with AVX2 (x86-64-v3), and a Vulkan graphics card and driver

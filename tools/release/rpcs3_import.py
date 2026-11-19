@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Use my RPCS3 install: find Killzone HD (NPUA80856) and the PS3 system software in the player's RPCS3, and make the
 two decrypted files the port needs (EBOOT.elf, libsre.prx) by asking that same RPCS3 to decrypt copies of them
-(`rpcs3 --decrypt`) in a folder of the port (work/prep). The data archive needs nothing: the port reads the game's
-own data_ps3.psarc.edat (patch 4014, tools/kzbuild.py data).
+(`rpcs3 --decrypt`) in a folder of the port (work/prep). The data archive of the disc's package needs nothing: the
+port reads the game's own data_ps3.psarc.edat (patch 4014, tools/kzbuild.py data). A PlayStation Store copy's .edat
+is bound to the buyer's licence (licence type 2 in its header), which the port cannot open: RPCS3 then decrypts a copy
+of it too, into work/prep/data_ps3.psarc.
 
     tools/release/rpcs3_import.py --detect  [--rpcs3 DIR] [--out FILE]
     tools/release/rpcs3_import.py --resolve [--rpcs3 DIR] [--exe PATH] [--out FILE]
@@ -11,7 +13,8 @@ own data_ps3.psarc.edat (patch 4014, tools/kzbuild.py data).
 Results are `key=value` lines, on stdout or in --out (UTF-8 with a BOM, which Inno Setup reads):
   --detect   status=ok|not_found, root=, source=
   --resolve  status=ok|problems|not_found, root=, game=, edat=, dev_flash=, exe=, problem=code|text (one per line)
-  --prepare  the same, then status=ok|failed, eboot=, libsre= (the decrypted copies in DIR/prep), problem=
+  --prepare  the same, then status=ok|failed, eboot=, libsre=, psarc= (PSN copy only; the decrypted copies in
+             DIR/prep), problem=
 Exit 0 when status=ok.
 
 Rules (after Project Pyrrhus's rpcs3_import.py):
@@ -52,6 +55,12 @@ IGNORED = ("missing_disc", "no_decrypted_eboot")
 # The tested files (docs/GETTING-FILES.md, tools/check-game-files.py): (input, output, size, SHA-256)
 EBOOT = ("EBOOT.BIN", "EBOOT.elf", 19706080, "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc")
 LIBSRE = ("libsre.sprx", "libsre.prx", 239344, "9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6")
+# The data archive of a PSN copy: its .edat is bound to the buyer's licence (licence type 2), which the port's own EDAT
+# reader cannot open (patch 4014 opens licence type 3, the disc's package). The player's RPCS3 opens it with their .rap
+# and writes <name>.unedat; the result is the same data_ps3.psarc as the disc copy's (measured 2026-11-19).
+PSARC = ("data_ps3.psarc.edat", "data_ps3.psarc.edat.unedat", 3147174243,
+         "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d")
+PSARC_NAME = "data_ps3.psarc"
 FIRMWARE = "4.93"   # the system software libsre.prx and flashMP3.pic were tested from (docs/GETTING-FILES.md)
 WATCHDOG = 30
 WINDOWS = os.name == "nt"
@@ -62,7 +71,8 @@ HELP = {
                  "Linux), or pick your files yourself.",
     "not_rpcs3": "That folder is not an RPCS3 folder (no rpcs3.exe, vfs.yml or games.yml).",
     "no_game": "RPCS3 has no Killzone HD (NPUA80856) installed in dev_hdd0/game. Install the game's package from "
-               "the Killzone Trilogy disc in RPCS3 (see its documentation), then check again.",
+               "the Killzone Trilogy disc, or your PlayStation Store copy with its licence, in RPCS3 (see its "
+               "documentation), then check again.",
     "game_incomplete": "The Killzone HD folder in RPCS3 is missing a file (named below). Install the game again in "
                        "RPCS3, then check again.",
     "no_firmware": "RPCS3 has no PS3 system software installed (no sys/external/libsre.sprx in its dev_flash). "
@@ -97,6 +107,17 @@ def firmware_version(dev_flash):
     except (OSError, ValueError, IndexError):
         pass
     return None
+
+
+def edat_license(path):
+    """The licence type in an .edat's NPD header (big-endian word at 0x08): 3 = free (the disc's package, which the
+    port opens itself), 2 = local / 1 = network (a PSN copy, bound to the buyer's .rap); None when not an NPD file."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+    except OSError:
+        return None
+    return int.from_bytes(head[8:12], "big") if len(head) == 12 and head[:4] == b"NPD\0" else None
 
 
 def sha256(path):
@@ -327,41 +348,22 @@ def _stop(proc):
 EXDATA = ("home", "00000001", "exdata")   # where RPCS3 looks for a game's licence (.rap) for its first user
 
 
-def _link_dir(link, target):
-    """A directory link (a symbolic link, or on Windows without that right a junction, which needs none)."""
-    os.makedirs(os.path.dirname(link), exist_ok=True)
+def _exdata_copies(cfg, hdd0):
+    """Copies the player's licence for this game (dev_hdd0/home/00000001/exdata/*NPUA80856*.rap, by name) to where
+    RPCS3 looks under the redirected settings (RPCS3_CONFIG_DIR's dev_hdd0 on Windows, XDG_CONFIG_HOME/rpcs3/dev_hdd0
+    on Linux): a PSN copy of the game needs it to decrypt the EBOOT and the .edat. The copies live in cfg and go with
+    it. Copies, not a link to the player's folder: on Windows neither a symbolic link nor a junction to exdata was
+    followed in a 0.5.3 test (2026-11-19). The player's folder is only read. Returns the names copied."""
+    src = os.path.join(hdd0, *EXDATA)
     try:
-        os.symlink(target, link, target_is_directory=True)
+        names = [n for n in os.listdir(src) if n.lower().endswith(".rap") and TITLE in n.upper()]
     except OSError:
-        if not WINDOWS:
-            raise
-        import _winapi
-        _winapi.CreateJunction(target, link)
-
-
-def _unlink_dir(link):
-    """Removes the link itself, never what it points at."""
-    try:
-        if os.path.islink(link):
-            os.unlink(link)
-        elif os.path.isdir(link):
-            os.rmdir(link)   # a junction: rmdir removes the link, and refuses a real folder that is not empty
-    except OSError:
-        pass
-
-
-def _exdata_links(cfg, hdd0):
-    """Where RPCS3 looks for exdata under the redirected settings (RPCS3_CONFIG_DIR's dev_hdd0 on Windows,
-    XDG_CONFIG_HOME/rpcs3/dev_hdd0 on Linux), linked to the player's own dev_hdd0/home/00000001/exdata: a PSN copy
-    of the game needs its .rap to decrypt the EBOOT, and RPCS3 reads it through the link. This module never opens a
-    .rap, and RPCS3's own start-up folders go to cfg, not into the player's dev_hdd0. Returns the links made."""
-    target = os.path.join(hdd0, *EXDATA)
-    if not os.path.isdir(target):
         return []
-    links = [os.path.join(cfg, "dev_hdd0", *EXDATA), os.path.join(cfg, "config", "rpcs3", "dev_hdd0", *EXDATA)]
-    for link in links:
-        _link_dir(link, target)
-    return links
+    for d in (os.path.join(cfg, "dev_hdd0", *EXDATA), os.path.join(cfg, "config", "rpcs3", "dev_hdd0", *EXDATA)):
+        os.makedirs(d, exist_ok=True)
+        for n in names:
+            shutil.copyfile(os.path.join(src, n), os.path.join(d, n))
+    return names
 
 
 def _run_one(exe, cfg, src, out, prep, logf, watchdog):
@@ -380,9 +382,18 @@ def _run_one(exe, cfg, src, out, prep, logf, watchdog):
     return proc.returncode, False
 
 
-def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
+def _place(src, copy):
+    """The input RPCS3 decrypts: a hard link when src is on the same drive (instant, no second copy of a 3 GB file;
+    RPCS3 only reads its input and writes the result beside it), else a copy. Removing it never touches src."""
+    try:
+        os.link(src, copy)
+    except OSError:
+        shutil.copyfile(src, copy)
+
+
+def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None, step=None):
     """Copies each (source path, (in name, out name, size, sha)) into prep/in, runs RPCS3 --decrypt on each copy and
-    checks each output. hdd0: the player's dev_hdd0, for the licence RPCS3 may need (see _exdata_links). Returns {"ok",
+    checks each output. hdd0: the player's dev_hdd0, for the licence RPCS3 may need (see _exdata_copies). Returns {"ok",
     "files": {out name: path}, "problems"}. The copies and RPCS3's settings are removed afterwards; the good outputs
     are moved to prep; RPCS3's own lines are kept in prep/rpcs3-decrypt.log."""
     log = log or (lambda line: None)
@@ -391,18 +402,23 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
     shutil.rmtree(cfg, ignore_errors=True)
     os.makedirs(inp)
     os.makedirs(cfg)
-    links = []
-    if hdd0:
+    if not hdd0:
+        log("rpcs3: RPCS3's dev_hdd0 is not known: no licence for a PSN copy")
+    else:
         try:
-            links = _exdata_links(cfg, hdd0)
+            raps = _exdata_copies(cfg, hdd0)
+            log(f"rpcs3: {len(raps)} licence file(s) for {TITLE} found in {loc.redact(os.path.join(hdd0, *EXDATA))}"
+                + (" (needed only for a PSN copy)" if not raps else ""))
         except OSError as e:
-            log(f"rpcs3: no link to the licence folder ({e}); a PSN copy of the game may not decrypt")
+            log(f"rpcs3: the licence could not be copied ({e}); a PSN copy of the game may not decrypt")
     res = {"ok": True, "files": {}, "problems": []}
     logpath = os.path.join(prep, "rpcs3-decrypt.log")
     with open(logpath, "wb") as logf:
-        for src, (in_name, out_name, size, digest) in sources:
+        for i, (src, (in_name, out_name, size, digest)) in enumerate(sources):
+            if step:
+                step(i, len(sources), out_name)   # firstrun.py's PROGRESS line: the setup names the file
             copy, out = os.path.join(inp, in_name), os.path.join(inp, out_name)
-            shutil.copyfile(src, copy)
+            _place(src, copy)
             log("rpcs3: " + " ".join(loc.redact(a) if os.path.isabs(a) else a for a in _argv(exe, cfg, [copy])))
             logf.flush()
             before = logf.tell()
@@ -423,17 +439,16 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
             final = os.path.join(prep, out_name)
             os.replace(out, final)
             res["files"][out_name] = final
-    for link in links:
-        _unlink_dir(link)   # first, so the clean-up below cannot reach the player's folder through it
     shutil.rmtree(inp, ignore_errors=True)
     shutil.rmtree(cfg, ignore_errors=True)
     res["ok"] = not res["problems"]
     return res
 
 
-def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG):
+def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG, step=None):
     """resolve(), then decrypt EBOOT.BIN and libsre.sprx into work/prep. The result of resolve() plus "eboot" and
     "libsre" (paths) and status ok|failed."""
+    log = log or (lambda line: None)
     r = resolve(hint, exe)
     if r["status"] != "ok":
         return r
@@ -443,18 +458,28 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG):
     want = [(src, spec) for src, spec in ((os.path.join(r["game"], "USRDIR", EBOOT[0]), EBOOT),
                                           (os.path.join(r["dev_flash"], "sys", "external", LIBSRE[0]), LIBSRE))
             if not (os.path.isfile(have[spec[1]]) and sha256(have[spec[1]]) == spec[3])]   # kept from a last run
-    d = decrypt(r["exe"], want, prep, watchdog, log, r.get("dev_hdd0")) if want else {"ok": True, "problems": []}
+    psarc = os.path.join(prep, PSARC_NAME)
+    psn = edat_license(r["edat"]) in (1, 2)
+    if psn and not (os.path.isfile(psarc) and os.path.getsize(psarc) == PSARC[2] and sha256(psarc) == PSARC[3]):
+        log("rpcs3: the game's .edat is a PSN copy's (bound to your licence); your RPCS3 opens it too (3 GB, a minute "
+            "or two)")
+        want.append((r["edat"], PSARC))
+    d = decrypt(r["exe"], want, prep, watchdog, log, r.get("dev_hdd0"), step) if want else {"ok": True, "problems": []}
+    if PSARC[1] in d.get("files", {}):
+        os.replace(d["files"][PSARC[1]], psarc)
     r["problems"] = d["problems"]
     r["status"] = "ok" if d["ok"] else "failed"
     if d["ok"]:
         r["eboot"], r["libsre"] = have["EBOOT.elf"], have["libsre.prx"]
+        if psn:
+            r["psarc"] = psarc
     return r
 
 
 # -------------------------------------------------------------------------------------------------- command line
 def lines(res):
     out = [f"status={res['status']}"]
-    for k in ("root", "source", "game", "edat", "dev_flash", "firmware", "eboot", "libsre"):
+    for k in ("root", "source", "game", "edat", "dev_flash", "firmware", "eboot", "libsre", "psarc"):
         if res.get(k):
             out.append(f"{k}={res[k]}")
     if res.get("exe"):

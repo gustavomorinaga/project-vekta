@@ -8,7 +8,7 @@ or keys and gives no such instructions. The files below come from your own disc 
 
 | File | What it is | Where the scripts look (`tools/env.sh`) | Required |
 |---|---|---|---|
-| The installed game folder | Killzone HD, title **NPUA80856**, as installed from the `PS3_EXTRA` package of the **Killzone Trilogy** disc (US, BCUS98116): `PARAM.SFO`, `TROPDIR/`, `USRDIR/` | `Game/NPUA80856/` (`KZ_GAME`) | yes |
+| The installed game folder | Killzone HD, title **NPUA80856**, as installed from the `PS3_EXTRA` package of the **Killzone Trilogy** disc (US, BCUS98116) or bought on the US PlayStation Store: `PARAM.SFO`, `TROPDIR/`, `USRDIR/` | `Game/NPUA80856/` (`KZ_GAME`) | yes |
 | `EBOOT.elf` | the game's executable, decrypted: an ELF file, not the `EBOOT.BIN` container in `USRDIR` | `Game/EBOOT.elf` (`KZ_EBOOT`) | yes |
 | `data_ps3.psarc` | the game's data archive, decrypted: a PSARC file. Without it the port reads the installed game's own `USRDIR/data_ps3.psarc.edat` (see below) | `Game/data_ps3.psarc` (`KZ_PSARC`) | no |
 | `libsre.prx` | the SPURS library from PS3 system software 4.93, decrypted (in the firmware it is `sys/external/libsre.sprx`) | `Game/libsre.prx` (`KZ_LIBSRE`) | yes |
@@ -31,6 +31,17 @@ RPCS3 in its usual places, take the installed game folder, its `.edat` and `dev_
 decrypt copies of `USRDIR/EBOOT.BIN` and `dev_flash/sys/external/libsre.sprx` into `work/prep`
 (`tools/release/rpcs3_import.py`). The results must match the `EBOOT.elf` and `libsre.prx` rows below. RPCS3's
 settings for that run go to `work/prep` too; your game and RPCS3 folders are only read.
+
+**The PlayStation Store copy.** The Store sells the same Killzone HD (NPUA80856, content ID
+`UP9000-NPUA80856_00-GKILLZONE1000001`). Its `EBOOT.BIN` and `data_ps3.psarc.edat` differ from the disc package's,
+but they decrypt to the same `EBOOT.elf` and `data_ps3.psarc` (measured on 2026-11-19). Its `.edat` is bound to the
+buyer's licence (licence type 2 in its header, where the disc package's says 3), so the port's own reader cannot
+open it. With "Use my RPCS3 install", your RPCS3, which already has the game's licence (`.rap`) to run it, decrypts a
+copy of the `.edat` into `work/prep/data_ps3.psarc` (it must match the `data_ps3.psarc` row below; about 3 GB more
+in `work`). On the same drive as the game the copy is a hard link, so no second 3 GB file is written; on another
+drive it is a real copy for the length of the step. Without RPCS3 the check names the Store copy and stops.
+
+The European edition (NPEA00418, and the disc BCES-01743) is not supported: its executable is another build.
 
 You can keep the files anywhere: set the variables in the third column to point at them, or link them into `Game/`.
 `Game/` and `work/` are ignored by git, so nothing you put there can be committed by accident.
@@ -58,6 +69,7 @@ an optional one (the trophy set, `flashMP3.pic`) only gets its line. The tested 
 | `EBOOT.elf` | 19,706,080 | `c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc` |
 | `data_ps3.psarc` (also what the `.edat` opens to) | 3,147,174,243 | `341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d` |
 | `USRDIR/data_ps3.psarc.edat` | 3,153,321,376 | `3c85c5321bccab33079896f5e74c06902e84648154b315af21e14878d93fe58b` |
+| `USRDIR/data_ps3.psarc.edat` (PlayStation Store copy; your RPCS3 opens it) | 3,153,321,376 | `c130493bc0d9b32bf00aa42e4e24cce1187c76f802838929267ad3255241962a` |
 | `libsre.prx` (4.93) | 239,344 | `9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6` |
 | `flashMP3.pic` (4.93) | 69,695 | `adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a` |
 

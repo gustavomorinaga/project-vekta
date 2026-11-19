@@ -135,6 +135,15 @@ def folder_note(label, path):
     return f"{path} is a folder; give the file {label} itself"
 
 
+def edat_license(path):
+    """The licence type in an .edat's NPD header (big-endian word at 0x08): 3 = free (the Killzone Trilogy disc's
+    package, which the port opens itself), 2 = local and 1 = network (a PlayStation Store copy, bound to the buyer's
+    .rap, which only the player's RPCS3 can open); None when the file is not NPD."""
+    with open(path, "rb") as f:
+        head = f.read(12)
+    return int.from_bytes(head[8:12], "big") if len(head) == 12 and head[:4] == b"NPD\0" else None
+
+
 def wrong_kind(label, head):
     """What to say about a file that starts with the wrong bytes, by what it is instead."""
     if head == b"SCE\0":
@@ -179,6 +188,14 @@ def main():
         if magic and head != magic:
             print(f"WRONG    {label}: {path}: {wrong_kind(label, head)}\n         expected: {what}")
             bad |= required
+            continue
+        if label == "data_ps3.psarc.edat" and edat_license(path) in (1, 2):
+            print(f"WRONG    {label}: {path} is the PlayStation Store copy's archive, bound to your licence "
+                  f"(licence type {edat_license(path)}), which the port cannot open itself. Run the first run again "
+                  "(run.cmd, run.sh or install.sh) and choose \"Use my RPCS3 install\": your RPCS3 opens a copy of it "
+                  "with your licence (.rap) into data_ps3.psarc\n         expected: the disc package's .edat (licence "
+                  "type 3), or a decrypted data_ps3.psarc")
+            bad = True
             continue
         if size is not None and got_size != size:
             print(f"WRONG    {label}: {path} is {got_size} bytes, the tested file is {size}\n         expected: {what}")

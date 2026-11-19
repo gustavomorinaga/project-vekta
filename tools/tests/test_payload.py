@@ -290,6 +290,11 @@ with tempfile.TemporaryDirectory() as tmp:
         ran.clear()
         check(not launch.update_build(str(root), run=fake_firstrun) and "--bar" in ran[0] and
               "the compile broke" in said[-1], f"a failed rebuild says why and starts no game: {ran} {said}")
+        exe.write_text('#!/bin/sh\necho "[kz] quitting (Quit Game)"\nexit 0\n')
+        argv, cwd, e, log = launch.plan(str(root), env)
+        rc = launch.run(argv, cwd, e, log, poll=0.05)
+        check(rc == 0 and launch.window_closed(log),
+              "Quit Game seconds after the start is the player's choice, not a failed start (2026-11-19 report)")
         exe.write_text('#!/bin/sh\necho "ERROR: could not load the EBOOT"\nexit 1\n')
         argv, cwd, e, log = launch.plan(str(root), env)
         t0 = time.monotonic()
