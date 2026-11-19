@@ -7,6 +7,8 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-19 (pre-release)
+
 ### Fixed
 - The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its `data_ps3.psarc.edat` is bound to the buyer's
   licence, which the port cannot open, so the first-run check stopped on it with "DIFFERENT" (#67). "Use my RPCS3

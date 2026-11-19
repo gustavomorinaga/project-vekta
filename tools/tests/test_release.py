@@ -109,6 +109,8 @@ with tempfile.TemporaryDirectory() as tmp:
           "v0.5.1, 0.5.0's release, carries the same note")
     check("the test setup with both fixes" in release_notes.notes("0.5.2", es["0.2.0"]),
           "v0.5.2 says only the maintainer's Windows built it")
+    check("both the disc and the PlayStation Store copies" in release_notes.notes("0.5.3", es["0.2.0"]),
+          "v0.5.3 says only the maintainer's Windows built it, from both copies")
     check("your RPCS3 makes the decrypted copies" in release_notes.notes("0.5.0", es["0.2.0"]) and
           "decrypted EBOOT and data archive" in release_notes.notes("0.4.0", es["0.2.0"]),
           "from 0.5.0 the notes name the installed game and the RPCS3 route, not a prepared data archive")
