@@ -95,7 +95,8 @@ with tempfile.TemporaryDirectory() as tmp:
     ver.write_text("release:04.9300:\nbuild:1,20260101:x\n")
     exdata = rp / "dev_hdd0" / "home" / "00000001" / "exdata"   # the player's licences (a made-up name; never read)
     exdata.mkdir(parents=True)
-    (exdata / "UP9000-TEST00000_00-NOTAREALLICENCE.rap").write_bytes(b"x" * 16)
+    (exdata / "UP9000-NPUA80856_00-NOTAREALLICENCE.rap").write_bytes(b"x" * 16)
+    (exdata / "UP9000-TEST00000_00-ANOTHERGAME00001.rap").write_bytes(b"y" * 16)   # another game's: never copied
     exe = rp / "rpcs3"
     exe.write_text(FAKE)
     exe.chmod(0o755)
@@ -144,14 +145,14 @@ with tempfile.TemporaryDirectory() as tmp:
     check(len(call) == 2 and call[0].startswith(f"{cfg}/config|{cfg}/cache|''|--decrypt {prep}/in/EBOOT.BIN|")
           and call[1].startswith(f"{cfg}/config|{cfg}/cache|''|--decrypt {prep}/in/libsre.sprx|"),
           f"prepare: one RPCS3 run per copy (a failure stops a batch), settings in work/prep, stdin empty: {call}")
-    check(all(c.endswith("|UP9000-TEST00000_00-NOTAREALLICENCE.rap") for c in call),
-          f"RPCS3 sees the player's exdata (licences) through a link in its redirected settings: {call}")
+    check(all(c.endswith("|UP9000-NPUA80856_00-NOTAREALLICENCE.rap") for c in call),
+          f"RPCS3 sees a copy of this game's licence, and no other, in its redirected settings: {call}")
     check(not (prep / "in").exists() and not (prep / "rpcs3").exists(), "prepare: the copies and settings are removed")
     check(tree_state(rp) == before, "prepare: nothing written into RPCS3's or the game's folders")
     p = ri.prepare(str(work), str(rp))
     check(p["status"] == "ok" and len(flog.read_text().splitlines()) == 2, "prepare again: the kept files are reused")
-    check((exdata / "UP9000-TEST00000_00-NOTAREALLICENCE.rap").read_bytes() == b"x" * 16,
-          "the player's licence folder is still there after the clean-up (only the link was removed)")
+    check((exdata / "UP9000-NPUA80856_00-NOTAREALLICENCE.rap").read_bytes() == b"x" * 16,
+          "the player's licence is still there after the clean-up (only the copy was removed)")
 
     # results judged by their hash, not by RPCS3's exit code
     for f in ("EBOOT.elf", "libsre.prx"):
@@ -218,15 +219,15 @@ with tempfile.TemporaryDirectory() as tmp:
     said = []
     p = ri.prepare(str(psn_work), str(rp), log=said.append)
     call = flog.read_text().splitlines()
-    check("rpcs3: licence folder linked, 1 .rap file(s), none for NPUA80856" in said,
+    check(any(x.startswith("rpcs3: 1 licence file(s) for NPUA80856 found in") for x in said),
           f"the log says whether RPCS3 can see a licence for the game (names only): {said}")
     check(p["status"] == "ok" and p["psarc"] == str(psn_work / "prep" / "data_ps3.psarc")
           and (psn_work / "prep" / "data_ps3.psarc").read_bytes() == b"plain data_ps3.psarc.edat"
           and f"psarc={psn_work / 'prep' / 'data_ps3.psarc'}" in ri.lines(p),
           f"licence type 2: RPCS3 decrypts the .edat into work/prep/data_ps3.psarc: {p}")
     check(len(call) == n0 + 3 and f"--decrypt {psn_work}/prep/in/data_ps3.psarc.edat|" in call[-1]
-          and call[-1].endswith("|UP9000-TEST00000_00-NOTAREALLICENCE.rap"),
-          f"on a copy, with the player's licences visible through the link: {call[n0:]}")
+          and call[-1].endswith("|UP9000-NPUA80856_00-NOTAREALLICENCE.rap"),
+          f"on a copy, with the player's licences visible through the copy: {call[n0:]}")
     check(tree_state(rp) == before and not (psn_work / "prep" / "in").exists(),
           "nothing written into RPCS3's or the game's folders, and the copy removed")
     p = ri.prepare(str(psn_work), str(rp))

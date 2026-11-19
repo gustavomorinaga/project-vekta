@@ -348,58 +348,22 @@ def _stop(proc):
 EXDATA = ("home", "00000001", "exdata")   # where RPCS3 looks for a game's licence (.rap) for its first user
 
 
-def _link_dir(link, target):
-    """A directory link (a symbolic link, or on Windows without that right a junction, which needs none), checked to
-    reach target: on Windows a symbolic link can be made yet not be followed, and RPCS3 then misses the .rap through
-    it (a 0.5.3 test, 2026-11-19), so a link that does not reach the folder is replaced with a junction."""
-    target = os.path.abspath(target)   # on Windows also turns / into \, which a link's stored target needs
-    os.makedirs(os.path.dirname(link), exist_ok=True)
+def _exdata_copies(cfg, hdd0):
+    """Copies the player's licence for this game (dev_hdd0/home/00000001/exdata/*NPUA80856*.rap, by name) to where
+    RPCS3 looks under the redirected settings (RPCS3_CONFIG_DIR's dev_hdd0 on Windows, XDG_CONFIG_HOME/rpcs3/dev_hdd0
+    on Linux): a PSN copy of the game needs it to decrypt the EBOOT and the .edat. The copies live in cfg and go with
+    it. Copies, not a link to the player's folder: on Windows neither a symbolic link nor a junction to exdata was
+    followed in a 0.5.3 test (2026-11-19). The player's folder is only read. Returns the names copied."""
+    src = os.path.join(hdd0, *EXDATA)
     try:
-        os.symlink(target, link, target_is_directory=True)
-        if _reaches(link, target):
-            return
-        os.unlink(link)
+        names = [n for n in os.listdir(src) if n.lower().endswith(".rap") and TITLE in n.upper()]
     except OSError:
-        if not WINDOWS:
-            raise
-    if not WINDOWS:
-        raise OSError(f"{link} does not reach {target}")
-    import _winapi
-    _winapi.CreateJunction(target, link)
-    if not _reaches(link, target):
-        raise OSError(f"{link} does not reach {target}")
-
-
-def _reaches(link, target):
-    try:
-        return sorted(os.listdir(link)) == sorted(os.listdir(target))
-    except OSError:
-        return False
-
-
-def _unlink_dir(link):
-    """Removes the link itself, never what it points at."""
-    try:
-        if os.path.islink(link):
-            os.unlink(link)
-        elif os.path.isdir(link):
-            os.rmdir(link)   # a junction: rmdir removes the link, and refuses a real folder that is not empty
-    except OSError:
-        pass
-
-
-def _exdata_links(cfg, hdd0):
-    """Where RPCS3 looks for exdata under the redirected settings (RPCS3_CONFIG_DIR's dev_hdd0 on Windows,
-    XDG_CONFIG_HOME/rpcs3/dev_hdd0 on Linux), linked to the player's own dev_hdd0/home/00000001/exdata: a PSN copy
-    of the game needs its .rap to decrypt the EBOOT, and RPCS3 reads it through the link. This module never opens a
-    .rap, and RPCS3's own start-up folders go to cfg, not into the player's dev_hdd0. Returns the links made."""
-    target = os.path.join(hdd0, *EXDATA)
-    if not os.path.isdir(target):
         return []
-    links = [os.path.join(cfg, "dev_hdd0", *EXDATA), os.path.join(cfg, "config", "rpcs3", "dev_hdd0", *EXDATA)]
-    for link in links:
-        _link_dir(link, target)
-    return links
+    for d in (os.path.join(cfg, "dev_hdd0", *EXDATA), os.path.join(cfg, "config", "rpcs3", "dev_hdd0", *EXDATA)):
+        os.makedirs(d, exist_ok=True)
+        for n in names:
+            shutil.copyfile(os.path.join(src, n), os.path.join(d, n))
+    return names
 
 
 def _run_one(exe, cfg, src, out, prep, logf, watchdog):
@@ -420,7 +384,7 @@ def _run_one(exe, cfg, src, out, prep, logf, watchdog):
 
 def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
     """Copies each (source path, (in name, out name, size, sha)) into prep/in, runs RPCS3 --decrypt on each copy and
-    checks each output. hdd0: the player's dev_hdd0, for the licence RPCS3 may need (see _exdata_links). Returns {"ok",
+    checks each output. hdd0: the player's dev_hdd0, for the licence RPCS3 may need (see _exdata_copies). Returns {"ok",
     "files": {out name: path}, "problems"}. The copies and RPCS3's settings are removed afterwards; the good outputs
     are moved to prep; RPCS3's own lines are kept in prep/rpcs3-decrypt.log."""
     log = log or (lambda line: None)
@@ -429,20 +393,15 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
     shutil.rmtree(cfg, ignore_errors=True)
     os.makedirs(inp)
     os.makedirs(cfg)
-    links = []
     if not hdd0:
-        log("rpcs3: RPCS3's dev_hdd0 is not known: no licence folder for a PSN copy")
+        log("rpcs3: RPCS3's dev_hdd0 is not known: no licence for a PSN copy")
     else:
         try:
-            links = _exdata_links(cfg, hdd0)
-            if links:   # names only: whether RPCS3 can see a licence for this game, for the log
-                raps = [n for n in os.listdir(links[0]) if n.lower().endswith(".rap")]
-                log(f"rpcs3: licence folder linked, {len(raps)} .rap file(s), "
-                    f"{'one' if any(TITLE in n for n in raps) else 'none'} for {TITLE}")
-            else:
-                log(f"rpcs3: no licence folder in {loc.redact(hdd0)} (home/00000001/exdata)")
+            raps = _exdata_copies(cfg, hdd0)
+            log(f"rpcs3: {len(raps)} licence file(s) for {TITLE} found in {loc.redact(os.path.join(hdd0, *EXDATA))}"
+                + (" (needed only for a PSN copy)" if not raps else ""))
         except OSError as e:
-            log(f"rpcs3: no link to the licence folder ({e}); a PSN copy of the game may not decrypt")
+            log(f"rpcs3: the licence could not be copied ({e}); a PSN copy of the game may not decrypt")
     res = {"ok": True, "files": {}, "problems": []}
     logpath = os.path.join(prep, "rpcs3-decrypt.log")
     with open(logpath, "wb") as logf:
@@ -469,8 +428,6 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
             final = os.path.join(prep, out_name)
             os.replace(out, final)
             res["files"][out_name] = final
-    for link in links:
-        _unlink_dir(link)   # first, so the clean-up below cannot reach the player's folder through it
     shutil.rmtree(inp, ignore_errors=True)
     shutil.rmtree(cfg, ignore_errors=True)
     res["ok"] = not res["problems"]
