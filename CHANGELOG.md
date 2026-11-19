@@ -7,6 +7,13 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its `data_ps3.psarc.edat` is bound to the buyer's
+  licence, which the port cannot open, so the first-run check stopped on it with "DIFFERENT" (#67). "Use my RPCS3
+  install" now has your RPCS3 decrypt a copy of it too, with the licence (`.rap`) it already uses for the game, into
+  `work/prep/data_ps3.psarc`: the same archive as the disc copy's, checked by its SHA-256. Without RPCS3, the check
+  names the Store copy and says to use that route.
+
 ## [0.5.2] - 2026-11-18 (pre-release)
 
 ### Added

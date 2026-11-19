@@ -552,7 +552,7 @@ begin
   RpcsNote.Height := SourcePage.SurfaceHeight - RpcsNote.Top;
   RpcsNote.Caption := '';
   GamePage := CreateInputDirPage(SourcePage.ID, 'Your game',
-    'The installed Killzone HD ({#TitleId}), from your own Killzone Trilogy disc.',
+    'The installed Killzone HD ({#TitleId}), from your own Killzone Trilogy disc or PlayStation Store copy.',
     'Pick the installed game folder: it holds PARAM.SFO, TROPDIR and USRDIR (in RPCS3: dev_hdd0\game\{#TitleId}; ' +
     'picking the folder it is in also works). Setup only reads it.', False, '');
   GamePage.Add('Installed game folder ({#TitleId}):');
@@ -785,7 +785,8 @@ begin
     { "Show me how": the steps (the same as firstrun.py's SHOW_ME_HOW), then the page again }
     MsgBox('The easy way, through RPCS3:' + #13#10 +
       '1. In RPCS3, install PS3 system software {#Firmware} (File, Install Firmware).' + #13#10 +
-      '2. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc.' + #13#10 +
+      '2. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc, or your PlayStation Store ' +
+      'copy with its licence.' + #13#10 +
       '3. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
       'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
       'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +

@@ -35,8 +35,8 @@ got = hashlib.sha256((ROOT / "tools" / "release" / "rpcs3_locate.py").read_bytes
 check(got == "5ea2c6e42c0eb8e78abcd57381302494f86394c3a24d02bad0bcaab7bd9129ea",
       f"rpcs3_locate.py is Project Pyrrhus's copy, unedited: {got}")
 
-# A stand-in RPCS3: records its environment and stdin, then makes <name>.elf / <name>.prx beside each --decrypt input
-# (as RPCS3 does). FAKE_MODE: ok, bad (wrong contents), hang (never finishes), none (makes nothing).
+# A stand-in RPCS3: records its environment and stdin, then makes <name>.elf / <name>.prx / <name>.edat.unedat beside
+# each --decrypt input (as RPCS3 does). FAKE_MODE: ok, bad (wrong contents), hang (never finishes), none (makes nothing).
 FAKE = r'''#!/usr/bin/env python3
 import os, sys, time
 mode = os.environ.get("FAKE_MODE", "ok")
@@ -53,7 +53,7 @@ args = sys.argv[1:]
 for i, a in enumerate(args):
     if a == "--decrypt" and mode not in ("none", "norap"):
         src = args[i + 1]
-        out = src[: src.rfind(".")] + (".elf" if src.endswith(".BIN") else ".prx")
+        out = src + ".unedat" if src.endswith(".edat") else src[: src.rfind(".")] + (".elf" if src.endswith(".BIN") else ".prx")
         with open(out, "wb") as f:
             f.write(b"plain " + os.path.basename(src).encode() + (b" bad" if mode == "bad" else b""))
 '''
@@ -196,6 +196,58 @@ with tempfile.TemporaryDirectory() as tmp:
     (tmp / "x.edat").rename(game / "USRDIR" / "data_ps3.psarc.edat")
     check(ri.resolve(str(tmp / "nowhere"))["problems"][0]["code"] in ("not_rpcs3", "not_found"),
           "a folder that is not RPCS3 is named so")
+
+    # a PlayStation Store copy: its .edat is licence type 2 (bound to the buyer's .rap), which the port cannot open, so
+    # RPCS3 decrypts a copy of it too and the result is saved as the data archive; licence type 3 (the disc's
+    # package) stays with the port's own reader
+    edat = game / "USRDIR" / "data_ps3.psarc.edat"
+    disc_edat = edat.read_bytes()
+    check(ri.edat_license(str(tmp / "nothing")) is None and ri.edat_license(str(ver)) is None,
+          "no file, or a file that is not NPD: no licence type")
+    edat.write_bytes(b"NPD\0" + (4).to_bytes(4, "big") + (3).to_bytes(4, "big") + b" disc package")
+    check(ri.edat_license(str(edat)) == 3, "licence type 3 read from the NPD header")
+    psn_work = tmp / "work-psn"
+    n0 = len(flog.read_text().splitlines())
+    p = ri.prepare(str(psn_work), str(rp))
+    check(p["status"] == "ok" and "psarc" not in p and len(flog.read_text().splitlines()) == n0 + 2,
+          f"licence type 3: only EBOOT and libsre go to RPCS3: {p}")
+    edat.write_bytes(b"NPD\0" + (4).to_bytes(4, "big") + (2).to_bytes(4, "big") + b" psn copy")
+    check(ri.edat_license(str(edat)) == 2, "licence type 2 read from the NPD header")
+    ri.PSARC = spec("data_ps3.psarc.edat", "data_ps3.psarc.edat.unedat")
+    before = tree_state(rp)
+    p = ri.prepare(str(psn_work), str(rp))
+    call = flog.read_text().splitlines()
+    check(p["status"] == "ok" and p["psarc"] == str(psn_work / "prep" / "data_ps3.psarc")
+          and (psn_work / "prep" / "data_ps3.psarc").read_bytes() == b"plain data_ps3.psarc.edat"
+          and f"psarc={psn_work / 'prep' / 'data_ps3.psarc'}" in ri.lines(p),
+          f"licence type 2: RPCS3 decrypts the .edat into work/prep/data_ps3.psarc: {p}")
+    check(len(call) == n0 + 3 and f"--decrypt {psn_work}/prep/in/data_ps3.psarc.edat|" in call[-1]
+          and call[-1].endswith("|UP9000-TEST00000_00-NOTAREALLICENCE.rap"),
+          f"on a copy, with the player's licences visible through the link: {call[n0:]}")
+    check(tree_state(rp) == before and not (psn_work / "prep" / "in").exists(),
+          "nothing written into RPCS3's or the game's folders, and the copy removed")
+    p = ri.prepare(str(psn_work), str(rp))
+    check(p["status"] == "ok" and p.get("psarc") and len(flog.read_text().splitlines()) == n0 + 3,
+          "prepare again: the kept data_ps3.psarc is reused")
+    c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(psn_work))
+    said = []
+    check(firstrun.use_rpcs3(c, str(rp), said.append) == [] and c.paths.get("psarc") == p["psarc"]
+          and firstrun.read_paths(c.work).get("psarc") == p["psarc"] and "data_ps3.psarc made" in said[-1],
+          f"use_rpcs3 saves the data archive RPCS3 made: {c.paths} {said[-1:]}")
+    (psn_work / "prep" / "data_ps3.psarc").unlink()
+    os.environ["FAKE_MODE"] = "norap"
+    p = ri.prepare(str(psn_work), str(rp))
+    check(p["status"] == "failed" and [x["code"] for x in p["problems"]] == ["no_license"] and "psarc" not in p,
+          f"no .rap for the PSN .edat: named as the missing licence: {p['problems']}")
+    os.environ["FAKE_MODE"] = "ok"
+    # the first-run check names the PSN .edat and the RPCS3 route instead of "DIFFERENT"
+    env = dict(os.environ, KZ_GAME=str(game), KZ_PSARC=str(tmp / "no.psarc"))
+    out = __import__("subprocess").run([sys.executable, str(ROOT / "tools" / "check-game-files.py")],
+                                       capture_output=True, text=True, env=env).stdout
+    check("WRONG    data_ps3.psarc.edat: " in out and "PlayStation Store copy" in out and "licence type 2" in out
+          and "Use my RPCS3 install" in out and "DIFFERENT data_ps3.psarc.edat" not in out,
+          f"check-game-files on a PSN .edat: {out}")
+    edat.write_bytes(disc_edat)
 
     # the command line: --out in UTF-8 with a BOM, exit 0 on ok
     out = tmp / "out.txt"
