@@ -8,6 +8,9 @@
  *    blocks kept between calls (as MultiStream saves r9..r11 and r8/r10) and the rest of LS overwritten, give the
  *    same samples as each stream alone.
  * 3. The samples: against minimp3 decoding each file on its own, more than 60 dB SNR from the third frame on.
+ * 4. The stand-in flashMP3.pic: what the game's loader (func_0037DE70) takes from it is what it took from the firmware
+ *    file (load range 0x100.., 0x10360 bytes at LS offset 0x80, entry 0x74A0, bss at 0x10090 for 0x3D0), and every
+ *    byte it copies is zero.
  *
  * Built by test_flashmp3.sh. Exit 0 on pass, 1 on a failure. */
 #include <math.h>
@@ -22,6 +25,7 @@ void spu_indirect_branch(spu_context* ctx) { (void)ctx; }
 
 typedef struct { uint32_t in, a, b, heap, ov[2], syn[2], res; } kz_mp3_args;
 uint32_t kz_mp3_decode(uint8_t* ls, const kz_mp3_args* x);
+size_t kz_flashmp3_standin(uint8_t* buf, size_t size);
 
 static int g_fail;
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL: " __VA_ARGS__); printf("\n"); g_fail = 1; } } while (0)
@@ -140,6 +144,32 @@ int main(int argc, char** argv)
         CHECK(db > 60, "MPEG-%d: %.1f dB against minimp3 alone", s ? 2 : 1, db);
         printf("samples: MPEG-%d %.1f dB against minimp3 alone over %d frames\n", s ? 2 : 1, db, i - 2);
         free(ref);
+    }
+    /* 4. the stand-in, read as func_0037DE70 reads it */
+    {
+        static uint8_t f[0x20000];
+        const size_t n = kz_flashmp3_standin(f, sizeof f);
+        #define B32(o) ((uint32_t)f[o] << 24 | (uint32_t)f[(o) + 1] << 16 | (uint32_t)f[(o) + 2] << 8 | f[(o) + 3])
+        #define B16(o) ((uint32_t)f[o] << 8 | f[(o) + 1])
+        CHECK(n > 0 && f[1] == 'E' && f[2] == 'L' && B16(0x12) == 0x17, "the loader's checks: 'EL', e_machine SPU");
+        uint32_t lo = 0xFFFFFFFF, hi = 0x10, addr = 0xFFFFFFFF, bss_off = 0, bss_size = 0;
+        const uint32_t sh = B32(0x20);
+        for (uint32_t i = 0; i < B16(0x30); i++) {
+            const uint32_t s = sh + 0x28 * i, type = B32(s + 4), flags = B32(s + 8), off = B32(s + 0x10), sz = B32(s + 0x14);
+            if (!(flags & 2) || !sz) continue;
+            if (off < lo) lo = off;
+            if (type & 8) { bss_off = off; bss_size = sz; }
+            if (off + sz > hi) hi = off + sz;
+            if (B32(s + 0xC) < addr) addr = B32(s + 0xC);
+        }
+        const uint32_t size = (hi - lo + 15) & ~15u;
+        CHECK(lo == 0x100 && size == 0x10360 && addr == 0x80 && B32(0x18) == 0x74A0 && bss_off == 0x10090 && bss_size == 0x3D0,
+              "the stand-in gives the firmware file's layout: offset 0x%X size 0x%X addr 0x%X entry 0x%X bss 0x%X/0x%X",
+              lo, size, addr, B32(0x18), bss_off, bss_size);
+        int zero = 1;
+        for (uint32_t o = lo; o < lo + size && o < n; o++) if (o < 0x10460 && f[o]) zero = 0;
+        CHECK(zero, "everything the loader copies is zero: no code");
+        printf("stand-in: %zu bytes, the firmware file's layout, no code\n", n);
     }
     printf(g_fail ? "FAILED\n" : "PASS\n");
     return g_fail;

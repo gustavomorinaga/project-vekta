@@ -201,7 +201,7 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
-<li><span class="sec">Changed</span>The music and the other MP3 streams are decoded by the port itself (minimp3, CC0), in place of the PS3 system software&#x27;s MP3 decoder, which ran translated. Compared with it in Levels 1 and 4: the same frames, the same silences, samples within 50 dB SNR. <code>KZ_MP3_PIC=1</code> runs the firmware&#x27;s decoder instead. The firmware&#x27;s <code>flashMP3.pic</code> is still read when the game starts its sound.</li>
+<li><span class="sec">Changed</span>No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself (minimp3, CC0) in place of the system software&#x27;s MP3 decoder, which ran translated from your <code>dev_flash</code>; compared with it in Levels 1 and 4: the same frames, the same silences, samples within 50 dB SNR. The <code>flashMP3.pic</code> the game still asks for is a stand-in the port writes, with no code in it. The installers no longer ask for <code>dev_flash</code> or check its version; the RPCS3 route works with no firmware installed in RPCS3.</li>
 <li><span class="sec">Changed</span>The firmware&#x27;s <code>libsre.prx</code> is no longer needed: the SPURS queue the game sends its compressed data requests through, which ran the firmware&#x27;s own libsre code, is now in the port&#x27;s runtime (ps3recomp patch 1022, checked against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it, and on the RPCS3 route your RPCS3 decrypts only the game&#x27;s EBOOT. PS3 system software 4.93 is still needed for the music (its <code>dev_flash</code>, read as installed). The lift no longer makes <code>work/fw</code>, and removes the one an earlier version made.</li>
 </ul>
 </article>
@@ -239,7 +239,7 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> The music and the other MP3 streams are decoded by the port itself (minimp3, CC0), in place of the PS3 system...</span></li>
+<li><time>next</time><span><b>Unreleased</b> No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The firmware&#x27;s libsre.prx is no longer needed: the SPURS queue the game sends its compressed data requests through...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its data_ps3.psarc.edat is bound to the buyer&#x27;s...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows &quot;The game...</span></li>
@@ -299,7 +299,7 @@ tools/play.sh</pre>
 <section id="requirements" class="promo">
 <h2>Requirements</h2>
 <h3>What you need</h3>
-<p>Your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, with its decrypted EBOOT and data archive, and the <code>dev_flash</code> of PS3 system software 4.93 (for the music): <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>. No PlayStation Network account is used.</p>
+<p>Your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, with its decrypted EBOOT (no PS3 system software is needed): <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>. No PlayStation Network account is used.</p>
 <h3>Hardware to play</h3>
 <div class="tw"><table>
 <thead><tr><th></th><th>Minimum</th><th>Tested</th></tr></thead>

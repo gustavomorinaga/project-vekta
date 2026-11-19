@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include "ppu_recomp.h"
 #include "spu_context.h"
@@ -28,9 +29,10 @@ void     cellGcmHleSetIsrThread(int on);
 void kz_pc_options_register(void);   /* pcoptions.cpp: mouse look, PC options */
 #include "route.h"
 extern "C" void spu_begin_image(int image_id);
-extern "C" void kzmp3_spu_recomp_register(void) __attribute__((weak));   /* <SPU_DIR>/flashmp3, lift.sh */
 extern "C" void spu_register_function(uint32_t addr, void (*fn)(spu_context*));
-extern "C" void kz_flashmp3_entry(spu_context* ctx);   /* native/flashmp3.c */
+extern "C" void kz_flashmp3_entry(spu_context* ctx);              /* native/flashmp3.c */
+extern "C" int  kz_flashmp3_write_standin(const char* dev_flash); /* native/flashmp3.c */
+extern const char* ppu_vfs_root;
 
 extern "C" void ps3_load_prx_modules(void)
 {
@@ -78,17 +80,20 @@ extern "C" void ps3_load_prx_modules(void)
     if (getenv("KZ_DEBUG_MENU")) ppu_register_function(0x002AE1C4, not_submission);
     kz_pc_options_register();
     kz_route_register();   /* route.cpp: KZ_ROUTE_REC / KZ_ROUTE_PLAY */
-    /* MultiStream (SPU image 3) decodes the music with the firmware's MP3
-     * decoder, flashMP3.pic, which the game reads from dev_flash and loads at
-     * LS 0x1A880 (its entry, 0x74A0 in the file, is called at LS 0x21D20).
-     * The call goes to native/flashmp3.c (minimp3) unless KZ_MP3_PIC=1 (default
-     * off) asks for the firmware's own decoder, which lift.sh lifts at that base:
-     * the first registration of an address wins. Without either the audio task
-     * ends at the first MP3 and every sound stops. */
-    if (kzmp3_spu_recomp_register && !getenv("KZ_NO_MP3")) {
+    /* MultiStream (SPU image 3) decodes the music with the system software's MP3
+     * decoder: it reads /dev_flash/sys/external/flashMP3.pic, loads it at LS
+     * 0x1A880 and calls its entry (0x74A0 in the file) at LS 0x21D20. That call
+     * is native/flashmp3.c's (minimp3), and the file is its stand-in, written
+     * into <run folder>/dev_flash, where /dev_flash points: the layout the loader
+     * checks, no code (docs/dev/flashmp3-native.md). */
+    {
+        static std::string dev_flash;
+        dev_flash = std::string(ppu_vfs_root) + "/dev_flash";
+        if (kz_flashmp3_write_standin(dev_flash.c_str()))
+            fprintf(stderr, "[kz] could not write %s/sys/external/flashMP3.pic: no music\n", dev_flash.c_str());
+        setenv("PS3_DEV_FLASH", dev_flash.c_str(), 1);
         spu_begin_image(3);
-        if (!getenv("KZ_MP3_PIC")) spu_register_function(0x21D20, kz_flashmp3_entry);
-        kzmp3_spu_recomp_register();
+        spu_register_function(0x21D20, kz_flashmp3_entry);
         spu_begin_image(0);
-    } else fprintf(stderr, "[kz] flashMP3.pic not lifted (lift.sh): no music or sound after the first MP3\n");
+    }
 }

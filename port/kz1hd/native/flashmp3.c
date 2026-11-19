@@ -29,6 +29,7 @@
  * (another implementation of the same standard); the comparison is in docs/dev/flashmp3-native.md.
  */
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #define MINIMP3_ONLY_MP3
@@ -36,6 +37,11 @@
 #include "minimp3.h"
 
 #include "spu_context.h"
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 #define KZ_MP3_MARK   0x4B5A4D33u   /* "KZM3" */
 #define HEAP_SIZE     0x5800u
@@ -170,4 +176,74 @@ void kz_flashmp3_entry(spu_context* ctx)
     const uint32_t out = kz_mp3_decode(ctx->ls, &x);
     for (int w = 0; w < 4; w++) { ctx->gpr[3]._u32[w] = out; ctx->gpr[5]._u32[w] = out; }
     SPU_RET(ctx);
+}
+
+/* The file the game's loader reads, /dev_flash/sys/external/flashMP3.pic, made here: the loader (func_00378590 reads the
+ * file whole; func_0037DE70 checks bytes 1-2 "EL" and e_machine 0x17, then takes from the allocated sections the file
+ * range to copy, its LS address and the bss, and e_entry) gets the firmware file's layout (.text and .rodata at 0x80
+ * to 0x10000, .data to 0x10010, .bss to 0x103E0, entry 0x74A0, so MultiStream calls LS 0x1A880 + 0x74A0 = 0x21D20,
+ * where kz_flashmp3_entry answers) with nothing in it: every byte past the headers is zero. Writes `size` bytes into
+ * buf (at least KZ_FLASHMP3_STANDIN_SIZE) and returns the file's length. */
+#define KZ_FLASHMP3_STANDIN_SIZE 0x10600
+static void be16(uint8_t* p, uint16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
+size_t kz_flashmp3_standin(uint8_t* buf, size_t size)
+{
+    static const char names[] = "\0.text\0.data\0.bss\0.shstrtab";   /* offsets 1, 7, 13, 18 */
+    enum { TEXT_ADDR = 0x80, DATA_ADDR = 0x10000, BSS_ADDR = 0x10010, BSS_END = 0x103E0, FILE_BIAS = 0x80,
+           STRTAB = 0x10460, SHDR = 0x10480, NSEC = 5 };
+    if (size < KZ_FLASHMP3_STANDIN_SIZE) return 0;
+    memset(buf, 0, KZ_FLASHMP3_STANDIN_SIZE);
+    static const uint8_t ident[16] = { 0x7F, 'E', 'L', 'F', 1, 2, 1 };   /* ELF32, big-endian, version 1 */
+    memcpy(buf, ident, 16);
+    be16(buf + 0x10, 2);                    /* ET_EXEC */
+    be16(buf + 0x12, 0x17);                 /* EM_SPU */
+    wr32(buf, 0x14, 1);
+    wr32(buf, 0x18, 0x74A0);                /* e_entry */
+    wr32(buf, 0x1C, 52);                    /* e_phoff */
+    wr32(buf, 0x20, SHDR);                  /* e_shoff */
+    be16(buf + 0x28, 52); be16(buf + 0x2A, 32); be16(buf + 0x2C, 1);
+    be16(buf + 0x2E, 40); be16(buf + 0x30, NSEC); be16(buf + 0x32, NSEC - 1);
+    /* one PT_LOAD: file 0x100.. at 0x80, memory to the end of .bss */
+    uint8_t* ph = buf + 52;
+    wr32(ph, 0, 1); wr32(ph, 4, TEXT_ADDR + FILE_BIAS); wr32(ph, 8, TEXT_ADDR); wr32(ph, 12, TEXT_ADDR);
+    wr32(ph, 16, BSS_ADDR - TEXT_ADDR); wr32(ph, 20, BSS_END - TEXT_ADDR); wr32(ph, 24, 7); wr32(ph, 28, 0x80);
+    memcpy(buf + STRTAB, names, sizeof names);
+    /* name, type, flags, addr, offset, size: SHT_PROGBITS 1, SHT_NOBITS 8, SHT_STRTAB 3; SHF_WRITE 1, ALLOC 2, EXEC 4 */
+    const uint32_t sh[NSEC][6] = {
+        { 0, 0, 0, 0, 0, 0 },
+        { 1, 1, 6, TEXT_ADDR, TEXT_ADDR + FILE_BIAS, DATA_ADDR - TEXT_ADDR },
+        { 7, 1, 3, DATA_ADDR, DATA_ADDR + FILE_BIAS, BSS_ADDR - DATA_ADDR },
+        { 13, 8, 3, BSS_ADDR, BSS_ADDR + FILE_BIAS, BSS_END - BSS_ADDR },
+        { 18, 3, 0, 0, STRTAB, sizeof names },
+    };
+    for (int i = 0; i < NSEC; i++)
+        for (int k = 0; k < 6; k++) wr32(buf, SHDR + 40 * i + 4 * k, sh[i][k]);
+    for (int i = 1; i < NSEC; i++) wr32(buf, SHDR + 40 * i + 32, i == 4 ? 1 : 16);   /* sh_addralign */
+    return KZ_FLASHMP3_STANDIN_SIZE;
+}
+
+/* Writes the stand-in to <dir>/sys/external/flashMP3.pic unless that file is already it. 0 on success. */
+int kz_flashmp3_write_standin(const char* dir)
+{
+    static uint8_t want[KZ_FLASHMP3_STANDIN_SIZE], have[KZ_FLASHMP3_STANDIN_SIZE + 1];
+    const size_t n = kz_flashmp3_standin(want, sizeof want);
+    char path[4096];
+    snprintf(path, sizeof path, "%s/sys/external/flashMP3.pic", dir);
+    FILE* f = fopen(path, "rb");
+    if (f) {
+        const size_t got = fread(have, 1, sizeof have, f);
+        fclose(f);
+        if (got == n && !memcmp(have, want, n)) return 0;
+    }
+    char d[4096];
+    snprintf(d, sizeof d, "%s/sys", dir);
+#ifdef _WIN32
+    _mkdir(dir); _mkdir(d); snprintf(d, sizeof d, "%s/sys/external", dir); _mkdir(d);
+#else
+    mkdir(dir, 0755); mkdir(d, 0755); snprintf(d, sizeof d, "%s/sys/external", dir); mkdir(d, 0755);
+#endif
+    f = fopen(path, "wb");
+    if (!f) return -1;
+    const int ok = fwrite(want, 1, n, f) == n;
+    return fclose(f) == 0 && ok ? 0 : -1;
 }

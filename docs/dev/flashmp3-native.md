@@ -3,10 +3,10 @@
 The game's sound library, MultiStream, decodes its MP3 streams (music, many effects and voices) on an SPU (image 3)
 with a decoder it loads from the system software: `/dev_flash/sys/external/flashMP3.pic`. Up to now the port lifted
 that file from the player's PS3 system software 4.93 (`tools/lift.sh`) and ran it. `port/kz1hd/native/flashmp3.c`
-now answers the call with minimp3 (`third_party/minimp3`, CC0 1.0, commit ea99364f, SHA-256 in its README);
-`KZ_MP3_PIC=1` (default off) runs the lifted firmware decoder instead, for comparison. The game's loader still reads
-`flashMP3.pic` from `dev_flash` before it uses the decoder, so the file is still needed until it gets a stand-in (the
-next step).
+now answers the call with minimp3 (`third_party/minimp3`, CC0 1.0, commit ea99364f, SHA-256 in its README), and the
+file the game's loader reads is a stand-in the port writes itself (below), so no system software is needed. The
+comparisons below were made while the lifted firmware decoder was still in the build (as `KZ_MP3_PIC=1`); that
+switch went with the lift.
 
 ## The call
 
@@ -48,6 +48,22 @@ No mark means a new stream. Two things follow the firmware decoder rather than m
   9 MPEG-1 and 174 MPEG-2 in one Level 1 run). `ASSUMPTION:` that is the rule; it was seen, not read out of the
   decoder.
 
+## The stand-in file
+
+The loader, `func_00378590`, opens `/dev_flash/sys/external/flashMP3.pic`, takes its size from a seek to the end,
+reads it whole into a buffer and closes it; an open or read error, or 0 bytes, prints its error and returns -1 (no MP3
+decoding). `func_0037DE70` then checks only bytes 1-2 ("EL") and `e_machine` 0x17 (SPU), and takes from the section
+headers with `SHF_ALLOC` and a size the lowest `sh_offset` and the highest end (the range it copies, rounded to 16),
+the lowest `sh_addr` (where), the `SHT_NOBITS` section (the bss) and `e_entry`. No size limit, hash, signature or
+GUID check (read 2026-11-18 with Ghidra and the lifted code).
+
+`kz_flashmp3_standin` (native/flashmp3.c) writes an SPU ELF32 big-endian with the firmware file's layout as the loader
+sees it: one program header, `.text` 0x80-0x10000 and `.data` 0x10000-0x10010 (all zeros), `.bss` to 0x103E0,
+`.shstrtab`, entry 0x74A0, 67,072 bytes. `stubs.cpp` writes it at start into `<run folder>/dev_flash/sys/external`
+(again only if it differs) and points `PS3_DEV_FLASH` there, whatever the environment says.
+`tools/tests/test_flashmp3.sh` reads it with the loader's rules: the same range (offset 0x100, 0x10360 bytes, at
+0x80), entry and bss as the firmware file, and only zeros in what is copied.
+
 ## How it was checked
 
 - A local harness (in a firmware build) ran the lifted .pic for real and the native decoder on a copy of the local
@@ -67,5 +83,9 @@ No mark means a new stream. Two things follow the firmware decoder rather than m
   180 s: silent 10.5 % and 10.3 % of the 5 s windows; Level 4, 180 s: 10.0 % and 10.0 %. No decoder error in any.
   One Level 4 run (with the harness) had no sound from the first window and no decoder call at all; the next was
   normal.
+- Without any system software (2026-11-18, the build with no lifted decoder, a fresh run folder, `PS3_DEV_FLASH`
+  pointing nowhere): the game opened the stand-in, Level 1 (180 s) silent 10.3 % and Level 4 (180 s) 10.0 % of the
+  windows, the frame dumps show both levels, no "branched into unlifted" (no call into the stand-in but its entry)
+  and no MP3 error.
 - Not checked: stereo MP3 streams (none was seen in Levels 1 and 4), the other levels, Windows, a long session, a
   listening comparison.
