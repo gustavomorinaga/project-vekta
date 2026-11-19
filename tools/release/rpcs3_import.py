@@ -349,15 +349,32 @@ EXDATA = ("home", "00000001", "exdata")   # where RPCS3 looks for a game's licen
 
 
 def _link_dir(link, target):
-    """A directory link (a symbolic link, or on Windows without that right a junction, which needs none)."""
+    """A directory link (a symbolic link, or on Windows without that right a junction, which needs none), checked to
+    reach target: on Windows a symbolic link can be made yet not be followed, and RPCS3 then misses the .rap through
+    it (a 0.5.3 test, 2026-11-19), so a link that does not reach the folder is replaced with a junction."""
+    target = os.path.abspath(target)   # on Windows also turns / into \, which a link's stored target needs
     os.makedirs(os.path.dirname(link), exist_ok=True)
     try:
         os.symlink(target, link, target_is_directory=True)
+        if _reaches(link, target):
+            return
+        os.unlink(link)
     except OSError:
         if not WINDOWS:
             raise
-        import _winapi
-        _winapi.CreateJunction(target, link)
+    if not WINDOWS:
+        raise OSError(f"{link} does not reach {target}")
+    import _winapi
+    _winapi.CreateJunction(target, link)
+    if not _reaches(link, target):
+        raise OSError(f"{link} does not reach {target}")
+
+
+def _reaches(link, target):
+    try:
+        return sorted(os.listdir(link)) == sorted(os.listdir(target))
+    except OSError:
+        return False
 
 
 def _unlink_dir(link):
@@ -413,9 +430,17 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None):
     os.makedirs(inp)
     os.makedirs(cfg)
     links = []
-    if hdd0:
+    if not hdd0:
+        log("rpcs3: RPCS3's dev_hdd0 is not known: no licence folder for a PSN copy")
+    else:
         try:
             links = _exdata_links(cfg, hdd0)
+            if links:   # names only: whether RPCS3 can see a licence for this game, for the log
+                raps = [n for n in os.listdir(links[0]) if n.lower().endswith(".rap")]
+                log(f"rpcs3: licence folder linked, {len(raps)} .rap file(s), "
+                    f"{'one' if any(TITLE in n for n in raps) else 'none'} for {TITLE}")
+            else:
+                log(f"rpcs3: no licence folder in {loc.redact(hdd0)} (home/00000001/exdata)")
         except OSError as e:
             log(f"rpcs3: no link to the licence folder ({e}); a PSN copy of the game may not decrypt")
     res = {"ok": True, "files": {}, "problems": []}

@@ -215,8 +215,11 @@ with tempfile.TemporaryDirectory() as tmp:
     check(ri.edat_license(str(edat)) == 2, "licence type 2 read from the NPD header")
     ri.PSARC = spec("data_ps3.psarc.edat", "data_ps3.psarc.edat.unedat")
     before = tree_state(rp)
-    p = ri.prepare(str(psn_work), str(rp))
+    said = []
+    p = ri.prepare(str(psn_work), str(rp), log=said.append)
     call = flog.read_text().splitlines()
+    check("rpcs3: licence folder linked, 1 .rap file(s), none for NPUA80856" in said,
+          f"the log says whether RPCS3 can see a licence for the game (names only): {said}")
     check(p["status"] == "ok" and p["psarc"] == str(psn_work / "prep" / "data_ps3.psarc")
           and (psn_work / "prep" / "data_ps3.psarc").read_bytes() == b"plain data_ps3.psarc.edat"
           and f"psarc={psn_work / 'prep' / 'data_ps3.psarc'}" in ri.lines(p),
