@@ -33,7 +33,7 @@ built. With a build there that this install's files did not make (stale_build: i
 version, patch set or DLSS choice, as after an install over an earlier release without the build in the setup),
 firstrun.py --bar rebuilds it first in a console of its own (run.cmd when no paths were saved yet), so the game of
 an earlier version never starts from the new install. A game that ends within EARLY_EXIT seconds without its window
-being closed did not start: a message then says so, with the end of its log.
+being closed or the player quitting it did not start: a message then says so, with the end of its log.
 
 After Project Pyrrhus's and Project Helghast's tools/release/launch.py (undecuple, MIT), which decide the same
 things for their launchers. Exit: the game's own code, 1 = not built yet, 2 = usage. Standard library only.
@@ -59,7 +59,9 @@ SETTINGS = [
     ("PS3_GCM_MAX_QUEUED_FLIPS", "1"),
 ]
 FIXED = [("PS3RECOMP_VK_WINDOW", "1"), ("PS3_TITLE", "Killzone HD")]
-CLOSED = (b"window closed", b"window disabled")
+# The game's own "[kz] quitting (<why>)" line (main.cpp kz_quit: the window closed, Quit Game, a signal) means the
+# player ended it on purpose, however soon: Quit Game from the main menu within seconds is not a failed start.
+CLOSED = (b"window closed", b"window disabled", b"[kz] quitting (")
 INSTALL_INI = "vekta-install.ini"   # the setup program writes it in the install folder ([INI] in installer/vekta.iss)
 SAVE_FOLDER = "Project Vekta"       # under %APPDATA% when the install is not portable
 PLAYER_FILES = ("kz1hd_pc.ini", "kz1hd_keys.ini", "gamedata")   # what the game writes in the folder it runs from

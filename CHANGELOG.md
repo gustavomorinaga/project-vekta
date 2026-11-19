@@ -13,6 +13,12 @@ program and folder that build it. Until a release that calls itself playable
   install" now has your RPCS3 decrypt a copy of it too, with the licence (`.rap`) it already uses for the game, into
   `work/prep/data_ps3.psarc`: the same archive as the disc copy's, checked by its SHA-256. Without RPCS3, the check
   names the Store copy and says to use that route.
+- Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows "The game
+  stopped right after it started": the launcher now takes the game's own quit line as the player's choice.
+
+### Changed
+- "Use my RPCS3 install" names, on the setup's build page, each file your RPCS3 is decrypting, and links instead
+  of copying the game's files it decrypts when they are on the same drive as the port (no second 3 GB copy).
 
 ## [0.5.2] - 2026-11-18 (pre-release)
 
