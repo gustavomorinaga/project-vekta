@@ -103,7 +103,7 @@ What changes under RenderDoc (RenderDoc 1.46 on Linux, 2026-11-13):
   (Launch Application): executable `work/build/KZ1HD`, arguments `<run folder>/PS3_GAME/USRDIR/EBOOT.elf`, working
   directory the run folder (`work/vfs`), and the environment `tools/play.sh` exports (`PS3RECOMP_VK_GUEST_PROGRAMS=1`, `GCM_PARK_SKIP=1`, `PS3RECOMP_VK_WINDOW=1`).
 - **Windows**: RenderDoc's Launch Application on `KZ1HD.exe` in the installed folder, working directory that folder,
-  arguments as `play.cmd` passes them.
+  arguments as `scripts\play.cmd` (`tools/release/launch.py --dry-run` prints them) passes them.
 - In the game, **F12** takes a RenderDoc capture of the next frame together with the port's own pass capture
   (`capture_<date>_<time>/`, below; ps3recomp patch 2066); RenderDoc's own capture keys are turned off, so one press
   is one capture. `PS3RECOMP_CAPTURE_TRIGGER=<file>` and `KZ_POKE`'s `capture` do the same from a script. The port

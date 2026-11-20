@@ -25,8 +25,12 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
                   also names tools/, tools/release/ and ps3recomp's tools/: the embeddable Python never puts a
                   script's own folder on sys.path, and the lifters import their neighbours.
   VERSION, LICENSE, NOTICE.md, README.md, licenses/, assets/icon.svg, docs/GETTING-FILES.md, docs/BUILDING.md
-  run.cmd, play.cmd   installer/run.cmd (the first run: questions, check, lift, build) and installer/play.cmd
-  Project Vekta.exe   with --launcher EXE: the launcher tools/release/build_launcher.py builds
+  Project Vekta.exe   with --launcher EXE: the launcher tools/release/build_launcher.py builds, the one startable
+                      file at the top (a launcher such as Quiver takes the one it finds there)
+  scripts/        run.cmd (the first run with its questions), play.cmd (play in a console), prepare.cmd (check and
+                  build with no window or question, for a launcher: launch.py --prepare), from installer/
+  The Linux folder (--platform linux) has the same rule: project-vekta (installer/linux/project-vekta) is its one
+  startable file at the top, and scripts/ holds run.sh, play.sh and prepare.sh; layout_problems() checks both.
 
 Nothing else is copied. The scrub refuses the whole payload (nothing is written) on: game-data names and extensions
 (EBOOT.*, PARAM.SFO, .psarc .elf .self .sprx .prx .edat .sdat .pkg .rap .pup .trp .pic), PS3 or ELF magics at a
@@ -97,16 +101,19 @@ RULES = [
 ]
 RULES_WINDOWS = [
     ("tools/ffx/ffx_mingw_compat.h", "tools/ffx/ffx_mingw_compat.h", "file", {}),
-    ("installer/run.cmd", "run.cmd", "file", {}),
-    ("installer/play.cmd", "play.cmd", "file", {}),
+    ("installer/run.cmd", "scripts/run.cmd", "file", {}),
+    ("installer/play.cmd", "scripts/play.cmd", "file", {}),
+    ("installer/prepare.cmd", "scripts/prepare.cmd", "file", {}),
 ]
 RULES_LINUX = [
     ("tools/release/build_linux_deps.py", "tools/release/build_linux_deps.py", "file", {}),
     ("tools/release/zig", "tools/release/zig", "tree", {}),
     ("tools/env.sh", "tools/env.sh", "file", {}),
     ("tools/play.sh", "tools/play.sh", "file", {}),
-    ("installer/linux/run.sh", "run.sh", "file", {}),
-    ("installer/linux/play.sh", "play.sh", "file", {}),
+    ("installer/linux/project-vekta", "project-vekta", "file", {}),
+    ("installer/linux/run.sh", "scripts/run.sh", "file", {}),
+    ("installer/linux/play.sh", "scripts/play.sh", "file", {}),
+    ("installer/linux/prepare.sh", "scripts/prepare.sh", "file", {}),
     ("tools/ffx/ffx_linux_compat.h", "tools/ffx/ffx_linux_compat.h", "file", {}),
 ]
 GAME_NAMES = ["EBOOT.*", "PARAM.SFO", "*.psarc", "*.elf", "*.self", "*.sprx", "*.prx", "*.edat", "*.sdat", "*.pkg",
@@ -344,6 +351,40 @@ def check_toolkit(repo):
     return have
 
 
+# A launcher that takes a downloaded package (Quiver 3.5.1) starts the one startable file at its top level, so each
+# folder has exactly one: Project Vekta.exe on Windows, project-vekta on Linux. What counts as startable, by the
+# launcher's rule: on Windows any .exe, .bat or .cmd; on Linux any .sh, any file starting with #!/ and any ELF file,
+# except .txt, .dll, .so and .json files.
+ENTRY = {"windows": "Project Vekta.exe", "linux": "project-vekta"}
+
+
+def startable(rel, src, platform):
+    """Whether this top-level file counts as a startable program for the platform (see ENTRY)."""
+    name = rel.lower()
+    if platform == "windows":
+        return name.endswith((".exe", ".bat", ".cmd"))
+    if name.endswith((".txt", ".dll", ".so", ".json")):
+        return False
+    if name.endswith(".sh"):
+        return True
+    try:
+        with open(src, "rb") as f:
+            head = f.read(4)
+    except OSError:
+        return False
+    return head[:3] == b"#!/" or head == b"\x7fELF"
+
+
+def layout_problems(files, platform, need_entry=True):
+    """[problem] for the folder's top level: no startable file but ENTRY (and ENTRY there, when need_entry)."""
+    top = sorted(rel for rel, src in files.items() if "/" not in rel and startable(rel, src, platform))
+    out = [f"{rel}: a second startable file at the top (only {ENTRY[platform]} may be there; scripts go in scripts/)"
+           for rel in top if rel != ENTRY[platform]]
+    if need_entry and ENTRY[platform] not in top:
+        out.append(f"no {ENTRY[platform]} at the top: a launcher would find nothing to start")
+    return out
+
+
 def plan(repo, cache, launcher=None, platform="windows"):
     """(files {payload path: source}, generated {payload path: bytes}, manifest)."""
     patchset = check_toolkit(repo)
@@ -353,6 +394,8 @@ def plan(repo, cache, launcher=None, platform="windows"):
             raise Refused(f"no launcher at {launcher} (tools/release/build_launcher.py)")
         files["Project Vekta.exe"] = launcher
     problems = [f"{rel}: {why}" for rel, src in sorted(files.items()) if (why := scrub(rel, src))]
+    # the Windows folder gets its launcher only with --launcher (the tests and dry runs go without)
+    problems += layout_problems(files, platform, need_entry=platform == "linux" or bool(launcher))
     m = fetch_toolchain.load(os.path.join(repo, "tools", "release", "toolchain.json"))
     tfiles, done = collect_toolchain(cache, m, platform)
     problems += [f"{rel}: {why}" for rel, src in sorted(tfiles.items())

@@ -20,7 +20,8 @@ You need these files from your own game. No PS3 system software (firmware) is ne
   own `USRDIR\data_ps3.psarc.edat`, once, after the build: about a minute more, and 3.1 GB more disk in `work`.
 
 **Already playing it in RPCS3?** When RPCS3 has Killzone HD installed, the Linux folder's
-`./run.sh` and the zip's `run.cmd` find them and offer to use them ("Use my RPCS3 install", "I have the files
+`./project-vekta` and the zip's `Project Vekta.exe` find them and use them without a question (the
+first run's questions, `scripts/run.sh` and `scripts\run.cmd`, offer the same ("Use my RPCS3 install", "I have the files
 ready", "Show me how", which lists these steps, or "My RPCS3 is somewhere else", which asks for its folder): your
 RPCS3 then decrypts a copy of `EBOOT.BIN` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The setup program offers the same on its "Your game" page ("Use my RPCS3
 install"), with a "Find RPCS3..." button for an RPCS3 it did not find by itself. Either way the folder can be where
@@ -48,7 +49,7 @@ administrator rights.
    - "Create a desktop shortcut".
    - "Build now, in this wizard": on by default. Untick it to build on the first start instead.
    - "Portable": off by default. Ticked, saves and settings stay in the install folder; left off, they go to
-     `%APPDATA%\Project Vekta`. To change it later, run `play.cmd --move-data portable` (or `--move-data appdata`)
+     `%APPDATA%\Project Vekta`. To change it later, run `scripts\play.cmd --move-data portable` (or `--move-data appdata`)
      in the install folder: it moves the saves and settings and remembers the choice, and moves nothing when the
      other folder already has some.
 3. **Your game.** "Use my RPCS3 install" when the setup found RPCS3 with the game: the next
@@ -82,19 +83,21 @@ without the setup.
 
 1. **Unpack the zip** into a folder of your own, keeping its folders. The zip does not check the folder the way the
    setup does, so avoid the places listed in step 1 above.
-2. **Run `run.cmd`.** A console window asks for each file in turn, with a suggested path in brackets. Type or paste
-   a path, or press Enter to keep the one in brackets.
+2. **Start `Project Vekta.exe`.** When RPCS3 has the game in its usual places, it builds from
+   them without a question (go to step 5). Otherwise a console window (`scripts\run.cmd`) asks for each file in
+   turn, with a suggested path in brackets. Type or paste a path, or press Enter to keep the one in brackets.
 3. **Fix what the check names.** If the check does not pass, the window says which file is wrong and why. Press
    Enter to choose that file again, or `q` to quit.
 4. **Answer the DLSS question.** It shows NVIDIA's licence link. `y` accepts it and downloads DLSS; Enter or `n`
    builds without it.
 5. **Wait for the build.** A progress bar runs for about five minutes. At the end the window says "Built." and
    names the command that plays. The log is in `work\logs\`.
-6. **Run `play.cmd`.** Add `--fullscreen` for full screen. The settings are in
+6. **Start `Project Vekta.exe` again** to play (`scripts\play.cmd` does the same in a console; add
+   `--fullscreen` for full screen). The settings are in
    `work\vfs\PS3_GAME\USRDIR\kz1hd_pc.ini` and the log in `work\play.log`.
 
-Run `run.cmd` again after you move your files. A build that was stopped resumes there.
-`run.cmd --dlss accept` or `run.cmd --dlss decline` changes the DLSS answer.
+Run `scripts\run.cmd` again after you move your files. A build that was stopped resumes there.
+`scripts\run.cmd --dlss accept` or `scripts\run.cmd --dlss decline` changes the DLSS answer.
 
 ## Linux: the folder
 
@@ -102,15 +105,16 @@ The file is `project-vekta-X.Y.Z-linux.tar.gz`. It has its own compiler and buil
 You need Python 3.10 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 
 1. **Unpack it:** `tar xzf project-vekta-X.Y.Z-linux.tar.gz`.
-2. **Run `./run.sh`.** It asks the same questions as `run.cmd` above, then builds. At the end it offers an
-   applications-menu entry.
-3. **Run `./play.sh`** to play.
+2. **Start `./project-vekta`.** With RPCS3 and the game in their usual places it builds without a question, then
+   plays. Otherwise run `scripts/run.sh`: it asks the same questions as `scripts\run.cmd` above, builds, and at
+   the end offers an applications-menu entry.
+3. **Start `./project-vekta`** to play (`scripts/play.sh` does the same).
 
 ## If something goes wrong
 
 - [KNOWN_ISSUES.md](KNOWN_ISSUES.md) lists the open problems and their workarounds.
 - An install over a version before 0.4.0 that failed at the link: delete `work\build-win` in the install folder
-  (Linux: `work/build`) and run `run.cmd` (`run.sh`) again. Since 0.4.0 the build empties an old build folder
+  (Linux: `work/build`) and run `scripts\run.cmd` (`scripts/run.sh`) again. Since 0.4.0 the build empties an old build folder
   itself.
 - Open an issue with the bug template and attach the support package or the log from `work\logs\`. Never attach
   game files or saves.

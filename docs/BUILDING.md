@@ -214,6 +214,41 @@ no release carries them ([dev/upscalers.md](dev/upscalers.md), "Distribution").
 Notes from the Windows bring-up (what changed, speed under Wine and on Windows):
 [docs/dev/windows-build.md](dev/windows-build.md).
 
+## Starting from a launcher
+
+A release folder has one program at its top, so that a launcher that takes a downloaded package (Quiver, for one)
+finds it: `Project Vekta.exe` in the Windows folder and `project-vekta` in the Linux one. The other scripts are in
+`scripts/` (`tools/release/assemble_payload.py` refuses a folder with a second startable file at the top: on Windows
+any `.exe`, `.bat` or `.cmd`; on Linux any `.sh`, file starting with `#!/` or ELF file, except `.txt`, `.dll`, `.so`
+and `.json`). Started with no arguments from its folder, either one plays; before the first build it checks the
+files and builds first (`tools/release/launch.py --build-if-needed`), asking nothing when RPCS3 and the game are in
+their usual places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR`.
+
+- `--game DIR`, `--eboot FILE`, `--psarc FILE`, `--rpcs3 [DIR]`, or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC` in the
+  environment: where the files are. They are kept in `work/paths.env` once the check passes.
+- `--prepare` (also `scripts/prepare.cmd`, `scripts/prepare.sh`): checks the files and builds with no window and
+  no question. It prints `progress <0..1> <text>` lines and, on a failure, one `reason <text>` line at the end, and
+  exits 0 when built. `--timeout SECS` stops it cleanly; the next run resumes.
+- Before the game starts it checks that a Vulkan loader can be opened (`KZ_VULKAN_CHECK=0` skips that; default on).
+
+The exit codes, one table for the exe and the launcher (`port/kz1hd/kz_exit.h`; `launch.py` reads it):
+
+| Code | Name | What to do |
+|---|---|---|
+| 1 | `FAILED` | Something else went wrong: the end of work/play.log or the newest work/logs/firstrun-*.log says what. |
+| 2 | `USAGE` | Wrong arguments: run with --help to see them. |
+| 70 | `NOT_PREPARED` | The game is not built yet: start Project Vekta, or run its prepare step (--prepare), to check your files and build it. |
+| 71 | `WRONG_EDITION` | These files are another edition or version of the game: the port needs NPUA80856 version 01.00 (docs/GETTING-FILES.md). |
+| 72 | `FILE_MISSING` | A file the port needs is missing or still encrypted: give the game folder (--game), or let your RPCS3 make the decrypted copy (--rpcs3). |
+| 73 | `NO_RPCS3` | No RPCS3 with the game installed was found in its usual places: give its folder (--rpcs3 DIR), or your files (--game, --eboot). |
+| 74 | `BUILD_FAILED` | The build stopped: the reason is at the end of the newest work/logs/firstrun-*.log; after a fix, prepare again (it resumes). |
+| 75 | `CPU` | This CPU is too old: the build needs x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or AMD Excavator, 2013 and later). |
+| 76 | `EBOOT` | This build was made from another EBOOT.elf than the game folder's: run Verify and rebuild (Windows) or ./project-vekta --prepare (Linux). |
+| 77 | `NO_VULKAN` | No Vulkan driver was found: install or update your graphics card's driver. |
+| 130 | `STOPPED` | Stopped by the player or the time limit: start again, and the build resumes where it stopped. |
+
+Any other code is the game's own (a crash shows as Windows' or the shell's code for it).
+
 ## Building on Windows or macOS
 
 Windows: a release folder, made on Linux, builds the port on the player's PC with nothing else installed (no Git,
@@ -235,7 +270,7 @@ and `data_ps3.psarc` (optional: empty, the game folder's own `.edat` is read). I
 anything and keeps them in `work\paths.env`. Then it builds the port in the wizard, with a progress bar and a Stop
 button; the build's first step checks the files' SHA-256, and when it stops the wizard says why and opens its log. The
 launcher (`Project Vekta.exe`) builds on its first start when that did not happen, then starts the game. A silent
-install takes the files as switches: `/GAME=<dir> /EBOOT=<file> /PSARC=<file> [/DEVFLASH=<dir>]`.
+install takes the files as switches: `/GAME=<dir> /EBOOT=<file> /PSARC=<file>`.
 
 A page after those offers NVIDIA DLSS, with a box that is unticked by default: "Download NVIDIA DLSS (NVIDIA RTX
 GPUs). I accept the NVIDIA DLSS SDK license", and the licence's link
@@ -243,7 +278,7 @@ GPUs). I accept the NVIDIA DLSS SDK license", and the licence's link
 NVIDIA's repository, checks them against their pins, builds DLSS in and puts `nvngx_dlss.dll` beside `KZ1HD.exe`;
 unticked, nothing of NVIDIA's is downloaded and the build has AMD FSR 3.1 only. The answer goes to `firstrun.py
 --dlss accept|decline` and `work\dlss-choice`, and an upgrade offers it again as it was. To change it, run the setup
-again (or `run.cmd --dlss accept` / `--dlss decline` in the folder); a silent install takes `/DLSS=accept`.
+again (or `scripts\run.cmd --dlss accept` / `--dlss decline` in the folder); a silent install takes `/DLSS=accept`.
 
 Saves and settings (`kz1hd_pc.ini`, `kz1hd_keys.ini`, `gamedata/`) go to `%APPDATA%\Project Vekta`: the launcher runs
 the game from there. With the setup's "Portable" task (`/MERGETASKS=portable`) they stay in the install folder's
@@ -270,9 +305,12 @@ no longer matches the script).
 
 The folder keeps this repository's layout: the port's sources, the patched ps3recomp in `work/ps3recomp-patched` (so
 the player needs no Git) and the toolchain in `work/toolchain-cache` (llvm-mingw, CMake, Ninja, the embeddable
-Python, SDL2, zlib, glslang, the Vulkan headers and FFmpeg). On Windows, `run.cmd` asks where your files are, checks
-them, asks once about NVIDIA DLSS as `tools/install.sh` does, and builds `work/build-win/KZ1HD.exe` there
-(`tools/release/firstrun.py`; glslang and zlib are compiled on the first run), and `play.cmd` starts the game (`tools/release/launch.py`). Without the right to make symbolic links,
+Python, SDL2, zlib, glslang, the Vulkan headers and FFmpeg). On Windows, `Project Vekta.exe` (the one program at the folder's top) builds on the first start and then plays
+(`tools/release/launch.py --build-if-needed`): from the player's RPCS3 in its usual places without a question, or with
+the first run's questions in `scripts\run.cmd`, which asks where your files are, checks them, asks once about NVIDIA
+DLSS as `tools/install.sh` does, and builds `work/build-win/KZ1HD.exe` there (`tools/release/firstrun.py`; glslang and
+zlib are compiled on the first run). `scripts\play.cmd` plays in a console. The launcher contract, `--prepare` and the
+exit codes: "Starting from a launcher" below. Without the right to make symbolic links,
 the game folder gets copies of the EBOOT and the archive. The payload's scrub refuses game files, home paths and
 secrets; `manifest.json` lists every file with its SHA-256. macOS is not supported.
 
@@ -293,8 +331,9 @@ tools/release/assemble_payload.py --platform linux --out work/release/linux \
     [--tar work/release/project-vekta-<version>-linux.tar.gz]
 ```
 
-There, `./run.sh` asks where your files are and builds (`KZ_LINUX_TOOLCHAIN=pinned`; `tools/release/
-build_linux_deps.py` compiles SDL2, zlib and glslang on the first run), and `./play.sh` starts the game. In a source
+There, `./project-vekta` (the one program at the folder's top) builds on the first start, from the player's RPCS3
+without a question, and then plays; `scripts/run.sh` asks where your files are and builds (`KZ_LINUX_TOOLCHAIN=pinned`;
+`tools/release/build_linux_deps.py` compiles SDL2, zlib and glslang on the first run), and `scripts/play.sh` plays. In a source
 checkout `KZ_LINUX_TOOLCHAIN=pinned tools/install.sh` takes the same route. The release workflow unpacks the folder
 in a Debian 11 container with no compiler, builds its libraries and ps3recomp's boot smoke test with it and runs
 them (`tools/release/check_linux_folder.sh`). A launcher packaged as a Flatpak or AppImage around this folder is a

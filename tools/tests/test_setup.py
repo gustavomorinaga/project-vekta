@@ -2,7 +2,7 @@
 """Host test for the Windows setup program's pieces: installer/vekta.iss names files the payload has (its LICENSE,
 VERSION and the launcher) and its art; the launcher (installer/launcher/launcher.c) starts the Python and the script
 at the paths assemble_payload.py gives them, and passes --build-if-needed, which launch.py takes; the launcher's
-version block comes from VERSION; launch.py --build-if-needed without run.cmd says what is missing; the Inno Setup
+version block comes from VERSION; launch.py --build-if-needed in an empty folder says what is missing; the Inno Setup
 pin is there; .cmd and .iss files keep CRLF; the pages check check-game-files.py's sizes, and the build in the
 wizard passes firstrun.py's own options and labels its steps. No compiler and no Wine: tools/release/build_launcher.py and
 build_setup.py run on the maintainer's machine (docs/BUILDING.md)."""
@@ -121,7 +121,7 @@ check("' --dlss ' + DlssChoice" in text and "work\\dlss-choice'), DlssChoice" in
 check(not re.search(r"(?im)^Source:.*(nvngx|nvsdk|dlss)", text), "setup names no NVIDIA file to install")
 check('Name: "{app}\\work\\toolchain-cache\\dlss-sdk"' in text, "the uninstaller removes the DLSS download")
 
-for rel in ("installer/run.cmd", "installer/play.cmd"):
+for rel in ("installer/run.cmd", "installer/play.cmd", "installer/prepare.cmd"):
     data = (ROOT / rel).read_bytes()
     check(b"\n" not in data.replace(b"\r\n", b""), f"{rel} has CRLF line endings")
 
@@ -144,11 +144,18 @@ with tempfile.TemporaryDirectory() as tmp:
     err = io.StringIO()
     se = sys.stderr
     sys.stderr = err
+    # a game folder named (KZ_GAME) but not there: the check fails the same way on every machine, and no RPCS3 of
+    # this machine is looked for (with nothing given, the first start would search RPCS3's usual places)
+    old_game = os.environ.get("KZ_GAME")
+    os.environ["KZ_GAME"] = os.path.join(tmp, "no game here")
     try:
         r = launch.main(["--root", tmp, "--build-if-needed"])
     finally:
         sys.stderr = se
-    check(r == 1 and "no game folder" in err.getvalue(), f"no run.cmd: launch says what is missing: {err.getvalue()}")
+        os.environ.pop("KZ_GAME") if old_game is None else os.environ.__setitem__("KZ_GAME", old_game)
+    check(r == launch.FILE_MISSING and "missing or still encrypted" in err.getvalue(),
+          f"an empty folder, its game folder missing: the first run's check fails, and launch says so: {r} "
+          f"{err.getvalue()}")
     try:
         ap.plan(str(ROOT), tmp, str(pathlib.Path(tmp) / "missing.exe"))
         check(False, "a missing launcher refuses the payload")

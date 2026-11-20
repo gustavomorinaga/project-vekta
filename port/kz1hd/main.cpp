@@ -721,7 +721,7 @@ static int kz_eboot_verify(const char* path)
         fprintf(stderr, "[kz] EBOOT check: built from %.16s (%lld bytes), this one has %lld bytes\n", KZ_EBOOT_SHA256,
                 (long long)KZ_EBOOT_SIZE, size);
     fprintf(stderr, "[kz] EBOOT check: This build was made from another EBOOT.elf than the one in %s. Run 'Verify and "
-                    "rebuild' (Windows) or ./run.sh (Linux).\n", dir.c_str());
+                    "rebuild' (Windows) or ./project-vekta --prepare (Linux).\n", dir.c_str());
     return KZ_EXIT_EBOOT;
 #else
     (void)path;

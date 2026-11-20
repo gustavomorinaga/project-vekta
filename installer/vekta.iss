@@ -17,7 +17,7 @@
 ; nothing, except NVIDIA DLSS when the player ticks its box (unticked by default): the box accepts NVIDIA's DLSS SDK
 ; licence, and the build then fetches the SDK's files from NVIDIA's repository on this machine (firstrun.py --dlss
 ; accept; nvngx_dlss.dll goes beside KZ1HD.exe). The answer is kept in work\dlss-choice and offered again on an
-; upgrade; running setup again (or run.cmd --dlss accept|decline) changes it.
+; upgrade; running setup again (or scripts\run.cmd --dlss accept|decline) changes it.
 ; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>]
 ; [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with the game and
 ; its files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
@@ -124,6 +124,10 @@ Type: filesandordirs; Name: "{app}\assets"
 Type: filesandordirs; Name: "{app}\docs"
 Type: filesandordirs; Name: "{app}\work\ps3recomp-patched"
 Type: filesandordirs; Name: "{app}\work\toolchain-cache"
+; up to 0.5.x run.cmd and play.cmd sat beside the launcher; from 0.6.0 they are in scripts\, so that the launcher is the
+; one program at the top (a launcher such as Quiver starts the one it finds there)
+Type: files; Name: "{app}\run.cmd"
+Type: files; Name: "{app}\play.cmd"
 ; v0.2.0's Start menu entry, replaced by "Verify and rebuild"
 Type: files; Name: "{group}\Build again (your files, the lift, the compile).lnk"
 
@@ -159,7 +163,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: 
 
 [Run]
 Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"; Description: "&Play {#AppName} now"; Flags: postinstall nowait skipifsilent; Check: BuildSucceeded
-Filename: "{app}\run.cmd"; WorkingDir: "{app}"; Description: "&Build now in a console (it asks again where your files are)"; Flags: postinstall shellexec skipifsilent unchecked; Check: BuildNotDone
+Filename: "{app}\scripts\run.cmd"; WorkingDir: "{app}"; Description: "&Build now in a console (it asks again where your files are)"; Flags: postinstall shellexec skipifsilent unchecked; Check: BuildNotDone
 
 [UninstallDelete]
 Type: files; Name: "{app}\vekta-install.ini"

@@ -108,7 +108,7 @@ else
 fi
 
 is "launch.py's EXIT_CPU is kz_exit.h's KZ_EXIT_CPU ($want)" \
-  [ "$(sed -n 's/^EXIT_CPU = \([0-9]*\)$/\1/p' "$ROOT/tools/release/launch.py")" = "$want" ]
+  [ "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import launch; print(launch.EXIT_CPU)' "$ROOT/tools/release")" = "$want" ]
 python3 - "$ROOT" <<'PY'; check $? "tools/kzbuild.py's level follows KZ_MARCH as CMakeLists.txt's rule does"
 import sys
 sys.path.insert(0, sys.argv[1] + "/tools")

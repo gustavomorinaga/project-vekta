@@ -148,7 +148,7 @@ def cpu_line(have, need):
             f"one has x86-64-v{have}. The game cannot run on it")
 
 
-RPCS3_ROUTE = ("when the game is installed in RPCS3, run the first run again (run.cmd, run.sh or "
+RPCS3_ROUTE = ("when the game is installed in RPCS3, run the first run again (scripts/run.cmd, scripts/run.sh or "
                "install.sh) and choose \"Use my RPCS3 install\": your RPCS3 makes the decrypted copies")
 
 
@@ -175,7 +175,7 @@ def wrong_kind(label, head):
     """What to say about a file that starts with the wrong bytes, by what it is instead."""
     if head == b"SCE\0":
         return ("this is still encrypted (an EBOOT.BIN). The port needs the decrypted file; when the game is "
-                "installed in RPCS3, `firstrun.py --rpcs3` (offered by run.cmd, run.sh and "
+                "installed in RPCS3, `firstrun.py --rpcs3` (offered by scripts/run.cmd, scripts/run.sh and "
                 "install.sh) has your RPCS3 decrypt a copy")
     if head == b"NPD\0" and label == "data_ps3.psarc":
         return ("this is the .edat the package installs. Leave data_ps3.psarc unset (KZ_PSARC, the setup's field "
@@ -214,7 +214,7 @@ def main():
         if label == "data_ps3.psarc.edat" and edat_license(path) in (1, 2):
             print(f"WRONG    {label}: {path} is the PlayStation Store copy's archive, bound to your licence "
                   f"(licence type {edat_license(path)}), which the port cannot open itself. Run the first run again "
-                  "(run.cmd, run.sh or install.sh) and choose \"Use my RPCS3 install\": your RPCS3 opens a copy of it "
+                  "(scripts/run.cmd, scripts/run.sh or install.sh) and choose \"Use my RPCS3 install\": your RPCS3 opens a copy of it "
                   "with your licence (.rap) into data_ps3.psarc\n         expected: the disc package's .edat (licence "
                   "type 3), or a decrypted data_ps3.psarc")
             bad = True

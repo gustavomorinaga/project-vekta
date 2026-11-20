@@ -90,7 +90,7 @@ are linked.
   the presents try again). Workaround in 0.3.0: borderless or a window.
 - **A controller that is detected but gives no input** (a OneXPlayer X2 Mini Pro's built-in Xbox-style pad, issue
   #19). Fixed in 0.3.0 (patch 4012), not yet confirmed on that machine; in 0.2.0 set `SDL_JOYSTICK_RAWINPUT=0`
-  before `play.cmd`.
+  before starting the game.
 - **Slower under Wine and Proton:** about 100 fps in Level 7 against about 134 for the Linux build (144 Hz mode,
   2026-10-28). On a real Windows, a 7-minute session held 140 to 144 fps most of the time with drops to 100 to 120.
 - **No MangoHUD row** on the PC page of the Windows exe (MangoHUD is a Linux Vulkan layer; under Proton use it from
@@ -104,5 +104,6 @@ are linked.
 ## Building
 
 - Only the tested EBOOT works: the lift has its addresses built in ([GETTING-FILES.md](GETTING-FILES.md)).
-- On Windows the build runs only from the release folder or the setup program (`run.cmd`), not from a Git clone;
+- On Windows the build runs only from the release folder or the setup program (`Project Vekta.exe`, `scripts\run.cmd`), not from a Git
+  clone;
   macOS is not supported.
