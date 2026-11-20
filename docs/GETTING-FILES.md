@@ -2,7 +2,7 @@
 
 The port is built from your own copy of the game. This page says which files the scripts need, where they look for
 them, and how they are checked. It does not explain how to decrypt anything: this project ships no decryption tools
-or keys and gives no such instructions. The files below come from your own disc and your own PS3 firmware.
+or keys and gives no such instructions. The files below come from your own disc; no PS3 system software is needed.
 
 ## What you need
 
@@ -11,12 +11,13 @@ or keys and gives no such instructions. The files below come from your own disc 
 | The installed game folder | Killzone HD, title **NPUA80856**, as installed from the `PS3_EXTRA` package of the **Killzone Trilogy** disc (US, BCUS98116) or bought on the US PlayStation Store: `PARAM.SFO`, `TROPDIR/`, `USRDIR/` | `Game/NPUA80856/` (`KZ_GAME`) | yes |
 | `EBOOT.elf` | the game's executable, decrypted: an ELF file, not the `EBOOT.BIN` container in `USRDIR` | `Game/EBOOT.elf` (`KZ_EBOOT`) | yes |
 | `data_ps3.psarc` | the game's data archive, decrypted: a PSARC file. Without it the port reads the installed game's own `USRDIR/data_ps3.psarc.edat` (see below) | `Game/data_ps3.psarc` (`KZ_PSARC`) | no |
-| `dev_flash` | an installed PS3 system software 4.93, as RPCS3 keeps it; the port reads `sys/external/flashMP3.pic` from it as it is | `~/.config/rpcs3/dev_flash`; on Windows `Game\dev_flash`, since RPCS3 keeps it in its own folder, beside `rpcs3.exe` (`PS3_DEV_FLASH`) | for music and sound |
 
-Why the firmware: the game's music decoder is loaded from `flashMP3.pic`. The port runs that code, translated like
-the game's, instead of rewriting it. Up to 0.5.1 the port also needed the firmware's `libsre.prx`, decrypted, for the
-SPURS queue through which the game sends work to an SPU task; from 0.6.0 the port's runtime does that itself
-(ps3recomp patch 1022), and a `libsre.prx` saved by an earlier install is no longer read.
+No firmware: up to 0.5.x the port also needed two pieces of PS3 system software 4.93, the decrypted `libsre.prx` (the
+SPURS queue through which the game sends work to an SPU task) and `dev_flash`'s `flashMP3.pic` (the music decoder).
+From 0.6.0 the port's runtime does the queue itself (ps3recomp patch 1022) and decodes the music with minimp3; the
+game still asks for `flashMP3.pic`, and the port gives it a stand-in it writes itself, with no code in it
+([dev/flashmp3-native.md](dev/flashmp3-native.md)). A `libsre.prx` or `dev_flash` saved by an earlier install is no
+longer read.
 
 **The data archive without preparing it.** When there is no decrypted `data_ps3.psarc`, the port uses the
 `data_ps3.psarc.edat` in the installed game's `USRDIR`, as the package or RPCS3 installs it. The game itself passes
@@ -28,7 +29,7 @@ of it. No key is in this repository or in the downloads.
 
 **From your RPCS3.** `tools/install.sh`, the release folders' `Project Vekta.exe` and `./project-vekta` (with no question), `scripts\run.cmd` and
 `scripts/run.sh` (or `tools/release/firstrun.py --rpcs3 [DIR]`) find
-RPCS3 in its usual places, take the installed game folder, its `.edat` and `dev_flash` from it, and ask your RPCS3 to
+RPCS3 in its usual places, take the installed game folder, its `.edat` from it, and ask your RPCS3 to
 decrypt a copy of `USRDIR/EBOOT.BIN` into `work/prep` (`tools/release/rpcs3_import.py`). The result must match the
 `EBOOT.elf` row below. RPCS3's
 settings for that run go to `work/prep` too; your game and RPCS3 folders are only read.
@@ -58,10 +59,8 @@ Each line says `ok`, `MISSING`, `WRONG` (not the right kind of file: for example
 decrypted archive, or `EBOOT.BIN` instead of `EBOOT.elf`) or `DIFFERENT` (the right kind of file, but not the version
 the port was made from). With no decrypted archive the check looks at the game's `data_ps3.psarc.edat` instead. During the first
 run it also checks the folder the port is in (`--root`, `--work`): no `[`, `]` or `;` in its path, not inside
-OneDrive, and a PC clock not behind the port's files. When `dev_flash` is there, its system software version
-(`vsh/etc/version.txt`) must be 4.93: another one stops the check, and the setup's firmware page and the RPCS3 route
-refuse it too, naming the version they found. A required file that is missing, wrong or different stops the check, and the build with it;
-an optional one (the trophy set, `flashMP3.pic`) only gets its line. The tested versions:
+OneDrive, and a PC clock not behind the port's files. A required file that is missing, wrong or different stops the check, and the build with it;
+an optional one (the trophy set) only gets its line. The tested versions:
 
 | File | Size (bytes) | SHA-256 |
 |---|---|---|
@@ -71,12 +70,9 @@ an optional one (the trophy set, `flashMP3.pic`) only gets its line. The tested 
 | `data_ps3.psarc` (also what the `.edat` opens to) | 3,147,174,243 | `341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d` |
 | `USRDIR/data_ps3.psarc.edat` | 3,153,321,376 | `3c85c5321bccab33079896f5e74c06902e84648154b315af21e14878d93fe58b` |
 | `USRDIR/data_ps3.psarc.edat` (PlayStation Store copy; your RPCS3 opens it) | 3,153,321,376 | `c130493bc0d9b32bf00aa42e4e24cce1187c76f802838929267ad3255241962a` |
-| `flashMP3.pic` (4.93) | 69,695 | `adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a` |
 
 The lift has addresses of this EBOOT built in (`tools/lift.sh`, `re/function_seeds.txt`, the native functions in
-`port/kz1hd/`), so a different EBOOT will not work. The music decoder from another system software version has
-not been tried, so the check stops on a `dev_flash` other than 4.93 (`ASSUMPTION:` its code is unchanged across
-late versions, so another one may work, but nobody has tried).
+`port/kz1hd/`), so a different EBOOT will not work.
 
 ## Then
 

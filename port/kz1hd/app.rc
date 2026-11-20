@@ -1,3 +1,39 @@
-// The icon of KZ1HD.exe (Explorer, the taskbar before the game window has its own, shortcuts): the project's own
-// installer/art/vekta.ico, which the launcher also uses. Built on Windows only (CMakeLists.txt, enable_language(RC)).
+// Resources of KZ1HD.exe, built on Windows only (CMakeLists.txt, enable_language(RC)); after Project Helghast's
+// port/kz3/app.rc and app.manifest (undecuple, MIT).
+//   the icon (Explorer, the taskbar before the game window has its own, shortcuts): the project's own
+//   installer/art/vekta.ico, which the launcher also uses;
+//   the version block: kz_version.h, written by version.cmake from VERSION into the build folder;
+//   the manifest: app.manifest (supported Windows versions, DPI awareness).
+#include <winver.h>
+#include "kz_version.h"
+
 1 ICON "../../installer/art/vekta.ico"
+
+1 VERSIONINFO
+FILEVERSION VEKTA_VER_COMMA
+PRODUCTVERSION VEKTA_VER_COMMA
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Project Vekta contributors"
+      VALUE "FileDescription", "Project Vekta"
+      VALUE "FileVersion", VEKTA_VER_STR
+      VALUE "InternalName", "KZ1HD"
+      VALUE "OriginalFilename", "KZ1HD.exe"
+      VALUE "ProductName", "Project Vekta"
+      VALUE "ProductVersion", VEKTA_VER_STR
+      VALUE "Comments", "https://github.com/gustavomorinaga/project-vekta"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
+
+// 1 = CREATEPROCESS_MANIFEST_RESOURCE_ID, 24 = RT_MANIFEST (neither is in winver.h)
+1 24 "app.manifest"
