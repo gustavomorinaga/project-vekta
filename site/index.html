@@ -24,7 +24,7 @@
 <header id="top" class="box">
 <div class="logo"><img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320" alt="Project Vekta: Killzone HD PC"><span class="sticker">Work in progress</span></div>
 <ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li></ul>
-<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.5.3</b>source pre-release</a></nav>
+<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.5.4</b>source pre-release</a></nav>
 <div class="intro">
 <h1>Project Vekta<span>Killzone HD: Unofficial PC Port (static recompilation)</span></h1>
 <p class="lead">A native Linux and Windows x64 port of the 2011 PS3 remaster of the first Killzone, made by static recompilation: the game's PowerPC and SPU code is translated to C++ ahead of time and compiled into a PC program on your machine; graphics go through Vulkan. No emulator runs at play time.</p>
@@ -214,23 +214,19 @@
 </ul>
 </article>
 <article class="news rel">
+<h2>0.5.4</h2>
+<p class="meta">20 Nov 2026 · pre-release</p>
+<ul class="rlist">
+<li><span class="sec">Fixed</span>&quot;Use my RPCS3 install&quot; on Windows: the RPCS3 the setup starts to decrypt the game gets only the Windows folders on its PATH. A PATH passed on by the program that opened the setup (a download manager in the report) could make RPCS3 load that program&#x27;s copy of <code>msvcp140.dll</code>, stop at its start-up check with a &quot;Fatal Error&quot; window and exit with 0 without decrypting anything (#94). When RPCS3 stops at that check all the same, the setup now says so and names the DLL, instead of &quot;RPCS3 did not make the file&quot;.</li>
+</ul>
+</article>
+<article class="news rel">
 <h2>0.5.3</h2>
 <p class="meta">19 Nov 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="sec">Fixed</span>The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its <code>data_ps3.psarc.edat</code> is bound to the buyer&#x27;s licence, which the port cannot open, so the first-run check stopped on it with &quot;DIFFERENT&quot; (#67). &quot;Use my RPCS3 install&quot; now has your RPCS3 decrypt a copy of it too, with the licence (<code>.rap</code>) it already uses for the game, into <code>work/prep/data_ps3.psarc</code>: the same archive as the disc copy&#x27;s, checked by its SHA-256. Without RPCS3, the check names the Store copy and says to use that route.</li>
 <li><span class="sec">Fixed</span>Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows &quot;The game stopped right after it started&quot;: the launcher now takes the game&#x27;s own quit line as the player&#x27;s choice.</li>
 <li><span class="sec">Changed</span>&quot;Use my RPCS3 install&quot; names, on the setup&#x27;s build page, each file your RPCS3 is decrypting, and links instead of copying the game&#x27;s files it decrypts when they are on the same drive as the port (no second 3 GB copy).</li>
-</ul>
-</article>
-<article class="news rel">
-<h2>0.5.2</h2>
-<p class="meta">18 Nov 2026 · pre-release</p>
-<ul class="rlist">
-<li><span class="sec">Added</span>Finding RPCS3 by hand: the setup&#x27;s &quot;Your game&quot; page has a &quot;Find RPCS3...&quot; button, and <code>run.cmd</code>, <code>./run.sh</code> and <code>tools/install.sh</code> a fourth choice, &quot;My RPCS3 is somewhere else&quot;, for an RPCS3 the automatic search did not find. The folder can be where <code>rpcs3.exe</code> is, RPCS3&#x27;s config folder or the game folder RPCS3 installed; the setup keeps it for the next run (<code>/RPCS3=&lt;dir&gt;</code> gives it on the command line).</li>
-<li><span class="sec">Fixed</span>The build works in an install folder with a space in its path (as <code>D:\Games\My Games\Project Vekta</code>): the force-included headers and the Windows toolchain&#x27;s include and library folders are now quoted, where clang stopped with &quot;no such file&quot; on the part of the path after the space.</li>
-<li><span class="sec">Fixed</span>&quot;Use my RPCS3 install&quot; finds a portable RPCS3 unzipped two folders down a drive or the home folder (as <code>D:\Games\PS3\rpcs3-...</code>), and a path anywhere inside RPCS3 (its <code>dev_hdd0\game\NPUA80856</code>, <code>dev_flash</code> or a file in them, or its game folder where <code>vfs.yml</code> keeps it outside RPCS3) now counts as pointing at that RPCS3.</li>
-<li><span class="sec">Fixed</span>The first run (<code>run.cmd</code>, <code>./run.sh</code>, <code>tools/install.sh</code>) offers &quot;Use my RPCS3 install&quot; again after a failed check when the paths came from an earlier install or point into RPCS3, and takes <code>EBOOT.elf</code>, <code>data_ps3.psarc</code> or <code>libsre.prx</code> from a folder given for them. The check now says what a folder given for a file is (the installed game&#x27;s folder holds only the encrypted <code>EBOOT.BIN</code> and <code>.edat</code>; a folder that is not <code>dev_flash</code>) instead of &quot;nothing at&quot;, and how to go on.</li>
-<li><span class="sec">Changed</span>The FFmpeg the Windows and Linux builds download is now served from this repository&#x27;s own release (<code>deps-ffmpeg-n9.0.2-57-gd838f9f9ae</code>, BtbN&#x27;s autobuild-2026-11-16-15-29 byte for byte, same SHA-256 pins), with FFmpeg&#x27;s source for that build beside it, so a removed upstream build can no longer break a release as it did 0.5.0. A new <code>deps-mirror</code> workflow publishes a re-pin (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/deps-mirror.md">docs/dev/deps-mirror.md</a>).</li>
 </ul>
 </article>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">The whole changelog<span aria-hidden="true"> &gt;</span></a></p>
@@ -284,10 +280,10 @@
 <section id="install" class="promo">
 <h2>Install</h2>
 <div class="dl">
-<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.3">v0.5.3</a> <span>pre-release</span></p>
-<p class="small">19 Nov 2026 · playable · source for Linux x64</p>
-<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.3">Download v0.5.3</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
-<p>The release page has project-vekta-0.5.3-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.4">v0.5.4</a> <span>pre-release</span></p>
+<p class="small">20 Nov 2026 · playable · source for Linux x64</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.4">Download v0.5.4</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has project-vekta-0.5.4-source.tar.gz (this version's tree with ps3recomp at its pinned commit) with a .sha256 file, and SHA256SUMS: check your download against them. There is no installer yet: the archive builds the port as below.</p>
 </div>
 <p>The build checks your own Killzone HD files, translates the game's code and builds it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <pre>git clone --recurse-submodules \
