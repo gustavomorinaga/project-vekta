@@ -225,7 +225,9 @@ files and builds first (`tools/release/launch.py --build-if-needed`), asking not
 their usual places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR`.
 
 - `--game DIR`, `--eboot FILE`, `--psarc FILE`, `--rpcs3 [DIR]`, or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC` in the
-  environment: where the files are. They are kept in `work/paths.env` once the check passes.
+  environment: where the files are. They are kept in `work/paths.env` once the check passes. A game folder given
+  without a decrypted EBOOT (`--game` alone, as a launcher passes it) is taken as the folder RPCS3 installed: your
+  RPCS3 makes the decrypted copy from its `EBOOT.BIN` (`--rpcs3` with that folder).
 - `--prepare` (also `scripts/prepare.cmd`, `scripts/prepare.sh`): checks the files and builds with no window and
   no question. It prints `progress <0..1> <text>` lines and, on a failure, one `reason <text>` line at the end, and
   exits 0 when built. `--timeout SECS` stops it cleanly; the next run resumes.

@@ -79,17 +79,7 @@ extern "C" int vm_inline_ok;
 #include <psapi.h>
 #endif
 
-/* The heap in use, for the stats line: glibc's allocator count, or the
- * process's private bytes on Windows (no mallinfo2 there). */
-static size_t kz_heap_bytes(void)
-{
-#ifdef _WIN32
-    PROCESS_MEMORY_COUNTERS_EX pmc;
-    return GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof pmc) ? pmc.PrivateUsage : 0;
-#else
-    return mallinfo2().uordblks;
-#endif
-}
+#include "heap_bytes.h"   /* kz_heap_bytes: mallinfo2 from glibc 2.33, mallinfo before (the Linux folder) */
 
 #ifdef _WIN32
 /* timeBeginPeriod: <windows.h> arrives with WIN32_LEAN_AND_MEAN set, which
