@@ -33,8 +33,9 @@ version, patch set or DLSS choice, as after an install over an earlier release w
 firstrun.py --bar rebuilds it first in a console of its own (run.cmd when no paths were saved yet), so the game of
 an earlier version never starts from the new install. A game that ends within EARLY_EXIT seconds without its window
 being closed or the player quitting it did not start: a message then says so, with the end of its log. One of the
-exe's own exit codes (EXIT_CODES, port/kz1hd/kz_exit.h: a CPU below the level the build is made for) gets its own
-message instead.
+exe's own exit codes (EXIT_CODES, port/kz1hd/kz_exit.h: a CPU below the level the build is made for, an EBOOT.elf
+other than the one the build was lifted from) gets its own message instead; the EBOOT's comes with an offer to rebuild
+(as a stale build's), and the game starts once that build is done.
 
 After Project Pyrrhus's and Project Helghast's tools/release/launch.py (undecuple, MIT), which decide the same
 things for their launchers. Exit: the game's own code, 1 = not built yet, 2 = usage. Standard library only.
@@ -67,13 +68,17 @@ INSTALL_INI = "vekta-install.ini"   # the setup program writes it in the install
 SAVE_FOLDER = "Project Vekta"       # under %APPDATA% when the install is not portable
 PLAYER_FILES = ("kz1hd_pc.ini", "kz1hd_keys.ini", "gamedata")   # what the game writes in the folder it runs from
 # KZ1HD's own exit codes (port/kz1hd/kz_exit.h, the one list; tools/tests/test_cpu_check.sh checks they agree): what
-# the player is told for each. The exe writes its own line for them into the log ("[kz] CPU check: ..."), shown
-# when it is there.
+# the player is told for each: (the start of the exe's own line in the log, the part of it not shown, the text when
+# the log has no such line).
 EXIT_CPU = 75
+EXIT_EBOOT = 76
 EXIT_CODES = {
-    EXIT_CPU: ("[kz] CPU check: ", "This build of Project Vekta needs a newer CPU than this one (x86-64-v3: AVX2, FMA, "
-                                   "BMI2: Intel Haswell (2013) or AMD Excavator (2015) and later). The game cannot "
-                                   "run on it."),
+    EXIT_CPU: ("[kz] CPU check: ", "[kz] CPU check: ",
+               "This build of Project Vekta needs a newer CPU than this one (x86-64-v3: AVX2, FMA, BMI2: Intel Haswell "
+               "(2013) or AMD Excavator (2015) and later). The game cannot run on it."),
+    EXIT_EBOOT: ("[kz] EBOOT check: This build", "[kz] EBOOT check: ",
+                 "This build was made from another EBOOT.elf than the one in the game folder. Run 'Verify and "
+                 "rebuild' (Windows) or ./run.sh (Linux)."),
 }
 EARLY_EXIT = 20                     # seconds: a game that ends sooner, its window not closed, did not start
 
@@ -334,10 +339,10 @@ def exit_code_text(rc, log):
     text; None for any other code."""
     if rc not in EXIT_CODES:
         return None
-    prefix, text = EXIT_CODES[rc]
+    start, strip, text = EXIT_CODES[rc]
     try:
         with open(log, encoding="utf-8", errors="replace") as f:
-            text = next((ln[len(prefix):].strip() for ln in f if ln.startswith(prefix)), text)
+            text = next((ln[len(strip):].strip() for ln in f if ln.startswith(start)), text)
     except OSError:
         pass
     return text
@@ -500,7 +505,12 @@ def main(argv=None):
     t0 = time.monotonic()
     rc = run(argv_, cwd, env, log)
     own = exit_code_text(rc, log)
-    if own:
+    if rc == EXIT_EBOOT and a.build_if_needed:
+        # the build was lifted from another EBOOT than the game folder's: the same rebuild as a stale build's
+        if ask(own + "\n\nRebuild now (as Verify and rebuild does)? This takes as long as the first build.") and \
+                update_build(root):
+            rc = run(argv_, cwd, env, log)
+    elif own:
         notify(own)
     elif time.monotonic() - t0 < EARLY_EXIT and not window_closed(log):
         notify(early_exit_text(rc, log))

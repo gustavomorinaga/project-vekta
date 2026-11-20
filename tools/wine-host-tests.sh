@@ -100,5 +100,19 @@ if "$CC" -O2 -march=x86-64 -DKZ_CPU_REQUIRED=3 -I "$KZ_ROOT/port/kz1hd" -c "$KZ_
 else
   echo "FAIL test_cpu_check (build)"; tail -5 "$O/test_cpu_check.build.log"; failed+=(test_cpu_check)
 fi
+# The EBOOT check (port/kz1hd/eboot_check.h): SHA-256 vectors, equal / changed / truncated / missing, in a folder whose
+# name has a space and accents (ANSI argv and fopen, as ppu_load_elf opens the EBOOT)
+acc=$'A\xc3\xa7\xc3\xb5es e EBOOT'   # "Acoes" with c-cedilla and o-tilde: Wine hands it to the exe in the ANSI code page
+n=$((n + 1)); rm -rf "${O:?}/$acc"; mkdir -p "$O/$acc"
+if build test_eboot_check -std=gnu17 -I "$KZ_ROOT/port/kz1hd" "$KZ_ROOT/tools/tests/test_eboot_check.c" \
+     >"$O/test_eboot_check.build.log" 2>&1; then
+  if (cd "$O" && timeout 600 "$wine" "bin/test_eboot_check.exe" "$acc") >"$O/test_eboot_check.log" 2>&1; then
+    echo "ok   test_eboot_check"
+  else
+    echo "FAIL test_eboot_check"; grep FAIL "$O/test_eboot_check.log" | head -5; failed+=(test_eboot_check)
+  fi
+else
+  echo "FAIL test_eboot_check (build)"; tail -5 "$O/test_eboot_check.build.log"; failed+=(test_eboot_check)
+fi
 echo "wine host tests: $((n - ${#failed[@]}))/$n pass${failed:+; failed: ${failed[*]}}"
 (( ${#failed[@]} == 0 ))

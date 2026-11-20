@@ -18,6 +18,10 @@ program and folder that build it. Until a release that calls itself playable
   the game says which level it needs and which one the CPU has (a message box on Windows, the launcher's message, the
   log), and exits with code 75. The first run's check and the Windows setup's first page ask the same before the
   build: the first run stops there, and the setup asks whether to install anyway.
+- The game checks that its `EBOOT.elf` is the one the build was made from (by size and SHA-256, in tens of
+  milliseconds) before it starts. With another one (another version of the game, a file replaced after the build),
+  it says so instead of running code that does not match, opens no window and exits with code 76; the launcher
+  offers to rebuild. `KZ_EBOOT_CHECK=0` skips it.
 
 ### Changed
 - No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself

@@ -57,4 +57,6 @@ while kill -0 $pid 2>/dev/null; do
     sleep 1
 done
 kill -9 $pid 2>/dev/null
+# the exe's own reasons for not starting (port/kz1hd/kz_exit.h: the CPU check, the EBOOT check), said here too
+grep -a '^\[kz\] \(CPU\|EBOOT\) check: [A-Z]' "$KZ_WORK/play.log" >&2
 echo "log: $KZ_WORK/play.log"

@@ -146,6 +146,11 @@ with tempfile.TemporaryDirectory() as tmp:
     check(calls[5][3] == "ab05_spu_func_01F0" and calls[5][2] == "func_0012,func_00AB", "SPU_LIFT_NATIVE from SPU on")
     check(json.loads((root / "work" / "lift" / "analysis" / "seeds.json").read_text()) == ["0x10", "0x20"],
           "seeds.json: the seed lines without comments or blanks")
+    eid = (root / "work" / "lift" / "gen" / "eboot_id.h").read_text()
+    data = pathlib.Path(e["KZ_EBOOT"]).read_bytes()
+    check(f'#define KZ_EBOOT_SHA256 "{hashlib.sha256(data).hexdigest()}"' in eid and
+          f"#define KZ_EBOOT_SIZE {len(data)}LL" in eid,
+          f"the lift writes gen/eboot_id.h with the size and SHA-256 of the EBOOT it lifted (eboot_check.h): {eid}")
     (root / "work" / "argv.log").unlink()
     for d in ("flashmp3", "flashmp3_src"):   # an earlier version's lift of the firmware's MP3 decoder
         (root / "work" / "lift" / "spu" / d).mkdir(parents=True, exist_ok=True)
@@ -256,7 +261,7 @@ with tempfile.TemporaryDirectory() as tmp:
         check(False, "build without a lift is refused")
     except kzbuild.Fail as err:
         check("run tools/lift.sh first" in str(err), str(err))
-    (root / "work" / "lift" / "gen").mkdir(parents=True)
+    (root / "work" / "lift" / "gen").mkdir(parents=True, exist_ok=True)   # the lift above left eboot_id.h there
     (root / "work" / "lift" / "gen" / "ppu_recomp.h").write_text("")
     sys.stdout = io.StringIO()
     try:
