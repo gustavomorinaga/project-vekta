@@ -58,6 +58,11 @@ FIXES_052_NOTE = ("This release has been tried only on the maintainer's machine 
 FIXES_053_NOTE = ("This release has been tried only on the maintainer's machine (Windows: the test setup installed, "
                   "built and played from both the disc and the PlayStation Store copies); no other machine has built "
                   "it yet. Reports of an install or a build elsewhere, working or not, are welcome as issues.")
+# v0.5.4: the fix was confirmed on the reporter's own Windows 11 machine (issue #94, 2026-11-20).
+FIXES_054_NOTE = ("The fix in this release was confirmed on the reporter's own Windows 11 machine with a test build of "
+                  "the same code (#94): the setup, given the PATH that had stopped 0.5.3, decrypted both files with "
+                  "RPCS3, built and played. Reports of an install or a build elsewhere, working or not, are welcome "
+                  "as issues.")
 
 # v0.1.0 carried the source archive only; later releases also carry the Windows setup program and folder (release.yml).
 SOURCE_ONLY = (
@@ -92,6 +97,11 @@ NEED_PREPARED = ("you need your own Killzone HD (NPUA80856) from the Killzone Tr
 NEED_050 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
             "4.93; when both are installed in your RPCS3, the installers use them and your RPCS3 makes the decrypted "
             "copies of the EBOOT and libsre, otherwise you give those two decrypted files yourself")
+# From 0.5.3 the PlayStation Store copy installs too, through the player's RPCS3 and the licence it already has.
+NEED_053 = ("you need your own Killzone HD (NPUA80856), from the Killzone Trilogy disc or the PlayStation Store with "
+            "its licence, installed, and PS3 system software 4.93; when both are installed in your RPCS3, the "
+            "installers use them and your RPCS3 makes the decrypted copies (the Store copy needs this route), "
+            "otherwise you give the decrypted files of a disc copy yourself")
 # After 0.4.0 the paragraph on the downloads comes first, under this heading, with the player's install page.
 INSTALL_FIRST = (0, 4, 0)
 INSTALL_PAGE = ("How to install, step by step, with what each step asks and shows: "
@@ -152,7 +162,7 @@ def notes(version, entry, first=False):
         lists = ([f"New in {version}:\n{bullets(new)}"] if new else []) + ([f"Fixed:\n{bullets(fixed)}"] if fixed else [])
     v = tuple(int(x) for x in version.split("."))
     files = (SOURCE_ONLY.format(version=version, blob=blob) if version == "0.1.0" else
-             FILES.format(version=version, blob=blob, need=NEED_050 if v >= (0, 5, 0) else NEED_PREPARED, linux=(
+             FILES.format(version=version, blob=blob, need=NEED_053 if v >= (0, 5, 3) else NEED_050 if v >= (0, 5, 0) else NEED_PREPARED, linux=(
                  LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE).format(version=version, blob=blob)))
     install_first = v > INSTALL_FIRST
     return "\n\n".join([
@@ -162,7 +172,7 @@ def notes(version, entry, first=False):
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
         *([] if install_first else [files]),
         *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE], "0.5.0": [INSTALL_050_NOTE], "0.5.1": [INSTALL_050_NOTE],
-           "0.5.2": [FIXES_052_NOTE], "0.5.3": [FIXES_053_NOTE]}.get(version, [])),
+           "0.5.2": [FIXES_052_NOTE], "0.5.3": [FIXES_053_NOTE], "0.5.4": [FIXES_054_NOTE]}.get(version, [])),
     ]) + "\n"
 
 

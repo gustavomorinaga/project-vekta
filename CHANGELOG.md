@@ -7,6 +7,8 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-20 (pre-release)
+
 ### Fixed
 - "Use my RPCS3 install" on Windows: the RPCS3 the setup starts to decrypt the game gets only the Windows folders on
   its PATH. A PATH passed on by the program that opened the setup (a download manager in the report) could make RPCS3
