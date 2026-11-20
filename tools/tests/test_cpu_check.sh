@@ -17,6 +17,7 @@ out=$(mktemp -d); trap 'rm -rf "$out"' EXIT
 d="$out/cpu check"; mkdir -p "$d"
 fails=0
 check() { if [ "$1" = 0 ]; then echo "ok   $2"; else echo "FAIL $2"; fails=$((fails + 1)); fi; }
+is() { local what=$1; shift; "$@"; check $? "$what"; }   # is WHAT TEST...: the test's result as a check
 CC=${CC:-clang}; CXX=${CXX:-clang++}
 command -v cmake >/dev/null && command -v "$CC" >/dev/null && command -v "$CXX" >/dev/null ||
   { echo "FAIL: cmake, $CC and $CXX are needed" >&2; exit 1; }
@@ -28,11 +29,11 @@ grep '^FAIL' "$d/level.log"
 here=$(sed -n 's/^this CPU: x86-64-v\([0-9]\)$/\1/p' "$d/level.log")
 proc=$(python3 -c "import importlib.util as u, sys; s = u.spec_from_file_location('c', sys.argv[1]); m = u.module_from_spec(s)
 s.loader.exec_module(m); print(m.cpu_level(None, windows=False))" "$ROOT/tools/check-game-files.py")
-[ -n "$here" ] && [ "$here" = "$proc" ]; check $? "CPUID says x86-64-v$here, /proc/cpuinfo's flags say x86-64-v$proc"
+is "CPUID says x86-64-v$here, /proc/cpuinfo's flags say x86-64-v$proc" [ -n "$here" ] && [ "$here" = "$proc" ]
 
 # CMakeLists.txt's own lines for cpu_check.c, between "set(KZ_CPU_REQUIRED 0)" and its status message
 rule=$(sed -n '/^set(KZ_CPU_REQUIRED 0)$/,/^message(STATUS "CPU check:/p' "$K/CMakeLists.txt")
-[ -n "$rule" ]; check $? "CMakeLists.txt has the cpu_check.c rule"
+is "CMakeLists.txt has the cpu_check.c rule" [ -n "$rule" ]
 cp "$K/cpu_check.c" "$K/cpu_level.h" "$K/kz_exit.h" "$ROOT/tools/tests/test_cpu_check_init.cpp" "$d/"
 cat >"$d/CMakeLists.txt" <<CM
 cmake_minimum_required(VERSION 3.20)
@@ -53,18 +54,18 @@ V3_INSN='^\s+[0-9a-f]+:\s+(v[a-z0-9]+|andn|bextr|blsi|blsmsk|blsr|bzhi|mulx|pdep
 printf 'unsigned f(unsigned a, unsigned b) { return a >> b; }\n' >"$d/v3.c" && "$CC" -O2 -march=x86-64-v3 -c "$d/v3.c" -o "$d/v3.o"
 objdump -d --no-show-raw-insn "$d/v3.o" | grep -qE "$V3_INSN"; check $? "the instruction scan sees a v3 object's shrx (the scan works)"
 v3=$(objdump -d --no-show-raw-insn "$obj" | grep -E "$V3_INSN" | head -3)
-[ -n "$obj" ] && [ -z "$v3" ]; check $? "the check's object has no VEX or other x86-64-v3 instruction ${v3:+($v3)}"
+is "the check's object has no VEX or other x86-64-v3 instruction ${v3:+($v3)}" [ -n "$obj" ] && [ -z "$v3" ]
 
 if [ "$here" -ge 3 ]; then
   o=$("$t" 2>&1); rc=$?
-  [ $rc = 0 ] && [ "$o" = $'static initializer\nmain' ]; check $? "on this x86-64-v$here CPU it runs (exit $rc)"
+  is "on this x86-64-v$here CPU it runs (exit $rc)" [ $rc = 0 ] && [ "$o" = $'static initializer\nmain' ]
   o=$(KZ_CPU_LEVEL_MAX=3 "$t" 2>&1); rc=$?
-  [ $rc = 0 ]; check $? "KZ_CPU_LEVEL_MAX=3, the build's level: it runs"
+  is "KZ_CPU_LEVEL_MAX=3, the build's level: it runs" [ $rc = 0 ]
 else
   echo "FAIL this machine is x86-64-v$here: the program built for x86-64-v3 cannot be checked running here"; fails=$((fails + 1))
 fi
 o=$(KZ_CPU_LEVEL_MAX=2 KZ_LOG="$d/k z.log" "$t" 2>&1); rc=$?
-[ "$rc" = "$want" ]; check $? "KZ_CPU_LEVEL_MAX=2: exit $rc, KZ_EXIT_CPU is $want"
+is "KZ_CPU_LEVEL_MAX=2: exit $rc, KZ_EXIT_CPU is $want" [ "$rc" = "$want" ]
 case $o in "[kz] CPU check: This build of Project Vekta needs a CPU with x86-64-v3 "*", and this one has x86-64-v2. "*) r=0;; *) r=1;; esac
 check $r "its line on stderr names both levels"
 case $o in *"static initializer"*|*main*) r=1;; *) r=0;; esac
@@ -73,7 +74,7 @@ grep -q '^\[kz\] CPU check: .*x86-64-v2' "$d/k z.log"; check $? "the same line i
 
 if command -v qemu-x86_64 >/dev/null; then
   qemu-x86_64 -cpu Nehalem "$t" >"$d/qemu.log" 2>&1; rc=$?
-  [ "$rc" = "$want" ]; check $? "under qemu-x86_64 -cpu Nehalem: exit $rc (KZ_EXIT_CPU $want; 132 would be SIGILL)"
+  is "under qemu-x86_64 -cpu Nehalem: exit $rc (KZ_EXIT_CPU $want; 132 would be SIGILL)" [ "$rc" = "$want" ]
   grep -q 'x86-64-v2' "$d/qemu.log"; check $? "and it names the emulated CPU as x86-64-v2"
 elif [ "${KZ_REQUIRE_QEMU:-0}" = 1 ]; then
   echo "FAIL qemu-x86_64 not found (KZ_REQUIRE_QEMU=1)"; fails=$((fails + 1))
@@ -81,8 +82,8 @@ else
   echo "note qemu-x86_64 (qemu-user) is not installed here: the run on an emulated Nehalem is CI's (KZ_REQUIRE_QEMU=1)"
 fi
 
-[ "$(sed -n 's/^EXIT_CPU = \([0-9]*\)$/\1/p' "$ROOT/tools/release/launch.py")" = "$want" ]
-check $? "launch.py's EXIT_CPU is kz_exit.h's KZ_EXIT_CPU ($want)"
+is "launch.py's EXIT_CPU is kz_exit.h's KZ_EXIT_CPU ($want)" \
+  [ "$(sed -n 's/^EXIT_CPU = \([0-9]*\)$/\1/p' "$ROOT/tools/release/launch.py")" = "$want" ]
 python3 - "$ROOT" <<'PY'; check $? "tools/kzbuild.py's level follows KZ_MARCH as CMakeLists.txt's rule does"
 import sys
 sys.path.insert(0, sys.argv[1] + "/tools")
