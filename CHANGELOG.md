@@ -10,6 +10,10 @@ program and folder that build it. Until a release that calls itself playable
 ## [0.6.0] - 2026-11-20 (pre-release)
 
 ### Added
+- "Get it on" badges for RecompLauncher and Quiver Launcher in the README, the install page and the project page,
+  linking to the port's page on each. The RecompLauncher badge is the one from its press kit, unchanged; the Quiver
+  badge is text only, since Quiver has no press kit and its logo is a mark. The project page's install box also lost
+  its outdated lines: it lists the setup program and the release folders, and what goes online.
 - `KZ1HD.exe` carries a version: Explorer's Details tab shows Project Vekta and the release, and `KZ1HD --version`
   (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens
   every log, so a log says which build wrote it.
@@ -55,6 +59,15 @@ program and folder that build it. Until a release that calls itself playable
   against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it,
   and on the RPCS3 route your RPCS3 decrypts only the game's EBOOT. The lift no longer makes `work/fw`, and removes
   the one an earlier version made.
+
+## [0.5.4] - 2026-11-20 (pre-release)
+
+### Fixed
+- "Use my RPCS3 install" on Windows: the RPCS3 the setup starts to decrypt the game gets only the Windows folders on
+  its PATH. A PATH passed on by the program that opened the setup (a download manager in the report) could make RPCS3
+  load that program's copy of `msvcp140.dll`, stop at its start-up check with a "Fatal Error" window and exit with 0
+  without decrypting anything (#94). When RPCS3 stops at that check all the same, the setup now says so and names the
+  DLL, instead of "RPCS3 did not make the file".
 
 ## [0.5.4] - 2026-11-20 (pre-release)
 

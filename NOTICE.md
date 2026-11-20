@@ -33,12 +33,14 @@ which is (c) Sony Interactive Entertainment and is not part of this repository.
 | RenderDoc in-application API | Baldur Karlsson | MIT | the interface only: patch 2066 declares the two entries of its documented `RENDERDOC_GetAPI` table it calls (SetCaptureKeys, TriggerCapture) when RenderDoc is already in the process; no RenderDoc file is included |
 | minimp3 | lieff and its contributors | CC0 1.0 ([third_party/minimp3/LICENSE](third_party/minimp3/LICENSE)) | the MP3 decoder in `third_party/minimp3/minimp3.h` (commit ea99364f, unchanged), which `port/kz1hd/native/flashmp3.c` uses in place of the firmware's `flashMP3.pic` |
 | Input Prompts | Kenney (kenney.nl) | CC0 1.0 | the button prompts, as signed distance fields made by `tools/glyphs/kenney_prep.py` into `port/kz1hd/glyphs_kenney.inc` |
+| RecompLauncher badge | RecompLauncher (recomplauncher.com) | its press kit's terms: used as it is, never recoloured, stretched or redrawn, linked to the port's page | `assets/press/recomplauncher/badge-dark.svg` and `.png`, byte for byte from the press kit (SHA-256 pinned in `tools/release/press_badges.py`), in the README, `docs/INSTALL.md` and the site; not under this repository's MIT licence |
+| Quiver Launcher (name only) | tgeorgiadis/quiver-launcher | its TRADEMARKS.md: a project may say truthfully that it works with Quiver Launcher; no Quiver logo or app icon may be used | the words "Quiver Launcher" on the text-only badge `assets/press/quiver/`, drawn by `tools/release/press_badges.py`; no Quiver logo, icon or artwork is used |
 
 ## Fonts
 
 | Font | Author | Licence | What was used |
 |---|---|---|---|
-| Fira Sans Condensed | The Mozilla Foundation and Telefonica S.A. | SIL Open Font License 1.1 | the text of the images in `assets/` and `installer/art/` (rendered by `tools/site-art.sh` and `tools/release/installer_art.py`); the font itself is not in this repository or the release |
+| Fira Sans Condensed | The Mozilla Foundation and Telefonica S.A. | SIL Open Font License 1.1 | the text of the images in `assets/` and `installer/art/` (rendered by `tools/site-art.sh`, `tools/release/press_badges.py` and `tools/release/installer_art.py`); the font itself is not in this repository or the release |
 
 ## Libraries the build links or loads (not part of this repository)
 
