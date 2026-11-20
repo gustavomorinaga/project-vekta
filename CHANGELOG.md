@@ -60,6 +60,11 @@ program and folder that build it. Until a release that calls itself playable
   and on the RPCS3 route your RPCS3 decrypts only the game's EBOOT. The lift no longer makes `work/fw`, and removes
   the one an earlier version made.
 
+### Fixed
+- The Linux folder builds the game again: `KZ1HD` called `mallinfo2`, which the folder's own toolchain (glibc 2.31)
+  does not have, so its link stopped with "undefined symbol: mallinfo2". Builds with the system's compilers were
+  not affected.
+
 ## [0.5.4] - 2026-11-20 (pre-release)
 
 ### Fixed
