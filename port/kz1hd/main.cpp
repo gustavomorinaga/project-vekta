@@ -46,6 +46,7 @@
 #include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
 #include "../libs/filesystem/edat.h"   /* via the include directory: the EDAT cache folder (patch 4014) */
 #include "window_icon.h" /* the window's icon, from installer/art/vekta.ico (tools/icon_header.py) */
+#include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
 #include <sanitizer/lsan_interface.h>
@@ -683,9 +684,25 @@ static void kz_log_setup(void)
 
 int main(int argc, char** argv)
 {
+    /* kz_version.h (version.cmake): VERSION, the patch set and ps3recomp's
+     * commit this exe was built from. --version prints it on stdout before
+     * the log is set up, so it reaches the shell that asked. */
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+#ifdef _WIN32
+        /* a GUI exe started from cmd or PowerShell has no stdout: write to
+         * the console it was started from (a pipe or a file is kept) */
+        HANDLE o = GetStdHandle(STD_OUTPUT_HANDLE);
+        if ((!o || o == INVALID_HANDLE_VALUE || GetFileType(o) == FILE_TYPE_UNKNOWN) &&
+            AttachConsole(ATTACH_PARENT_PROCESS))
+            freopen("CONOUT$", "w", stdout);
+#endif
+        printf("%s\n", KZ_VERSION_LINE);
+        return 0;
+    }
 #ifdef _WIN32
     kz_log_setup();
 #endif
+    fprintf(stderr, "[kz] %s\n", KZ_VERSION_LINE);   /* the first line of every log */
     kz_win_dpi_aware();     /* win_dpi.h: real pixels at Windows' 125 %, 150 %... */
     kz_pc_settings_env();   /* pcoptions.cpp: kz1hd_pc.ini */
     /* The game steps its command buffer through 64 KB segments with its own

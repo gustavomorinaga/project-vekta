@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
 project(KZ1HD
-    VERSION 0.1.0
     LANGUAGES C CXX
     DESCRIPTION "Killzone 1 HD (NPUA80856), recompiled with ps3recomp"
 )
@@ -40,6 +39,16 @@ set(RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/recompiled" CACHE PATH
     "Directory holding the lifter's output: ppu_recomp.h and the lifted sources")
 get_filename_component(RECOMP_DIR "${RECOMP_DIR}" ABSOLUTE)
 
+# kz_version.h (VERSION, the patch set, ps3recomp's commit) in the build folder: version.cmake.
+set(KZ_VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../VERSION")
+set(KZ_PATCHSET_FILE "${PS3RECOMP_DIR}/.patchset")
+set(KZ_VERSION_OUT "${CMAKE_CURRENT_BINARY_DIR}/kz_version.h")
+include("${CMAKE_CURRENT_SOURCE_DIR}/version.cmake")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KZ_VERSION_FILE}")
+if(EXISTS "${KZ_PATCHSET_FILE}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KZ_PATCHSET_FILE}")
+endif()
+message(STATUS "Project Vekta:   ${KZ_VERSION}")
 message(STATUS "ps3recomp SDK:   ${PS3RECOMP_DIR}")
 message(STATUS "Lifted output:   ${RECOMP_DIR}")
 
@@ -281,6 +290,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${PS3RECOMP_DIR}/runtime/platform"        # win32_compat.h and friends
     "${PS3RECOMP_DIR}/libs/video"
     "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}"              # kz_version.h (version.cmake), for main.cpp and app.rc
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
