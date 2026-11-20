@@ -54,7 +54,7 @@ or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 
 ## How to play
 
-Latest release: <!-- release -->[v0.5.3](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.3), a pre-release<!-- /release -->.
+Latest release: <!-- release -->[v0.5.4](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.4), a pre-release<!-- /release -->.
 Every download builds the port on your PC from your own files, once, in about five minutes. Each download has its
 SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
 
