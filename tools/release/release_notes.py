@@ -100,14 +100,21 @@ NEED_PREPARED = ("you need your own Killzone HD (NPUA80856) from the Killzone Tr
 NEED_050 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
             "4.93; when both are installed in your RPCS3, the installers use them and your RPCS3 makes the decrypted "
             "copies of the EBOOT and libsre, otherwise you give those two decrypted files yourself")
-# From 0.6.0 the firmware's libsre is not needed: the EBOOT is the one decrypted file; the firmware stays for the music.
-NEED_060 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
-            "4.93 for the music; when both are installed in your RPCS3, the installers use them and your RPCS3 makes "
-            "the decrypted copy of the EBOOT, otherwise you give that decrypted file yourself")
+# From 0.5.3 the PlayStation Store copy installs too: its data archive is bound to the buyer's licence (licence type 2),
+# which only the player's RPCS3 holds (the .rap named after the content ID), so it goes through the RPCS3 route.
+STORE_COPY = ("or the PlayStation Store copy (content ID UP9000-NPUA80856_00-GKILLZONE1000001, through your RPCS3, which "
+              "holds its licence, UP9000-NPUA80856_00-GKILLZONE1000001.rap)")
+NEED_053 = NEED_050.replace("from the Killzone Trilogy disc, installed,", "from the Killzone Trilogy disc " + STORE_COPY +
+                            ", installed,")
+# From 0.6.0 no PS3 system software is needed: the EBOOT is the one decrypted file.
+NEED_060 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc " + STORE_COPY + ", installed; when "
+            "it is installed in your RPCS3, the installers use it and your RPCS3 makes the decrypted copy of the EBOOT, "
+            "otherwise you give that decrypted file yourself. No PS3 system software is needed")
 
 
 def need_text(v):
-    return NEED_060 if v >= (0, 6, 0) else NEED_050 if v >= (0, 5, 0) else NEED_PREPARED
+    return (NEED_060 if v >= (0, 6, 0) else NEED_053 if v >= (0, 5, 3) else NEED_050 if v >= (0, 5, 0) else
+            NEED_PREPARED)
 
 
 # After 0.4.0 the paragraph on the downloads comes first, under this heading, with the player's install page.

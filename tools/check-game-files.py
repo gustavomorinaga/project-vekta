@@ -3,8 +3,8 @@
 
     tools/check-game-files.py [--quick] [--root DIR] [--work DIR]
 
-Reads the paths from the same environment variables as tools/env.sh (KZ_GAME, KZ_EBOOT, KZ_PSARC,
-PS3_DEV_FLASH), with the same defaults under Game/. Each file is checked by size and SHA-256 (--quick: size and
+Reads the paths from the same environment variables as tools/env.sh (KZ_GAME, KZ_EBOOT, KZ_PSARC),
+with the same defaults under Game/. Each file is checked by size and SHA-256 (--quick: size and
 magic only, skipping the 3 GB archive's hash). Prints one line per file and what to do about a mismatch; exits 1
 if a required file is missing or different. Standard library only; reads, never writes.
 
@@ -21,9 +21,6 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = os.environ.get("KZ_GAME", os.path.join(ROOT, "Game", "NPUA80856"))
-# tools/kzbuild.py's default_dev_flash: on Windows RPCS3 keeps dev_flash beside rpcs3.exe, anywhere
-DEV_FLASH = os.environ.get("PS3_DEV_FLASH") or (os.path.join(ROOT, "Game", "dev_flash") if os.name == "nt"
-                                                else os.path.expanduser("~/.config/rpcs3/dev_flash"))
 
 # The data archive: the player's decrypted data_ps3.psarc when there is one (as up to 0.4.0), else the installed
 # game's data_ps3.psarc.edat, which the port opens itself (tools/kzbuild.py data, patch 4014).
@@ -48,9 +45,6 @@ FILES = [
      "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc", b"\x7fELF", True,
      "the decrypted EBOOT of the installed game (an ELF, not the EBOOT.BIN container)"),
     ARCHIVE,
-    ("flashMP3.pic", os.path.join(DEV_FLASH, "sys", "external", "flashMP3.pic"), 69695,
-     "adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a", None, False,
-     "the firmware's MP3 decoder, read as installed (without it the music and sound stop at the first MP3)"),
 ]
 
 
@@ -154,24 +148,7 @@ def cpu_line(have, need):
             f"one has x86-64-v{have}. The game cannot run on it")
 
 
-FIRMWARE = "4.93"   # the PS3 system software flashMP3.pic was tested from
-
-
-def firmware_version(dev_flash):
-    """The system software version installed in a dev_flash folder ("4.93"), from vsh/etc/version.txt's
-    "release:04.9300:" line; None when the file is not there or not readable."""
-    try:
-        with open(os.path.join(dev_flash, "vsh", "etc", "version.txt"), encoding="ascii", errors="replace") as f:
-            for line in f:
-                if line.startswith("release:"):
-                    v = line.split(":")[1]
-                    return f"{int(v.split('.')[0])}.{v.split('.')[1][:2]}"
-    except (OSError, ValueError, IndexError):
-        pass
-    return None
-
-
-RPCS3_ROUTE = ("when the game and the firmware are installed in RPCS3, run the first run again (scripts/run.cmd, scripts/run.sh or "
+RPCS3_ROUTE = ("when the game is installed in RPCS3, run the first run again (scripts/run.cmd, scripts/run.sh or "
                "install.sh) and choose \"Use my RPCS3 install\": your RPCS3 makes the decrypted copies")
 
 
@@ -182,8 +159,6 @@ def folder_note(label, path):
     if os.path.isfile(os.path.join(usr, "EBOOT.BIN")) or os.path.isfile(os.path.join(usr, "data_ps3.psarc.edat")):
         return (f"{path} is the installed game's folder, which holds only the encrypted EBOOT.BIN and .edat, not "
                 f"{label}; {RPCS3_ROUTE}")
-    if os.path.isdir(os.path.join(path, "sys", "external")):
-        return f"{path} is a firmware folder (dev_flash), which holds the encrypted .sprx, not {label}; {RPCS3_ROUTE}"
     return f"{path} is a folder; give the file {label} itself"
 
 
@@ -222,21 +197,10 @@ def main():
         if line:
             print(line)
             bad = bad or line.startswith("FAIL")
-    fw = firmware_version(DEV_FLASH) if os.path.isdir(DEV_FLASH) else None
-    if fw and fw != FIRMWARE:
-        print(f"WRONG    firmware: {DEV_FLASH} holds PS3 system software {fw}; the port needs {FIRMWARE} (the music "
-              f"decoder, flashMP3.pic, comes from it)\n         install system software {FIRMWARE} in RPCS3 (File, "
-              "Install Firmware), then take dev_flash from it again")
-        bad = True
-    elif fw:
-        print(f"ok       firmware {fw}")
     for label, path, size, digest, magic, required, what in FILES:
         tag = "required" if required else "optional"
         if not os.path.isfile(path):
             where = folder_note(label, path) if os.path.isdir(path) else f"nothing at {path}"
-            if label == "flashMP3.pic" and os.path.isdir(DEV_FLASH) and not os.path.isdir(os.path.join(DEV_FLASH, "sys")):
-                where = (f"{DEV_FLASH} is not a dev_flash folder (no sys{os.sep}external in it); RPCS3 keeps dev_flash "
-                         "in its own folder, beside rpcs3.exe")
             print(f"MISSING  {label} ({tag}): {where}\n         expected: {what}")
             bad |= required
             continue

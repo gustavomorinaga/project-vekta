@@ -10,7 +10,6 @@
 #   work/   everything the scripts make from them: the patched ps3recomp, the lift, the run folder (vfs/)
 #
 # KZ_JOBS: parallel jobs for the lift and the compile (default: every core).
-# PS3_DEV_FLASH is RPCS3's dev_flash (the firmware's MP3 decoder, flashMP3.pic, comes from there).
 
 # The caller sets KZ_ROOT (the repository root) before sourcing: POSIX sh cannot find a sourced file's own path.
 : "${KZ_ROOT:?set KZ_ROOT to the repository root before sourcing tools/env.sh}"
@@ -22,8 +21,7 @@ KZ_PSARC=${KZ_PSARC:-$KZ_ROOT/Game/data_ps3.psarc}
 KZ_WORK=${KZ_WORK:-$KZ_ROOT/work}
 KZ_VFS=${KZ_VFS:-$KZ_WORK/vfs}
 PS3RECOMP_DIR=${PS3RECOMP_DIR:-$KZ_WORK/ps3recomp-patched}
-PS3_DEV_FLASH=${PS3_DEV_FLASH:-$HOME/.config/rpcs3/dev_flash}
 KZ_PY=${KZ_PY:-$KZ_WORK/venv/bin/python}
 # cmake and ninja from the venv when they are there (docs/BUILDING.md)
 if [ -d "$KZ_WORK/venv/bin" ]; then PATH="$KZ_WORK/venv/bin:$PATH"; fi
-export PATH KZ_ROOT KZ_GAME KZ_EBOOT KZ_PSARC KZ_WORK KZ_VFS PS3RECOMP_DIR PS3_DEV_FLASH KZ_PY
+export PATH KZ_ROOT KZ_GAME KZ_EBOOT KZ_PSARC KZ_WORK KZ_VFS PS3RECOMP_DIR KZ_PY

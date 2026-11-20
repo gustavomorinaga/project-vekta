@@ -95,7 +95,7 @@ tools/check-game-files.py
 
 ```sh
 tools/ps3recomp-patched.sh   # work/ps3recomp-patched: ps3recomp v0.19.0 + port/patches, in series order
-tools/lift.sh                # work/lift (the game's code and the firmware's MP3 decoder as C++); a few minutes
+tools/lift.sh                # work/lift (the game's code as C++); a few minutes
 tools/setup-vfs.sh           # work/vfs: the folder the game runs from, with the movies taken out of the archive
 tools/build.sh               # work/build/KZ1HD
 python3 tools/kzbuild.py data  # only without a decrypted data_ps3.psarc: opens the game's .edat once (about a minute)
@@ -199,10 +199,15 @@ no release carries them ([dev/upscalers.md](dev/upscalers.md), "Distribution").
   every push and pull request.
 - **The log:** the exe is a GUI program. Started from a shell, it logs to stderr; without one (double click, Steam,
   Proton) it writes `kz1hd.log` beside the exe. `KZ_LOG=<file>` picks another file, `KZ_CONSOLE=1` opens a console.
-- **On a Windows PC:** copy a folder with the exe and its DLLs, your `dev_flash`,
+- **The version:** `KZ1HD --version` prints `Project Vekta <version> (patch set <id>, ps3recomp <commit>)` and exits
+  (on Linux too); the same line opens every log. The version is the repository's `VERSION`, the patch set and commit
+  are the patched toolkit's `.patchset`, written into the build folder's `kz_version.h` by `port/kz1hd/version.cmake`
+  at configure time. On Windows the exe also carries it in its version block (Explorer, Properties, Details) and has
+  a manifest (`port/kz1hd/app.manifest`: Windows 10/11, per-monitor DPI awareness v2).
+- **On a Windows PC:** copy a folder with the exe and its DLLs
   and `work/vfs` with real files instead of links (`cp -L`: Windows does not follow these links), about 4.2 GB, and
   start the exe from inside `vfs` with the path of `PS3_GAME/USRDIR/EBOOT.elf`, setting the same variables as
-  `tools/play.sh` (`PS3_DEV_FLASH` pointing into the folder). This is a test setup for an exe
+  `tools/play.sh`. This is a test setup for an exe
   built here; a player uses the setup program or the zip
   ([Building on Windows or macOS](#building-on-windows-or-macos)).
 
@@ -268,12 +273,11 @@ tools/release/build_setup.py --payload work/release/payload   # work/release/pro
 `build_setup.py` compiles `installer/vekta.iss` with the pinned Inno Setup (installed on the first run, checked by
 SHA-256; under Wine on Linux). The setup program installs per user into `%LOCALAPPDATA%\Programs\ProjectVekta`. It
 asks where your files are, on pages of its own: the installed game folder (NPUA80856), the decrypted `EBOOT.elf`,
-and `data_ps3.psarc` (optional: empty, the game folder's own `.edat` is read), and the firmware's
-`dev_flash`. It checks their kind and size before copying
+and `data_ps3.psarc` (optional: empty, the game folder's own `.edat` is read). It checks their kind and size before copying
 anything and keeps them in `work\paths.env`. Then it builds the port in the wizard, with a progress bar and a Stop
 button; the build's first step checks the files' SHA-256, and when it stops the wizard says why and opens its log. The
 launcher (`Project Vekta.exe`) builds on its first start when that did not happen, then starts the game. A silent
-install takes the files as switches: `/GAME=<dir> /EBOOT=<file> /PSARC=<file> [/DEVFLASH=<dir>]`.
+install takes the files as switches: `/GAME=<dir> /EBOOT=<file> /PSARC=<file>`.
 
 A page after those offers NVIDIA DLSS, with a box that is unticked by default: "Download NVIDIA DLSS (NVIDIA RTX
 GPUs). I accept the NVIDIA DLSS SDK license", and the licence's link

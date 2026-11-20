@@ -257,6 +257,10 @@ jobs:
           if ($p.ExitCode) { Get-Content $log -Tail 40; Write-Error "setup exit $($p.ExitCode)"; exit 1 }
           python tools/release/check_install.py $app --manifest "$env:PAYLOAD\manifest.json"
           if ($LASTEXITCODE) { exit 1 }
+          # the installed launcher's version block says the release's version (launcher.rc; KZ1HD.exe, built on the
+          # player's PC, gets the same from port/kz1hd/version.cmake, checked by tools/wine-host-tests.sh)
+          $v = (Get-Item "$app\Project Vekta.exe").VersionInfo.ProductVersion
+          if ($v -ne $env:VERSION) { Write-Error "Project Vekta.exe says version '$v', not $env:VERSION"; exit 1 }
           # not portable by default: launch.py runs the game from %APPDATA%\Project Vekta
           if (-not (Select-String -Path "$app\vekta-install.ini" -SimpleMatch "portable=0" -Quiet)) {
             Write-Error "vekta-install.ini does not say portable=0"; exit 1 }

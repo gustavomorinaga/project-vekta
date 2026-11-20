@@ -56,22 +56,8 @@ with tempfile.TemporaryDirectory() as tmp:
     p = cgf.place_problems(str(good), "", environ={}, now=now - 3600)
     check(p == [], f"an hour behind (another time zone's file times) is fine: {p}")
 
-    fl = tmp / "dev_flash"
-    (fl / "vsh" / "etc").mkdir(parents=True)
-    check(cgf.firmware_version(str(fl)) is None, "no version.txt: no firmware version")
-    (fl / "vsh" / "etc" / "version.txt").write_text("release:04.9000:\nbuild:1:x\n")
-    check(cgf.firmware_version(str(fl)) == "4.90", "version.txt's release line gives 4.90")
-    r = subprocess.run([sys.executable, str(ROOT / "tools" / "check-game-files.py"), "--quick"], capture_output=True,
-                       text=True, env=dict(os.environ, PS3_DEV_FLASH=str(fl), KZ_GAME=str(tmp / "none")))
-    check(r.returncode == 1 and "WRONG    firmware:" in r.stdout and "4.90" in r.stdout and "4.93" in r.stdout,
-          f"a dev_flash of another system software stops the check and names both versions: {r.stdout[:300]}")
-    reasons = firstrun.Runner(firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "w")), firstrun.STEPS[:1],
-                              log=type("L", (), {"write": lambda self, x: None})(), out=open(os.devnull, "w"),
-                              quiet=True)
-    reasons.why_failed(firstrun.STEPS[0], r.stdout.splitlines(), 1)
-    check("dev_flash" in reasons.fail_inputs, "firstrun asks for dev_flash again after a wrong firmware")
-    (fl / "vsh" / "etc" / "version.txt").write_text("release:04.9300:\n")
-    check(cgf.firmware_version(str(fl)) == "4.93", "and 4.93")
+    check(not hasattr(cgf, "firmware_version") and all("flashMP3" not in f[0] for f in cgf.FILES),
+          "the file check asks for no firmware")
 
     check("still encrypted" in cgf.wrong_kind("EBOOT.elf", b"SCE\0") and "--rpcs3" in cgf.wrong_kind("EBOOT.elf",
           b"SCE\0"), "an encrypted EBOOT is named so, with the RPCS3 route")
@@ -107,15 +93,15 @@ with tempfile.TemporaryDirectory() as tmp:
     b.mkdir(parents=True)
     (b / "CMakeCache.txt").write_text(f"CMAKE_HOME_DIRECTORY:INTERNAL={old / 'port' / 'kz1hd'}\n")
     (b / "old.o").write_text("")
-    elsewhere = tmp / "elsewhere" / "dev_flash"
-    firstrun.write_paths(str(work), {"eboot": str(old / "Game" / "EBOOT.elf"), "dev_flash": str(elsewhere)})
+    elsewhere = tmp / "elsewhere" / "data_ps3.psarc"
+    firstrun.write_paths(str(work), {"eboot": str(old / "Game" / "EBOOT.elf"), "psarc": str(elsewhere)})
     c = firstrun.Ctx(root=str(new), paths=firstrun.resolve_paths(str(new), str(work), {}), work=str(work))
     check(firstrun.moved_from(c) == str(old), f"the old folder comes from the CMake cache: {firstrun.moved_from(c)}")
     check(firstrun.heal_moved_paths(c) == str(old), "heal_moved_paths reports the move")
     saved = firstrun.read_paths(str(work))
     check(saved["eboot"] == str(new / "Game" / "EBOOT.elf") and c.paths["eboot"] == saved["eboot"],
           f"a saved path inside the old folder points into the new one: {saved}")
-    check(saved["dev_flash"] == str(elsewhere), "a path outside the old folder stays as it was")
+    check(saved["psarc"] == str(elsewhere), "a path outside the old folder stays as it was")
     msg = firstrun.before_compile(c)
     check(msg and "moved" in msg and not b.exists(), f"the build folder made in the old place is emptied: {msg}")
     check(firstrun.moved_from(c) == "", "no cache, no move")

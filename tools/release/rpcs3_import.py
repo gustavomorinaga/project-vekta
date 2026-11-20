@@ -12,7 +12,7 @@ work/prep/data_ps3.psarc.
 
 Results are `key=value` lines, on stdout or in --out (UTF-8 with a BOM, which Inno Setup reads):
   --detect   status=ok|not_found, root=, source=
-  --resolve  status=ok|problems|not_found, root=, game=, edat=, dev_flash=, exe=, problem=code|text (one per line)
+  --resolve  status=ok|problems|not_found, root=, game=, edat=, exe=, problem=code|text (one per line)
   --prepare  the same, then status=ok|failed, eboot=, psarc= (PSN copy only; the decrypted copies in DIR/prep),
              problem=
 Exit 0 when status=ok.
@@ -60,8 +60,6 @@ EBOOT = ("EBOOT.BIN", "EBOOT.elf", 19706080, "c81aa91e35a76ff7d856095c392cee98bc
 PSARC = ("data_ps3.psarc.edat", "data_ps3.psarc.edat.unedat", 3147174243,
          "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d")
 PSARC_NAME = "data_ps3.psarc"
-MP3 = "flashMP3.pic"   # the firmware's music decoder, read from dev_flash as installed
-FIRMWARE = "4.93"   # the system software flashMP3.pic was tested from (docs/GETTING-FILES.md)
 WATCHDOG = 30
 WINDOWS = os.name == "nt"
 FLATPAK_ID = "net.rpcs3.RPCS3"
@@ -75,11 +73,6 @@ HELP = {
                "documentation), then check again.",
     "game_incomplete": "The Killzone HD folder in RPCS3 is missing a file (named below). Install the game again in "
                        "RPCS3, then check again.",
-    "no_firmware": "RPCS3 has no PS3 system software installed (no sys/external/flashMP3.pic in its dev_flash). "
-                   "Install the firmware in RPCS3 (see its documentation), then check again.",
-    "wrong_firmware": "RPCS3 has PS3 system software {found} installed; the port needs 4.93 (its music decoder "
-                      "was tested from it). Install firmware 4.93 in RPCS3 (File, Install Firmware), then "
-                      "check again.",
     "no_exe": "The RPCS3 program itself was not found (rpcs3.exe, the rpcs3 command, an AppImage or the Flatpak). "
               "Pick it, or pick your files yourself.",
     "no_license": "RPCS3 needs this game's licence file (a .rap in its dev_hdd0/home/00000001/exdata folder) to "
@@ -88,25 +81,12 @@ HELP = {
     "decrypt_failed": "RPCS3 did not make the file named below. Check that this RPCS3 runs the game, then try again, "
                       "or pick your files yourself.",
     "wrong_file": "RPCS3 made the file named below, but it is not the tested one: the game must be NPUA80856 "
-                  "version 01.00, and the firmware 4.93.",
+                  "version 01.00.",
 }
 
 
 def _problem(code, detail="", **fmt):
     return {"code": code, "text": HELP[code].format(**fmt) + (f" ({detail})" if detail else "")}
-
-
-def firmware_version(dev_flash):
-    """dev_flash's system software version ("4.93") from vsh/etc/version.txt, or None."""
-    try:
-        with open(os.path.join(dev_flash, "vsh", "etc", "version.txt"), encoding="ascii", errors="replace") as f:
-            for line in f:
-                if line.startswith("release:"):
-                    v = line.split(":")[1]
-                    return f"{int(v.split('.')[0])}.{v.split('.')[1][:2]}"
-    except (OSError, ValueError, IndexError):
-        pass
-    return None
 
 
 def edat_license(path):
@@ -263,7 +243,7 @@ def _same(a, b):
 
 
 def resolve(hint=None, exe=None, home=None):
-    """What the player's RPCS3 has for the port: {"status", "root", "game", "edat", "dev_flash", "exe" (argv),
+    """What the player's RPCS3 has for the port: {"status", "root", "game", "edat", "exe" (argv),
     "problems": [{"code", "text"}]}. Reads only."""
     res = None
     game = _game_of(hint)
@@ -277,8 +257,7 @@ def resolve(hint=None, exe=None, home=None):
         if res is None or (r["ok"] and not res["ok"]):
             res = r   # the first RPCS3 found (without the game) explains the problem best
     out = {"status": "not_found", "root": res.get("root"), "dev_hdd0": res.get("dev_hdd0") or "", "game": "", "edat": "",
-           "dev_flash": res.get("dev_flash")
-           or "", "exe": None, "problems": []}
+           "exe": None, "problems": []}
     if not res["ok"]:
         code = "not_rpcs3" if res.get("code") == "not_rpcs3" else "not_found"
         out["problems"].append(_problem(code))
@@ -297,12 +276,6 @@ def resolve(hint=None, exe=None, home=None):
         if missing:
             probs.append(_problem("game_incomplete", ", ".join(missing)))
         out["edat"] = os.path.join(game, "USRDIR", "data_ps3.psarc.edat")
-    fw = firmware_version(out["dev_flash"])
-    out["firmware"] = fw or ""
-    if not os.path.isfile(os.path.join(out["dev_flash"], "sys", "external", MP3)) or not fw:
-        probs.append(_problem("no_firmware"))
-    elif fw != FIRMWARE:
-        probs.append(_problem("wrong_firmware", found=fw))
     out["exe"] = find_exe(res["root"], exe, home)
     if not out["exe"]:
         probs.append(_problem("no_exe"))
@@ -478,7 +451,7 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG, step=None):
 # -------------------------------------------------------------------------------------------------- command line
 def lines(res):
     out = [f"status={res['status']}"]
-    for k in ("root", "source", "game", "edat", "dev_flash", "firmware", "eboot", "psarc"):
+    for k in ("root", "source", "game", "edat", "eboot", "psarc"):
         if res.get(k):
             out.append(f"{k}={res[k]}")
     if res.get("exe"):
