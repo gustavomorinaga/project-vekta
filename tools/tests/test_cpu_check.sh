@@ -6,9 +6,9 @@
 #    lines for cpu_check.c: cpu_check.c and a C++ static initializer compiled for x86-64-v3. The check's object has no
 #    VEX-encoded or other x86-64-v3 instruction; with the CPU's level (KZ_CPU_LEVEL_MAX=2) below the build's it exits
 #    with KZ_EXIT_CPU before the static initializer, with its line on stderr and in KZ_LOG; otherwise it runs;
-#  - with qemu-x86_64 (qemu-user) on PATH: the program on an emulated Nehalem (x86-64-v2) exits with KZ_EXIT_CPU,
-#    never 132 (SIGILL). CI's checks job installs it and sets KZ_REQUIRE_QEMU=1, which makes its absence (or a C
-#    library that cannot start on a Nehalem) a failure; elsewhere those two are noted and the run is CI's;
+#  - with qemu-x86_64 (qemu-user) and the pinned Zig: the same two files, linked static against baseline musl, on an
+#    emulated Nehalem (x86-64-v2) exit with KZ_EXIT_CPU, never 132 (SIGILL), and run on an emulated Haswell. CI's
+#    checks job has both and sets KZ_REQUIRE_QEMU=1, which makes their absence a failure; elsewhere it is noted;
 #  - launch.py's EXIT_CPU is kz_exit.h's KZ_EXIT_CPU; tools/kzbuild.py's level follows KZ_MARCH as CMake's does.
 # The Windows build of the same program runs under Wine in tools/wine-host-tests.sh. No game data, no GPU.
 set -uo pipefail
@@ -73,23 +73,38 @@ case $o in *"static initializer"*|*main*) r=1;; *) r=0;; esac
 check $r "nothing of the program ran before it (no static initializer, no main)"
 grep -q '^\[kz\] CPU check: .*x86-64-v2' "$d/k z.log"; check $? "the same line is written into KZ_LOG"
 
-# A distribution built for x86-64-v3/v4 (CachyOS's v4 repositories, for one) has a C library that cannot start on a
-# Nehalem at all: a trivial program built here tells, and then the emulated run is only CI's (Ubuntu's baseline libc).
-nehalem_ok=0
-if command -v qemu-x86_64 >/dev/null; then
-  printf 'int main(void) { return 0; }\n' >"$d/triv.c" && "$CC" -march=x86-64 -O0 "$d/triv.c" -o "$d/triv" &&
-    (qemu-x86_64 -cpu Nehalem "$d/triv") >/dev/null 2>&1 && nehalem_ok=1
-fi
-if [ $nehalem_ok = 0 ] && command -v qemu-x86_64 >/dev/null && [ "${KZ_REQUIRE_QEMU:-0}" != 1 ]; then
-  echo "note this system's C library cannot start on an emulated Nehalem (a trivial program exits with SIGILL): the run on it is CI's (KZ_REQUIRE_QEMU=1)"
-elif command -v qemu-x86_64 >/dev/null; then
-  qemu-x86_64 -cpu Nehalem "$t" >"$d/qemu.log" 2>&1; rc=$?
+# The emulated Nehalem (x86-64-v2). A dynamically linked program cannot be used for it: on Ubuntu's runner and on
+# CachyOS alike, even a trivial one exits with SIGILL there before main (the system's loader and libc). So the same
+# two files are linked fully static against musl built for baseline x86-64 by the pinned Zig (KZ_ZIG, else
+# $KZ_WORK/toolchain-cache/zig/zig; tools/release/fetch_toolchain.py --only zig): cpu_check.c and the C++ static
+# initializer as CMakeLists.txt compiles them (baseline, x86-64-v3), the libc and the link at baseline. A trivial
+# program built that way must run on the Nehalem (the emulation works), and the two-file one must exit with
+# KZ_EXIT_CPU, never 132. CI's checks job fetches Zig, installs qemu-user and sets KZ_REQUIRE_QEMU=1: there a missing
+# qemu or Zig is a failure; elsewhere it is noted and the run is CI's.
+zig=${KZ_ZIG:-${KZ_WORK:-$ROOT/work}/toolchain-cache/zig/zig}
+if command -v qemu-x86_64 >/dev/null && [ -x "$zig" ]; then
+  z="$d/zig musl"; mkdir -p "$z"
+  ZIG_GLOBAL_CACHE_DIR="$z/cache" ZIG_LOCAL_CACHE_DIR="$z/cache" sh -c '
+    zig=$1 d=$2 z=$3
+    printf "int main(void) { return 0; }\n" >"$z/triv.c" &&
+    "$zig" cc -target x86_64-linux-musl -mcpu=x86_64 -static -O1 "$z/triv.c" -o "$z/triv" &&
+    "$zig" cc -target x86_64-linux-musl -mcpu=x86_64 -O2 -DKZ_CPU_REQUIRED=3 -I "$d" -c "$d/cpu_check.c" -o "$z/cpu_check.o" &&
+    "$zig" c++ -target x86_64-linux-musl -mcpu=x86_64_v3 -O2 -c "$d/test_cpu_check_init.cpp" -o "$z/init.o" &&
+    "$zig" c++ -target x86_64-linux-musl -mcpu=x86_64 -static "$z/cpu_check.o" "$z/init.o" -o "$z/t"' _ "$zig" "$d" "$z" \
+    >"$z/build.log" 2>&1
+  check $? "the static two-file program builds with the pinned Zig against baseline musl"
+  (qemu-x86_64 -cpu Nehalem "$z/triv") >/dev/null 2>&1
+  check $? "a trivial static baseline program runs on the emulated Nehalem (the emulation itself works)"
+  (qemu-x86_64 -cpu Nehalem "$z/t") >"$d/qemu.log" 2>&1; rc=$?
   is "under qemu-x86_64 -cpu Nehalem: exit $rc (KZ_EXIT_CPU $want; 132 would be SIGILL)" [ "$rc" = "$want" ]
-  grep -q 'x86-64-v2' "$d/qemu.log"; check $? "and it names the emulated CPU as x86-64-v2"
+  grep -q 'this one has x86-64-v2' "$d/qemu.log"; check $? "and it names the emulated CPU as x86-64-v2"
+  r=0; grep -q 'static initializer' "$d/qemu.log" && r=1; check $r "and nothing of the program ran before it"
+  (qemu-x86_64 -cpu Haswell "$z/t") >"$d/qemu-hsw.log" 2>&1; rc=$?
+  is "under -cpu Haswell (x86-64-v3) the same program runs: exit $rc" [ "$rc" = 0 ]
 elif [ "${KZ_REQUIRE_QEMU:-0}" = 1 ]; then
-  echo "FAIL qemu-x86_64 not found (KZ_REQUIRE_QEMU=1)"; fails=$((fails + 1))
+  echo "FAIL qemu-x86_64 or the pinned Zig ($zig) not found (KZ_REQUIRE_QEMU=1)"; fails=$((fails + 1))
 else
-  echo "note qemu-x86_64 (qemu-user) is not installed here: the run on an emulated Nehalem is CI's (KZ_REQUIRE_QEMU=1)"
+  echo "note qemu-x86_64 or the pinned Zig ($zig) is not here: the run on an emulated Nehalem is CI's (KZ_REQUIRE_QEMU=1)"
 fi
 
 is "launch.py's EXIT_CPU is kz_exit.h's KZ_EXIT_CPU ($want)" \
