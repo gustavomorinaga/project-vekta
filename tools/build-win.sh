@@ -20,7 +20,7 @@ KZ_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 HERE="$KZ_ROOT/port/kz1hd"; W="$KZ_WORK"; R="$PS3RECOMP_DIR"
 B=${KZ_BUILD:-$KZ_WORK/build-win}
 [ -f "$W/lift/gen/ppu_recomp.h" ] || { echo "no lift in $W/lift: run tools/lift.sh first" >&2; exit 1; }
-LIFT="-DPS3RECOMP_DIR=$R -DRECOMP_DIR=$W/lift/gen -DSPU_DIR=$W/lift/spu -DLIBSRE_DIR=$W/fw/gen"
+LIFT="-DPS3RECOMP_DIR=$R -DRECOMP_DIR=$W/lift/gen -DSPU_DIR=$W/lift/spu"
 
 if [ "${KZ_WIN_TOOLCHAIN:-pinned}" = system ]; then
     H=$W/win-headers

@@ -210,15 +210,6 @@ if(PORT_ENABLE_SPU)
     endif()
 endif()
 
-# Lifted firmware libsre (optional, user-supplied): only _cellSpursLFQueuePushBody
-# is routed to it (stubs.cpp). Its own header name keeps it apart from the game's.
-set(LIBSRE_DIR "" CACHE PATH "Directory with the lifted libsre (libsre_recomp.h + .cpp)")
-set(LIBSRE_SOURCES "")
-if(LIBSRE_DIR)
-    file(GLOB LIBSRE_SOURCES CONFIGURE_DEPENDS "${LIBSRE_DIR}/*.cpp")
-    message(STATUS "Lifted libsre:   ${LIBSRE_DIR}")
-endif()
-
 # Native replacements of hot lifted PPU functions (native_ppu/native_ppu.h);
 # lift.sh tells the lifter which names they take over. Small and hot: they get
 # full optimization instead of the target-wide -O1 the lifted TUs need.
@@ -241,7 +232,6 @@ add_executable(${PROJECT_NAME}
     ${RECOMP_SOURCES}
     ${KZ_NATIVE_PPU}
     ${SPU_SOURCES}
-    ${LIBSRE_SOURCES}
 )
 
 # The lifted SPU sources use bare #include "spu_context.h". Scope that include
@@ -418,15 +408,11 @@ endif()
 #   - /bigobj on MSVC. A single lifted file routinely passes the 65,536-section
 #     limit of the default object format.
 if(MSVC)
-    set_source_files_properties(${RECOMP_SOURCES} ${LIBSRE_SOURCES} PROPERTIES
+    set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "/w;/bigobj")
 else()
-    set_source_files_properties(${RECOMP_SOURCES} ${LIBSRE_SOURCES} PROPERTIES
+    set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "-w;-ffp-contract=off;${KZ_PPU_FLAGS}")
-endif()
-if(LIBSRE_SOURCES)
-    set_property(SOURCE ${LIBSRE_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${LIBSRE_DIR}")
-    set_source_files_properties(stubs.cpp PROPERTIES COMPILE_DEFINITIONS KZ_LIBSRE)
 endif()
 
 # ---------------------------------------------------------------------------

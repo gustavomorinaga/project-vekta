@@ -46,8 +46,7 @@ mkdir -p "$D/prefix" "$D/proton-compat" "$D/proton-steam"
 env=(WINEPREFIX="$D/prefix" STEAM_COMPAT_DATA_PATH="$D/proton-compat" STEAM_COMPAT_CLIENT_INSTALL_PATH="$D/proton-steam"
      WINEDEBUG="${WINEDEBUG:--all}" WINEDLLOVERRIDES="winepulse.drv,winealsa.drv,wineoss.drv=d;winemenubuilder.exe=d;mscoree,mshtml="
      KZ_LOG="Z:$LOG" KZ_STATS=1 PS3_VERBOSE=0 GCM_PARK_SKIP="${GCM_PARK_SKIP:-1}"
-     PS3RECOMP_VK_GUEST_PROGRAMS="${PS3RECOMP_VK_GUEST_PROGRAMS:-1}"
-     KZ_LIBSRE_IMAGE="${KZ_LIBSRE_IMAGE:-$KZ_WORK/fw/out/libsre_image.bin}")
+     PS3RECOMP_VK_GUEST_PROGRAMS="${PS3RECOMP_VK_GUEST_PROGRAMS:-1}")
 (( WINDOW )) && env+=(PS3RECOMP_VK_WINDOW=1)
 echo "wine-test: $EXE under ${runner[*]} for ${SECS}s ($([[ $WINDOW == 1 ]] && echo window || echo no window)); log $LOG"
 rm -f "$LOG"

@@ -11,7 +11,7 @@ Terms used in this repository's code and docs.
 | **ps3recomp** | The static recompiler and PS3 runtime this port is built on (<https://github.com/sp00nznet/ps3recomp>), pinned as `third_party/ps3recomp/` and changed only through `port/patches/`. |
 | **HLE** | High-level emulation: a PS3 system library call answered by a PC implementation instead of by the original library's code. |
 | **lv2** | The PS3's kernel; its system calls are reimplemented by the runtime. |
-| **libsre** | The PS3 firmware's SPU runtime library (SPURS and its job and task models). The game loads it; the player supplies it from their own firmware. |
+| **libsre** | The PS3 firmware's SPU runtime library (SPURS and its job and task models). The game loads it. Up to 0.5.1 the player supplied it for the SPURS lock-free queue; from 0.6.0 the port's runtime does that itself (patch 1022). |
 | **SPURS** | The PS3's SPU scheduler: workloads, tasksets and job chains that the SPUs pick up. |
 | **WWS job manager** | The job manager the game uses on top of SPURS: a policy module and job modules that run its SPU work (`jm_post`, `jm_gfx`, ...). |
 | **RSX** | The PS3's GPU. The game's RSX command stream is replayed on Vulkan. |

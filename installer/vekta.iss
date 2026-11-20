@@ -9,7 +9,7 @@
 ; and the pinned Windows toolchain, nothing of the game. What setup does: a per-user install (no admin) into
 ; %LOCALAPPDATA%\Programs\ProjectVekta by default (a folder without spaces: the compiler and CMake take any, but a
 ; short plain path keeps the tools' command lines readable). It asks where your own files are (docs/GETTING-FILES.md):
-; the installed game folder (NPUA80856), the decrypted EBOOT.elf, data_ps3.psarc and libsre.prx, and optionally the
+; the installed game folder (NPUA80856), the decrypted EBOOT.elf and (optionally) data_ps3.psarc, and optionally the
 ; firmware's dev_flash; it checks their kind and size before copying anything, keeps the answers in work\paths.env
 ; (firstrun.py --save-paths) and, with "Build now" (the default), builds the port in the wizard (about five minutes;
 ; the full SHA-256 check is the build's first step). Start-menu entries (the game, "Verify and rebuild", "Open saves
@@ -20,8 +20,8 @@
 ; accept; nvngx_dlss.dll goes beside KZ1HD.exe). The answer is kept in work\dlss-choice and offered again on an
 ; upgrade; running setup again (or run.cmd --dlss accept|decline) changes it.
 ; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>
-; /LIBSRE=<file> [/DEVFLASH=<dir>]] [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with all four
-; files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
+; [/DEVFLASH=<dir>]] [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with the game and
+; its files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
 ; asks. /RPCS3=<dir> (or the folder picked with "Find RPCS3..." last time) is where the "Your game" page looks for
 ; RPCS3 first. The saves and settings go to %APPDATA%\Project Vekta, or with the "portable" task (/MERGETASKS="portable")
 ; to the install folder's work\vfs; vekta-install.ini [install] portable tells launch.py which. The uninstaller removes
@@ -51,7 +51,6 @@
 #define EbootSize "19706080"
 #define PsarcSize "3147174243"
 #define Firmware "4.93"
-#define LibsreSize "239344"
 #define TitleId "NPUA80856"
 #define FilesDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md"
 #define InstallDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
@@ -389,8 +388,6 @@ begin
     P := FileProblem(FilesPage.Values[1], 'data_ps3.psarc', 'PSAR', StrToInt64('{#PsarcSize}'));
     if P <> '' then Result := Result + P + ' (Or leave it empty when the game folder has USRDIR\data_ps3.psarc.edat.)' + #13#10;
   end;
-  P := FileProblem(FilesPage.Values[2], 'libsre.prx', 'ELF', StrToInt64('{#LibsreSize}'));
-  if P <> '' then Result := Result + P + #13#10;
 end;
 
 { The system software version in a dev_flash folder ('4.93'), from vsh\etc\version.txt's "release:04.9300:" line;
@@ -424,7 +421,7 @@ var
   D: String;
 begin
   if FilesPage.Values[I] <> '' then Exit;
-  for J := 0 to 2 do
+  for J := 0 to 1 do
     if (J <> I) and (FilesPage.Values[J] <> '') then begin
       D := AddBackslash(ExtractFileDir(FilesPage.Values[J])) + Name;
       if FileExists(D) then begin
@@ -440,7 +437,6 @@ procedure FillFiles;
 begin
   FillFile(0, 'EBOOT.elf');
   FillFile(1, 'data_ps3.psarc');
-  FillFile(2, 'libsre.prx');
 end;
 
 procedure FlashBrowseClick(Sender: TObject);
@@ -525,8 +521,8 @@ begin
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
     'From your RPCS3, or from files you pick.',
     'Setup looks for RPCS3 with Killzone HD ({#TitleId}) and the PS3 firmware installed. With it, your RPCS3 ' +
-    'decrypts copies of the game''s EBOOT and the firmware''s libsre into the install folder during the build, and ' +
-    'nothing needs preparing by hand. Your game and RPCS3 folders are only read.', True, False);
+    'decrypts a copy of the game''s EBOOT into the install folder during the build, and nothing needs preparing by ' +
+    'hand. Your game and RPCS3 folders are only read.', True, False);
   SourcePage.Add('Use my RPCS3 install');
   SourcePage.Add('I will pick the game folder and the decrypted files myself');
   SourcePage.Add('Show me how');
@@ -557,13 +553,12 @@ begin
     'picking the folder it is in also works). Setup only reads it.', False, '');
   GamePage.Add('Installed game folder ({#TitleId}):');
   FilesPage := CreateInputFilePage(GamePage.ID, 'Your decrypted files',
-    'Three files made from your own game and PS3 firmware.',
-    'Decrypted, as docs/GETTING-FILES.md says: not EBOOT.BIN, not the .sprx. The data archive may stay empty: the ' +
+    'Files made from your own game.',
+    'Decrypted, as docs/GETTING-FILES.md says: not EBOOT.BIN. The data archive may stay empty: the ' +
     'port then reads the game folder''s own data_ps3.psarc.edat. This installer ' +
     'includes no decryption tools and downloads nothing for them; the files are only read.');
   FilesPage.Add('EBOOT.elf (the game''s executable, decrypted):', 'ELF files (*.elf)|*.elf|All files|*.*', '.elf');
   FilesPage.Add('data_ps3.psarc (optional: the data archive, decrypted; empty = the game''s own .edat):', 'PSARC files (*.psarc)|*.psarc|All files|*.*', '.psarc');
-  FilesPage.Add('libsre.prx (SPURS, from PS3 system software 4.93, decrypted):', 'PRX files (*.prx)|*.prx|All files|*.*', '.prx');
   FlashPage := CreateInputQueryPage(FilesPage.ID, 'PS3 firmware (for the music)',
     'The firmware''s dev_flash folder, as RPCS3 keeps it.',
     'The game''s music decoder is read from dev_flash\sys\external\flashMP3.pic. Optional, but without it the music ' +
@@ -582,7 +577,6 @@ begin
   GamePage.Values[0] := Pick('GAME', 'Game');
   FilesPage.Values[0] := Pick('EBOOT', 'Eboot');
   FilesPage.Values[1] := Pick('PSARC', 'Psarc');
-  FilesPage.Values[2] := Pick('LIBSRE', 'Libsre');
   FlashPage.Values[0] := Pick('DEVFLASH', 'DevFlash');
   { unticked unless the player accepted before (an upgrade) or passed /DLSS=accept }
   DlssCheck.Checked := CompareText(Pick('DLSS', 'Dlss'), 'accept') = 0;
@@ -597,7 +591,6 @@ begin
   SetPreviousData(PreviousDataKey, 'Game', GamePage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Eboot', FilesPage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Psarc', FilesPage.Values[1]);
-  SetPreviousData(PreviousDataKey, 'Libsre', FilesPage.Values[2]);
   SetPreviousData(PreviousDataKey, 'DevFlash', FlashPage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Dlss', DlssChoice);
   SetPreviousData(PreviousDataKey, 'Rpcs3Dir', RpcsHint);   { the folder picked with Find RPCS3..., else '' }
@@ -790,7 +783,7 @@ begin
       '3. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
       'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
       'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +
-      'myself" and give the installed game folder, EBOOT.elf, libsre.prx and the firmware''s dev_flash.' + #13#10#13#10 +
+      'myself" and give the installed game folder, EBOOT.elf and the firmware''s dev_flash.' + #13#10#13#10 +
       'Every step: {#InstallDoc}' + #13#10 + 'What each file must be: {#FilesDoc}', mbInformation, MB_OK);
     Result := False;
   end else if CurPageID = GamePage.ID then begin
@@ -818,8 +811,8 @@ begin
     end else if (FirmwareVersion(FlashPage.Values[0]) <> '') and
                 (FirmwareVersion(FlashPage.Values[0]) <> '{#Firmware}') then begin
       MsgBox('This dev_flash holds PS3 system software ' + FirmwareVersion(FlashPage.Values[0]) + '; the port needs ' +
-        '{#Firmware} (libsre.prx and the music decoder come from it). Install system software {#Firmware} in RPCS3 ' +
-        '(File, Install Firmware), take libsre from it again, then pick its dev_flash.', mbError, MB_OK);
+        '{#Firmware} (the music decoder comes from it). Install system software {#Firmware} in RPCS3 ' +
+        '(File, Install Firmware), then pick its dev_flash.', mbError, MB_OK);
       Result := False;
     end;
   end;
@@ -833,7 +826,7 @@ begin
   if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID)) then Result := True;
 end;
 
-{ All four required files, checked; silent installs with any of them missing build nothing }
+{ The required files, checked; silent installs with any of them missing build nothing }
 function FilesReady: Boolean;
 var
   P: String;
@@ -860,7 +853,6 @@ begin
   if GamePage.Values[0] <> '' then Result := Result + ' --game ' + Quote(ResolveGame(GamePage.Values[0]));
   if FilesPage.Values[0] <> '' then Result := Result + ' --eboot ' + Quote(FilesPage.Values[0]);
   if FilesPage.Values[1] <> '' then Result := Result + ' --psarc ' + Quote(FilesPage.Values[1]);
-  if FilesPage.Values[2] <> '' then Result := Result + ' --libsre ' + Quote(FilesPage.Values[2]);
   if FlashPage.Values[0] <> '' then Result := Result + ' --dev-flash ' + Quote(FlashPage.Values[0]);
 end;
 
@@ -868,7 +860,6 @@ end;
 function RpcsFile(Name: String): String;
 begin
   if Name = 'EBOOT.elf' then Result := 'the game''s EBOOT'
-  else if Name = 'libsre.prx' then Result := 'libsre, from the firmware'
   else if Name = 'data_ps3.psarc.edat.unedat' then
     Result := 'the data archive of your PlayStation Store copy (3 GB: a minute or more)'
   else Result := Name;

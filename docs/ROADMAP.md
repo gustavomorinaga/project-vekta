@@ -89,6 +89,7 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 ### Phase 3. SPU and SPURS
 - [x] SPU images, job modules and libsre translated
 - [x] One frame's jobs complete; Level 1 runs
+- [x] The SPURS lock-free queue in the runtime, no libsre needed (patch 1022, [dev/libsre-removal.md](dev/libsre-removal.md), 2026-11-17)
 - [x] The `jm_post` WWS job manager documented ([dev/wws-jm-post.md](dev/wws-jm-post.md)) and run on the PC
 - [x] Rare hang entering Level 1: no longer reproduces with `jm_post` on the PC (0 in 22 loads of the 11 levels, 2026-10-17)
 - [ ] Slow memory growth: about 0.24 MB/min in Level 1 standing still (15 min, 2026-10-17). Low priority

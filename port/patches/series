@@ -157,3 +157,4 @@
 4015-EDAT-reader-64-bit-seeks-and-a-line-when-a-decrypt-s.patch
 4016-EDAT-reader-the-cache-check-reads-the-size-with-64-b.patch
 2081-Vulkan-window-an-icon-and-an-application-id-the-port.patch
+1022-spurs-_cellSpursLFQueueInitialize-and-_cellSpursLFQu.patch

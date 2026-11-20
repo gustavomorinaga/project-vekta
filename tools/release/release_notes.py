@@ -92,6 +92,16 @@ NEED_PREPARED = ("you need your own Killzone HD (NPUA80856) from the Killzone Tr
 NEED_050 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
             "4.93; when both are installed in your RPCS3, the installers use them and your RPCS3 makes the decrypted "
             "copies of the EBOOT and libsre, otherwise you give those two decrypted files yourself")
+# From 0.6.0 the firmware's libsre is not needed: the EBOOT is the one decrypted file; the firmware stays for the music.
+NEED_060 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
+            "4.93 for the music; when both are installed in your RPCS3, the installers use them and your RPCS3 makes "
+            "the decrypted copy of the EBOOT, otherwise you give that decrypted file yourself")
+
+
+def need_text(v):
+    return NEED_060 if v >= (0, 6, 0) else NEED_050 if v >= (0, 5, 0) else NEED_PREPARED
+
+
 # After 0.4.0 the paragraph on the downloads comes first, under this heading, with the player's install page.
 INSTALL_FIRST = (0, 4, 0)
 INSTALL_PAGE = ("How to install, step by step, with what each step asks and shows: "
@@ -152,7 +162,7 @@ def notes(version, entry, first=False):
         lists = ([f"New in {version}:\n{bullets(new)}"] if new else []) + ([f"Fixed:\n{bullets(fixed)}"] if fixed else [])
     v = tuple(int(x) for x in version.split("."))
     files = (SOURCE_ONLY.format(version=version, blob=blob) if version == "0.1.0" else
-             FILES.format(version=version, blob=blob, need=NEED_050 if v >= (0, 5, 0) else NEED_PREPARED, linux=(
+             FILES.format(version=version, blob=blob, need=need_text(v), linux=(
                  LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE).format(version=version, blob=blob)))
     install_first = v > INSTALL_FIRST
     return "\n\n".join([

@@ -2,7 +2,7 @@
 """The first run: check the player's own files, then patch, lift and build the port on their machine, as one command
 with one progress bar, and remember where the files are.
 
-    tools/release/firstrun.py [--game DIR] [--eboot FILE] [--psarc FILE] [--libsre FILE] [--dev-flash DIR]
+    tools/release/firstrun.py [--game DIR] [--eboot FILE] [--psarc FILE] [--dev-flash DIR]
                               [--dlss accept|decline] [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE]
                               [--bar] [--dry-run]
     tools/release/firstrun.py --rpcs3 [DIR] [other options]   (the game and the firmware from the player's RPCS3)
@@ -25,9 +25,9 @@ written to work/paths.env, which tools/env.sh reads, so tools/play.sh and the ot
 exports (a variable set in the environment still wins).
 
 --rpcs3 [DIR] (tools/release/rpcs3_import.py): the installed game folder, its data_ps3.psarc.edat and dev_flash
-are taken from the player's RPCS3 (DIR, else the usual places), and that RPCS3 decrypts copies of EBOOT.BIN and
-libsre.sprx into work/prep (checked by SHA-256), and of the .edat too for a PlayStation Store copy (bound to the
-buyer's licence, which the port cannot open); those paths are then saved like any others. --interactive offers it
+are taken from the player's RPCS3 (DIR, else the usual places), and that RPCS3 decrypts a copy of EBOOT.BIN into
+work/prep (checked by SHA-256), and of the .edat too for a PlayStation Store copy (bound to the buyer's licence, which
+the port cannot open); those paths are then saved like any others. --interactive offers it
 when an RPCS3 with the game is found and no paths were saved before.
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
@@ -35,7 +35,7 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
   venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads; Linux
             with the system's compilers only: not on Windows nor with KZ_LINUX_TOOLCHAIN=pinned)
   patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches (a release folder ships it)
-  lift      work/lift and work/fw: the game's and the firmware's code as C++ (kzbuild.py lift)
+  lift      work/lift: the game's code and the firmware's MP3 decoder as C++ (kzbuild.py lift)
   vfs       work/vfs: the folder the game runs from (kzbuild.py vfs; saves and settings there are kept)
   dlss      only when the player accepted NVIDIA's DLSS SDK licence (--dlss accept, or a yes to --interactive's
             question; the choice is kept in work/dlss-choice): the DLSS SDK files fetched from NVIDIA's repository and
@@ -99,14 +99,12 @@ INPUTS = [
     ("eboot", "KZ_EBOOT", "the decrypted EBOOT (EBOOT.elf)", ("Game", "EBOOT.elf")),
     ("psarc", "KZ_PSARC", "the decrypted data archive (data_ps3.psarc; optional: without it the game folder's own "
      "USRDIR/data_ps3.psarc.edat is read)", ("Game", "data_ps3.psarc")),
-    ("libsre", "KZ_LIBSRE", "the decrypted libsre from PS3 firmware 4.93 (libsre.prx)", ("Game", "libsre.prx")),
     ("dev_flash", "PS3_DEV_FLASH", "RPCS3's dev_flash folder (for the MP3 decoder; optional)" +
      (": in RPCS3's own folder, beside rpcs3.exe" if os.name == "nt" else ""), None),
 ]
 # What check-game-files.py names each input in its MISSING / WRONG / DIFFERENT lines.
 INPUT_OF = {"PARAM.SFO": "game", "TROPHY.TRP": "game", "data_ps3.psarc.edat": "game", "EBOOT.elf": "eboot",
-            "data_ps3.psarc": "psarc", "firmware": "dev_flash",
-            "libsre.prx": "libsre", "flashMP3.pic": "dev_flash"}
+            "data_ps3.psarc": "psarc", "firmware": "dev_flash", "flashMP3.pic": "dev_flash"}
 
 
 def default_dev_flash(root=ROOT, windows=os.name == "nt"):
@@ -859,13 +857,13 @@ def use_rpcs3(c, hint=None, say=print, step=None):
     r = rpcs3_import().prepare(c.work, hint or None, log=say, step=step)
     if r["status"] != "ok":
         return [p["text"] for p in r["problems"]]
-    c.paths.update(game=r["game"], eboot=r["eboot"], libsre=r["libsre"], dev_flash=r["dev_flash"])
+    c.paths.update(game=r["game"], eboot=r["eboot"], dev_flash=r["dev_flash"])
     if r.get("psarc"):
         c.paths["psarc"] = r["psarc"]   # a PSN copy: its .edat is bound to the licence, RPCS3 opened it
     elif c.paths.get("psarc") and not os.path.isfile(c.paths["psarc"]):
         c.paths.pop("psarc")   # a wrong saved path (a folder): the port reads the game's own .edat instead
     write_paths(c.work, c.paths)
-    made = "EBOOT.elf, libsre.prx and data_ps3.psarc" if r.get("psarc") else "EBOOT.elf and libsre.prx"
+    made = "EBOOT.elf and data_ps3.psarc" if r.get("psarc") else "EBOOT.elf"
     say(f"From RPCS3: the game in {r['game']}, the firmware in {r['dev_flash']}; {made} made by "
         f"your RPCS3 in {os.path.dirname(r['eboot'])}")
     return []
@@ -880,7 +878,7 @@ SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, al
     3. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
        Nothing is written into the game's or RPCS3's folders.
   Or, with the decrypted files you already have: choose "I have the files ready" and give the installed game
-  folder, EBOOT.elf, libsre.prx and the firmware's dev_flash (docs/GETTING-FILES.md says what each must be)."""
+  folder, EBOOT.elf and the firmware's dev_flash (docs/GETTING-FILES.md says what each must be)."""
 
 
 def offer_rpcs3(c, hint, ask=input, say=print):
@@ -897,8 +895,8 @@ def offer_rpcs3(c, hint, ask=input, say=print):
         return r["status"] == "ok"
     found = look(hint)
     while True:
-        say("  1. Use my RPCS3 install (it decrypts copies of the game's EBOOT and libsre, and of a PlayStation Store "
-            "copy's data archive, for the port)"
+        say("  1. Use my RPCS3 install (it decrypts a copy of the game's EBOOT, and of a PlayStation Store copy's "
+            "data archive, for the port)"
             + ("" if found else ": not available")
             + "\n  2. I have the files ready\n  3. Show me how"
             + "\n  4. My RPCS3 is somewhere else: type its folder")
@@ -945,7 +943,7 @@ def ask_paths(paths, only=None, ask=input, say=print):
 
 
 # The file each file input names; a folder given for one is looked into for it (in_folder).
-FILE_OF = {"eboot": "EBOOT.elf", "psarc": "data_ps3.psarc", "libsre": "libsre.prx"}
+FILE_OF = {"eboot": "EBOOT.elf", "psarc": "data_ps3.psarc"}
 
 
 def in_folder(name, path):
@@ -964,13 +962,13 @@ def rpcs3_hint(paths):
     None."""
     m = rpcs3_import()
     root_of = getattr(m, "rpcs3_root_of", None)
-    for name in ("game", "eboot", "libsre", "dev_flash", "psarc"):
+    for name in ("game", "eboot", "dev_flash", "psarc"):
         r = root_of(paths.get(name)) if root_of and paths.get(name) else None
         if r:
             return r
     # a game folder that RPCS3's vfs.yml keeps outside the RPCS3 folder: the RPCS3 that has that very folder
     game_of = getattr(m, "_game_of", None)
-    for name in ("game", "eboot", "libsre"):
+    for name in ("game", "eboot"):
         p = paths.get(name)
         if game_of and p and game_of(p):
             r = m.resolve(p)
@@ -1072,7 +1070,7 @@ def main(argv=None):
                          "(work/dlss-choice); --interactive asks once when it was never answered")
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
                     help="take the game and the firmware from your RPCS3 (DIR, else the usual places); your RPCS3 "
-                         "decrypts copies of EBOOT.BIN and libsre.sprx into work/prep")
+                         "decrypts a copy of EBOOT.BIN into work/prep")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: from free memory)")
     ap.add_argument("--cleanup", action="store_true",
                     help="after a good build, remove what no later build reads (the toolchain's downloaded archives, "

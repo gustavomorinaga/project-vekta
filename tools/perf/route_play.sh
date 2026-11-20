@@ -8,7 +8,7 @@
 # NPUA80856, copied into the VFS's savedata before the run, replacing what is there), level n from the top, Normal.
 # Environment: KZ_VFS (a test VFS, never the player's: its savedata is replaced; its kz1hd_pc.ini must be the one the
 # route was recorded with, as the mouse look is replayed through mouse_invert/mouse_yaw/mouse_pitch and the FOV
-# changes what the AI sees), ROUTE_SAVE, KZ_LIBSRE_IMAGE (default $KZ_WORK/fw/out/libsre_image.bin), WIN=1 (a window),
+# changes what the AI sees), ROUTE_SAVE, WIN=1 (a window),
 # EXTRA_ENV="VAR=value ..." (more variables for the game), TOP_AT (seconds into the replay for the snapshot of the
 # other processes' CPU, default 40). The game runs as <binary dir>/KZ1HD-perf so that scripts which clean up with
 # pkill -x KZ1HD leave it alone; only this script's own PID is ever killed.
@@ -31,7 +31,7 @@ mkdir -p "$V/route/bin"; ln -sfn "$V/PS3_GAME/USRDIR/EBOOT.elf" "$V/route/bin/EB
 # shellcheck disable=SC2086
 env KZ_ROUTE_PLAY="$route" KZ_ROUTE_EXIT=1 KZ_ROUTE_LOOSE=1 KZ_TICK_HZ=144 KZ_GUEST_VBLANK_HZ=144 \
   KZ_STATS=1 PAD_FILE="$pad" PS3_VERBOSE=0 AUDIO_RATE=1 PS3RECOMP_VK_WINDOW=${WIN:-0} \
-  GCM_PARK_SKIP=1 PS3RECOMP_VK_GUEST_PROGRAMS=1 KZ_LIBSRE_IMAGE=${KZ_LIBSRE_IMAGE:-$KZ_WORK/fw/out/libsre_image.bin} \
+  GCM_PARK_SKIP=1 PS3RECOMP_VK_GUEST_PROGRAMS=1 \
   ${EXTRA_ENV:-} "$run" "$V/route/bin/EBOOT.elf" > "$log" 2>&1 &
 pid=$!
 echo "$pid" > "$out.pid"

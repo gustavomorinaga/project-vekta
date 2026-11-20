@@ -73,7 +73,7 @@ def fake_tree(tmp):
         p.chmod(0o755)
     game = tmp / "my files"
     game.mkdir()
-    for f in ("EBOOT.elf", "data_ps3.psarc", "libsre.prx"):
+    for f in ("EBOOT.elf", "data_ps3.psarc"):
         (game / f).write_text(f)
     return root, game
 
@@ -81,7 +81,6 @@ def fake_tree(tmp):
 def ctx(root, game, **kw):
     paths = firstrun.resolve_paths(str(root), str(root / "work"), {"eboot": str(game / "EBOOT.elf"),
                                                                   "psarc": str(game / "data_ps3.psarc"),
-                                                                  "libsre": str(game / "libsre.prx"),
                                                                   "game": str(game)})
     return firstrun.Ctx(root=str(root), paths=paths, jobs=3, work=str(root / "work"), **kw)
 
@@ -104,7 +103,7 @@ def run(root, game, fail=None, status=None):
     return rc, out.getvalue(), [x for x in got if "=" not in x], r, got
 
 
-for var in ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_LIBSRE", "PS3_DEV_FLASH", "KZ_WORK"):
+for var in ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "PS3_DEV_FLASH", "KZ_WORK"):
     os.environ.pop(var, None)
 
 check(firstrun.default_dev_flash("/r", windows=True) == os.path.join("/r", "Game", "dev_flash"),
@@ -219,7 +218,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # --interactive: a failed check asks for the failing file only, then asks once about DLSS, then builds. With paths
     # saved by an earlier install (no offer at the start), a failed check offers the RPCS3 route once (Enter: no)
-    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", "", str(game / "EBOOT.elf"), "n"])
+    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", str(game / "EBOOT.elf"), "n"])
     real_license = firstrun.fetch_license
     firstrun.fetch_license = lambda c: str(tmp / "LICENSE.txt")   # no network in a test
     real_import = firstrun.rpcs3_import   # no RPCS3 of this machine: the offer is tested in test_rpcs3_import.py
@@ -259,7 +258,7 @@ with tempfile.TemporaryDirectory() as tmp:
           "--interactive asks about DLSS once, with the licence's link and text; no is kept and fetches nothing")
     check("PROGRESS " not in console.getvalue() and "RESULT " not in console.getvalue() and "100.0%" in console.getvalue(),
           "the console shows the bar, not the protocol lines")
-    check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 8,
+    check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 7,
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
     check(sum(q.startswith("Your choice") for q in asked) == 1 and any("I have the files ready" in s for s in said),
           f"a failed check with saved paths offers the RPCS3 route once: {asked}")
