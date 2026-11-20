@@ -21,5 +21,5 @@
   ],
   "help": ["Testing on other GPUs (AMD, Intel) and CPUs", "Testing on a clean Windows machine", "Playing levels 2 to 11 to their end"],
   "tags": ["cell", "spurs", "vulkan", "linux"],
-  "notes": "Needs your own copy of the game (the Killzone HD package from the Killzone Trilogy disc, the decrypted EBOOT, and your own PS3 firmware for the music); the build happens on your PC. Playable: Level 1 played to its end, all 11 levels load; 60 fps by default, an optional 144 Hz mode."
+  "notes": "Needs your own copy of the game (the Killzone HD package from the Killzone Trilogy disc, the decrypted EBOOT; no firmware); the build happens on your PC. Playable: Level 1 played to its end, all 11 levels load; 60 fps by default, an optional 144 Hz mode."
 }

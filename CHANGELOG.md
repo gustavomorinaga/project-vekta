@@ -8,6 +8,11 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- `KZ1HD.exe` carries a version: Explorer's Details tab shows Project Vekta and the release, and `KZ1HD --version`
+  (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens
+  every log, so a log says which build wrote it.
+- `KZ1HD.exe` has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already
+  asked for at run time.
 - One program to start in each release folder: `Project Vekta.exe` on Windows and the new `project-vekta` on Linux.
   With no arguments it plays, and before the first build it checks your files and builds first, asking nothing
   when RPCS3 and the game are in their usual places. It takes `--game`, `--eboot`, `--psarc`, `--rpcs3 [DIR]` (or
@@ -26,6 +31,11 @@ program and folder that build it. Until a release that calls itself playable
   offers to rebuild. `KZ_EBOOT_CHECK=0` skips it.
 
 ### Changed
+- No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself
+  (minimp3, CC0) in place of the system software's MP3 decoder, which ran translated from your `dev_flash`; compared
+  with it in Levels 1 and 4: the same frames, the same silences, samples within 50 dB SNR. The `flashMP3.pic` the game
+  still asks for is a stand-in the port writes, with no code in it. The installers no longer ask for `dev_flash` or
+  check its version; the RPCS3 route works with no firmware installed in RPCS3.
 - The release folders keep their scripts in `scripts/`: `run.cmd`, `play.cmd` and the new `prepare.cmd` on Windows,
   `run.sh`, `play.sh` and `prepare.sh` on Linux, so that the launcher is the one program at the top (a launcher
   such as Quiver starts the one it finds there). An install over an earlier version removes the old `run.cmd` and
