@@ -153,8 +153,9 @@ class Ctx:
         self.work = self.work or os.environ.get("KZ_WORK") or os.path.join(self.root, "work")
 
     def dlss_on(self):
-        """DLSS is built in only when the player accepted its licence."""
-        return self.dlss == "accept"
+        """DLSS is built in only when the player accepted its licence, and never with the pinned Linux toolchain
+        (dlss_unavailable)."""
+        return self.dlss == "accept" and not dlss_unavailable()
 
     def w(self, *rel):
         return os.path.join(self.work, *rel)
@@ -263,6 +264,18 @@ def cmd_venv(c):
     cmds = [] if os.path.isfile(os.path.join(venv, "bin", "python")) else [[c.python, "-m", "venv", venv]]
     return cmds + [[os.path.join(venv, "bin", "pip"), "install", "--disable-pip-version-check", "-q", "cmake",
                     "ninja", "-r", os.path.join(c.root, "third_party", "ps3recomp", "requirements.txt")]]
+
+
+DLSS_LINUX_FOLDER = ("NVIDIA DLSS is not available in the Linux release folder (NVIDIA's Linux library is built "
+                     "for GCC's C++ library, the folder's pinned toolchain uses LLVM's): this build uses AMD FSR 3.1. "
+                     "For DLSS on Linux, build with your system's compilers (tools/install.sh, docs/BUILDING.md).")
+
+
+def dlss_unavailable(environ=None):
+    """True for the Linux release folder's pinned toolchain (KZ_LINUX_TOOLCHAIN=pinned): Zig links libc++, and
+    libnvsdk_ngx.a needs libstdc++, so KZ1HD would not link with DLSS. Windows and the system's compilers are fine."""
+    environ = os.environ if environ is None else environ
+    return os.name != "nt" and environ.get("KZ_LINUX_TOOLCHAIN") == "pinned"
 
 
 def cmd_dlss(c):
@@ -1034,7 +1047,7 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
         if ask("Enter to choose the files again, q to quit: ").strip().lower() == "q":
             return 1
         only = r.fail_inputs or None
-    if not c.dlss:
+    if not c.dlss and not dlss_unavailable():
         ask_dlss(c, ask, say)
     log = new_log(c, redactor())
     say(f"Building (log: {log.path})")
@@ -1099,6 +1112,8 @@ def main(argv=None):
     if a.dlss and not a.dry_run:
         write_dlss(work, a.dlss)
     c.dlss = a.dlss or read_dlss(work)
+    if c.dlss == "accept" and dlss_unavailable():
+        print(DLSS_LINUX_FOLDER)
     if not a.dry_run:
         old = heal_moved_paths(c)
         if old:

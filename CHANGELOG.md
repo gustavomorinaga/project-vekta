@@ -64,6 +64,10 @@ program and folder that build it. Until a release that calls itself playable
 - The Linux folder builds the game again: `KZ1HD` called `mallinfo2`, which the folder's own toolchain (glibc 2.31)
   does not have, so its link stopped with "undefined symbol: mallinfo2". Builds with the system's compilers were
   not affected.
+- NVIDIA DLSS is offered on Windows only in the release folders: NVIDIA's Linux library is built for GCC's C++
+  library and does not link with the Linux folder's own toolchain, so a ticked DLSS stopped that build while
+  compiling. The Linux folder now builds with AMD FSR 3.1 and says why; DLSS on Linux needs a build with the
+  system's compilers (`tools/install.sh`).
 
 ## [0.5.4] - 2026-11-20 (pre-release)
 
