@@ -8,6 +8,10 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- "Get it on" badges for RecompLauncher and Quiver Launcher in the README, the install page and the project page,
+  linking to the port's page on each. The RecompLauncher badge is the one from its press kit, unchanged; the Quiver
+  badge is text only, since Quiver has no press kit and its logo is a mark. The project page's install box also lost
+  its outdated lines: it lists the setup program and the release folders, and what goes online.
 - `KZ1HD.exe` carries a version: Explorer's Details tab shows Project Vekta and the release, and `KZ1HD --version`
   (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens
   every log, so a log says which build wrote it.
