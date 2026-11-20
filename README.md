@@ -37,8 +37,8 @@ Each player translates and builds the game's code on their own machine, from the
 ## What you need
 
 - **Your own game:** Killzone HD (NPUA80856, the US edition), installed from your own **Killzone Trilogy** disc or
-  bought on the PlayStation Store, and PS3 system software 4.93 (its `dev_flash`, for the music). When both are
-  installed in your RPCS3, the installers use them and your RPCS3 makes a decrypted copy of the game's EBOOT;
+  bought on the PlayStation Store; no PS3 system software is needed. When it is installed in your RPCS3, the
+  installers use it and your RPCS3 makes a decrypted copy of the game's EBOOT;
   otherwise you give that decrypted file yourself. The disc copy's data archive is read
   as it is installed; the Store copy's is bound to your licence, so your RPCS3 opens a copy of it too. What each file must be, and how the
   scripts check them: [docs/GETTING-FILES.md](docs/GETTING-FILES.md); every install step:
@@ -73,11 +73,11 @@ As of 2026-11-16, on Linux x64 with an NVIDIA RTX 3070 Ti, the maintainer's mach
 
 | | |
 |---|---|
-| Code translation | the whole EBOOT is translated (about 23,400 PPU functions) plus the SPU programs, job modules and the firmware pieces the game loads; this repository's scripts rebuild it byte for byte from the player's files |
+| Code translation | the whole EBOOT is translated (about 23,400 PPU functions) plus the SPU programs and job modules; this repository's scripts rebuild it byte for byte from the player's files |
 | Boot, menus, movies | work: intro movies, front end, options, pause menu, saves and Continue |
 | Campaign | the whole campaign, levels 1 to 11, played from start to end on Linux and on Windows (2026-11-16); the levels are not yet each compared with reference footage |
 | Frame rate | a steady 60 frames per second by default (the game logic runs at 60 Hz instead of the PS3's 30); an optional 144 Hz mode reaches about 131 to 134 frames per second in Level 1 and Level 7 |
-| Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music through the firmware's MP3 decoder |
+| Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music decoded with minimp3 in place of the PS3 system software's MP3 decoder |
 | Windows | the Windows exe is cross-built on Linux and runs under Wine, Proton and on a real Windows; the whole campaign plays there from start to end (2026-11-16); speed under Wine and Proton is lower (about 100 frames per second in Level 7) |
 | Distribution | you build the port from your own files: on Windows the setup program or folder builds it on your PC (since 0.2.0); on Linux from source, or (since 0.3.0) a Linux folder with its own toolchain (no compiler or packages needed) |
 
@@ -186,7 +186,7 @@ Step by step (what `tools/install.sh` runs):
 git clone --recurse-submodules https://github.com/gustavomorinaga/project-vekta
 cd project-vekta
 tools/ps3recomp-patched.sh   # ps3recomp v0.19.0 with port/patches applied, in work/
-tools/lift.sh                # translates your EBOOT, SPU code and firmware pieces, in work/lift
+tools/lift.sh                # translates your EBOOT and its SPU code, in work/lift
 tools/setup-vfs.sh           # the folder the game runs from, in work/vfs
 tools/build.sh               # work/build/KZ1HD
 tools/play.sh                # plays in a window

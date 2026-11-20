@@ -259,6 +259,9 @@ if(SPU_SOURCES)
         set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2;-g")
     endif()
 endif()
+# The firmware MP3 decoder's replacement (native/flashmp3.c) decodes with minimp3 (CC0, third_party/minimp3).
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/native/flashmp3.c" APPEND PROPERTY INCLUDE_DIRECTORIES
+             "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/minimp3")
 
 # app.rc carries the icon, the version block and the manifest, and needs a
 # resource compiler. Listing it as a source on a host that has none is not a
