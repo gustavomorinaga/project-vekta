@@ -38,6 +38,7 @@ its own command line; the functions used here run on 3.8).
 import argparse
 import glob
 import hashlib
+import ntpath
 import os
 import shutil
 import signal
@@ -87,6 +88,9 @@ HELP = {
                   "install its licence in RPCS3 as for playing it (see RPCS3's documentation), then try again.",
     "decrypt_failed": "RPCS3 did not make the file named below. Check that this RPCS3 runs the game, then try again, "
                       "or pick your files yourself.",
+    "bad_runtime": "RPCS3 stopped at its start-up check of the Visual C++ runtime: it loaded the DLL named below "
+                   "from another program's folder. Install the latest Microsoft Visual C++ 2015-2022 Redistributable "
+                   "(x64), start this setup from File Explorer rather than from another program, then try again.",
     "wrong_file": "RPCS3 made the file named below, but it is not the tested one: the game must be NPUA80856 "
                   "version 01.00, and the firmware 4.93.",
 }
@@ -312,12 +316,26 @@ def resolve(hint=None, exe=None, home=None):
 
 
 # -------------------------------------------------------------------------------------------------- decrypt
-def rpcs3_env(cfg, environ=None):
+def windows_path(environ):
+    """The PATH a child RPCS3 gets on Windows: the Windows folders only. RPCS3 needs nothing from the player's PATH (its
+    own DLLs are beside rpcs3.exe), and a PATH inherited from whatever started the setup can hold another program's
+    Visual C++ runtime: in a report on 0.5.3 (issue #94) RPCS3 started by the setup loaded msvcp140.dll from a download
+    manager's runtime\\bin (most likely the setup was opened from it and inherited its PATH) and stopped at its
+    start-up check of these DLLs ("The module msvcp140.dll was incorrectly installed at ..."), with exit code 0 and no
+    file, while the same RPCS3 run by hand from PowerShell decrypted the same EBOOT."""
+    root = environ.get("SystemRoot") or environ.get("SYSTEMROOT") or environ.get("windir") or "C:\\Windows"
+    return ";".join([ntpath.join(root, "System32"), root, ntpath.join(root, "System32", "Wbem")])
+
+
+def rpcs3_env(cfg, environ=None, windows=WINDOWS):
     """The environment for a child RPCS3 whose settings, cache and log go to cfg, not to the player's own."""
     e = dict(os.environ if environ is None else environ)
     e["QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES"] = "1"
-    if WINDOWS:
+    if windows:
         e["RPCS3_CONFIG_DIR"] = os.path.join(cfg, "")   # RPCS3 cuts the value after its last separator
+        for k in [k for k in e if k.upper() == "PATH"]:
+            del e[k]
+        e["PATH"] = windows_path(e)
     else:
         e["XDG_CONFIG_HOME"] = os.path.join(cfg, "config")
         e["XDG_CACHE_HOME"] = os.path.join(cfg, "cache")
@@ -382,6 +400,24 @@ def _run_one(exe, cfg, src, out, prep, logf, watchdog):
     return proc.returncode, False
 
 
+BAD_MODULE = "Found incorrectly installed module: "
+
+
+def bad_module(cfg):
+    """The DLL path RPCS3's start-up check refused (its "Found incorrectly installed module" line in RPCS3.log under
+    the redirected settings), or None. RPCS3 shows that error in a window and still exits with 0."""
+    for path in glob.glob(os.path.join(cfg, "**", "RPCS3.log"), recursive=True):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if BAD_MODULE in line:
+                        m = line.split("path='", 1)
+                        return m[1].split("'", 1)[0] if len(m) == 2 else line.split(BAD_MODULE, 1)[1].strip()
+        except OSError:
+            pass
+    return None
+
+
 def _place(src, copy):
     """The input RPCS3 decrypts: a hard link when src is on the same drive (instant, no second copy of a 3 GB file;
     RPCS3 only reads its input and writes the result beside it), else a copy. Removing it never touches src."""
@@ -428,6 +464,11 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None, step=Non
                 with open(logpath, "rb") as f:
                     f.seek(before)
                     said = f.read().decode("utf-8", "replace")
+                bad = bad_module(cfg)
+                if bad:
+                    log(f"rpcs3: RPCS3 stopped at its DLL check: {loc.redact(bad)}")
+                    res["problems"].append(_problem("bad_runtime", f"{out_name}: {loc.redact(bad)}"))
+                    continue
                 code = "no_license" if "license file" in said or ".rap" in said else "decrypt_failed"
                 res["problems"].append(_problem(code, out_name))
                 continue
