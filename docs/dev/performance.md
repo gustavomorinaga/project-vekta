@@ -42,6 +42,7 @@ over a day (Level 7 141.8 in the morning, about 119 at night, the same binary): 
 | A per-thread shortcut for table HLE calls (the allocator's `sys_lwmutex_lock/unlock`); `PS3_HLE_SLOW=1` restores the general path | patch 0108, `ppu_hle.cpp` | 126.5 to 129.2 fps (alternating A/B, Level 7) |
 | The lock line shared with the SPUs waits by reading, with a pause, instead of repeated exchanges (`SPU_LOCKLINE_XCHG=1` restores the old way) | patch 0108, `spu_coherency.c` | 129.9 to 131.0 fps (alternating A/B, Level 7) |
 | Inline memory stores only in the 80 functions that store the most (`tools/inline_hot_stores.py`, applied by the lift) | port | 131.5 to 136.8 fps (alternating A/B, Level 7); all 277 of the profile: the same (137.0 against 137.1) |
+| A converted-vertex cache: draws the game repeats unchanged (about 70 %) reuse their converted vertices in GPU memory (`PS3RECOMP_ENG_VCACHE=0` restores the old way) | patches 2062, 2063 (v0.19.0, after ps3recomp PR #718) | RSX thread 0.5 to 0.6 ms less per frame (13 to 15 %), the whole process 4 to 7 % less CPU on the Level 7 and Level 1 routes; fps the same, since the main thread is the limit (2026-11-10) |
 
 On ps3recomp v0.18.0 every guest store is inline already (upstream #573/#574), so `inline_hot_stores.py` no longer
 runs.
