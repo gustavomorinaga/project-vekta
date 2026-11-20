@@ -8,6 +8,11 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- `KZ1HD.exe` carries a version: Explorer's Details tab shows Project Vekta and the release, and `KZ1HD --version`
+  (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens
+  every log, so a log says which build wrote it.
+- `KZ1HD.exe` has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already
+  asked for at run time.
 - A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel
   Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now
   the game says which level it needs and which one the CPU has (a message box on Windows, the launcher's message, the
@@ -19,6 +24,11 @@ program and folder that build it. Until a release that calls itself playable
   offers to rebuild. `KZ_EBOOT_CHECK=0` skips it.
 
 ### Changed
+- No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself
+  (minimp3, CC0) in place of the system software's MP3 decoder, which ran translated from your `dev_flash`; compared
+  with it in Levels 1 and 4: the same frames, the same silences, samples within 50 dB SNR. The `flashMP3.pic` the game
+  still asks for is a stand-in the port writes, with no code in it. The installers no longer ask for `dev_flash` or
+  check its version; the RPCS3 route works with no firmware installed in RPCS3.
 - The firmware's `libsre.prx` is no longer needed: the SPURS queue the game sends its compressed data requests
   through, which ran the firmware's own libsre code, is now in the port's runtime (ps3recomp patch 1022, checked
   against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it,

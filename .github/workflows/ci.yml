@@ -6,7 +6,7 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**"]   # and the release branches PRs merge into (release/vX.Y.Z)
   pull_request:
 permissions:
   contents: read
