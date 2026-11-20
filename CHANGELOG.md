@@ -13,6 +13,11 @@ program and folder that build it. Until a release that calls itself playable
   every log, so a log says which build wrote it.
 - `KZ1HD.exe` has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already
   asked for at run time.
+- A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel
+  Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now
+  the game says which level it needs and which one the CPU has (a message box on Windows, the launcher's message, the
+  log), and exits with code 75. The first run's check and the Windows setup's first page ask the same before the
+  build: the first run stops there, and the setup asks whether to install anyway.
 
 ### Changed
 - No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself

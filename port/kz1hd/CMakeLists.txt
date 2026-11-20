@@ -90,6 +90,16 @@ set(KZ_MARCH "x86-64-v3" CACHE STRING "-march for the host build (empty = compil
 if(KZ_MARCH AND NOT MSVC)
     add_compile_options(-march=${KZ_MARCH})
 endif()
+# cpu_check.c says so when the CPU is below that level, before any of that code runs: it alone is compiled for
+# baseline x86-64, and checks for the level KZ_MARCH names (x86-64-v2/v3/v4; anything else builds no check).
+set(KZ_CPU_REQUIRED 0)
+if(KZ_MARCH MATCHES "^x86-64-v([234])$")
+    set(KZ_CPU_REQUIRED ${CMAKE_MATCH_1})
+endif()
+set_source_files_properties(cpu_check.c PROPERTIES
+    COMPILE_OPTIONS "$<$<NOT:$<BOOL:${MSVC}>>:-march=x86-64>"
+    COMPILE_DEFINITIONS "KZ_CPU_REQUIRED=${KZ_CPU_REQUIRED}")
+message(STATUS "CPU check:       x86-64-v${KZ_CPU_REQUIRED} (0 = none)")
 
 # ENHANCEMENT: AMD FSR 3.1 as a temporal upscaler (docs/dev/upscalers.md). The FidelityFX SDK's FSR 3 upscaler and
 # Vulkan backend are built here from third_party/fidelityfx-fsr3 (its shaders compiled ahead by
@@ -228,6 +238,7 @@ set_source_files_properties(${KZ_NATIVE_PPU} PROPERTIES COMPILE_OPTIONS "-O2")
 set_source_files_properties(glyphs.cpp PROPERTIES COMPILE_OPTIONS "-Wno-c23-extensions")
 
 add_executable(${PROJECT_NAME}
+    cpu_check.c     # first: the CPU check (constructor 101), compiled for baseline x86-64
     main.cpp
     stubs.cpp
     pcoptions.cpp

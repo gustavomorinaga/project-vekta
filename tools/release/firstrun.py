@@ -31,7 +31,8 @@ the port cannot open); those paths are then saved like any others. --interactive
 when an RPCS3 with the game is found and no paths were saved before.
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
-  check     tools/check-game-files.py (every run; a missing or different required file stops here)
+  check     tools/check-game-files.py (every run; a missing or different required file stops here, and so does a CPU
+            below the x86-64 level the build is made for, which ends --interactive without asking again)
   venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads; Linux
             with the system's compilers only: not on Windows nor with KZ_LINUX_TOOLCHAIN=pinned)
   patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches (a release folder ships it)
@@ -616,6 +617,7 @@ class Runner:
         self.bar = Bar(out) if bar else None
         self.quiet = quiet   # the steps' own lines only: no PROGRESS / RESULT lines on the console
         self.reasons, self.fail_inputs = [], set()
+        self.cpu_failed = False   # the check's CPU line failed: no file the player gives fixes it
         self.t0 = time.monotonic()
         tot = sum(s.weight for s in steps) or 1.0
         self.frac = [s.weight / tot for s in steps]
@@ -744,6 +746,7 @@ class Runner:
                 label = ln.split()[1].rstrip(":")   # "WRONG    EBOOT.elf: <path>: ..." names it with a colon
                 if label in INPUT_OF:
                     self.fail_inputs.add(INPUT_OF[label])
+                self.cpu_failed |= label == "CPU"
             if fails:
                 return [" ".join(ln.split()) for ln in fails]
         lines = [ln.strip() for ln in out if ln.strip()]
@@ -1011,6 +1014,8 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
         if rc == 0:
             break
         say("\nThe check did not pass:\n" + "\n".join("  " + x for x in r.reasons))
+        if r.cpu_failed:   # the CPU: asking for the files again or offering RPCS3 would not help
+            return 1
         # Paths from an older install (no offer above), or paths into RPCS3's own folders (the game as RPCS3
         # installed it holds only the encrypted EBOOT.BIN): offer the RPCS3 route once more, with that RPCS3
         found = rpcs3_hint(c.paths)

@@ -203,6 +203,7 @@
 <ul class="rlist">
 <li><span class="sec">Added</span><code>KZ1HD.exe</code> carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and <code>KZ1HD --version</code> (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens every log, so a log says which build wrote it.</li>
 <li><span class="sec">Added</span><code>KZ1HD.exe</code> has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked for at run time.</li>
+<li><span class="sec">Added</span>A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now the game says which level it needs and which one the CPU has (a message box on Windows, the launcher&#x27;s message, the log), and exits with code 75. The first run&#x27;s check and the Windows setup&#x27;s first page ask the same before the build: the first run stops there, and the setup asks whether to install anyway.</li>
 <li><span class="sec">Changed</span>No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself (minimp3, CC0) in place of the system software&#x27;s MP3 decoder, which ran translated from your <code>dev_flash</code>; compared with it in Levels 1 and 4: the same frames, the same silences, samples within 50 dB SNR. The <code>flashMP3.pic</code> the game still asks for is a stand-in the port writes, with no code in it. The installers no longer ask for <code>dev_flash</code> or check its version; the RPCS3 route works with no firmware installed in RPCS3.</li>
 <li><span class="sec">Changed</span>The firmware&#x27;s <code>libsre.prx</code> is no longer needed: the SPURS queue the game sends its compressed data requests through, which ran the firmware&#x27;s own libsre code, is now in the port&#x27;s runtime (ps3recomp patch 1022, checked against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it, and on the RPCS3 route your RPCS3 decrypts only the game&#x27;s EBOOT. PS3 system software 4.93 is still needed for the music (its <code>dev_flash</code>, read as installed). The lift no longer makes <code>work/fw</code>, and removes the one an earlier version made.</li>
 </ul>
@@ -243,12 +244,12 @@
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> KZ1HD.exe carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and KZ1HD --version (Windows...</span></li>
 <li><time>next</time><span><b>Unreleased</b> KZ1HD.exe has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked...</span></li>
+<li><time>next</time><span><b>Unreleased</b> A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or...</span></li>
 <li><time>next</time><span><b>Unreleased</b> No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The firmware&#x27;s libsre.prx is no longer needed: the SPURS queue the game sends its compressed data requests through...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its data_ps3.psarc.edat is bound to the buyer&#x27;s...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows &quot;The game...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> &quot;Use my RPCS3 install&quot; names, on the setup&#x27;s build page, each file your RPCS3 is decrypting, and links instead of...</span></li>
-<li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> Finding RPCS3 by hand: the setup&#x27;s &quot;Your game&quot; page has a &quot;Find RPCS3...&quot; button, and run.cmd, ./run.sh and...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

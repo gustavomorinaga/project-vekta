@@ -37,7 +37,8 @@ check(b"\r\n" in iss and b"\n" not in iss.replace(b"\r\n", b""), "vekta.iss has 
 text = iss.decode()
 for ref in re.findall(r'\{#Payload\}\\\\?([^"\s;]+)', text):
     # work\toolchain-cache\python: the bundled Python assemble_payload.py fetches into the Windows payload (run.cmd's)
-    check(ref == "*" or ref == "VERSION" or ref == "LICENSE" or ref.startswith("work\\toolchain-cache\\python\\")
+    # {#LauncherExe}: Project Vekta.exe, which assemble_payload.py --launcher puts at the payload's root
+    check(ref in ("*", "VERSION", "LICENSE", "{#LauncherExe}") or ref.startswith("work\\toolchain-cache\\python\\")
           or (ROOT / ref.replace("\\", "/")).exists(),
           f"vekta.iss names a payload file the payload has: {ref}")
 check('Source: "{#Payload}\\work\\ps3recomp-patched\\.patchset"' in text,
@@ -327,6 +328,25 @@ with tempfile.TemporaryDirectory() as tmp:
     q = subprocess.run([sys.executable, str(ROOT / "tools/check-game-files.py"), "--quick"], capture_output=True,
                        text=True, env=dict(env, KZ_PSARC=os.path.join(tmp, "none.psarc")))
     check("ok       data_ps3.psarc.edat" in q.stdout, f"the game's .edat of the tested size passes --quick: {q.stdout}")
+
+# The CPU question before the first page: the launcher (a dontcopy entry, first in [Files] so unpacking it reads
+# nothing before it) runs --cpu-check in InitializeSetup against the level tools/kzbuild.py builds for by default
+iss_text = (ROOT / "installer" / "vekta.iss").read_text()
+files = iss_text.split("[Files]", 1)[1].split("\n[", 1)[0]
+first = next(ln for ln in files.splitlines() if ln.startswith("Source:"))
+check(first.startswith('Source: "{#Payload}\\{#LauncherExe}"') and "dontcopy" in first,
+      f"the launcher is the first [Files] entry, dontcopy: {first}")
+check(re.search(r"function InitializeSetup: Boolean;.*?ExtractTemporaryFile\('\{#LauncherExe\}'\).*?'--cpu-check'.*?"
+                r"\(Level < \{#CpuLevel\}\)", iss_text, re.S) is not None,
+      "InitializeSetup extracts the launcher and compares its --cpu-check level with CpuLevel")
+sys.path.insert(0, str(ROOT / "tools"))
+import kzbuild  # noqa: E402
+m = re.search(r'#define CpuLevel "(\d)"', iss_text)
+check(m is not None and int(m.group(1)) == kzbuild.cpu_required(kzbuild.march({})),
+      f"the setup's CpuLevel is the level of tools/kzbuild.py's default KZ_MARCH: {m and m.group(1)}")
+lc = (ROOT / "installer" / "launcher" / "launcher.c").read_text()
+check('#include "../../port/kz1hd/cpu_level.h"' in lc and 'L"--cpu-check"' in lc and "return kz_cpu_level();" in lc,
+      "the launcher's --cpu-check exits with port/kz1hd/cpu_level.h's level")
 
 print("test_setup:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

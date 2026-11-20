@@ -302,6 +302,20 @@ with tempfile.TemporaryDirectory() as tmp:
         text = launch.early_exit_text(rc, log)
         check(time.monotonic() - t0 < launch.EARLY_EXIT and "exit code 1" in text and "could not load the EBOOT" in
               text, f"a game that stops at once is reported with the end of its log: {text}")
+        # KZ1HD's own exit codes (port/kz1hd/kz_exit.h): the CPU check's code gets the exe's own line from the log,
+        # else the stock text; any other code is not one of them
+        line = ("This build of Project Vekta needs a CPU with x86-64-v3 (AVX2), and this one has x86-64-v2. The game "
+                "cannot run on it.")
+        exe.write_text(f'#!/bin/sh\necho "[kz] CPU check: {line}"\nexit {launch.EXIT_CPU}\n')
+        argv, cwd, e, log = launch.plan(str(root), env)
+        rc = launch.run(argv, cwd, e, log, poll=0.05)
+        check(rc == launch.EXIT_CPU and launch.exit_code_text(rc, log) == line,
+              f"the CPU check's exit code shows the exe's own line: {rc} {launch.exit_code_text(rc, log)}")
+        pathlib.Path(log).write_text("")
+        check("newer CPU" in (launch.exit_code_text(launch.EXIT_CPU, log) or ""),
+              "and the stock text when the log has no line")
+        check(launch.exit_code_text(1, log) is None and launch.exit_code_text(0, log) is None,
+              "other exit codes are not the exe's own")
     finally:
         launch.notify, launch.first_run = real_notify, real_first
 

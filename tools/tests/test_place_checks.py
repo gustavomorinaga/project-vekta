@@ -3,7 +3,7 @@
 tools/check-game-files.py refuses a path with [ ] or ;, a folder inside OneDrive and a PC clock behind the port's
 files, names an encrypted file or the .edat given as the archive by what they are, and firstrun.py's check step
 passes on those lines as reasons; a port folder that was moved gets a fresh build and its saved paths pointed at the
-new place. No game data."""
+new place; the CPU line checks this CPU against the build's x86-64 level (KZ_MARCH). No game data."""
 import importlib.util
 import os
 import pathlib
@@ -105,6 +105,50 @@ with tempfile.TemporaryDirectory() as tmp:
     msg = firstrun.before_compile(c)
     check(msg and "moved" in msg and not b.exists(), f"the build folder made in the old place is emptied: {msg}")
     check(firstrun.moved_from(c) == "", "no cache, no move")
+
+# The CPU line (the build's x86-64 level, port/kz1hd/cpu_check.c): from /proc/cpuinfo's flags on Linux, from the
+# launcher's --cpu-check exit code on Windows; a FAIL labelled "CPU:", which firstrun.py ends the first run on
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = pathlib.Path(tmp)
+    hsw = "fpu cx8 cmov mmx fxsr sse sse2 pni ssse3 cx16 sse4_1 sse4_2 popcnt lahf_lm avx xsave avx2 bmi1 bmi2 fma f16c abm movbe"
+    for name, flags, want in (("Nehalem", "fpu sse sse2 pni ssse3 cx16 sse4_1 sse4_2 popcnt lahf_lm", 2),
+                              ("Sandy Bridge", "pni ssse3 cx16 sse4_1 sse4_2 popcnt lahf_lm avx xsave", 2),
+                              ("Haswell", hsw, 3),
+                              ("Skylake-SP", hsw + " avx512f avx512bw avx512cd avx512dq avx512vl", 4),
+                              ("Core 2", "pni ssse3 cx16 sse4_1 lahf_lm", 1)):
+        info = tmp / "cpuinfo"
+        info.write_text(f"processor\t: 0\nflags\t\t: {flags}\n\nprocessor\t: 1\n")
+        got = cgf.cpu_level(None, windows=False, cpuinfo=str(info))
+        check(got == want, f"/proc/cpuinfo of a {name}: x86-64-v{got}, want v{want}")
+    check(cgf.cpu_level(None, windows=False, cpuinfo=str(tmp / "none")) is None, "no /proc/cpuinfo: not told")
+    check(cgf.cpu_level(str(tmp), windows=True) is None, "Windows without the launcher (a Git clone): not told")
+    (tmp / "Project Vekta.exe").write_bytes(b"MZ")
+    seen = []
+
+    def fake_run(argv, timeout):
+        seen.append(argv)
+        return subprocess.CompletedProcess(argv, 2)
+    check(cgf.cpu_level(str(tmp), windows=True, run=fake_run) == 2 and seen[0][1:] == ["--cpu-check"]
+          and seen[0][0].endswith("Project Vekta.exe"), f"Windows: the launcher's --cpu-check exit code: {seen}")
+    fail = cgf.cpu_line(2, 3)
+    check(fail.startswith("FAIL     CPU: ") and "x86-64-v3" in fail and "x86-64-v2" in fail,
+          f"a v2 CPU under a v3 build fails, naming both levels: {fail}")
+    check(cgf.cpu_line(3, 3).startswith("ok       CPU: x86-64-v3") and cgf.cpu_line(4, 3).startswith("ok ")
+          and cgf.cpu_line(None, 3).startswith("ok       CPU: not checked") and cgf.cpu_line(1, 0) is None,
+          "the level or more passes; not told passes; no level built (KZ_MARCH native) prints nothing")
+
+    class Step:
+        name, label = "check", "Checking your files"
+    r = firstrun.Runner.__new__(firstrun.Runner)
+    r.fail_inputs, r.cpu_failed = set(), False
+    reasons = r.why_failed(Step(), [fail, "ok       EBOOT.elf"], 1)
+    check(reasons == [" ".join(fail.split())] and r.cpu_failed and not r.fail_inputs,
+          f"firstrun.py's check step passes the CPU line on and marks it (no input to ask again): {reasons}")
+    env = dict(os.environ, KZ_MARCH="x86-64-v4")
+    out = subprocess.run([sys.executable, str(ROOT / "tools" / "check-game-files.py"), "--quick", "--root", str(tmp),
+                          "--work", str(tmp / "work")], capture_output=True, text=True, env=env).stdout
+    check(any(ln.startswith(("ok       CPU:", "FAIL     CPU:")) and "x86-64-v4" in ln for ln in out.splitlines()),
+          f"check-game-files.py --root prints the CPU line for KZ_MARCH's level: {out.splitlines()[:1]}")
 
 print("test_place_checks:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)
