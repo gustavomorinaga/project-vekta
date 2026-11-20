@@ -7,7 +7,7 @@ program is translated to C++ ahead of time, compiled for x64, and given a PC sta
 | Layer | On the PS3 | In the port |
 |---|---|---|
 | Game code (PPU, PowerPC) | about 23,400 functions in the EBOOT | lifted to C++ by ps3recomp's `ppu_lifter.py`, compiled with clang; a handful of hot functions reimplemented in `port/kz1hd/native_ppu/` |
-| SPU programs | 3 SPU ELFs, the WWS job manager's policy module and 11 job modules, plus the firmware's MP3 decoder | lifted to C by ps3recomp's SPU tools; SPURS workloads run on host threads; some job loops reimplemented in `port/kz1hd/native/` |
+| SPU programs | 3 SPU ELFs, the WWS job manager's policy module and 11 job modules, plus the system software's MP3 decoder | lifted to C by ps3recomp's SPU tools; SPURS workloads run on host threads; some job loops reimplemented in `port/kz1hd/native/`; the MP3 decoder's call answered by minimp3 (`port/kz1hd/native/flashmp3.c`) |
 | System libraries (lv2, `cell*`) | the PS3 system software | reimplemented on PC APIs by ps3recomp (high-level emulation), with this project's patches |
 | SPURS LFQueue | firmware `libsre` | reimplemented in ps3recomp's runtime (patch 1022), checked against the firmware's own code |
 | Graphics (RSX) | the game's GCM command stream | replayed on Vulkan by ps3recomp's draw engine and this project's Vulkan backend (window, present, scaling, FSR 1) |
@@ -21,8 +21,8 @@ program is translated to C++ ahead of time, compiled for x64, and given a PC sta
    `port/patches/series`. The submodule itself is never edited.
 2. `tools/lift.sh` reads your decrypted EBOOT: ps3recomp's loader lists its segments, imports and the functions its
    tables name; `find_functions.py` completes the list with the seeds in `re/function_seeds.txt`; the PPU lifter
-   writes the C++ (`work/lift/gen`). The SPU images and job modules are extracted and lifted (`work/lift/spu`), and so
-   is the firmware's MP3 decoder.
+   writes the C++ (`work/lift/gen`). The SPU images and job modules are extracted and lifted (`work/lift/spu`). The system
+   software's MP3 decoder is not: its call is answered by minimp3 (`port/kz1hd/native/flashmp3.c`).
 3. `tools/build.sh` compiles the lifted code, ps3recomp's runtime and the port (`port/kz1hd`) into one program.
 4. `tools/setup-vfs.sh` makes the folder the program runs in: the game's files where the PS3 would have them.
 

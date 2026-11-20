@@ -114,6 +114,11 @@ with tempfile.TemporaryDirectory() as tmp:
     check("your RPCS3 makes the decrypted copies" in release_notes.notes("0.5.0", es["0.2.0"]) and
           "decrypted EBOOT and data archive" in release_notes.notes("0.4.0", es["0.2.0"]),
           "from 0.5.0 the notes name the installed game and the RPCS3 route, not a prepared data archive")
+    store = "UP9000-NPUA80856_00-GKILLZONE1000001.rap"
+    check(store not in release_notes.notes("0.5.2", es["0.2.0"]) and
+          all(store in release_notes.notes(v, es["0.2.0"]) and "PlayStation Store copy" in release_notes.notes(v, es["0.2.0"])
+              for v in ("0.5.3", "0.6.0")),
+          "from 0.5.3 the notes name the PlayStation Store copy and its licence (.rap) beside the disc; not before")
     old, new = release_notes.notes("0.4.0", es["0.2.0"]), release_notes.notes("0.5.0", es["0.2.0"])
     check("How to install" not in old and old.index("New in") < old.index("setup.exe"),
           "notes up to 0.4.0 keep the downloads after the lists")

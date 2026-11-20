@@ -64,9 +64,8 @@ sizes = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
 for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc")):
     m = re.search(r'#define %s "(\d+)"' % define, text)
     check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
-m_fw = re.search(r'#define Firmware "([^"]+)"', text)
-check(m_fw and m_fw.group(1) == cgf.FIRMWARE and "FirmwareVersion(FlashPage.Values[0]) <> '{#Firmware}'" in text,
-      "the firmware page refuses a dev_flash of another system software than check-game-files.py's")
+check("FlashPage" not in text and "#define Firmware" not in text and "dev_flash" not in text,
+      "the setup asks for no firmware (no dev_flash page)")
 check("'USRDIR\\data_ps3.psarc.edat'" in text, "the wizard takes the game's .edat when the archive is left empty")
 # The build in the wizard runs firstrun.py with options it has, and names its steps
 import firstrun  # noqa: E402
@@ -93,10 +92,10 @@ check("RpcsBrowse.OnClick := @RpcsBrowseClick;" in text and "CheckRpcs3(D);" in 
       and "SourcePage.CheckListBox.ItemEnabled[0] := True;" in text
       and "CheckRpcs3(Pick('RPCS3', 'Rpcs3Dir'))" in text and "'Rpcs3Dir', RpcsHint" in text,
       "the page searches by itself and has Find RPCS3... for a folder the player picks (kept for next time)")
-check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID))" in text
+check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID))" in text
       and "Result := ' --rpcs3 ' + Quote(RpcsRoot);" in text, "the RPCS3 route skips the file pages and builds with --rpcs3")
-check(all(f"'{k}'" in text for k in ("status", "root", "dev_flash")) and "Pos('problem=', Lines[I]) = 1" in text
-      and set(rpcs3_import.lines({"status": "ok", "root": "r", "game": "g", "dev_flash": "d", "exe": ["x"],
+check(all(f"'{k}'" in text for k in ("status", "root", "game")) and "Pos('problem=', Lines[I]) = 1" in text
+      and set(rpcs3_import.lines({"status": "ok", "root": "r", "game": "g", "exe": ["x"],
               "problems": []})[0].split("=")[:1]) == {"status"},
       "the page reads the keys rpcs3_import.py writes")
 src = (ROOT / "tools/release/firstrun.py").read_text()
@@ -107,7 +106,7 @@ steps = {st.name for st in firstrun.STEPS}
 check(labels and labels <= steps and steps - labels <= {"stamp"}, f"StepLabel names firstrun.py's steps: {labels} {steps}")
 check("tools\\release\\firstrun.py" in text and "work\\toolchain-cache\\python\\python.exe" in text,
       "the wizard runs the payload's firstrun.py with its Python")
-for param in ("GAME", "EBOOT", "PSARC", "DEVFLASH", "DLSS"):
+for param in ("GAME", "EBOOT", "PSARC", "DLSS"):
     check(f"Pick('{param}'" in text, f"/{param}= is taken on the command line")
 check("LIBSRE" not in text and "libsre" not in text.lower(), "no libsre.prx is asked for (the runtime's own LFQueue)")
 # NVIDIA DLSS: an optional page whose box, unticked unless accepted before, accepts the licence firstrun.py shows;
@@ -309,8 +308,8 @@ with tempfile.TemporaryDirectory() as tmp:
     r = subprocess.run([sys.executable, str(ROOT / "tools/release/fake_game_files.py"), tmp], capture_output=True,
                        text=True)
     sw = dict(line[1:].split("=", 1) for line in r.stdout.split())
-    check(r.returncode == 0 and set(sw) == {"GAME", "EBOOT", "PSARC", "DEVFLASH"}, f"four switches: {sw}")
-    env = dict(os.environ, KZ_GAME=sw["GAME"], KZ_EBOOT=sw["EBOOT"], KZ_PSARC=sw["PSARC"], PS3_DEV_FLASH=sw["DEVFLASH"])
+    check(r.returncode == 0 and set(sw) == {"GAME", "EBOOT", "PSARC"}, f"three switches: {sw}")
+    env = dict(os.environ, KZ_GAME=sw["GAME"], KZ_EBOOT=sw["EBOOT"], KZ_PSARC=sw["PSARC"])
     q = subprocess.run([sys.executable, str(ROOT / "tools/check-game-files.py"), "--quick"], capture_output=True,
                        text=True, env=env)
     for label in ("PARAM.SFO", "EBOOT.elf"):

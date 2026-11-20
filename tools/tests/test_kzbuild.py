@@ -76,19 +76,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(kzbuild.resolve(base, root=str(root))["KZ_EBOOT"] == odd, "work/paths.env is read, odd characters and all")
     check(kzbuild.resolve(dict(base, KZ_EBOOT="/mine"), root=str(root))["KZ_EBOOT"] == "/mine",
           "a variable set in the environment wins over paths.env")
-    linux_flash = os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
-    was = kzbuild.WINDOWS
-    try:
-        kzbuild.WINDOWS = False
-        check(kzbuild.resolve(base, root=str(root))["PS3_DEV_FLASH"] == linux_flash,
-              "Linux: dev_flash is RPCS3's, in ~/.config/rpcs3")
-        kzbuild.WINDOWS = True
-        check(kzbuild.default_dev_flash(str(root)) == os.path.join(str(root), "Game", "dev_flash"),
-              "Windows: dev_flash defaults to Game/dev_flash, not a Linux path (RPCS3 keeps it beside rpcs3.exe)")
-    finally:
-        kzbuild.WINDOWS = was
-    check(kzbuild.resolve(dict(base, PS3_DEV_FLASH="/flash"), root=str(root))["PS3_DEV_FLASH"] == "/flash",
-          "PS3_DEV_FLASH set in the environment wins")
+    check("PS3_DEV_FLASH" not in kzbuild.resolve(base, root=str(root)), "no dev_flash path: no firmware is read")
 
     # patch
     sub = root / "third_party" / "ps3recomp"
@@ -127,7 +115,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # lift, with stand-ins for ps3recomp's lifters
     for t in ("ppu_loader", "find_functions", "ppu_lifter", "ppu_regcache", "extract_spu_images", "lift_jobmods",
-              "build_spu_workloads", "rebase_spu_elf", "spu_lifter"):
+              "build_spu_workloads", "spu_lifter"):
         (pt / "tools" / f"{t}.py").write_text(STUB)
     (root / "tools").mkdir()
     (root / "tools" / "extract_spu_modules.py").write_text(STUB)
@@ -139,10 +127,9 @@ with tempfile.TemporaryDirectory() as tmp:
         (root / "port" / "kz1hd" / d).mkdir(parents=True, exist_ok=True)
         (root / "port" / "kz1hd" / d / f).write_text(text)
     files = tmp / "files"
-    (files / "dev").mkdir(parents=True)
+    files.mkdir(parents=True)
     (files / "EBOOT.elf").write_text("EBOOT.elf")
-    env = dict(base, KZ_EBOOT=str(files / "EBOOT.elf"), KZ_JOBS="5",
-               PS3_DEV_FLASH=str(files / "dev"))
+    env = dict(base, KZ_EBOOT=str(files / "EBOOT.elf"), KZ_JOBS="5")
     e = kzbuild.resolve(env, root=str(root))
     try:
         kzbuild.cmd_lift(e, None)
@@ -152,23 +139,24 @@ with tempfile.TemporaryDirectory() as tmp:
     check([c[0] for c in calls] == ["ppu_loader.py", "find_functions.py", "ppu_lifter.py", "ppu_regcache.py",
                                     "extract_spu_images.py", "extract_spu_modules.py", "lift_jobmods.py",
                                     "build_spu_workloads.py"],
-          f"the lifters run in lift.sh's order (no flashMP3.pic: no MP3 lift): {[c[0] for c in calls]}")
+          f"the lifters run in lift.sh's order (no MP3 decoder lift any more): {[c[0] for c in calls]}")
     ppu = calls[2]
     check(ppu[2] == "func_0012,func_00AB" and ppu[3] is None, f"PPU_LIFT_NATIVE in file order, then line: {ppu[2:]}")
     check(ppu[1][ppu[1].index("-j") + 1] == "5" and "--setjmp" in ppu[1], f"the PPU lift's arguments: {ppu[1]}")
     check(calls[5][3] == "ab05_spu_func_01F0" and calls[5][2] == "func_0012,func_00AB", "SPU_LIFT_NATIVE from SPU on")
     check(json.loads((root / "work" / "lift" / "analysis" / "seeds.json").read_text()) == ["0x10", "0x20"],
           "seeds.json: the seed lines without comments or blanks")
-    (files / "dev" / "sys" / "external").mkdir(parents=True)
-    (files / "dev" / "sys" / "external" / "flashMP3.pic").write_text("mp3")
     (root / "work" / "argv.log").unlink()
+    for d in ("flashmp3", "flashmp3_src"):   # an earlier version's lift of the firmware's MP3 decoder
+        (root / "work" / "lift" / "spu" / d).mkdir(parents=True, exist_ok=True)
     # chunks an earlier lift left (another version's chunk count): the build globs these folders, so they go
     for d in ("lift", "fw"):
         (root / "work" / d / "gen").mkdir(parents=True, exist_ok=True)
         (root / "work" / d / "gen" / "old_recomp_099.cpp").write_text("int stale;\n")
     kzbuild.cmd_lift(e, None)
     names = [json.loads(line)[0] for line in (root / "work" / "argv.log").read_text().splitlines()]
-    check("rebase_spu_elf.py" in names and "spu_lifter.py" in names, "with flashMP3.pic the MP3 decoder is lifted")
+    check("rebase_spu_elf.py" not in names and not any((root / "work" / "lift" / "spu" / d).exists()
+          for d in ("flashmp3", "flashmp3_src")), "no MP3 decoder lift, and an earlier one's folders are removed")
     check(not (root / "work" / "lift" / "gen" / "old_recomp_099.cpp").exists(),
           "a lift leaves no source of an earlier lift in work/lift/gen")
     check(not (root / "work" / "fw").exists(), "a lift removes the firmware libsre's work/fw of earlier versions")
