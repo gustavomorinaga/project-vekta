@@ -30,7 +30,7 @@
         "label": "NVIDIA DLSS",
         "note": "Downloads NVIDIA's DLSS SDK from NVIDIA during the build. Without it the port builds with AMD FSR 3.1.",
         "gpu": "nvidia",
-        "os": ["windows", "linux"],
+        "os": ["windows"],
         "args": ["--dlss=accept"],
         "license": { "name": "NVIDIA DLSS SDK licence", "url": "https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt" }
       }

@@ -6,6 +6,7 @@ leaves no marker and the next run resumes there; a failed check names the files 
 work/paths.env, and a variable set in the environment wins; the status file, the progress lines, the job count, the
 log's home folder, --dry-run and --interactive. No game, no network."""
 import io
+import json
 import os
 import pathlib
 import shutil
@@ -16,6 +17,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "release"))
 import firstrun  # noqa: E402
+
+os.environ.pop("KZ_LINUX_TOOLCHAIN", None)   # the tests set it themselves where it matters (DLSS below)
 
 fails = 0
 
@@ -348,6 +351,30 @@ with tempfile.TemporaryDirectory() as tmp:
     check(freed == 2000 and not (w / "toolchain-cache" / "downloads").exists() and not (w / "win-deps-build").exists()
           and all((w / r / "f.bin").exists() for r in ("toolchain-cache/cmake", "build", "vfs")),
           f"--cleanup removes the downloads and win-deps-build only: {freed}")
+
+# DLSS and the Linux release folder: libnvsdk_ngx.a needs libstdc++, the pinned Zig toolchain links libc++
+pinned = {"KZ_LINUX_TOOLCHAIN": "pinned"}
+check(firstrun.dlss_unavailable(pinned) == (os.name != "nt") and not firstrun.dlss_unavailable({}),
+      "DLSS is unavailable only with the pinned Linux toolchain")
+_old = os.environ.get("KZ_LINUX_TOOLCHAIN")
+try:
+    with tempfile.TemporaryDirectory() as tmp:
+        c = firstrun.Ctx(root=tmp, paths={}, work=tmp, dlss="accept")
+        os.environ.pop("KZ_LINUX_TOOLCHAIN", None)
+        check(c.dlss_on() and firstrun.cmd_dlss(c), "accepted DLSS with the system's compilers: fetched and built")
+        os.environ["KZ_LINUX_TOOLCHAIN"] = "pinned"
+        if os.name != "nt":
+            check(not c.dlss_on() and firstrun.cmd_dlss(c) == [] and "KZ_DLSS_SDK" not in c.env(),
+                  "accepted DLSS in the Linux release folder: nothing fetched, the build uses FSR 3.1")
+            rl = json.loads((pathlib.Path(firstrun.__file__).parents[2] / "installer" / "recomplauncher.json")
+                            .read_text(encoding="utf-8"))
+            opt = next(o for o in rl["prepare"]["options"] if o["id"] == "dlss")
+            check(opt["os"] == ["windows"], f"recomplauncher.json offers DLSS on Windows only: {opt['os']}")
+finally:
+    if _old is None:
+        os.environ.pop("KZ_LINUX_TOOLCHAIN", None)
+    else:
+        os.environ["KZ_LINUX_TOOLCHAIN"] = _old
 
 print("test_firstrun:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

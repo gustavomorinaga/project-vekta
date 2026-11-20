@@ -123,7 +123,9 @@ one program at its top for the launcher to start: `Project Vekta.exe` on Windows
 1. **Add the package** to the launcher (the zip or the `.tar.gz` of a release).
 2. **Give it your game folder** when it asks: the installed NPUA80856 folder, with `PARAM.SFO` and `USRDIR`. A
    decrypted `EBOOT.elf` is optional: leave it out when your RPCS3 has the game, and it makes the copy itself.
-3. **Tick NVIDIA DLSS** only if you accept NVIDIA's licence; without it the port builds with AMD FSR 3.1.
+3. **Tick NVIDIA DLSS** (Windows only) only if you accept NVIDIA's licence; without it the port builds with AMD
+   FSR 3.1. The Linux folder always builds with FSR 3.1: NVIDIA's Linux library does not link with its bundled
+   toolchain. For DLSS on Linux, build with your system's compilers (docs/BUILDING.md).
 4. **Let it prepare.** The launcher runs the check and the build (about five minutes) without a window, with a
    progress bar. Nothing of the game is downloaded.
 5. **Play** from the launcher. The saves and settings stay in the folder (`work/vfs`), and the logs in `work`.
