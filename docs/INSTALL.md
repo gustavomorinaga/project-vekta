@@ -110,8 +110,27 @@ You need Python 3.10 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
    the end offers an applications-menu entry.
 3. **Start `./project-vekta`** to play (`scripts/play.sh` does the same).
 
+## Installing through a launcher
+
+A game launcher that installs downloaded packages can install the Windows zip or the Linux folder. Each folder has
+one program at its top for the launcher to start: `Project Vekta.exe` on Windows, `project-vekta` on Linux.
+
+1. **Add the package** to the launcher (the zip or the `.tar.gz` of a release).
+2. **Give it your game folder** when it asks: the installed NPUA80856 folder, with `PARAM.SFO` and `USRDIR`. A
+   decrypted `EBOOT.elf` is optional: leave it out when your RPCS3 has the game, and it makes the copy itself.
+3. **Tick NVIDIA DLSS** only if you accept NVIDIA's licence; without it the port builds with AMD FSR 3.1.
+4. **Let it prepare.** The launcher runs the check and the build (about five minutes) without a window, with a
+   progress bar. Nothing of the game is downloaded.
+5. **Play** from the launcher. The saves and settings stay in the folder (`work/vfs`), and the logs in `work`.
+
+When RPCS3 has the game in its usual places, a launcher that only starts the program also works: the first start
+builds from your RPCS3 without asking anything. If a step fails, the launcher shows the reason;
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md) says what each one means. For launcher developers:
+[dev/launchers.md](dev/launchers.md).
+
 ## If something goes wrong
 
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md): what you see, what to do and what to attach, for each exit code.
 - [KNOWN_ISSUES.md](KNOWN_ISSUES.md) lists the open problems and their workarounds.
 - An install over a version before 0.4.0 that failed at the link: delete `work\build-win` in the install folder
   (Linux: `work/build`) and run `scripts\run.cmd` (`scripts/run.sh`) again. Since 0.4.0 the build empties an old build folder

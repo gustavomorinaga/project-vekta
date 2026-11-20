@@ -15,7 +15,7 @@
 
 **[Install](docs/INSTALL.md)** · **[Status](#status)** · **[Features](docs/FEATURES.md)** ·
 **[Screenshots](docs/SCREENSHOTS.md)** · **[Requirements](docs/requirements.md)** ·
-**[Getting your files](docs/GETTING-FILES.md)** · **[Building](docs/BUILDING.md)** · **[How it works](docs/HOW-IT-WORKS.md)** · **[Known issues](docs/KNOWN_ISSUES.md)** ·
+**[Getting your files](docs/GETTING-FILES.md)** · **[Building](docs/BUILDING.md)** · **[How it works](docs/HOW-IT-WORKS.md)** · **[Known issues](docs/KNOWN_ISSUES.md)** · **[Troubleshooting](docs/TROUBLESHOOTING.md)** ·
 **[Roadmap](docs/ROADMAP.md)** · **[Glossary](docs/GLOSSARY.md)** · **[AI use](#how-ai-was-used)** ·
 **[Contributing](.github/CONTRIBUTING.md)** · **[Forking](docs/FORKING.md)**
 
@@ -64,6 +64,9 @@ SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
   the first time (from your RPCS3, or `scripts\run.cmd` asks where your files are) and then plays.
 - **Linux folder** (`project-vekta-X.Y.Z-linux.tar.gz`): `./project-vekta` builds the first time (from your RPCS3,
   or `scripts/run.sh` asks where your files are) and then plays.
+- **A game launcher** can install the zip or the Linux folder too: each has one program at its top and a
+  `recomplauncher.json` ([docs/INSTALL.md](docs/INSTALL.md#installing-through-a-launcher)). Problems:
+  [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 Step by step, with what you see at each step: **[docs/INSTALL.md](docs/INSTALL.md)**. To build from a Git clone or
 the source archive instead: [For developers](#for-developers-building-from-source).

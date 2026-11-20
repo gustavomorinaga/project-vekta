@@ -24,6 +24,10 @@ program and folder that build it. Until a release that calls itself playable
   it names the game folder to ask for, the optional decrypted `EBOOT.elf`, the build step with its NVIDIA DLSS tick,
   the program to start, the saves, the logs and the exit codes. It is made from one source with the version stamped
   (`tools/release/recomplauncher.py`) and checked against a schema in the repository.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): what you see, what to do and what to attach, for each exit
+  code; [docs/INSTALL.md](docs/INSTALL.md) has a section on installing through a game launcher, and
+  [docs/dev/launchers.md](docs/dev/launchers.md) the contract for launcher developers. CONTRIBUTORS.md lists who
+  helped.
 - A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel
   Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now
   the game says which level it needs and which one the CPU has (a message box on Windows, the launcher's message, the
