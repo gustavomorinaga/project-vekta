@@ -7,7 +7,7 @@ Writes into DIR a game folder NPUA80856 whose PARAM.SFO holds only TITLE_ID, and
 with the right first bytes and the tested sizes (tools/check-game-files.py; the archive is a sparse 3 GB
 file where the file system allows) but no content. The setup program takes them, and the build's first step then
 refuses them by their SHA-256: release.yml runs that path on the Windows runner. Nothing here comes from the game.
-Prints the four setup switches (/GAME= ... /DEVFLASH=), one per line. Standard library only.
+Prints the three setup switches (/GAME= /EBOOT= /PSARC=), one per line. Standard library only.
 """
 import importlib.util
 import os
@@ -58,10 +58,6 @@ def main(argv=None):
     for opt, (name, magic) in files.items():
         out[opt.upper()] = os.path.join(d, name)
         stand_in(out[opt.upper()], magic, SIZES[name])
-    flash = os.path.join(d, "dev_flash")
-    os.makedirs(os.path.join(flash, "sys", "external"), exist_ok=True)
-    stand_in(os.path.join(flash, "sys", "external", "flashMP3.pic"), b"\0\0\0\0", 16)
-    out["DEVFLASH"] = flash
     for k, v in out.items():
         print(f"/{k}={v}")
     return 0

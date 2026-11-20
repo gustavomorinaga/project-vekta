@@ -92,10 +92,10 @@ NEED_PREPARED = ("you need your own Killzone HD (NPUA80856) from the Killzone Tr
 NEED_050 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
             "4.93; when both are installed in your RPCS3, the installers use them and your RPCS3 makes the decrypted "
             "copies of the EBOOT and libsre, otherwise you give those two decrypted files yourself")
-# From 0.6.0 the firmware's libsre is not needed: the EBOOT is the one decrypted file; the firmware stays for the music.
-NEED_060 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
-            "4.93 for the music; when both are installed in your RPCS3, the installers use them and your RPCS3 makes "
-            "the decrypted copy of the EBOOT, otherwise you give that decrypted file yourself")
+# From 0.6.0 no PS3 system software is needed: the EBOOT is the one decrypted file.
+NEED_060 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed; when it is installed in "
+            "your RPCS3, the installers use it and your RPCS3 makes the decrypted copy of the EBOOT, otherwise you give "
+            "that decrypted file yourself. No PS3 system software is needed")
 
 
 def need_text(v):
