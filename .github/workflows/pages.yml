@@ -33,9 +33,11 @@ jobs:
           # The page loads ../assets/ and ../docs/screenshots/, as it does from a checkout, so the layout is kept.
           mkdir -p _site/site _site/assets _site/docs
           cp -a site/. _site/site/
-          cp -a assets/banner.png assets/banner@2x.png assets/social-preview.png _site/assets/
+          cp -a assets/banner.png assets/banner@2x.png assets/social-preview.png assets/icon.png _site/assets/
           cp -a docs/screenshots _site/docs/
           printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=site/"><title>Project Vekta</title><a href="site/">Project Vekta</a>\n' > _site/index.html
+      - name: The staged site is whole (tools/release/check_site.py)
+        run: python3 tools/release/check_site.py _site/site
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
         with:
           path: _site
