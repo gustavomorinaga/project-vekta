@@ -68,6 +68,9 @@ program and folder that build it. Until a release that calls itself playable
   library and does not link with the Linux folder's own toolchain, so a ticked DLSS stopped that build while
   compiling. The Linux folder now builds with AMD FSR 3.1 and says why; DLSS on Linux needs a build with the
   system's compilers (`tools/install.sh`).
+- The Linux folder's first build no longer needs about 18 GB of memory: its bundled compiler took that much on one
+  file of glslang (the shader compiler the build includes) at the usual optimisation. glslang is now built optimised
+  for size, and the whole step peaks under 500 MB.
 
 ## [0.5.4] - 2026-11-20 (pre-release)
 
