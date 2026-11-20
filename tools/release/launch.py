@@ -451,6 +451,8 @@ def firstrun_args(root, a, environ=None):
     for name, _ in INPUTS:
         if getattr(a, name, None):
             out += ["--" + name, os.path.abspath(getattr(a, name))]
+    if getattr(a, "dlss", None):   # the player's answer to NVIDIA's DLSS SDK licence (recomplauncher.json's tick)
+        out += ["--dlss", a.dlss]
     rpcs3 = getattr(a, "rpcs3", None)
     if rpcs3 is not None:
         out += ["--rpcs3"] + ([os.path.abspath(rpcs3)] if rpcs3 else [])
@@ -575,7 +577,7 @@ def vulkan_present():
         return False
 
 
-def main(argv=None):
+def parser():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--root", default=os.path.dirname(os.path.dirname(HERE)))
     ap.add_argument("--dry-run", action="store_true")
@@ -592,12 +594,19 @@ def main(argv=None):
                         help=f"your {name} ({var}; kept in work/paths.env)")
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
                     help="take the game from your RPCS3 (DIR, else its usual places)")
+    ap.add_argument("--dlss", choices=("accept", "decline"),
+                    help="accept: you accept NVIDIA's DLSS SDK licence and the build downloads it (firstrun.py --dlss)")
     ap.add_argument("--repair", action="store_true", help='"Verify and rebuild": check the install, then rebuild')
     ap.add_argument("--open-data", action="store_true", help='"Open saves folder"')
     ap.add_argument("--support-package", action="store_true", help='"Make a support package": a zip of the logs')
     ap.add_argument("--out", default="", help="with --support-package: the folder for the zip (default: the Desktop)")
     ap.add_argument("--move-data", choices=("appdata", "portable"),
                     help="move the saves and settings to %%APPDATA%%\\Project Vekta or into the install folder")
+    return ap
+
+
+def main(argv=None):
+    ap = parser()
     a = ap.parse_args(argv)
     root = os.path.abspath(a.root)
     if a.prepare:

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Project Vekta",
+  "repo": "gustavomorinaga/project-vekta",
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your installed Killzone HD folder (NPUA80856, version 01.00, from the Killzone Trilogy disc or the PlayStation Store): the folder with PARAM.SFO and USRDIR, as your PS3 or RPCS3 installed it.",
+      "role": "game",
+      "formats": [{ "type": "folder" }]
+    },
+    {
+      "id": "eboot",
+      "label": "Optional: your decrypted EBOOT.elf (19,706,080 bytes, SHA-256 c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc). Leave it out when your RPCS3 has the game: it makes this copy itself.",
+      "role": "update",
+      "optional": true,
+      "formats": [{ "type": "file", "extensions": ["elf"] }]
+    }
+  ],
+  "prepare": {
+    "program": ["scripts/prepare.cmd", "scripts/prepare.sh"],
+    "args": ["--game={input:game}", "--eboot={input:eboot}"],
+    "label": "Checking your files and building the port on this PC (about five minutes; nothing of the game is downloaded)",
+    "timeout": 7200,
+    "version": "stamped by tools/release/recomplauncher.py: the release's VERSION",
+    "options": [
+      {
+        "id": "dlss",
+        "label": "NVIDIA DLSS",
+        "note": "Downloads NVIDIA's DLSS SDK from NVIDIA during the build. Without it the port builds with AMD FSR 3.1.",
+        "gpu": "nvidia",
+        "os": ["windows", "linux"],
+        "args": ["--dlss=accept"],
+        "license": { "name": "NVIDIA DLSS SDK licence", "url": "https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt" }
+      }
+    ]
+  },
+  "start": {
+    "program": ["Project Vekta.exe", "project-vekta"]
+  },
+  "saves": ["{install}/work/vfs/gamedata", "{install}/work/vfs/kz1hd_pc.ini", "{install}/work/vfs/kz1hd_keys.ini"],
+  "folders": {
+    "saves": [{ "path": "{install}/work/vfs/gamedata" }],
+    "logs": [{ "path": "{install}/work" }],
+    "build_logs": [{ "path": "{install}/work/logs" }],
+    "settings": [{ "path": "{install}/work/vfs" }]
+  },
+  "actions": [
+    { "id": "saves", "label": "Saves", "help": "Your save data.", "open": "saves" },
+    { "id": "logs", "label": "Game log", "help": "play.log, the log of the last session: attach it to a bug report.", "open": "logs" },
+    { "id": "build_logs", "label": "Build logs", "help": "The logs of the check and the build (firstrun-*.log).", "open": "build_logs" },
+    { "id": "settings", "label": "Settings file", "help": "kz1hd_pc.ini, the PC settings the game's PC page writes.", "open": "settings" }
+  ],
+  "exit_codes": { "0": "filled in by tools/release/recomplauncher.py from port/kz1hd/kz_exit.h" }
+}

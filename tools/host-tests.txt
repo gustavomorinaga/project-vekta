@@ -66,6 +66,7 @@ tools/tests/test_cpu_check.sh
 tools/tests/test_exe_resources.py
 tools/tests/test_eboot_check.sh
 tools/tests/test_launcher_contract.py
+tools/tests/test_recomplauncher.py
 tools/tests/test_res_list.sh
 tools/tests/test_lfqueue.sh
 tools/tests/test_flashmp3.sh

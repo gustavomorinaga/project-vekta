@@ -230,6 +230,13 @@ their usual places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR`.
   no question. It prints `progress <0..1> <text>` lines and, on a failure, one `reason <text>` line at the end, and
   exits 0 when built. `--timeout SECS` stops it cleanly; the next run resumes.
 - Before the game starts it checks that a Vulkan loader can be opened (`KZ_VULKAN_CHECK=0` skips that; default on).
+- `--dlss accept` (or `decline`): the answer to NVIDIA's DLSS SDK licence, passed to `firstrun.py`.
+- `recomplauncher.json` at the top of both folders tells a launcher such as RecompLauncher the same things: the game
+  folder to ask for (and an optional decrypted `EBOOT.elf`), the prepare step with its DLSS tick (the licence is the
+  player's to accept), the program to start, the saves, the log folders and the exit codes below. It is written by
+  `tools/release/recomplauncher.py` from `installer/recomplauncher.json`, with `prepare.version` set to `VERSION` and
+  the exit codes taken from `kz_exit.h`. The tests check it against `tools/release/recomplauncher.schema.json`, the
+  part of the format this project uses, written here.
 
 The exit codes, one table for the exe and the launcher (`port/kz1hd/kz_exit.h`; `launch.py` reads it):
 
