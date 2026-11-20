@@ -8,7 +8,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 K="$ROOT/port/kz1hd"
 out=$(mktemp -d); trap 'rm -rf "$out"' EXIT
-d="$out/Ações e EBOOT"; mkdir -p "$d"
+d="$out/"$'A\xc3\xa7\xc3\xb5es e EBOOT'; mkdir -p "$d"   # "Acoes" with c-cedilla and o-tilde, in UTF-8
 fails=0
 check() { if [ "$1" = 0 ]; then echo "ok   $2"; else echo "FAIL $2"; fails=$((fails + 1)); fi; }
 is() { local what=$1; shift; "$@"; check $? "$what"; }   # is WHAT TEST...: the test's result as a check
