@@ -8,7 +8,7 @@ game is downloaded. The first build takes about five minutes.
 
 ## Before you start
 
-You need these files from your own game and your own PS3 firmware.
+You need these files from your own game. No PS3 system software (firmware) is needed.
 [GETTING-FILES.md](GETTING-FILES.md) says what each one must be and lists the tested sizes and SHA-256 sums.
 
 - The installed game folder of **Killzone HD** (NPUA80856, the US edition), from the **Killzone Trilogy** disc or
@@ -18,10 +18,8 @@ You need these files from your own game and your own PS3 firmware.
 - `EBOOT.elf`: the game's executable, decrypted. Not `EBOOT.BIN`.
 - Optional: `data_ps3.psarc`, the data archive, decrypted, about 3 GB. Without it the port reads the game folder's
   own `USRDIR\data_ps3.psarc.edat`, once, after the build: about a minute more, and 3.1 GB more disk in `work`.
-- Optional: the firmware's `dev_flash` folder, as RPCS3 keeps it. It holds `sys\external\flashMP3.pic`, the game's
-  music decoder. Without it, the music and sound stop at the first MP3.
 
-**Already playing it in RPCS3?** When RPCS3 has Killzone HD and the PS3 firmware 4.93 installed, the Linux folder's
+**Already playing it in RPCS3?** When RPCS3 has Killzone HD installed, the Linux folder's
 `./run.sh` and the zip's `run.cmd` find them and offer to use them ("Use my RPCS3 install", "I have the files
 ready", "Show me how", which lists these steps, or "My RPCS3 is somewhere else", which asks for its folder): your
 RPCS3 then decrypts a copy of `EBOOT.BIN` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The setup program offers the same on its "Your game" page ("Use my RPCS3
@@ -53,19 +51,18 @@ administrator rights.
      `%APPDATA%\Project Vekta`. To change it later, run `play.cmd --move-data portable` (or `--move-data appdata`)
      in the install folder: it moves the saves and settings and remembers the choice, and moves nothing when the
      other folder already has some.
-3. **Your game.** "Use my RPCS3 install" when the setup found RPCS3 with the game and the firmware: the next two
-   pages are skipped. When it did not find yours, press "Find RPCS3..." and pick its folder. "Show me how" lists the steps to get there, and stays on the page. Otherwise, pick the
+3. **Your game.** "Use my RPCS3 install" when the setup found RPCS3 with the game: the next
+   page is skipped. When it did not find yours, press "Find RPCS3..." and pick its folder. "Show me how" lists the steps to get there, and stays on the page. Otherwise, pick the
    installed game folder. Picking the folder above it also works.
 4. **Your decrypted files.** Pick `EBOOT.elf`. Leave `data_ps3.psarc` empty to use the game
    folder's own `.edat`, or pick a decrypted one you already have.
-5. **PS3 firmware (for the music).** Pick the `dev_flash` folder, or leave it empty.
-6. **NVIDIA DLSS (optional).** The box is unticked by default. Ticking it accepts NVIDIA's DLSS SDK licence, and
+5. **NVIDIA DLSS (optional).** The box is unticked by default. Ticking it accepts NVIDIA's DLSS SDK licence, and
    the build then downloads DLSS from NVIDIA's repository. Left unticked, nothing of NVIDIA's is downloaded, and the
    game uses AMD FSR 3.1 as its temporal upscaler.
-7. **Install.** Setup checks each file's kind and size before it copies anything. With "Build now", the wizard then
+6. **Install.** Setup checks each file's kind and size before it copies anything. With "Build now", the wizard then
    builds the port with a progress bar and a Stop button. The build's first step checks the files' SHA-256. When the
    build stops, the wizard says why and opens its log.
-8. **Play.** At the end, tick "Play Project Vekta now", or start **Project Vekta** from the Start menu or the desktop.
+7. **Play.** At the end, tick "Play Project Vekta now", or start **Project Vekta** from the Start menu or the desktop.
    If the build did not run in the wizard, the first start builds first.
 
 The Start menu also has:

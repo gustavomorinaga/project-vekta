@@ -5,7 +5,7 @@ with one progress bar, and remember where the files are.
     tools/release/firstrun.py [--game DIR] [--eboot FILE] [--psarc FILE] [--dev-flash DIR]
                               [--dlss accept|decline] [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE]
                               [--bar] [--dry-run]
-    tools/release/firstrun.py --rpcs3 [DIR] [other options]   (the game and the firmware from the player's RPCS3)
+    tools/release/firstrun.py --rpcs3 [DIR] [other options]   (the game from the player's RPCS3)
     tools/release/firstrun.py --interactive [same options: they become the answers it offers]
     tools/release/firstrun.py --remove-desktop
     tools/release/firstrun.py --save-paths [--game DIR] [--eboot FILE] ...   (the Windows setup program)
@@ -20,11 +20,11 @@ describes. On Windows the same steps build KZ1HD.exe with the pinned toolchain (
 is no venv there (ps3recomp's lifters need only the standard library, CMake and Ninja come with the toolchain).
 
 The paths: each one from its option, else the environment (the KZ_* variables of tools/env.sh), else the last run's
-work/paths.env, else the defaults under Game/ (PS3_DEV_FLASH: RPCS3's dev_flash). Once the check passes they are
+work/paths.env, else the defaults under Game/. Once the check passes they are
 written to work/paths.env, which tools/env.sh reads, so tools/play.sh and the other scripts find them without
 exports (a variable set in the environment still wins).
 
---rpcs3 [DIR] (tools/release/rpcs3_import.py): the installed game folder, its data_ps3.psarc.edat and dev_flash
+--rpcs3 [DIR] (tools/release/rpcs3_import.py): the installed game folder and its data_ps3.psarc.edat
 are taken from the player's RPCS3 (DIR, else the usual places), and that RPCS3 decrypts a copy of EBOOT.BIN into
 work/prep (checked by SHA-256), and of the .edat too for a PlayStation Store copy (bound to the buyer's licence, which
 the port cannot open); those paths are then saved like any others. --interactive offers it
@@ -35,7 +35,7 @@ The steps, each skipped when its marker in work/.firstrun says its inputs have n
   venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads; Linux
             with the system's compilers only: not on Windows nor with KZ_LINUX_TOOLCHAIN=pinned)
   patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches (a release folder ships it)
-  lift      work/lift: the game's code and the firmware's MP3 decoder as C++ (kzbuild.py lift)
+  lift      work/lift: the game's code as C++ (kzbuild.py lift)
   vfs       work/vfs: the folder the game runs from (kzbuild.py vfs; saves and settings there are kept)
   dlss      only when the player accepted NVIDIA's DLSS SDK licence (--dlss accept, or a yes to --interactive's
             question; the choice is kept in work/dlss-choice): the DLSS SDK files fetched from NVIDIA's repository and
@@ -99,20 +99,10 @@ INPUTS = [
     ("eboot", "KZ_EBOOT", "the decrypted EBOOT (EBOOT.elf)", ("Game", "EBOOT.elf")),
     ("psarc", "KZ_PSARC", "the decrypted data archive (data_ps3.psarc; optional: without it the game folder's own "
      "USRDIR/data_ps3.psarc.edat is read)", ("Game", "data_ps3.psarc")),
-    ("dev_flash", "PS3_DEV_FLASH", "RPCS3's dev_flash folder (for the MP3 decoder; optional)" +
-     (": in RPCS3's own folder, beside rpcs3.exe" if os.name == "nt" else ""), None),
 ]
 # What check-game-files.py names each input in its MISSING / WRONG / DIFFERENT lines.
 INPUT_OF = {"PARAM.SFO": "game", "TROPHY.TRP": "game", "data_ps3.psarc.edat": "game", "EBOOT.elf": "eboot",
-            "data_ps3.psarc": "psarc", "firmware": "dev_flash", "flashMP3.pic": "dev_flash"}
-
-
-def default_dev_flash(root=ROOT, windows=os.name == "nt"):
-    """tools/kzbuild.py's default_dev_flash: RPCS3's folder on Linux; on Windows, where RPCS3 keeps dev_flash beside
-    rpcs3.exe (anywhere), Game/dev_flash in this tree, as for the other files."""
-    if windows:
-        return os.path.join(root, "Game", "dev_flash")
-    return os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
+            "data_ps3.psarc": "psarc"}
 
 
 def _h16(text):
@@ -590,9 +580,7 @@ def resolve_paths(root, work, given):
     saved = read_paths(work)
     out = {}
     for name, var, _, default in INPUTS:
-        p = given.get(name) or os.environ.get(var) or saved.get(name)
-        if not p:
-            p = os.path.join(root, *default) if default else default_dev_flash(root)
+        p = given.get(name) or os.environ.get(var) or saved.get(name) or os.path.join(root, *default)
         out[name] = os.path.abspath(os.path.expanduser(p))
     return out
 
@@ -857,14 +845,14 @@ def use_rpcs3(c, hint=None, say=print, step=None):
     r = rpcs3_import().prepare(c.work, hint or None, log=say, step=step)
     if r["status"] != "ok":
         return [p["text"] for p in r["problems"]]
-    c.paths.update(game=r["game"], eboot=r["eboot"], dev_flash=r["dev_flash"])
+    c.paths.update(game=r["game"], eboot=r["eboot"])
     if r.get("psarc"):
         c.paths["psarc"] = r["psarc"]   # a PSN copy: its .edat is bound to the licence, RPCS3 opened it
     elif c.paths.get("psarc") and not os.path.isfile(c.paths["psarc"]):
         c.paths.pop("psarc")   # a wrong saved path (a folder): the port reads the game's own .edat instead
     write_paths(c.work, c.paths)
     made = "EBOOT.elf and data_ps3.psarc" if r.get("psarc") else "EBOOT.elf"
-    say(f"From RPCS3: the game in {r['game']}, the firmware in {r['dev_flash']}; {made} made by "
+    say(f"From RPCS3: the game in {r['game']}; {made} made by "
         f"your RPCS3 in {os.path.dirname(r['eboot'])}")
     return []
 
@@ -872,13 +860,12 @@ def use_rpcs3(c, hint=None, say=print, step=None):
 INSTALL_DOC = "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
 SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, also at """ + INSTALL_DOC + """):
   The easy way, through RPCS3:
-    1. In RPCS3, install PS3 system software 4.93 (File > Install Firmware).
-    2. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc, or your PlayStation Store copy
+    1. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc, or your PlayStation Store copy
        with its licence.
-    3. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
+    2. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
        Nothing is written into the game's or RPCS3's folders.
   Or, with the decrypted files you already have: choose "I have the files ready" and give the installed game
-  folder, EBOOT.elf and the firmware's dev_flash (docs/GETTING-FILES.md says what each must be)."""
+  folder and EBOOT.elf (docs/GETTING-FILES.md says what each must be)."""
 
 
 def offer_rpcs3(c, hint, ask=input, say=print):
@@ -888,10 +875,10 @@ def offer_rpcs3(c, hint, ask=input, say=print):
     def look(h):
         r = rpcs3_import().resolve(h or None)
         if r["status"] == "ok":
-            say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']} and the PS3 firmware.")
+            say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']}.")
         else:
             say("Your RPCS3 cannot be used:\n" + "\n".join("  " + p["text"] for p in r["problems"])
-                if r["problems"] else "No RPCS3 with Killzone HD and the PS3 firmware was found.")
+                if r["problems"] else "No RPCS3 with Killzone HD was found.")
         return r["status"] == "ok"
     found = look(hint)
     while True:
@@ -962,7 +949,7 @@ def rpcs3_hint(paths):
     None."""
     m = rpcs3_import()
     root_of = getattr(m, "rpcs3_root_of", None)
-    for name in ("game", "eboot", "dev_flash", "psarc"):
+    for name in ("game", "eboot", "psarc"):
         r = root_of(paths.get(name)) if root_of and paths.get(name) else None
         if r:
             return r
@@ -1069,7 +1056,7 @@ def main(argv=None):
                          "downloads the SDK from NVIDIA and builds DLSS in; decline: no DLSS. Kept for later runs "
                          "(work/dlss-choice); --interactive asks once when it was never answered")
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
-                    help="take the game and the firmware from your RPCS3 (DIR, else the usual places); your RPCS3 "
+                    help="take the game from your RPCS3 (DIR, else the usual places); your RPCS3 "
                          "decrypts a copy of EBOOT.BIN into work/prep")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: from free memory)")
     ap.add_argument("--cleanup", action="store_true",

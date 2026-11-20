@@ -3,7 +3,7 @@
 Ninja and llvm-mingw):
 
     tools/kzbuild.py patch        work/ps3recomp-patched: third_party/ps3recomp with port/patches/series applied
-    tools/kzbuild.py lift         work/lift and work/fw: the game's and the firmware's code as C++
+    tools/kzbuild.py lift         work/lift: the game's code as C++
     tools/kzbuild.py vfs          work/vfs: the folder the game runs from
     tools/kzbuild.py build        work/build/KZ1HD (Linux, clang) or work/build-win/KZ1HD.exe (Windows, llvm-mingw)
     tools/kzbuild.py build --win  work/build-win/KZ1HD.exe from Linux, with the pinned llvm-mingw
@@ -36,8 +36,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINDOWS = os.name == "nt"
-PATH_VARS = ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_WORK", "KZ_VFS", "PS3RECOMP_DIR", "PS3_DEV_FLASH",
-             "KZ_PY")
+PATH_VARS = ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_WORK", "KZ_VFS", "PS3RECOMP_DIR", "KZ_PY")
 # The data archive the port was made from (docs/GETTING-FILES.md): the decrypted data_ps3.psarc, which the game reads
 # either as the player's own file (KZ_PSARC) or, when there is none, from the installed game's data_ps3.psarc.edat,
 # decrypted by the runtime into work/edat-cache on the first open (patch 4014).
@@ -68,15 +67,6 @@ def venv_bin(work):
     return os.path.join(work, "venv", "Scripts" if WINDOWS else "bin")
 
 
-def default_dev_flash(root=ROOT):
-    """Where dev_flash is looked for when nothing names it. Linux: RPCS3's, ~/.config/rpcs3/dev_flash. Windows: RPCS3
-    keeps dev_flash in its own folder, beside rpcs3.exe, which can be anywhere, so the default is Game/dev_flash in this
-    tree, as for the other files."""
-    if WINDOWS:
-        return os.path.join(root, "Game", "dev_flash")
-    return os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
-
-
 def resolve(environ=None, root=ROOT):
     """tools/env.sh's values: {VAR: path} (and PATH with work/venv's tools first)."""
     e = dict(os.environ if environ is None else environ)
@@ -91,7 +81,6 @@ def resolve(environ=None, root=ROOT):
     w = e["KZ_WORK"]
     e["KZ_VFS"] = e.get("KZ_VFS") or j(w, "vfs")
     e["PS3RECOMP_DIR"] = e.get("PS3RECOMP_DIR") or j(w, "ps3recomp-patched")
-    e["PS3_DEV_FLASH"] = e.get("PS3_DEV_FLASH") or default_dev_flash(root)
     if not e.get("KZ_PY"):
         venv_py = j(venv_bin(w), "python.exe" if WINDOWS else "python")
         e["KZ_PY"] = venv_py if os.path.isfile(venv_py) else sys.executable
@@ -360,22 +349,9 @@ def cmd_lift(e, a):
               j(s, "spu_workloads.c"), "--register-fn", "kz1_spu_register_all", "--constructor", "--title", "kz1hd"],
              e, "capture"), 1)
 
-    # The firmware's MP3 decoder, which MultiStream (SPU image 3) loads from dev_flash at LS 0x1A880 for the music:
-    # lifted at that base, registered in stubs.cpp.
-    mp3 = j(e["PS3_DEV_FLASH"], "sys", "external", "flashMP3.pic")
-    if os.path.isfile(mp3):
-        os.makedirs(j(s, "flashmp3"), exist_ok=True)
-        os.makedirs(j(s, "flashmp3_src"), exist_ok=True)
-        elf = j(s, "flashmp3_src", "flashMP3_1A880.elf")
-        run([py, j(t, "rebase_spu_elf.py"), mp3, elf, "0x1A880"], e, "null")
-        out = run([py, j(t, "spu_lifter.py"), "--auto-functions", elf, "--symbol-prefix", "kzmp3_", "--output",
-                   j(s, "flashmp3")], e, "capture")
-        lifted = [line for line in out.splitlines() if "function(s) lifted" in line]
-        if not lifted:
-            raise Fail("spu_lifter.py lifted no function of flashMP3.pic")
-        print("\n".join(lifted), flush=True)
-    else:
-        print(f"no {mp3} (PS3_DEV_FLASH): the game's music and sound stop at the first MP3", flush=True)
+    # Up to 0.5.x the firmware's MP3 decoder was lifted here; port/kz1hd/native/flashmp3.c answers its call now.
+    for old in ("flashmp3", "flashmp3_src"):
+        shutil.rmtree(j(s, old), ignore_errors=True)
 
     # work/fw held the firmware libsre lifted by the port before 0.6.0; the SPURS queue it ran is in the runtime now.
     shutil.rmtree(j(e["KZ_WORK"], "fw"), ignore_errors=True)
