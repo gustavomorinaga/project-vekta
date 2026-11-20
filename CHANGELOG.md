@@ -8,6 +8,13 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- One program to start in each release folder: `Project Vekta.exe` on Windows and the new `project-vekta` on Linux.
+  With no arguments it plays, and before the first build it checks your files and builds first, asking nothing
+  when RPCS3 and the game are in their usual places. It takes `--game`, `--eboot`, `--psarc`, `--rpcs3 [DIR]` (or
+  `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC`), kept in `work/paths.env`, and `--prepare`, which checks and builds with no
+  window or question and prints `progress` lines for a launcher. Each failure has its own exit code and fix text,
+  one table for the game and the launcher (`port/kz1hd/kz_exit.h`, listed in docs/BUILDING.md). A missing Vulkan
+  driver is named before the game starts.
 - A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel
   Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now
   the game says which level it needs and which one the CPU has (a message box on Windows, the launcher's message, the
@@ -19,6 +26,10 @@ program and folder that build it. Until a release that calls itself playable
   offers to rebuild. `KZ_EBOOT_CHECK=0` skips it.
 
 ### Changed
+- The release folders keep their scripts in `scripts/`: `run.cmd`, `play.cmd` and the new `prepare.cmd` on Windows,
+  `run.sh`, `play.sh` and `prepare.sh` on Linux, so that the launcher is the one program at the top (a launcher
+  such as Quiver starts the one it finds there). An install over an earlier version removes the old `run.cmd` and
+  `play.cmd`.
 - The firmware's `libsre.prx` is no longer needed: the SPURS queue the game sends its compressed data requests
   through, which ran the firmware's own libsre code, is now in the port's runtime (ps3recomp patch 1022, checked
   against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it,

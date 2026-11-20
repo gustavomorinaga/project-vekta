@@ -52,6 +52,6 @@ grep -q 'getenv("KZ_EBOOT_CHECK")' "$main" && grep -q '__has_include("eboot_id.h
 check $? "KZ_EBOOT_CHECK=0 skips it; a lift without eboot_id.h still builds"
 want=$(sed -n 's/^#define KZ_EXIT_EBOOT *\([0-9]*\).*/\1/p' "$K/kz_exit.h")
 is "launch.py's EXIT_EBOOT is kz_exit.h's KZ_EXIT_EBOOT ($want)" \
-  [ "$(sed -n 's/^EXIT_EBOOT = \([0-9]*\)$/\1/p' "$ROOT/tools/release/launch.py")" = "${want:-none}" ]
+  [ "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import launch; print(launch.EXIT_EBOOT)' "$ROOT/tools/release")" = "${want:-none}" ]
 echo "test_eboot_check: $([ $fails = 0 ] && echo ok || echo "FAIL ($fails)")"
 [ $fails = 0 ]

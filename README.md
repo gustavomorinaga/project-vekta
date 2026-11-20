@@ -60,9 +60,10 @@ SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
 
 - **Windows, setup program** (`project-vekta-X.Y.Z-setup.exe`): it asks where your files are, builds, and puts
   **Project Vekta** in the Start menu.
-- **Windows, zip** (`project-vekta-X.Y.Z-windows.zip`): the same folder without the setup. `run.cmd` asks where your
-  files are and builds; `play.cmd` plays.
-- **Linux folder** (`project-vekta-X.Y.Z-linux.tar.gz`): `./run.sh` builds, `./play.sh` plays.
+- **Windows, zip** (`project-vekta-X.Y.Z-windows.zip`): the same folder without the setup. `Project Vekta.exe` builds
+  the first time (from your RPCS3, or `scripts\run.cmd` asks where your files are) and then plays.
+- **Linux folder** (`project-vekta-X.Y.Z-linux.tar.gz`): `./project-vekta` builds the first time (from your RPCS3,
+  or `scripts/run.sh` asks where your files are) and then plays.
 
 Step by step, with what you see at each step: **[docs/INSTALL.md](docs/INSTALL.md)**. To build from a Git clone or
 the source archive instead: [For developers](#for-developers-building-from-source).
@@ -107,7 +108,7 @@ Nothing, unless you choose it. The port and its scripts make no network connecti
 the ones you start: cloning this repository with its ps3recomp submodule, your system's packages, the build tools'
 Python packages, and these, only when you choose them:
 
-- **NVIDIA DLSS**: only if you accept NVIDIA's DLSS SDK licence when `tools/install.sh` or `run.cmd` asks, or tick
+- **NVIDIA DLSS**: only if you accept NVIDIA's DLSS SDK licence when `tools/install.sh` or `scripts\run.cmd` asks, or tick
   the Windows setup's DLSS box (unticked by default), or pass `--dlss accept`, the build downloads the DLSS SDK's files from NVIDIA's repository on GitHub
   (`raw.githubusercontent.com/NVIDIA/DLSS`, pinned to v310.9.16 and checked by SHA-256) into
   `work/toolchain-cache/dlss-sdk/`. The question first downloads the licence's text from there, for you to read.

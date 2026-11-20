@@ -6,7 +6,8 @@
  *     <dir>\work\toolchain-cache\python\pythonw.exe "<dir>\tools\release\launch.py" --root "<dir>" --build-if-needed
  *         <own arguments>
  * where <dir> is the folder this exe is in, waits for it (shortcuts and Steam see one process for the whole session)
- * and returns its exit code. --build-if-needed: before the first build, launch.py opens run.cmd in a console.
+ * and returns its exit code. --build-if-needed: before the first build, launch.py checks the files and builds
+ * (asking nothing when RPCS3 and the game are in their usual places; else scripts\run.cmd in a console).
  *
  * --launcher-dry-run (first argument): write the command line it would run, or the error, to
  * <dir>\launcher-dry-run.txt (UTF-8) and exit without starting anything or showing a dialog (the Wine test).

@@ -62,7 +62,7 @@
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Linux build</b><span class="blurb">built and played on the maintainer&#x27;s machine; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a></span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the whole campaign played there</span></div><span class="st st-ok">Works</span></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Frame rate</b><span class="blurb">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</span></div><span class="st st-ok">Works</span></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>Project Vekta.exe</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</span></div><span class="st st-ok">Works</span></li>
 </ul>
 <h3>The PS3 game, feature by feature</h3>
 <ul class="meters">
@@ -191,7 +191,7 @@
 <tr><td>Linux x64 build</td><td></td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>Windows x64 exe (cross-built on Linux)</td><td>runs under Wine, Proton and on Windows; the whole campaign played there</td><td><span class="st st-ok">Works</span></td></tr>
 <tr><td>Frame rate</td><td>a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Installer that builds the port on the player&#x27;s PC</td><td><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>run.cmd</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td>Installer that builds the port on the player&#x27;s PC</td><td><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>Project Vekta.exe</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</td><td><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">Every feature, with evidence<span aria-hidden="true"> &gt;</span></a></p>
@@ -201,8 +201,10 @@
 <h2>Unreleased</h2>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="sec">Added</span>One program to start in each release folder: <code>Project Vekta.exe</code> on Windows and the new <code>project-vekta</code> on Linux. With no arguments it plays, and before the first build it checks your files and builds first, asking nothing when RPCS3 and the game are in their usual places. It takes <code>--game</code>, <code>--eboot</code>, <code>--psarc</code>, <code>--rpcs3 [DIR]</code> (or <code>KZ_GAME</code>, <code>KZ_EBOOT</code>, <code>KZ_PSARC</code>), kept in <code>work/paths.env</code>, and <code>--prepare</code>, which checks and builds with no window or question and prints <code>progress</code> lines for a launcher. Each failure has its own exit code and fix text, one table for the game and the launcher (<code>port/kz1hd/kz_exit.h</code>, listed in docs/BUILDING.md). A missing Vulkan driver is named before the game starts.</li>
 <li><span class="sec">Added</span>A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now the game says which level it needs and which one the CPU has (a message box on Windows, the launcher&#x27;s message, the log), and exits with code 75. The first run&#x27;s check and the Windows setup&#x27;s first page ask the same before the build: the first run stops there, and the setup asks whether to install anyway.</li>
 <li><span class="sec">Added</span>The game checks that its <code>EBOOT.elf</code> is the one the build was made from (by size and SHA-256, in tens of milliseconds) before it starts. With another one (another version of the game, a file replaced after the build), it says so instead of running code that does not match, opens no window and exits with code 76; the launcher offers to rebuild. <code>KZ_EBOOT_CHECK=0</code> skips it.</li>
+<li><span class="sec">Changed</span>The release folders keep their scripts in <code>scripts/</code>: <code>run.cmd</code>, <code>play.cmd</code> and the new <code>prepare.cmd</code> on Windows, <code>run.sh</code>, <code>play.sh</code> and <code>prepare.sh</code> on Linux, so that the launcher is the one program at the top (a launcher such as Quiver starts the one it finds there). An install over an earlier version removes the old <code>run.cmd</code> and <code>play.cmd</code>.</li>
 <li><span class="sec">Changed</span>The firmware&#x27;s <code>libsre.prx</code> is no longer needed: the SPURS queue the game sends its compressed data requests through, which ran the firmware&#x27;s own libsre code, is now in the port&#x27;s runtime (ps3recomp patch 1022, checked against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it, and on the RPCS3 route your RPCS3 decrypts only the game&#x27;s EBOOT. PS3 system software 4.93 is still needed for the music (its <code>dev_flash</code>, read as installed). The lift no longer makes <code>work/fw</code>, and removes the one an earlier version made.</li>
 </ul>
 </article>
@@ -240,14 +242,14 @@
 <section id="changelog" class="promo term">
 <h2>Changelog</h2>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> One program to start in each release folder: Project Vekta.exe on Windows and the new project-vekta on Linux. With no...</span></li>
 <li><time>next</time><span><b>Unreleased</b> A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The game checks that its EBOOT.elf is the one the build was made from (by size and SHA-256, in tens of milliseconds)...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The release folders keep their scripts in scripts/: run.cmd, play.cmd and the new prepare.cmd on Windows, run.sh...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The firmware&#x27;s libsre.prx is no longer needed: the SPURS queue the game sends its compressed data requests through...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its data_ps3.psarc.edat is bound to the buyer&#x27;s...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows &quot;The game...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> &quot;Use my RPCS3 install&quot; names, on the setup&#x27;s build page, each file your RPCS3 is decrypting, and links instead of...</span></li>
-<li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> Finding RPCS3 by hand: the setup&#x27;s &quot;Your game&quot; page has a &quot;Find RPCS3...&quot; button, and run.cmd, ./run.sh and...</span></li>
-<li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> The build works in an install folder with a space in its path (as D:\Games\My Games\Project Vekta): the force-included...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

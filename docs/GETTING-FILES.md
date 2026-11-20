@@ -26,7 +26,8 @@ read. The install does this once after the build (`tools/kzbuild.py data`: the g
 archive is open, about a minute), checks the result against the `data_ps3.psarc` row below, and takes the movies out
 of it. No key is in this repository or in the downloads.
 
-**From your RPCS3.** `tools/install.sh`, `run.cmd` and `./run.sh` (or `tools/release/firstrun.py --rpcs3 [DIR]`) find
+**From your RPCS3.** `tools/install.sh`, the release folders' `Project Vekta.exe` and `./project-vekta` (with no question), `scripts\run.cmd` and
+`scripts/run.sh` (or `tools/release/firstrun.py --rpcs3 [DIR]`) find
 RPCS3 in its usual places, take the installed game folder, its `.edat` and `dev_flash` from it, and ask your RPCS3 to
 decrypt a copy of `USRDIR/EBOOT.BIN` into `work/prep` (`tools/release/rpcs3_import.py`). The result must match the
 `EBOOT.elf` row below. RPCS3's

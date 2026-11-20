@@ -76,6 +76,14 @@ LINUX_FOLDER = (
     "./play.sh plays. The game needs glibc 2.31 or newer, a Vulkan driver and the system's SDL2. "
     "project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its pinned commit, for building "
     "with your own compilers ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). ")
+# From 0.6.0 each folder has one program at its top (Project Vekta.exe, project-vekta) that builds on the first start
+# and then plays; the first run's questions and the launchers' prepare step are in scripts/.
+LINUX_FOLDER_060 = (
+    "Linux: project-vekta-{version}-linux.tar.gz is the same kind of folder with its own toolchain (Zig, CMake, "
+    "Ninja; nothing to install but Python 3): unpack it and start ./project-vekta, which builds the first time and "
+    "then plays (scripts/run.sh asks for your files step by step). The game needs glibc 2.31 or newer, a Vulkan "
+    "driver and the system's SDL2. project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its "
+    "pinned commit, for building with your own compilers ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). ")
 FILES = (
     "Windows: project-vekta-{version}-setup.exe installs the port's sources and the pinned toolchain for your user "
     "(no admin rights). It asks where your files are and builds the port in the wizard (about five minutes; untick "
@@ -161,9 +169,13 @@ def notes(version, entry, first=False):
     else:
         lists = ([f"New in {version}:\n{bullets(new)}"] if new else []) + ([f"Fixed:\n{bullets(fixed)}"] if fixed else [])
     v = tuple(int(x) for x in version.split("."))
+    linux = LINUX_FOLDER_060 if v >= (0, 6, 0) else LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE
     files = (SOURCE_ONLY.format(version=version, blob=blob) if version == "0.1.0" else
-             FILES.format(version=version, blob=blob, need=need_text(v), linux=(
-                 LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE).format(version=version, blob=blob)))
+             FILES.format(version=version, blob=blob, need=need_text(v), linux=linux.format(version=version, blob=blob)))
+    if v >= (0, 6, 0):
+        files = files.replace("setup program: run.cmd builds, play.cmd plays.",
+                              "setup program: Project Vekta.exe builds the first time and then plays (scripts\\run.cmd "
+                              "asks for your files step by step).")
     install_first = v > INSTALL_FIRST
     return "\n\n".join([
         f"Project Vekta {version}, {kind}: {STATUS}, see [docs/RELEASE-CRITERIA.md]({blob}/docs/RELEASE-CRITERIA.md).",

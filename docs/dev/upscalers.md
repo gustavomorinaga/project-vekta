@@ -49,7 +49,7 @@ The same on Linux and Windows: FSR 3.1 is in every build, and DLSS only where th
   then passes `KZ_DLSS_SDK` (`-DPS3RECOMP_DLSS_SDK`) and puts the runtime library beside the program. On Windows the
   setup program asks instead, on a page of its own: a box, unticked by default, "Download NVIDIA DLSS (NVIDIA RTX
   GPUs). I accept the NVIDIA DLSS SDK license", with the licence's link; its answer goes to `firstrun.py --dlss` and
-  `work\dlss-choice` and is offered again on an upgrade. `run.cmd` (the zip) asks as `tools/install.sh` does. Declined, nothing is
+  `work\dlss-choice` and is offered again on an upgrade. `scripts\run.cmd` (the zip) asks as `tools/install.sh` does. Declined, nothing is
   downloaded, the build has no DLSS, and the PC menu shows it as "(not built)"; no NVIDIA file is left beside the
   program. NVIDIA DLSS is credited by name (NOTICE.md, the project page); no NVIDIA logo is used.
 - By hand: `-DPS3RECOMP_DLSS_SDK=<DLSS SDK folder>` (github.com/NVIDIA/DLSS; 310.9.16 tested) with
@@ -61,7 +61,7 @@ Without DLSS the upscaler is a stub and that choice behaves as off.
 ## Windows
 
 `tools/build-win.sh` (`KZ_DLSS_SDK=<the SDK>` for DLSS) builds both into `KZ1HD.exe` with the pinned llvm-mingw, and
-the setup program and `run.cmd` do the same on the player's PC.
+the setup program and `scripts\run.cmd` do the same on the player's PC.
 
 - **FSR 3.1:** the vendored sources build with llvm-mingw as they are. `wchar_t` is 2 bytes on Windows and MinGW has
   the MSVC calls the SDK uses, so `tools/ffx/ffx_mingw_compat.h` only brings in the headers MSVC's own headers

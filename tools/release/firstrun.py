@@ -256,11 +256,13 @@ def cmd_patch(c):
 
 
 def play_command(root):
-    """What starts the game from this tree: play.cmd in a Windows release folder, else tools/play.sh."""
+    """What starts the game from this tree: the release folder's launcher (Project Vekta.exe, project-vekta), else
+    tools/release/launch.py on Windows and tools/play.sh elsewhere."""
     if os.name == "nt":
-        cmd = os.path.join(root, "play.cmd")
-        return cmd if os.path.isfile(cmd) else f"python {os.path.join(root, 'tools', 'release', 'launch.py')}"
-    return os.path.join(root, "tools", "play.sh")
+        exe = os.path.join(root, "Project Vekta.exe")
+        return exe if os.path.isfile(exe) else f"python {os.path.join(root, 'tools', 'release', 'launch.py')}"
+    entry = os.path.join(root, "project-vekta")
+    return entry if os.path.isfile(entry) else os.path.join(root, "tools", "play.sh")
 
 
 def cmd_venv(c):
@@ -805,7 +807,8 @@ def desktop_path():
 
 
 def desktop_entry(root):
-    """A freedesktop.org entry that starts tools/play.sh from this tree, with assets/icon.svg as its icon."""
+    """A freedesktop.org entry that starts the game from this tree (play_command: project-vekta in a release folder,
+    else tools/play.sh), with assets/icon.svg as its icon."""
     q = lambda p: '"' + re.sub(r'([\\"`$])', r"\\\\\1", p) + '"'  # noqa: E731 (Exec quoting, then the escape layer)
     return "\n".join([
         "[Desktop Entry]",
@@ -814,7 +817,7 @@ def desktop_entry(root):
         "Name=Project Vekta",
         "GenericName=Killzone HD (PC port)",
         "Comment=Plays the PC port of Killzone HD built from your own game",
-        f"Exec={q(os.path.join(root, 'tools', 'play.sh'))}",
+        f"Exec={q(play_command(root))}",
         f"Path={root}",
         f"Icon={os.path.join(root, 'assets', 'icon.svg')}",
         "Terminal=false",
@@ -1003,7 +1006,7 @@ def fetch_license(c):
 def ask_dlss(c, ask=input, say=print):
     """Once: the licence's link and text, then accept or decline; the answer is kept in work/dlss-choice."""
     path = fetch_license(c) or "(could not be downloaded; read it at the link)"
-    say(DLSS_QUESTION.format(url=DLSS_LICENSE_URL, path=path, again="run.cmd" if os.name == "nt" else "tools/install.sh"))
+    say(DLSS_QUESTION.format(url=DLSS_LICENSE_URL, path=path, again="scripts\\run.cmd" if os.name == "nt" else "scripts/run.sh"))
     got = ask("Download NVIDIA DLSS and accept the NVIDIA DLSS SDK licence? [y/N] ").strip().lower()
     c.dlss = "accept" if got in ("y", "yes") else "decline"
     write_dlss(c.work, c.dlss)
