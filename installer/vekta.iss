@@ -55,6 +55,9 @@
 #define FilesDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md"
 #define InstallDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
 #define LauncherExe "Project Vekta.exe"
+; The x86-64 level the build is made for: tools/kzbuild.py's default KZ_MARCH, x86-64-v3 (port/kz1hd/cpu_check.c;
+; tools/tests/test_setup.py checks they agree)
+#define CpuLevel "3"
 #define SiteURL "https://gustavomorinaga.github.io/project-vekta/"
 #define IssuesURL "https://github.com/gustavomorinaga/project-vekta/issues"
 ; firstrun.py's DLSS_LICENSE_URL (tools/tests/test_setup.py checks they agree)
@@ -127,6 +130,9 @@ Type: filesandordirs; Name: "{app}\work\toolchain-cache"
 Type: files; Name: "{group}\Build again (your files, the lift, the compile).lnk"
 
 [Files]
+; The launcher answers the CPU question before the first page (InitializeSetup: --cpu-check); first, so that unpacking
+; it reads nothing before it.
+Source: "{#Payload}\{#LauncherExe}"; DestDir: "{tmp}"; Flags: dontcopy
 ; The "Your game" page asks tools/release/rpcs3_import.py what the player's RPCS3 has, before anything is installed:
 ; the bundled Python and the two modules go to a temporary folder (after Project Pyrrhus's kz2.iss, MIT). They come
 ; first, and the payload starts a new solid block (solidbreak): with solid compression, unpacking a file means
@@ -514,6 +520,27 @@ begin
   if BrowseForFolder('RPCS3''s folder (where rpcs3.exe is), or the game folder RPCS3 installed ' +
                      '(dev_hdd0\game\{#TitleId}):', D, False) then
     CheckRpcs3(D);
+end;
+
+{ Before the first page: a CPU below the level the build is made for (the launcher's --cpu-check, the test KZ1HD.exe
+  makes when it starts, port/kz1hd/cpu_level.h) could install and build, but the game would never start. Say so, and
+  install only when the player still wants to. A launcher that cannot be run says nothing. }
+function InitializeSetup: Boolean;
+var
+  Level: Integer;
+begin
+  Result := True;
+  try
+    ExtractTemporaryFile('{#LauncherExe}');
+    if Exec(ExpandConstant('{tmp}\{#LauncherExe}'), '--cpu-check', '', SW_HIDE, ewWaitUntilTerminated, Level) and
+       (Level >= 1) and (Level < {#CpuLevel}) then
+      Result := SuppressibleMsgBox('This PC''s CPU is too old for Project Vekta: the build is made for CPUs with ' +
+        'x86-64-v{#CpuLevel} (AVX2, FMA, BMI2: Intel Haswell (2013) or AMD Excavator (2015) and later), and this ' +
+        'one has x86-64-v' + IntToStr(Level) + '. The game cannot run on it.' + #13#10#13#10 +
+        'Install anyway?', mbError, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
+  except
+    Log('CPU check skipped: ' + GetExceptionMessage);
+  end;
 end;
 
 procedure InitializeWizard;

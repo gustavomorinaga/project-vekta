@@ -12,7 +12,8 @@ With --root (the port's folder) and --work (its work folder), tools/release/firs
 place the build runs in, each FAIL saying what to do: a path holding [ ] or ; (CMake reads them as list syntax and
 stops while configuring), a folder inside OneDrive (it syncs and locks the build's files while they are written), and
 a PC clock behind the port's own files (Ninja then sees them as changed forever). After Project Helghast's
-firstrun_check.py checks P1, O1 and T1 (undecuple, MIT); written here.
+firstrun_check.py checks P1, O1 and T1 (undecuple, MIT); written here. It also checks the CPU against the x86-64
+level the build is made for (KZ_MARCH, default x86-64-v3): port/kz1hd/cpu_check.c's test, before an hour of building.
 """
 import hashlib
 import os
@@ -99,6 +100,60 @@ def place_problems(root, work, environ=None, now=None):
     return out
 
 
+# The x86-64 levels by /proc/cpuinfo's flag names (port/kz1hd/cpu_level.h has the same rules by CPUID bit; the
+# kernel drops the AVX flags when it does not save the YMM state)
+CPU_FLAGS = {2: {"cx16", "lahf_lm", "popcnt", "pni", "sse4_1", "sse4_2", "ssse3"},
+             3: {"avx", "avx2", "bmi1", "bmi2", "f16c", "fma", "abm", "movbe", "xsave"},
+             4: {"avx512f", "avx512bw", "avx512cd", "avx512dq", "avx512vl"}}
+CPU_NEEDS = {2: "SSE4.2, POPCNT: Intel Nehalem (2008) or AMD Bulldozer (2011) and later",
+             3: "AVX2, FMA, BMI2: Intel Haswell (2013) or AMD Excavator (2015) and later",
+             4: "AVX-512: Intel Skylake-X, Ice Lake or later, AMD Zen 4 or later"}
+LAUNCHER = "Project Vekta.exe"
+
+
+def cpu_level_of_flags(flags):
+    level = 1
+    for n in (2, 3, 4):
+        if not CPU_FLAGS[n] <= flags:
+            break
+        level = n
+    return level
+
+
+def cpu_level(root, windows=os.name == "nt", cpuinfo="/proc/cpuinfo", run=None):
+    """This CPU's x86-64 level, or None when it cannot be told: Linux reads /proc/cpuinfo; Windows asks the release
+    folder's launcher (Project Vekta.exe --cpu-check, which exits with it; a Git clone has no launcher)."""
+    if windows:
+        exe = os.path.join(root or ROOT, LAUNCHER)
+        if not os.path.isfile(exe):
+            return None
+        import subprocess
+        try:
+            rc = (run or subprocess.run)([exe, "--cpu-check"], timeout=30).returncode
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return rc if rc in (1, 2, 3, 4) else None
+    try:
+        with open(cpuinfo, encoding="ascii", errors="replace") as f:
+            line = next((ln for ln in f if ln.startswith("flags")), "")
+    except OSError:
+        return None
+    return cpu_level_of_flags(set(line.partition(":")[2].split())) if line else None
+
+
+def cpu_line(have, need):
+    """check-game-files' line for the CPU: FAIL when it is below the level the build is made for. The FAIL's label
+    is "CPU:" (firstrun.py ends the first run on it: no file the player gives can fix it)."""
+    if not need:
+        return None
+    if have is None:
+        return f"ok       CPU: not checked here (the build needs x86-64-v{need})"
+    if have >= need:
+        return f"ok       CPU: x86-64-v{have} (the build needs x86-64-v{need})"
+    return (f"FAIL     CPU: this build of Project Vekta needs a CPU with x86-64-v{need} ({CPU_NEEDS[need]}), and this "
+            f"one has x86-64-v{have}. The game cannot run on it")
+
+
 FIRMWARE = "4.93"   # the PS3 system software flashMP3.pic was tested from
 
 
@@ -161,6 +216,12 @@ def main():
     for line in place_problems(opt("--root"), opt("--work")):
         print(line)
         bad = True
+    if opt("--root"):   # the first run's check: the CPU against the level the build will be made for (KZ_MARCH)
+        import kzbuild
+        line = cpu_line(cpu_level(opt("--root")), kzbuild.cpu_required(kzbuild.march(os.environ)))
+        if line:
+            print(line)
+            bad = bad or line.startswith("FAIL")
     fw = firmware_version(DEV_FLASH) if os.path.isdir(DEV_FLASH) else None
     if fw and fw != FIRMWARE:
         print(f"WRONG    firmware: {DEV_FLASH} holds PS3 system software {fw}; the port needs {FIRMWARE} (the music "

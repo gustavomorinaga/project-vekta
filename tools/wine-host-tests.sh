@@ -59,5 +59,29 @@ run test_gcm_flip_wait -std=gnu17 -I "$P/libs/video" "$KZ_ROOT/tools/tests/test_
 # Windows display scaling (port/kz1hd/win_dpi.h): per-monitor DPI aware once SDL's video starts
 run test_win_dpi -std=gnu17 -I "$KZ_ROOT/port/kz1hd" -I "$SD/include" -I "$SD/include/SDL2" \
   "$KZ_ROOT/tools/tests/test_win_dpi.c" -L "$SD/lib" -lSDL2
+# The CPU check (port/kz1hd/cpu_level.h, cpu_check.c): the levels of real CPUs' bits, then cpu_check.c (baseline
+# x86-64) beside a C++ static initializer (x86-64-v3) in a folder with a space: with KZ_CPU_LEVEL_MAX=2 the exe exits
+# with KZ_EXIT_CPU before the initializer, its line in KZ_LOG; otherwise it runs
+run test_cpu_level -std=c11 -I "$KZ_ROOT/port/kz1hd" "$KZ_ROOT/tools/tests/test_cpu_level.c"
+n=$((n + 1)); C="$O/cpu check"; mkdir -p "$C"; want=$(sed -n 's/^#define KZ_EXIT_CPU *\([0-9]*\).*/\1/p' "$KZ_ROOT/port/kz1hd/kz_exit.h")
+if "$CC" -O2 -march=x86-64 -DKZ_CPU_REQUIRED=3 -I "$KZ_ROOT/port/kz1hd" -c "$KZ_ROOT/port/kz1hd/cpu_check.c" -o "$C/cpu_check.o" \
+     >"$O/test_cpu_check.build.log" 2>&1 &&
+   "$B/x86_64-w64-mingw32-clang++" -O2 -march=x86-64-v3 "$C/cpu_check.o" "$KZ_ROOT/tools/tests/test_cpu_check_init.cpp" \
+     -static -o "$C/test_cpu_check.exe" >>"$O/test_cpu_check.build.log" 2>&1; then
+  ok=1
+  (cd "$C" && timeout 120 "$wine" ./test_cpu_check.exe) >"$O/test_cpu_check.log" 2>&1 || ok=0
+  grep -q "static initializer" "$O/test_cpu_check.log" || ok=0
+  (cd "$C" && KZ_CPU_LEVEL_MAX=2 KZ_LOG="$C/k z.log" timeout 120 "$wine" ./test_cpu_check.exe) >"$O/test_cpu_check.low.log" 2>&1
+  rc=$?
+  [[ $rc == "$want" ]] || ok=0
+  grep -q "static initializer" "$O/test_cpu_check.low.log" && ok=0
+  grep -q "^\[kz\] CPU check: .*x86-64-v2" "$C/k z.log" || ok=0
+  if (( ok )); then echo "ok   test_cpu_check"; else
+    echo "FAIL test_cpu_check (low level: exit $rc, want $want)"; tail -3 "$O/test_cpu_check.log" "$O/test_cpu_check.low.log"
+    failed+=(test_cpu_check)
+  fi
+else
+  echo "FAIL test_cpu_check (build)"; tail -5 "$O/test_cpu_check.build.log"; failed+=(test_cpu_check)
+fi
 echo "wine host tests: $((n - ${#failed[@]}))/$n pass${failed:+; failed: ${failed[*]}}"
 (( ${#failed[@]} == 0 ))

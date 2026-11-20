@@ -516,6 +516,18 @@ def ninja(e, b):
     run(["ninja", "-C", b] + (["-j", e["KZ_JOBS"]] if e.get("KZ_JOBS") else []), e)
 
 
+def march(e):
+    """The -march of the build (KZ_MARCH, default x86-64-v3): the Linux and Windows builds both pass it to CMake."""
+    return e.get("KZ_MARCH") or "x86-64-v3"
+
+
+def cpu_required(m):
+    """The x86-64 level port/kz1hd/cpu_check.c checks for with -march=m (CMakeLists.txt's rule): 2, 3 or 4; 0 for
+    any other -march (no check)."""
+    r = re.fullmatch(r"x86-64-v([234])", m or "")
+    return int(r.group(1)) if r else 0
+
+
 def build_linux(e):
     """Linux build of the port: clang, Ninja and the Vulkan renderer. KZ_MARCH sets -march (default x86-64-v3).
     KZ_LINUX_TOOLCHAIN=pinned (the Linux release folder's run.sh sets it) builds with the pinned toolchain instead of
@@ -527,7 +539,7 @@ def build_linux(e):
     # -O1 for the base flags, as in the maintainer's build; the lifted PPU code gets KZ_PPU_OPT (-O2) on its own.
     run(["cmake", "-G", "Ninja", "-S", os.path.join(e["KZ_ROOT"], "port", "kz1hd"), "-B", b,
          "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++", "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1",
-         f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}", "-DPS3RECOMP_RSX_VULKAN=ON", *dlss_defs(e), *defs], e, "null")
+         f"-DKZ_MARCH={march(e)}", "-DPS3RECOMP_RSX_VULKAN=ON", *dlss_defs(e), *defs], e, "null")
     ninja(e, b)
     place_dlss(e, b)
     print(f"build: {os.path.join(b, 'KZ1HD')}", flush=True)
@@ -586,7 +598,7 @@ def build_linux_pinned(e):
     e["KZ_ZIG"] = j(cache, "zig", "zig")
     run(["cmake", "-G", "Ninja", "-S", j(root, "port", "kz1hd"), "-B", b,
          f"-DCMAKE_TOOLCHAIN_FILE={j(root, 'port', 'cmake', 'zig-linux.cmake')}", f"-DKZ_LINUX_DEPS={deps}",
-         "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1", f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}",
+         "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1", f"-DKZ_MARCH={march(e)}",
          "-DPS3RECOMP_RSX_VULKAN=ON", f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}",
          f"-DKZ_FFMPEG_INCLUDE_DIR={j(deps, 'include')}", f"-DPython3_EXECUTABLE={sys.executable}",
          # the link-only SDL2 in linux-deps must never be found at run time: no build RPATH
@@ -649,7 +661,7 @@ def build_windows(e):
                 shutil.copytree(j("/usr/include", h), j(ff, h), dirs_exist_ok=True)
     run(["cmake", "-G", "Ninja", "-S", j(root, "port", "kz1hd"), "-B", b,
          f"-DCMAKE_TOOLCHAIN_FILE={j(root, 'port', 'cmake', 'llvm-mingw.cmake')}", f"-DLLVM_MINGW_ROOT={j(cache, llvm)}",
-         f"-DKZ_WIN_DEPS={deps}", "-DCMAKE_BUILD_TYPE=Release", *defs, "-DPS3RECOMP_RSX_VULKAN=ON",
+         f"-DKZ_WIN_DEPS={deps}", "-DCMAKE_BUILD_TYPE=Release", f"-DKZ_MARCH={march(e)}", *defs, "-DPS3RECOMP_RSX_VULKAN=ON",
          f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}", f"-DKZ_FFMPEG_INCLUDE_DIR={ff}",
          # the build's generators (gen_hle_nids.py and ps3recomp's): this Python, the bundled one on Windows,
          # which is neither registered nor on PATH

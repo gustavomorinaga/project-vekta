@@ -32,7 +32,9 @@ built. With a build there that this install's files did not make (stale_build: i
 version, patch set or DLSS choice, as after an install over an earlier release without the build in the setup),
 firstrun.py --bar rebuilds it first in a console of its own (run.cmd when no paths were saved yet), so the game of
 an earlier version never starts from the new install. A game that ends within EARLY_EXIT seconds without its window
-being closed or the player quitting it did not start: a message then says so, with the end of its log.
+being closed or the player quitting it did not start: a message then says so, with the end of its log. One of the
+exe's own exit codes (EXIT_CODES, port/kz1hd/kz_exit.h: a CPU below the level the build is made for) gets its own
+message instead.
 
 After Project Pyrrhus's and Project Helghast's tools/release/launch.py (undecuple, MIT), which decide the same
 things for their launchers. Exit: the game's own code, 1 = not built yet, 2 = usage. Standard library only.
@@ -64,6 +66,15 @@ CLOSED = (b"window closed", b"window disabled", b"[kz] quitting (")
 INSTALL_INI = "vekta-install.ini"   # the setup program writes it in the install folder ([INI] in installer/vekta.iss)
 SAVE_FOLDER = "Project Vekta"       # under %APPDATA% when the install is not portable
 PLAYER_FILES = ("kz1hd_pc.ini", "kz1hd_keys.ini", "gamedata")   # what the game writes in the folder it runs from
+# KZ1HD's own exit codes (port/kz1hd/kz_exit.h, the one list; tools/tests/test_cpu_check.sh checks they agree): what
+# the player is told for each. The exe writes its own line for them into the log ("[kz] CPU check: ..."), shown
+# when it is there.
+EXIT_CPU = 75
+EXIT_CODES = {
+    EXIT_CPU: ("[kz] CPU check: ", "This build of Project Vekta needs a newer CPU than this one (x86-64-v3: AVX2, FMA, "
+                                   "BMI2: Intel Haswell (2013) or AMD Excavator (2015) and later). The game cannot "
+                                   "run on it."),
+}
 EARLY_EXIT = 20                     # seconds: a game that ends sooner, its window not closed, did not start
 
 
@@ -318,6 +329,20 @@ def log_tail(log, lines=12, chars=1500):
     return "\n".join(text[-lines:])[-chars:]
 
 
+def exit_code_text(rc, log):
+    """The message for one of KZ1HD's own exit codes (EXIT_CODES): the exe's own line from the log, else the stock
+    text; None for any other code."""
+    if rc not in EXIT_CODES:
+        return None
+    prefix, text = EXIT_CODES[rc]
+    try:
+        with open(log, encoding="utf-8", errors="replace") as f:
+            text = next((ln[len(prefix):].strip() for ln in f if ln.startswith(prefix)), text)
+    except OSError:
+        pass
+    return text
+
+
 def early_exit_text(rc, log):
     tail = log_tail(log)
     return (f"The game stopped right after it started (exit code {rc}).\n\n" +
@@ -474,7 +499,10 @@ def main(argv=None):
         notify(news, error=False)
     t0 = time.monotonic()
     rc = run(argv_, cwd, env, log)
-    if time.monotonic() - t0 < EARLY_EXIT and not window_closed(log):
+    own = exit_code_text(rc, log)
+    if own:
+        notify(own)
+    elif time.monotonic() - t0 < EARLY_EXIT and not window_closed(log):
         notify(early_exit_text(rc, log))
     if sys.stdout is not None:
         print(f"log: {log}")

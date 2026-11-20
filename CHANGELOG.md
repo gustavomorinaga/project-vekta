@@ -7,6 +7,13 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel
+  Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now
+  the game says which level it needs and which one the CPU has (a message box on Windows, the launcher's message, the
+  log), and exits with code 75. The first run's check and the Windows setup's first page ask the same before the
+  build: the first run stops there, and the setup asks whether to install anyway.
+
 ### Changed
 - The firmware's `libsre.prx` is no longer needed: the SPURS queue the game sends its compressed data requests
   through, which ran the firmware's own libsre code, is now in the port's runtime (ps3recomp patch 1022, checked

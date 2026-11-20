@@ -60,6 +60,10 @@ def fake_tree(tmp):
     (root / "tools/check-game-files.py").write_text(
         "import os, sys\n"
         "open(os.path.join(os.environ['KZ_WORK'], 'calls'), 'a').write('check\\n')\n"
+        "if os.environ.get('FAIL_STEP') == 'cpu':\n"
+        "    print('FAIL     CPU: this build of Project Vekta needs a CPU with x86-64-v3 (AVX2), and this one has "
+        "x86-64-v2. The game cannot run on it')\n"
+        "    sys.exit(1)\n"
         "if os.environ.get('FAIL_STEP') == 'check':\n"
         "    print('MISSING  EBOOT.elf (required): nothing at ' + os.environ['KZ_EBOOT'])\n"
         "    print('ok       PARAM.SFO')\n"
@@ -262,6 +266,25 @@ with tempfile.TemporaryDirectory() as tmp:
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
     check(sum(q.startswith("Your choice") for q in asked) == 1 and any("I have the files ready" in s for s in said),
           f"a failed check with saved paths offers the RPCS3 route once: {asked}")
+
+    # A CPU below the build's level fails the check with its own line: --interactive says why and ends there, without
+    # asking for files again or offering RPCS3 (neither could fix it)
+    firstrun.rpcs3_import = lambda: type("NoRpcs3", (), {"resolve": staticmethod(
+        lambda hint: {"status": "not_found", "problems": []}), "rpcs3_root_of": staticmethod(lambda p: str(tmp))})
+    asked.clear()
+    said.clear()
+    answers = iter([""] * 40)
+    os.environ["FAIL_STEP"] = "cpu"
+    calls = root / "work/calls"
+    calls.unlink(missing_ok=True)
+    rc = firstrun.interactive(ctx(root, game), A(), ask=ask, say=said.append, out=io.StringIO())
+    os.environ.pop("FAIL_STEP", None)
+    firstrun.rpcs3_import = real_import
+    checks_run = calls.read_text().split().count("check") if calls.exists() else 0
+    check(rc == 1 and checks_run == 1 and any("CPU: this build of Project Vekta needs" in s for s in said),
+          f"a failed CPU line ends the first run after one check, saying why: rc {rc}, {checks_run} check(s), {said[-1:]}")
+    check(not any(q.startswith(("Enter to choose", "Your choice")) for q in asked),
+          f"and asks neither for the files again nor about RPCS3: {asked}")
 
 # the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again (Linux only)
 if os.name != "nt":

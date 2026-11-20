@@ -106,7 +106,13 @@ python3 tools/kzbuild.py data  # only without a decrypted data_ps3.psarc: opens 
   after `tools/build.sh` has configured it.
 - These scripts run `tools/kzbuild.py patch`, `lift`, `vfs` and `build`: the steps are Python, so the same code will
   build on Windows (`tools/kzbuild.py env` prints the paths they use).
-- `KZ_MARCH` sets the CPU target (default `x86-64-v3`, AVX2; `x86-64-v4` for AVX-512 machines).
+- `KZ_MARCH` sets the CPU target (default `x86-64-v3`, AVX2; `x86-64-v4` for AVX-512 machines). For
+  `x86-64-v2`/`v3`/`v4` the exe checks the CPU before anything else runs (`port/kz1hd/cpu_check.c`, compiled for
+  baseline x86-64): on an older CPU it writes `[kz] CPU check: ...` to stderr and to `KZ_LOG`, shows a message box on
+  Windows when started directly, and exits with code 75 (`port/kz1hd/kz_exit.h`) instead of crashing on its first
+  AVX2 instruction. The first run's check (`tools/check-game-files.py --root`) and the Windows setup's first page
+  test the CPU the same way before the build. Another `KZ_MARCH` (`native`, a CPU name, empty) builds no check.
+  `KZ_CPU_LEVEL_MAX=<1-4>` (tests only, default unset) makes the check see at most that level.
 - Temporal upscalers: AMD FSR 3.1 is built from `third_party/fidelityfx-fsr3` (`-DKZ_FSR3=OFF` leaves it out), in
   the Linux build and the Windows exe. `KZ_DLSS_SDK=<the NVIDIA DLSS SDK folder>` builds DLSS in and copies its
   runtime library beside the program (`tools/build.sh` and `tools/build-win.sh` alike);
