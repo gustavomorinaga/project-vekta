@@ -1,22 +1,33 @@
 {
  "about": "tools/release/installer_art.py's outputs; --check compares against this file",
- "script": "8d12f6703b8bb3a30276680ec83c07937e84f5d0761fce454ce7bfa51d364ffa",
+ "script": "29181ac2d1eea83a669b4b7753eeceae98b73ff7b2d121f2f275d9803090dc50",
  "pillow": "12.3.0",
+ "freetype": "2.14.3",
  "fonts": {
-  "FiraSansCondensed-Bold.ttf": "b9371052e58ec5b709153dd0fffc60b5205b4d3435cf957c2522705b31b0dbcc",
-  "FiraSansCondensed-Regular.ttf": "c67609f14fc9d328442bfffcc31988b0f76e5575cf460fcc1f3dd8e4912fe257"
+  "Rajdhani-Bold.ttf": "691470dd3286a14e9677940d0bf75796179841ba5215cbda1a2c8910a3226afd",
+  "Rajdhani-Medium.ttf": "12ff7dcfe4c206e3875ac53b1762eab57de6a2fa7f5a86c26b97b88d6591eac2"
  },
- "launcher_icon": "b060737097bfc4dcf50bbf679952fe17f0261e794ccf5c315e9b32beed79f292",
  "files": {
-  "header-100.bmp": "67c71b2e66de301ed348b5bdc4664d1484f251648d382e6297660cf5985a4a06",
-  "header-125.bmp": "728bcb80dc19a5aba84f2eb75e4c5a3806d1ee92582ab1a883fb64818ccb6825",
-  "header-150.bmp": "f1e9a4aa13cbb70334ebe0a27a95dd67a9110a64ef34dc8fcded9e64bd5de55c",
-  "header-200.bmp": "8dbac6d1b5764e595061a18e35d0426cca7dc28a025944cc90255503a6b40d83",
-  "vekta-setup.ico": "de2e15d74fe7d54f1f0e6629d384ab5cec53a909006e5fb5748b6e36834fa18c",
-  "vekta-uninstall.ico": "90d8a25cb36f373c6352708e0813189ae139ac6505a66cef13bd706d9db96f91",
-  "wizard-100.bmp": "3b1b5cb2bac99606422ff696006598c9c38e9f62917e0115d1173ca8264e1480",
-  "wizard-125.bmp": "fa597e372f58de402e19a2f5742dcaea194b173f2b222b554ccb33106d8e9f56",
-  "wizard-150.bmp": "d3837220354b78fff7205b54a9cf95702478d42783882a9140cf6f5326beed6f",
-  "wizard-200.bmp": "5ae828939afc3051a458a71dce1080f4c707859eec1e15ed0b95dd21000b233a"
+  "header-100.bmp": "b249dab272a2f57bab02cbf4bbcfa1be31b1a73160ac005af2de46111970af0c",
+  "header-125.bmp": "b09aff9399b481af0f6b1b459239e60b84aeda42670a421628888450df028d81",
+  "header-150.bmp": "f745bc015b502fb85c9f3af17df00140cf0e8c841019de4ea59ce30694fa1fe8",
+  "header-200.bmp": "59744421b50679a258463d3e66a29bb7be546834f8fb39a2558e3fc196d7e15b",
+  "vekta-setup.ico": "2f0861efed9b76b96ffc4668522c38011345189aba39c0c5a4854f5229482061",
+  "vekta-uninstall.ico": "77dc8e7388def3f29c4633238ad8c34a10177f8502d4a3d287220eb0bc2f16d0",
+  "vekta.ico": "a06b6d2cbb079791486dfd274f924af74e7463cc574c95cf6896379963251be5",
+  "wizard-100.bmp": "f1f32a0ee3ba6b33697b9c95cb9c11186972d715188fc2858afdf408712a2700",
+  "wizard-125.bmp": "c4077e3fc1167b8786c65db0e573f795394982d71155f2fc895d4bf66db229b9",
+  "wizard-150.bmp": "06fb3f0767637d968f141a0ae1042069f055f88e9c4c9d3853d34ff51c8cd514",
+  "wizard-200.bmp": "d1b3c5904cad6108fa3abeee92037a8e89b17d051727d4a200b8c47e64e13041"
+ },
+ "public_files": {
+  "banner.png": "dadeb7c5378d97606239a1fd3d55b655df17e92786ec3643f476a31660ea36b5",
+  "banner@2x.png": "e26e0c4cf86e9716cf90533b9442da2a9acf6111639e203132a91d0a1b3c3b2e",
+  "divider-frame.png": "2ab98f665eaff931f128a18249d6a1c14c0ff0d4456d716d1150b3680c6add45",
+  "divider-hazard.png": "fca8c69754617fea58a1e8d9cd6c533f8e32ee34161fdc2ee6b8847802ec9a84",
+  "divider-rule.png": "049ef8d3d1e1f145ef878054027144b7ef9fac9647877263da8ca48e6eee4cbf",
+  "icon.png": "88deff93ec7d7b4ef58bf2cf8068777d0818aba90a195173b89d9f10f3853ec6",
+  "icon.svg": "ac510683bf43e85c5b684e0919e9a8009a05ce73fd313ddde4ed3324e75ecd2e",
+  "social-preview.png": "2585de2df6749cd5f87cf30bf38b74d33fa7d85004640b0c6cda2da7d96ed017"
  }
 }

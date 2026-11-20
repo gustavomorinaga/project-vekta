@@ -7,6 +7,13 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by
+  undecuple): the README banner, the social preview, the Windows setup's pictures and the program icons (now
+  lettered KZ1) are drawn in steel blue with a V chevron by one script, `tools/release/installer_art.py`, with the
+  Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the
+  keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.
+
 ## [0.5.3] - 2026-11-19 (pre-release)
 
 ### Fixed
