@@ -189,6 +189,9 @@ check(isinstance(launch.vulkan_present(), bool), "the Vulkan check answers on th
 building = (ROOT / "docs" / "BUILDING.md").read_text()
 check(all(f"| {c} | `{n}` | {t} |" in building for n, (c, t) in E.items()),
       "docs/BUILDING.md's exit-code table is kz_exit.h's, row for row")
+trouble = (ROOT / "docs" / "TROUBLESHOOTING.md").read_text()
+rows = re.findall(r"^\| [^|]+ \| (\d+) \| [^|]+ \| [^|]+ \|$", trouble, re.M)
+check(sorted(map(int, rows)) == sorted(codes), f"docs/TROUBLESHOOTING.md has one row for each code: {sorted(rows)}")
 
 # The entry point and the scripts
 entry = (ROOT / "installer" / "linux" / "project-vekta").read_text()
