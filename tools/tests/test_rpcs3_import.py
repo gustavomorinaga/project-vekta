@@ -36,7 +36,8 @@ check(got == "5ea2c6e42c0eb8e78abcd57381302494f86394c3a24d02bad0bcaab7bd9129ea",
       f"rpcs3_locate.py is Project Pyrrhus's copy, unedited: {got}")
 
 # A stand-in RPCS3: records its environment and stdin, then makes <name>.elf / <name>.prx / <name>.edat.unedat beside
-# each --decrypt input (as RPCS3 does). FAKE_MODE: ok, bad (wrong contents), hang (never finishes), none (makes nothing).
+# each --decrypt input (as RPCS3 does). FAKE_MODE: ok, bad (wrong contents), hang (never finishes), none (makes nothing),
+# dllcheck (stops at RPCS3's start-up check of the Visual C++ DLLs: its log line, exit 0, nothing made).
 FAKE = r'''#!/usr/bin/env python3
 import os, sys, time
 mode = os.environ.get("FAKE_MODE", "ok")
@@ -49,6 +50,13 @@ if mode == "norap":
     print("RPCS3: SELF: Failed to locate the game license file: x/exdata/UP9000-NPUA80856_00-X.rap.")
 if mode == "hang":
     time.sleep(60)
+if mode == "dllcheck":
+    d = os.path.join(os.environ["XDG_CACHE_HOME"], "rpcs3")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "RPCS3.log"), "a") as f:
+        f.write("E SYS: Found incorrectly installed module: 'msvcp140.dll' (path='D:\\Profile\\AppData\\Local\\"
+                "Other\\runtime\\bin\\MSVCP140.dll', windows='C:\\Windows')\n")
+    sys.exit(0)
 args = sys.argv[1:]
 for i, a in enumerate(args):
     if a == "--decrypt" and mode not in ("none", "norap"):
@@ -169,12 +177,27 @@ with tempfile.TemporaryDirectory() as tmp:
     p = ri.prepare(str(work), str(rp))
     check(p["status"] == "failed" and p["problems"][0]["code"] == "no_license" and ".rap" in p["problems"][0]["text"],
           f"RPCS3 asking for the .rap is named as the missing licence: {p['problems']}")
+    os.environ["FAKE_MODE"] = "dllcheck"
+    p = ri.prepare(str(work), str(rp))
+    check(p["status"] == "failed" and [x["code"] for x in p["problems"]] == ["bad_runtime", "bad_runtime"]
+          and "MSVCP140.dll" in p["problems"][0]["text"] and "Redistributable" in p["problems"][0]["text"],
+          f"RPCS3 stopped by its DLL check (exit 0, issue #94) is named, with the DLL's path: {p['problems']}")
     os.environ["FAKE_MODE"] = "hang"
     t0 = time.monotonic()
     p = ri.prepare(str(work), str(rp), watchdog=1)
     check(p["status"] == "failed" and time.monotonic() - t0 < 20, "the watchdog stops an RPCS3 that never finishes")
     os.environ["FAKE_MODE"] = "ok"
     check(tree_state(rp) == before, "after the failures too, nothing written into RPCS3's or the game's folders")
+
+    # issue #94: on Windows RPCS3 gets only the Windows folders on PATH, never the PATH the setup was started with
+    e = ri.rpcs3_env("C:\\vk\\work\\prep\\rpcs3", {"PATH": "C:\\Other\\runtime\\bin;C:\\Windows\\System32",
+                                                    "Path": "C:\\Other\\runtime\\bin", "SYSTEMROOT": "C:\\Windows",
+                                                    "USERPROFILE": "D:\\Profile"}, windows=True)
+    check(e["PATH"] == "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem" and "Path" not in e
+          and e["USERPROFILE"] == "D:\\Profile" and "RPCS3_CONFIG_DIR" in e,
+          f"Windows: RPCS3's PATH is the Windows folders only, the rest of the environment kept: {e}")
+    check(ri.rpcs3_env("/c", {"PATH": "/usr/bin:/opt/x"}, windows=False)["PATH"] == "/usr/bin:/opt/x",
+          "Linux: PATH unchanged")
 
     # the firmware's version: another one than 4.93 is named, with the version found
     ver.write_text("release:04.9000:\n")
