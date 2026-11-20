@@ -7,7 +7,8 @@
 #    VEX-encoded or other x86-64-v3 instruction; with the CPU's level (KZ_CPU_LEVEL_MAX=2) below the build's it exits
 #    with KZ_EXIT_CPU before the static initializer, with its line on stderr and in KZ_LOG; otherwise it runs;
 #  - with qemu-x86_64 (qemu-user) on PATH: the program on an emulated Nehalem (x86-64-v2) exits with KZ_EXIT_CPU,
-#    never 132 (SIGILL). CI's checks job installs it and sets KZ_REQUIRE_QEMU=1, which makes its absence a failure;
+#    never 132 (SIGILL). CI's checks job installs it and sets KZ_REQUIRE_QEMU=1, which makes its absence (or a C
+#    library that cannot start on a Nehalem) a failure; elsewhere those two are noted and the run is CI's;
 #  - launch.py's EXIT_CPU is kz_exit.h's KZ_EXIT_CPU; tools/kzbuild.py's level follows KZ_MARCH as CMake's does.
 # The Windows build of the same program runs under Wine in tools/wine-host-tests.sh. No game data, no GPU.
 set -uo pipefail
@@ -72,7 +73,16 @@ case $o in *"static initializer"*|*main*) r=1;; *) r=0;; esac
 check $r "nothing of the program ran before it (no static initializer, no main)"
 grep -q '^\[kz\] CPU check: .*x86-64-v2' "$d/k z.log"; check $? "the same line is written into KZ_LOG"
 
+# A distribution built for x86-64-v3/v4 (CachyOS's v4 repositories, for one) has a C library that cannot start on a
+# Nehalem at all: a trivial program built here tells, and then the emulated run is only CI's (Ubuntu's baseline libc).
+nehalem_ok=0
 if command -v qemu-x86_64 >/dev/null; then
+  printf 'int main(void) { return 0; }\n' >"$d/triv.c" && "$CC" -march=x86-64 -O0 "$d/triv.c" -o "$d/triv" &&
+    (qemu-x86_64 -cpu Nehalem "$d/triv") >/dev/null 2>&1 && nehalem_ok=1
+fi
+if [ $nehalem_ok = 0 ] && command -v qemu-x86_64 >/dev/null && [ "${KZ_REQUIRE_QEMU:-0}" != 1 ]; then
+  echo "note this system's C library cannot start on an emulated Nehalem (a trivial program exits with SIGILL): the run on it is CI's (KZ_REQUIRE_QEMU=1)"
+elif command -v qemu-x86_64 >/dev/null; then
   qemu-x86_64 -cpu Nehalem "$t" >"$d/qemu.log" 2>&1; rc=$?
   is "under qemu-x86_64 -cpu Nehalem: exit $rc (KZ_EXIT_CPU $want; 132 would be SIGILL)" [ "$rc" = "$want" ]
   grep -q 'x86-64-v2' "$d/qemu.log"; check $? "and it names the emulated CPU as x86-64-v2"
