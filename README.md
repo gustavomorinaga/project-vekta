@@ -68,6 +68,11 @@ SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
   `recomplauncher.json` ([docs/INSTALL.md](docs/INSTALL.md#installing-through-a-launcher)). Problems:
   [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
+<p>
+<a href="https://recomplauncher.com/game/project-vekta"><img src="assets/press/recomplauncher/badge-dark.svg" width="313" height="56" alt="Get it on RecompLauncher"></a>
+<a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta"><img src="assets/press/quiver/badge@3x.png" width="206" height="56" alt="Get it on Quiver Launcher"></a>
+</p>
+
 Step by step, with what you see at each step: **[docs/INSTALL.md](docs/INSTALL.md)**. To build from a Git clone or
 the source archive instead: [For developers](#for-developers-building-from-source).
 

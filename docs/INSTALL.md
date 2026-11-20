@@ -112,6 +112,11 @@ You need Python 3.10 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 
 ## Installing through a launcher
 
+<p>
+<a href="https://recomplauncher.com/game/project-vekta"><img src="../assets/press/recomplauncher/badge-dark.svg" width="313" height="56" alt="Get it on RecompLauncher"></a>
+<a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta"><img src="../assets/press/quiver/badge@3x.png" width="206" height="56" alt="Get it on Quiver Launcher"></a>
+</p>
+
 A game launcher that installs downloaded packages can install the Windows zip or the Linux folder. Each folder has
 one program at its top for the launcher to start: `Project Vekta.exe` on Windows, `project-vekta` on Linux.
 
@@ -126,7 +131,8 @@ one program at its top for the launcher to start: `Project Vekta.exe` on Windows
 When RPCS3 has the game in its usual places, a launcher that only starts the program also works: the first start
 builds from your RPCS3 without asking anything. If a step fails, the launcher shows the reason;
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md) says what each one means. For launcher developers:
-[dev/launchers.md](dev/launchers.md).
+[dev/launchers.md](dev/launchers.md). RecompLauncher and Quiver Launcher are third-party projects; their names and
+the RecompLauncher badge are their owners' (the badges: [assets/press/](../assets/press/)).
 
 ## If something goes wrong
 
