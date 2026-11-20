@@ -203,6 +203,7 @@
 <ul class="rlist">
 <li><span class="sec">Added</span><code>KZ1HD.exe</code> carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and <code>KZ1HD --version</code> (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens every log, so a log says which build wrote it.</li>
 <li><span class="sec">Added</span><code>KZ1HD.exe</code> has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked for at run time.</li>
+<li><span class="sec">Changed</span>The firmware&#x27;s <code>libsre.prx</code> is no longer needed: the SPURS queue the game sends its compressed data requests through, which ran the firmware&#x27;s own libsre code, is now in the port&#x27;s runtime (ps3recomp patch 1022, checked against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it, and on the RPCS3 route your RPCS3 decrypts only the game&#x27;s EBOOT. PS3 system software 4.93 is still needed for the music (its <code>dev_flash</code>, read as installed). The lift no longer makes <code>work/fw</code>, and removes the one an earlier version made.</li>
 </ul>
 </article>
 <article class="news rel">
@@ -229,8 +230,8 @@
 </div>
 <article id="about" class="news">
 <h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 155 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 155 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 156 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 156 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </article>
@@ -241,12 +242,12 @@
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> KZ1HD.exe carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and KZ1HD --version (Windows...</span></li>
 <li><time>next</time><span><b>Unreleased</b> KZ1HD.exe has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The firmware&#x27;s libsre.prx is no longer needed: the SPURS queue the game sends its compressed data requests through...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its data_ps3.psarc.edat is bound to the buyer&#x27;s...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows &quot;The game...</span></li>
 <li><time datetime="2026-11-19">11-19</time><span><b>0.5.3</b> &quot;Use my RPCS3 install&quot; names, on the setup&#x27;s build page, each file your RPCS3 is decrypting, and links instead of...</span></li>
 <li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> Finding RPCS3 by hand: the setup&#x27;s &quot;Your game&quot; page has a &quot;Find RPCS3...&quot; button, and run.cmd, ./run.sh and...</span></li>
 <li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> The build works in an install folder with a space in its path (as D:\Games\My Games\Project Vekta): the force-included...</span></li>
-<li><time datetime="2026-11-18">11-18</time><span><b>0.5.2</b> &quot;Use my RPCS3 install&quot; finds a portable RPCS3 unzipped two folders down a drive or the home folder (as...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -299,7 +300,7 @@ tools/play.sh</pre>
 <section id="requirements" class="promo">
 <h2>Requirements</h2>
 <h3>What you need</h3>
-<p>Your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, with its decrypted EBOOT and data archive, and the decrypted <code>libsre</code> and <code>dev_flash</code> of PS3 system software 4.93: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>. No PlayStation Network account is used.</p>
+<p>Your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, with its decrypted EBOOT and data archive, and the <code>dev_flash</code> of PS3 system software 4.93 (for the music): <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>. No PlayStation Network account is used.</p>
 <h3>Hardware to play</h3>
 <div class="tw"><table>
 <thead><tr><th></th><th>Minimum</th><th>Tested</th></tr></thead>

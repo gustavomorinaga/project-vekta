@@ -14,6 +14,14 @@ program and folder that build it. Until a release that calls itself playable
 - `KZ1HD.exe` has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already
   asked for at run time.
 
+### Changed
+- The firmware's `libsre.prx` is no longer needed: the SPURS queue the game sends its compressed data requests
+  through, which ran the firmware's own libsre code, is now in the port's runtime (ps3recomp patch 1022, checked
+  against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it,
+  and on the RPCS3 route your RPCS3 decrypts only the game's EBOOT. PS3 system software 4.93 is still needed for the
+  music (its `dev_flash`, read as installed). The lift no longer makes `work/fw`, and removes the one an earlier
+  version made.
+
 ## [0.5.3] - 2026-11-19 (pre-release)
 
 ### Fixed

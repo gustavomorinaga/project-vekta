@@ -3,7 +3,7 @@
 ## Your game
 
 Your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, with its decrypted EBOOT and data
-archive, and the decrypted `libsre` and `dev_flash` of PS3 system software 4.93: [GETTING-FILES.md](GETTING-FILES.md).
+archive, and the `dev_flash` of PS3 system software 4.93 (for the music): [GETTING-FILES.md](GETTING-FILES.md).
 No PlayStation Network account is used.
 
 ## PC

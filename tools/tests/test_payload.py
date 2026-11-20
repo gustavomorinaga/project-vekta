@@ -235,7 +235,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (root / launch.INSTALL_INI).unlink()
     text = pathlib.Path(log).read_text()
     check(f"cwd={w / 'vfs'}" in text and "skip=1 flips=2" in text and "disp=borderless" in text and
-          f"img={w / 'fw' / 'out' / 'libsre_image.bin'}" in text, f"play.sh's settings, the environment wins: {text}")
+          "img= " in text, f"play.sh's settings, the environment wins, no firmware image: {text}")
     exe.write_text('#!/bin/sh\necho "window closed"\nsleep 30\n')
     import time
     t0 = time.time()

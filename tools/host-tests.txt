@@ -64,3 +64,4 @@ tools/tests/test_edat_seek.sh
 tools/tests/test_window_icon.py
 tools/tests/test_exe_resources.py
 tools/tests/test_res_list.sh
+tools/tests/test_lfqueue.sh

@@ -5,8 +5,7 @@ tools/play.sh does the same and stays the documented way.
     tools/release/launch.py [--root DIR] [--dry-run] [--fullscreen]
 
 The paths are tools/kzbuild.py's (tools/env.sh's): the build (KZ_BIN, default work/build-win/KZ1HD.exe on Windows,
-work/build/KZ1HD elsewhere), the run folder (KZ_VFS, default work/vfs) and the firmware's libsre image
-(work/fw/out/libsre_image.bin). The game runs from the run folder with tools/play.sh's settings (each one a default:
+work/build/KZ1HD elsewhere) and the run folder (KZ_VFS, default work/vfs). The game runs from the run folder with tools/play.sh's settings (each one a default:
 the environment wins) and its log goes to work/play.log. When the window closes the game is stopped, as play.sh
 does. Without a build or a run folder it says which step is missing (run.cmd, or tools/install.sh).
 Where the saves and settings go (kz1hd_pc.ini, kz1hd_keys.ini, gamedata/): the game runs from that folder. In a
@@ -155,7 +154,6 @@ def plan(root, environ=None, fullscreen=False):
         raise ValueError(f"no build at {exe} yet: run {first} first")
     for k, v in SETTINGS:
         e.setdefault(k, v)
-    e.setdefault("KZ_LIBSRE_IMAGE", os.path.join(w, "fw", "out", "libsre_image.bin"))
     for k, v in FIXED:
         e[k] = v
     if fullscreen or e.get("KZ_FULLSCREEN") == "1":
@@ -457,7 +455,7 @@ def main(argv=None):
         print("run:", " ".join(f'"{x}"' if " " in x else x for x in argv_))
         print("in:", cwd, "(saves and settings)")
         print("log:", log)
-        for k, _ in SETTINGS + FIXED + [("KZ_LIBSRE_IMAGE", ""), ("PS3RECOMP_VK_DISPLAY", ""), ("KZ_LOG", ""),
+        for k, _ in SETTINGS + FIXED + [("PS3RECOMP_VK_DISPLAY", ""), ("KZ_LOG", ""),
                                         ("PS3_VFS_ROOT", "")]:
             if k in env:
                 print(f"{k}={env[k]}")

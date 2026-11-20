@@ -106,6 +106,8 @@ fingerprint (`0xFE229D83A0B8B05D`).
 
 ### The firmware's libsre (the LFQueue only)
 
+(Until 0.5.1. From 0.6.0 the runtime does this itself: [libsre-removal.md](libsre-removal.md).)
+
 The main thread waits for an event flag that SPU task 0 of the "LoPrio" taskset sets after receiving work through a
 `CellSpursLFQueue`. The PPU side of that queue (`_cellSpursLFQueueInitialize` and `_cellSpursLFQueuePushBody`) does not
 exist in the HLE, and the protocol lives in guest memory and SPU code. Instead of rewriting it, the port runs the real
@@ -840,5 +842,6 @@ Starting point: about 35.4 fps.
 
 The journal continues in topic notes: [performance.md](performance.md) (the 144 Hz work, to 2026-10-27),
 [ps3recomp-v018-migration.md](ps3recomp-v018-migration.md) (2026-10-27/28), [windows-build.md](windows-build.md)
-(2026-10-28/29), [wws-jm-post.md](wws-jm-post.md) (the post-processing chain), and the [roadmap](../ROADMAP.md) for the
+(2026-10-28/29), [wws-jm-post.md](wws-jm-post.md) (the post-processing chain), [libsre-removal.md](libsre-removal.md)
+(2026-11-17, the SPURS queue without the firmware's libsre), and the [roadmap](../ROADMAP.md) for the
 PC features added since (widescreen, FSR 1, presets, 5.1/7.1, languages, trophies).
