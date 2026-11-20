@@ -13,6 +13,7 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
                   build_win_deps.py, toolchain.json
   re/             function_seeds.txt (the lift's seeds)
   port/           port/kz1hd (its sources, no tests) and port/cmake/*.cmake
+  third_party/minimp3/  minimp3 (CC0), the MP3 decoder native/flashmp3.c is compiled with
   third_party/fidelityfx-fsr3/  AMD FSR 3.1's vendored sources (MIT), which the build compiles, and in tools/ffx/
                   the header that adapts them to the platform's compiler (ffx_mingw_compat.h, ffx_linux_compat.h)
   work/ps3recomp-patched/  the patched ps3recomp (tools/ps3recomp-patched.sh), without .github, docs, packaging and
@@ -100,6 +101,8 @@ RULES = [
     ("docs/BUILDING.md", "docs/BUILDING.md", "file", {}),
     # AMD FSR 3.1, built from source by both builds (port/kz1hd/CMakeLists.txt)
     ("third_party/fidelityfx-fsr3", "third_party/fidelityfx-fsr3", "tree", {}),
+    # minimp3 (CC0), the MP3 decoder port/kz1hd/native/flashmp3.c is compiled with (CMakeLists.txt)
+    ("third_party/minimp3", "third_party/minimp3", "tree", {}),
 ]
 RULES_WINDOWS = [
     ("tools/ffx/ffx_mingw_compat.h", "tools/ffx/ffx_mingw_compat.h", "file", {}),

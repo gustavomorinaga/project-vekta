@@ -10,6 +10,7 @@ Needs work/ps3recomp-patched (tools/ps3recomp-patched.sh; CI runs it first)."""
 import hashlib
 import io
 import json
+import re
 import os
 import pathlib
 import subprocess
@@ -379,6 +380,21 @@ with tempfile.TemporaryDirectory() as tmp:
                 setattr(launch, k, v)
     finally:
         launch.notify, launch.first_run = real_notify, real_first
+
+# Every file or folder above port/kz1hd the player's build reads ("../../<path>" in CMakeLists.txt, app.rc and the
+# CMake scripts beside them) is shipped in both folders: the build runs from the payload, not from a Git clone. A
+# path the rules miss broke the 0.6.0 test build on Windows (third_party/minimp3, 2026-11-20).
+refs = set()
+for f in (ROOT / "port" / "kz1hd").glob("*"):
+    if f.suffix in (".txt", ".rc", ".cmake"):
+        refs |= {m.rstrip("/") for m in re.findall(r"\.\./\.\./([A-Za-z0-9_./-]+)", f.read_text(errors="replace"))}
+for plat, rules in (("windows", ap.RULES + ap.RULES_WINDOWS), ("linux", ap.RULES + ap.RULES_LINUX)):
+    srcs = [r[0] for r in rules]
+    missing = sorted(p for p in refs if (ROOT / p).exists() and
+                     not any(p == s or p.startswith(s + "/") or s.startswith(p + "/") for s in srcs))
+    check(not missing, f"the {plat} folder ships everything port/kz1hd's build reads above it: missing {missing}")
+check("third_party/minimp3" in refs and "third_party/fidelityfx-fsr3" in refs and "VERSION" in refs,
+      f"the paths are found (minimp3, FSR 3, VERSION): {sorted(refs)}")
 
 r = subprocess.run([sys.executable, str(ROOT / "tools" / "release" / "assemble_payload.py"), "--dry-run", "--cache",
                     "/nonexistent"], capture_output=True, text=True)
