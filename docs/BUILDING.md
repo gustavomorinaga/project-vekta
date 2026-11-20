@@ -186,6 +186,11 @@ no release carries them ([dev/upscalers.md](dev/upscalers.md), "Distribution").
   every push and pull request.
 - **The log:** the exe is a GUI program. Started from a shell, it logs to stderr; without one (double click, Steam,
   Proton) it writes `kz1hd.log` beside the exe. `KZ_LOG=<file>` picks another file, `KZ_CONSOLE=1` opens a console.
+- **The version:** `KZ1HD --version` prints `Project Vekta <version> (patch set <id>, ps3recomp <commit>)` and exits
+  (on Linux too); the same line opens every log. The version is the repository's `VERSION`, the patch set and commit
+  are the patched toolkit's `.patchset`, written into the build folder's `kz_version.h` by `port/kz1hd/version.cmake`
+  at configure time. On Windows the exe also carries it in its version block (Explorer, Properties, Details) and has
+  a manifest (`port/kz1hd/app.manifest`: Windows 10/11, per-monitor DPI awareness v2).
 - **On a Windows PC:** copy a folder with the exe and its DLLs, `work/fw/out/libsre_image.bin`, your `dev_flash`,
   and `work/vfs` with real files instead of links (`cp -L`: Windows does not follow these links), about 4.2 GB, and
   start the exe from inside `vfs` with the path of `PS3_GAME/USRDIR/EBOOT.elf`, setting the same variables as

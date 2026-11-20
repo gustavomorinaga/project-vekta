@@ -7,6 +7,13 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- `KZ1HD.exe` carries a version: Explorer's Details tab shows Project Vekta and the release, and `KZ1HD --version`
+  (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens
+  every log, so a log says which build wrote it.
+- `KZ1HD.exe` has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already
+  asked for at run time.
+
 ## [0.5.3] - 2026-11-19 (pre-release)
 
 ### Fixed

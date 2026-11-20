@@ -59,5 +59,22 @@ run test_gcm_flip_wait -std=gnu17 -I "$P/libs/video" "$KZ_ROOT/tools/tests/test_
 # Windows display scaling (port/kz1hd/win_dpi.h): per-monitor DPI aware once SDL's video starts
 run test_win_dpi -std=gnu17 -I "$KZ_ROOT/port/kz1hd" -I "$SD/include" -I "$SD/include/SDL2" \
   "$KZ_ROOT/tools/tests/test_win_dpi.c" -L "$SD/lib" -lSDL2
+# KZ1HD.exe's resources (port/kz1hd/app.rc): the version block and the manifest, compiled into an exe in a folder
+# with a space in its path, read back with GetFileVersionInfoW and FindResource
+n=$((n + 1)); R="$O/exe resources"; mkdir -p "$R"
+if cmake -DKZ_VERSION_FILE="$KZ_ROOT/VERSION" -DKZ_PATCHSET_FILE="$P/.patchset" -DKZ_VERSION_OUT="$R/kz_version.h" \
+     -P "$KZ_ROOT/port/kz1hd/version.cmake" >"$O/test_exe_resources.build.log" 2>&1 &&
+   "$B/x86_64-w64-mingw32-windres" -I "$R" -O coff -o "$R/app.res.o" "$KZ_ROOT/port/kz1hd/app.rc" \
+     >>"$O/test_exe_resources.build.log" 2>&1 &&
+   "$CC" "${cflags[@]}" -I "$R" "$KZ_ROOT/tools/tests/test_exe_resources.c" "$R/app.res.o" -lversion \
+     -o "$R/test_exe_resources.exe" >>"$O/test_exe_resources.build.log" 2>&1; then
+  if (cd "$R" && timeout 600 "$wine" "./test_exe_resources.exe") >"$O/test_exe_resources.log" 2>&1; then
+    echo "ok   test_exe_resources"
+  else
+    echo "FAIL test_exe_resources"; tail -5 "$O/test_exe_resources.log"; failed+=(test_exe_resources)
+  fi
+else
+  echo "FAIL test_exe_resources (build)"; tail -5 "$O/test_exe_resources.build.log"; failed+=(test_exe_resources)
+fi
 echo "wine host tests: $((n - ${#failed[@]}))/$n pass${failed:+; failed: ${failed[*]}}"
 (( ${#failed[@]} == 0 ))
