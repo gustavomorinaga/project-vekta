@@ -31,8 +31,6 @@ import json
 import pathlib
 import sys
 
-from PIL import Image, ImageDraw, ImageFont
-
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PRESS = ROOT / "assets" / "press"
 MANIFEST = PRESS / "press.json"
@@ -58,6 +56,16 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def pillow():
+    """Pillow's version, or None when it is not installed (CI's checks have no Pillow: --check then compares the
+    files with press.json only, as with another Pillow version)."""
+    try:
+        import PIL
+    except ImportError:
+        return None
+    return PIL.__version__
+
+
 def font_files(fonts):
     """(bold, regular) font files from installer_art's pinned set."""
     names = sorted(installer_art.FONTS)
@@ -68,12 +76,14 @@ def font_files(fonts):
 
 def badge_width(fonts):
     """The badge's width at 1x: the name's width plus PAD on each side, rounded up."""
+    from PIL import ImageFont
     name = ImageFont.truetype(str(font_files(fonts)[0]), 25 * 4)
     return -(-int(name.getlength("Quiver Launcher")) // 4) + 2 * PAD
 
 
 def quiver_badge(scale, fonts):
     """The text-only Quiver badge at scale x (badge_width x 56 at 1), as PNG bytes."""
+    from PIL import Image, ImageDraw, ImageFont
     bold, regular = font_files(fonts)
     ss = 4   # drawn larger, then reduced: smooth edges
     k = scale * ss
@@ -102,8 +112,7 @@ def quiver_badge(scale, fonts):
 def manifest(drawn):
     files = dict(KIT)
     files.update({f"quiver/{n}": sha(b) for n, b in drawn.items()})
-    import PIL
-    return json.dumps({"script": sha(pathlib.Path(__file__).read_bytes()), "pillow": PIL.__version__,
+    return json.dumps({"script": sha(pathlib.Path(__file__).read_bytes()), "pillow": pillow(),
                        "links": {"recomplauncher": RECOMPLAUNCHER_PAGE, "quiver": QUIVER_PAGE},
                        "fonts": {n: h for n, h in sorted(installer_art.FONTS.items())},
                        "files": dict(sorted(files.items()))}, indent=2) + "\n"
@@ -133,8 +142,7 @@ def problems(fonts):
             out.append(f"quiver/{n} missing (run press_badges.py)")
         elif sha(p.read_bytes()) != pinned["files"].get(f"quiver/{n}"):
             out.append(f"quiver/{n} changed since press.json was written (run press_badges.py)")
-    import PIL
-    if not out and installer_art.fonts_ok(fonts) and PIL.__version__ == pinned.get("pillow"):
+    if not out and pillow() and installer_art.fonts_ok(fonts) and pillow() == pinned.get("pillow"):
         for n, s in SCALES.items():
             if sha(quiver_badge(s, fonts)) != pinned["files"][f"quiver/{n}"]:
                 out.append(f"quiver/{n} is not what this script draws (run press_badges.py)")
@@ -153,6 +161,9 @@ def main(argv=None):
         if not bad:
             print("press_badges: ok")
         return 1 if bad else 0
+    if not pillow():
+        print("press_badges: drawing needs Pillow (pip install pillow)", file=sys.stderr)
+        return 1
     missing = [rel for rel in KIT if not (PRESS / rel).is_file()]
     if missing or not installer_art.fonts_ok(a.fonts):
         print(f"press_badges: missing {missing or 'fonts (run installer_art.py --fetch-fonts)'}", file=sys.stderr)

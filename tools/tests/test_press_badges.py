@@ -8,9 +8,8 @@ import importlib.util
 import pathlib
 import shutil
 import sys
+import struct
 import tempfile
-
-from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("press_badges", ROOT / "tools/release/press_badges.py")
@@ -34,10 +33,23 @@ fonts = press.installer_art.FONT_DIR
 bad = press.problems(fonts)
 check(not bad, f"press_badges --check passes: {bad}")
 
+def png_header(path):
+    """(width, height, colour type) from a PNG's IHDR, without Pillow (CI's checks have none)."""
+    data = path.read_bytes()[:26]
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        return None
+    w, h = struct.unpack(">II", data[16:24])
+    return w, h, data[25]
+
+
 for name, scale in press.SCALES.items():
-    im = Image.open(press.PRESS / "quiver" / name)
-    check(im.size[1] == press.HEIGHT * scale and im.size[0] < 313 * scale, f"quiver/{name} is {im.size}")
-    check(im.mode == "RGBA" and im.getpixel((0, 0))[3] == 0, f"quiver/{name} has transparent corners")
+    path = press.PRESS / "quiver" / name
+    head = png_header(path)
+    check(head and head[1] == press.HEIGHT * scale and head[0] < 313 * scale, f"quiver/{name} is {head}")
+    check(head and head[2] == 6, f"quiver/{name} is RGBA")   # colour type 6: truecolour with alpha
+    if press.pillow():
+        from PIL import Image
+        check(Image.open(path).getpixel((0, 0))[3] == 0, f"quiver/{name} has transparent corners")
 quiver_files = sorted(p.name for p in (press.PRESS / "quiver").iterdir())
 check(quiver_files == ["README.txt", "badge.png", "badge@3x.png"], f"only our text badge in quiver/: {quiver_files}")
 
