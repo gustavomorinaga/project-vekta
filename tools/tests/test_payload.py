@@ -316,6 +316,33 @@ with tempfile.TemporaryDirectory() as tmp:
               "and the stock text when the log has no line")
         check(launch.exit_code_text(1, log) is None and launch.exit_code_text(0, log) is None,
               "other exit codes are not the exe's own")
+        # The EBOOT check's code: the exe's own line, then the rebuild a stale build gets, and the game starts again
+        eboot_line = ("This build was made from another EBOOT.elf than the one in /x/USRDIR. Run 'Verify and rebuild' "
+                      "(Windows) or ./run.sh (Linux).")
+        pathlib.Path(log).write_text("[kz] EBOOT check: built from 0123, this one is 4567\n"
+                                     f"[kz] EBOOT check: {eboot_line}\n")
+        check(launch.exit_code_text(launch.EXIT_EBOOT, log) == eboot_line,
+              f"the EBOOT check's code shows the exe's own line: {launch.exit_code_text(launch.EXIT_EBOOT, log)}")
+        real = {k: getattr(launch, k) for k in ("plan", "run", "ask", "update_build", "stale_build")}
+        runs, asked, rebuilt = [], [], []
+        planned = launch.plan(str(root), env)
+        launch.plan = lambda root, fullscreen=False: planned
+        launch.run = lambda *a, **kw: runs.append(1) or (launch.EXIT_EBOOT if len(runs) == 1 else 0)
+        launch.stale_build = lambda root: None
+        launch.update_build = lambda root, run=None: rebuilt.append(root) or True
+        try:
+            launch.ask = lambda text: asked.append(text) or True
+            rc = launch.main(["--root", str(root), "--build-if-needed"])
+            check(rc == 0 and len(runs) == 2 and rebuilt and asked and eboot_line in asked[0] and "Rebuild" in asked[0],
+                  f"--build-if-needed: the EBOOT code offers the rebuild, then starts the game again: rc {rc}, "
+                  f"{len(runs)} runs, {asked}")
+            runs.clear(); rebuilt.clear()
+            launch.ask = lambda text: False
+            rc = launch.main(["--root", str(root), "--build-if-needed"])
+            check(rc == launch.EXIT_EBOOT and len(runs) == 1 and not rebuilt, "no: nothing is rebuilt, the code stays")
+        finally:
+            for k, v in real.items():
+                setattr(launch, k, v)
     finally:
         launch.notify, launch.first_run = real_notify, real_first
 

@@ -307,6 +307,22 @@ def read_seeds(path):
         return [line.strip() for line in f if not line.startswith("#") and line.strip()]
 
 
+def write_eboot_id(eboot, gen):
+    """gen/eboot_id.h: the size and SHA-256 of the EBOOT the lift is made from, which port/kz1hd/main.cpp checks the
+    EBOOT it loads against (eboot_check.h). Only the two numbers: nothing of the file is copied."""
+    h = hashlib.sha256()
+    size = 0
+    with open(eboot, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+            size += len(block)
+    os.makedirs(gen, exist_ok=True)
+    with open(os.path.join(gen, "eboot_id.h"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("/* written by tools/kzbuild.py lift: the EBOOT.elf this lift was made from (port/kz1hd/eboot_check.h) */\n"
+                f'#define KZ_EBOOT_SHA256 "{h.hexdigest()}"\n#define KZ_EBOOT_SIZE {size}LL\n')
+    return h.hexdigest(), size
+
+
 def cmd_lift(e, a):
     root, py = e["KZ_ROOT"], e["KZ_PY"]
     j = os.path.join
@@ -343,6 +359,7 @@ def cmd_lift(e, a):
     tail_file(j(k, "lift.log"), 2)
     # Guest registers in host locals inside each function (see the tool's header): ~+7% in Level 1 at 144 Hz.
     tail(run([py, j(t, "ppu_regcache.py"), j(k, "gen")], e, "capture"), 1)
+    write_eboot_id(eboot, j(k, "gen"))
 
     print("== SPU", flush=True)
     # Functions port/kz1hd/native/ reimplements: the lifter emits them as <name>_lifted.

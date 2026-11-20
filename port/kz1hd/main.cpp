@@ -46,6 +46,11 @@
 #include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
 #include "../libs/filesystem/edat.h"   /* via the include directory: the EDAT cache folder (patch 4014) */
 #include "window_icon.h" /* the window's icon, from installer/art/vekta.ico (tools/icon_header.py) */
+#include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
+#include "kz_exit.h"
+#if __has_include("eboot_id.h")
+#include "eboot_id.h"    /* KZ_EBOOT_SHA256, KZ_EBOOT_SIZE: written into the lift's gen/ by tools/kzbuild.py */
+#endif
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
 #include <sanitizer/lsan_interface.h>
@@ -681,6 +686,49 @@ static void kz_log_setup(void)
 }
 #endif
 
+/* Is argv[1] the EBOOT.elf this build was lifted from? eboot_id.h (tools/kzbuild.py lift) names its size and SHA-256;
+ * a lift older than 0.6.0 has none, and the check is skipped. On a mismatch: a log line with both hashes' first 16
+ * digits and what to do, and KZ_EXIT_EBOOT (kz_exit.h), which tools/release/launch.py turns into a rebuild offer.
+ * KZ_EBOOT_CHECK=0 skips it (default: on). A file it cannot read is left to ppu_load_elf, which says so. */
+static int kz_eboot_verify(const char* path)
+{
+    const char* off = getenv("KZ_EBOOT_CHECK");
+    if (off && strcmp(off, "0") == 0) {
+        fprintf(stderr, "[kz] EBOOT check: skipped (KZ_EBOOT_CHECK=0)\n");
+        return 0;
+    }
+#ifdef KZ_EBOOT_SHA256
+    const auto t0 = std::chrono::steady_clock::now();
+    long long size = -1;
+    char got[65];
+    const int r = kz_eboot_check(path, KZ_EBOOT_SHA256, KZ_EBOOT_SIZE, &size, got);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    if (r == KZ_EBOOT_EQUAL) {
+        fprintf(stderr, "[kz] EBOOT ok (%.0f ms)\n", ms);
+        return 0;
+    }
+    if (r == KZ_EBOOT_UNREADABLE) {
+        fprintf(stderr, "[kz] EBOOT check: cannot read %s\n", path);
+        return 0;
+    }
+    std::string dir(path);
+    const size_t cut = dir.find_last_of("/\\");
+    dir = cut == std::string::npos ? std::string(".") : dir.substr(0, cut);
+    if (got[0])
+        fprintf(stderr, "[kz] EBOOT check: built from %.16s, this one is %.16s\n", KZ_EBOOT_SHA256, got);
+    else
+        fprintf(stderr, "[kz] EBOOT check: built from %.16s (%lld bytes), this one has %lld bytes\n", KZ_EBOOT_SHA256,
+                (long long)KZ_EBOOT_SIZE, size);
+    fprintf(stderr, "[kz] EBOOT check: This build was made from another EBOOT.elf than the one in %s. Run 'Verify and "
+                    "rebuild' (Windows) or ./run.sh (Linux).\n", dir.c_str());
+    return KZ_EXIT_EBOOT;
+#else
+    (void)path;
+    fprintf(stderr, "[kz] EBOOT check: skipped (this lift has no eboot_id.h: lift again)\n");
+    return 0;
+#endif
+}
+
 int main(int argc, char** argv)
 {
 #ifdef _WIN32
@@ -720,6 +768,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    if (int rc = kz_eboot_verify(argv[1])) return rc;   /* before any of the game's code is loaded or a window opens */
     uint32_t entry = ppu_load_elf(argv[1]);
     if (!entry) {
         fprintf(stderr, "ERROR: could not load %s\n", argv[1]);

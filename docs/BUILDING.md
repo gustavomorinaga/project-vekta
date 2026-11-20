@@ -113,6 +113,13 @@ python3 tools/kzbuild.py data  # only without a decrypted data_ps3.psarc: opens 
   AVX2 instruction. The first run's check (`tools/check-game-files.py --root`) and the Windows setup's first page
   test the CPU the same way before the build. Another `KZ_MARCH` (`native`, a CPU name, empty) builds no check.
   `KZ_CPU_LEVEL_MAX=<1-4>` (tests only, default unset) makes the check see at most that level.
+- **The EBOOT check:** the lift writes the size and SHA-256 of the `EBOOT.elf` it lifts into
+  `work/lift/gen/eboot_id.h` (`tools/kzbuild.py`'s `write_eboot_id`; nothing of the file itself). Before it loads the
+  EBOOT, the exe compares that file with them (`port/kz1hd/eboot_check.h`, about 20 MB hashed) and logs `[kz] EBOOT
+  ok (N ms)`. On a mismatch it logs both hashes' first 16 digits and what to do, opens no window, and exits with code
+  76 (`port/kz1hd/kz_exit.h`). The launcher then offers the rebuild, and `tools/play.sh` repeats the line.
+  `KZ_EBOOT_CHECK=0` (default on) skips it and says so in the log. A lift made before 0.6.0 has no `eboot_id.h`, so
+  the exe skips the check (logged) until the next lift.
 - Temporal upscalers: AMD FSR 3.1 is built from `third_party/fidelityfx-fsr3` (`-DKZ_FSR3=OFF` leaves it out), in
   the Linux build and the Windows exe. `KZ_DLSS_SDK=<the NVIDIA DLSS SDK folder>` builds DLSS in and copies its
   runtime library beside the program (`tools/build.sh` and `tools/build-win.sh` alike);
