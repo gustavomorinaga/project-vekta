@@ -56,6 +56,22 @@ with tempfile.TemporaryDirectory() as tmp:
     c.rpcs3 = "rp"
     check(launch.firstrun_args(str(root), b, {}) == ["--rpcs3"] and
           launch.firstrun_args(str(root), c, {}) == ["--rpcs3", os.path.abspath("rp")], "--rpcs3 and --rpcs3 DIR")
+    # The game folder alone (what RecompLauncher passes: --game={input:game}, the optional EBOOT left out) is the
+    # folder RPCS3 installed, with the encrypted EBOOT.BIN: it is also --rpcs3's hint, so RPCS3 makes the decrypted
+    # EBOOT (the 0.6.0 dry run's "Add a build" stopped with 72, "MISSING EBOOT.elf", without it)
+    g = A()
+    g.game = "/games/NPUA80856"
+    check(launch.firstrun_args(str(root), g, {}) == ["--game", "/games/NPUA80856", "--rpcs3", "/games/NPUA80856"],
+          f"--game alone: also --rpcs3 with that folder: {launch.firstrun_args(str(root), g, {})}")
+    check("--rpcs3" not in launch.firstrun_args(str(root), g, {"KZ_EBOOT": "/e.elf"}),
+          "--game with KZ_EBOOT: the given EBOOT, no RPCS3")
+    g.eboot = "/x/EBOOT.elf"
+    check("--rpcs3" not in launch.firstrun_args(str(root), g, {}), "--game with --eboot: no RPCS3")
+    d = A()
+    d.dlss = "accept"
+    (root / "work" / "paths.env").unlink()
+    check(launch.firstrun_args(str(root), d, {}) == ["--rpcs3", "--dlss", "accept"],
+          f"--dlss alone still searches RPCS3's usual places: {launch.firstrun_args(str(root), d, {})}")
     import firstrun
     check({n for n, *_ in firstrun.INPUTS} >= {"game", "eboot", "psarc"}, "firstrun.py takes the same three options")
 

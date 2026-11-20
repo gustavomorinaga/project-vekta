@@ -445,20 +445,27 @@ INPUTS = (("game", "KZ_GAME"), ("eboot", "KZ_EBOOT"), ("psarc", "KZ_PSARC"))
 def firstrun_args(root, a, environ=None):
     """firstrun.py's options for what the launcher was given: --game, --eboot, --psarc (the KZ_* variables are read by
     firstrun.py itself, and all of them are saved in work/paths.env once the check passes) and --rpcs3 [DIR]. With
-    nothing given or saved, --rpcs3: RPCS3 and the game in their usual places, so that a first start asks nothing."""
+    nothing given or saved, --rpcs3: RPCS3 and the game in their usual places, so that a first start asks nothing.
+    A game folder without a decrypted EBOOT (--game, no --eboot nor KZ_EBOOT) is the folder RPCS3 installed, with
+    its encrypted EBOOT.BIN: it is also the hint of --rpcs3, so that the player's RPCS3 makes the decrypted copy (a
+    launcher such as RecompLauncher passes only the game folder)."""
     environ = os.environ if environ is None else environ
     out = []
     for name, _ in INPUTS:
         if getattr(a, name, None):
             out += ["--" + name, os.path.abspath(getattr(a, name))]
-    if getattr(a, "dlss", None):   # the player's answer to NVIDIA's DLSS SDK licence (recomplauncher.json's tick)
-        out += ["--dlss", a.dlss]
+    given = bool(out)
     rpcs3 = getattr(a, "rpcs3", None)
+    game = getattr(a, "game", None)
     if rpcs3 is not None:
         out += ["--rpcs3"] + ([os.path.abspath(rpcs3)] if rpcs3 else [])
-    elif not out and not any(environ.get(v) for _, v in INPUTS) and \
+    elif game and not getattr(a, "eboot", None) and not environ.get("KZ_EBOOT"):
+        out += ["--rpcs3", os.path.abspath(game)]
+    elif not given and not any(environ.get(v) for _, v in INPUTS) and \
             not os.path.isfile(os.path.join(root, "work", "paths.env")):
         out.append("--rpcs3")
+    if getattr(a, "dlss", None):   # the player's answer to NVIDIA's DLSS SDK licence (recomplauncher.json's tick)
+        out += ["--dlss", a.dlss]
     return out
 
 
