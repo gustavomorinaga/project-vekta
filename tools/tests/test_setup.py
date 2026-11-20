@@ -145,12 +145,18 @@ with tempfile.TemporaryDirectory() as tmp:
     err = io.StringIO()
     se = sys.stderr
     sys.stderr = err
+    # a game folder named (KZ_GAME) but not there: the check fails the same way on every machine, and no RPCS3 of
+    # this machine is looked for (with nothing given, the first start would search RPCS3's usual places)
+    old_game = os.environ.get("KZ_GAME")
+    os.environ["KZ_GAME"] = os.path.join(tmp, "no game here")
     try:
         r = launch.main(["--root", tmp, "--build-if-needed"])
     finally:
         sys.stderr = se
+        os.environ.pop("KZ_GAME") if old_game is None else os.environ.__setitem__("KZ_GAME", old_game)
     check(r == launch.FILE_MISSING and "missing or still encrypted" in err.getvalue(),
-          f"an empty folder, nothing given: the first run's check fails, and launch says so: {r} {err.getvalue()}")
+          f"an empty folder, its game folder missing: the first run's check fails, and launch says so: {r} "
+          f"{err.getvalue()}")
     try:
         ap.plan(str(ROOT), tmp, str(pathlib.Path(tmp) / "missing.exe"))
         check(False, "a missing launcher refuses the payload")
