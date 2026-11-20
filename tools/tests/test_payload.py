@@ -113,6 +113,11 @@ with tempfile.TemporaryDirectory() as tmp:
     launcher = tmp / "Project Vekta.exe"
     launcher.write_bytes(b"MZ")
     wf, _, _ = ap.plan(str(ROOT), str(cache), str(launcher))
+    rl = json.loads(gen["recomplauncher.json"])
+    wmf = {e["path"] for e in ap.plan(str(ROOT), str(cache), str(launcher))[2]["files"]}
+    check("recomplauncher.json" in wmf and any(p in wmf for p in rl["start"]["program"]) and
+          any(p in wmf for p in rl["prepare"]["program"]),
+          "recomplauncher.json is in the Windows manifest, and its start and prepare programs are in the folder")
     check([r for r in wf if "/" not in r and ap.startable(r, wf[r], "windows")] == ["Project Vekta.exe"],
           "with it, Project Vekta.exe is the one startable file at the Windows top (Quiver's rule)")
     check(ap.layout_problems(dict(wf, **{"run.cmd": str(launcher)}), "windows") and
@@ -160,6 +165,11 @@ with tempfile.TemporaryDirectory() as tmp:
         check(need in lp, f"the Linux folder has {need}")
     check(not any(p.endswith(".cmd") for p in lp) and not any(p.endswith("._pth") for p in lp),
           "the Linux folder has no .cmd files and no ._pth")
+    lrl = json.loads(lg["recomplauncher.json"])
+    lmf = {e["path"] for e in lman["files"]}
+    check("recomplauncher.json" in lmf and any(p in lmf for p in lrl["start"]["program"]) and
+          any(p in lmf for p in lrl["prepare"]["program"]),
+          "recomplauncher.json is in the Linux manifest, and its start and prepare programs are in the folder")
     check([r for r in lf if "/" not in r and ap.startable(r, lf[r], "linux")] == ["project-vekta"],
           "project-vekta is the one startable file at the Linux top (.sh, #!/ or ELF: Quiver's rule)")
     elf = tmp / "elf"

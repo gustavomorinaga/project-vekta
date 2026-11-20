@@ -15,6 +15,10 @@ program and folder that build it. Until a release that calls itself playable
   window or question and prints `progress` lines for a launcher. Each failure has its own exit code and fix text,
   one table for the game and the launcher (`port/kz1hd/kz_exit.h`, listed in docs/BUILDING.md). A missing Vulkan
   driver is named before the game starts.
+- `recomplauncher.json` at the top of the Windows and Linux folders, for launchers that read it (RecompLauncher):
+  it names the game folder to ask for, the optional decrypted `EBOOT.elf`, the build step with its NVIDIA DLSS tick,
+  the program to start, the saves, the logs and the exit codes. It is made from one source with the version stamped
+  (`tools/release/recomplauncher.py`) and checked against a schema in the repository.
 - A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel
   Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now
   the game says which level it needs and which one the CPU has (a message box on Windows, the launcher's message, the

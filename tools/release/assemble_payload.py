@@ -25,6 +25,7 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
                   also names tools/, tools/release/ and ps3recomp's tools/: the embeddable Python never puts a
                   script's own folder on sys.path, and the lifters import their neighbours.
   VERSION, LICENSE, NOTICE.md, README.md, licenses/, assets/icon.svg, docs/GETTING-FILES.md, docs/BUILDING.md
+  recomplauncher.json for a launcher such as RecompLauncher (tools/release/recomplauncher.py, VERSION stamped)
   Project Vekta.exe   with --launcher EXE: the launcher tools/release/build_launcher.py builds, the one startable
                       file at the top (a launcher such as Quiver takes the one it finds there)
   scripts/        run.cmd (the first run with its questions), play.cmd (play in a console), prepare.cmd (check and
@@ -63,6 +64,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
 import fetch_toolchain  # noqa: E402
+import recomplauncher  # noqa: E402
 import kzbuild  # noqa: E402
 
 TOOLKIT = "work/ps3recomp-patched"
@@ -412,6 +414,8 @@ def plan(repo, cache, launcher=None, platform="windows"):
         pth = pth_name(files)
         gen[pth] = pth_text(files.pop(pth)).encode()
     gen[f"{CACHE}/fetched.json"] = (json.dumps(done, indent=1, sort_keys=True) + "\n").encode()
+    # what a launcher such as RecompLauncher reads at the folder's top (recomplauncher.py: one source, VERSION stamped)
+    gen["recomplauncher.json"] = recomplauncher.text(recomplauncher.build(repo)).encode()
     with open(os.path.join(repo, "VERSION"), encoding="utf-8") as f:
         version = f.read().strip()
     entries = []
