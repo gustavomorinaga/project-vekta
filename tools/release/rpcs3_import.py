@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Use my RPCS3 install: find Killzone HD (NPUA80856) and the PS3 system software in the player's RPCS3, and make the
-two decrypted files the port needs (EBOOT.elf, libsre.prx) by asking that same RPCS3 to decrypt copies of them
-(`rpcs3 --decrypt`) in a folder of the port (work/prep). The data archive of the disc's package needs nothing: the
-port reads the game's own data_ps3.psarc.edat (patch 4014, tools/kzbuild.py data). A PlayStation Store copy's .edat
-is bound to the buyer's licence (licence type 2 in its header), which the port cannot open: RPCS3 then decrypts a copy
-of it too, into work/prep/data_ps3.psarc.
+decrypted file the port needs (EBOOT.elf) by asking that same RPCS3 to decrypt a copy of it (`rpcs3 --decrypt`) in a
+folder of the port (work/prep). The data archive of the disc's package needs nothing: the port reads the game's own
+data_ps3.psarc.edat (patch 4014, tools/kzbuild.py data). A PlayStation Store copy's .edat is bound to the buyer's
+licence (licence type 2 in its header), which the port cannot open: RPCS3 then decrypts a copy of it too, into
+work/prep/data_ps3.psarc.
 
     tools/release/rpcs3_import.py --detect  [--rpcs3 DIR] [--out FILE]
     tools/release/rpcs3_import.py --resolve [--rpcs3 DIR] [--exe PATH] [--out FILE]
@@ -12,9 +12,9 @@ of it too, into work/prep/data_ps3.psarc.
 
 Results are `key=value` lines, on stdout or in --out (UTF-8 with a BOM, which Inno Setup reads):
   --detect   status=ok|not_found, root=, source=
-  --resolve  status=ok|problems|not_found, root=, game=, edat=, dev_flash=, exe=, problem=code|text (one per line)
-  --prepare  the same, then status=ok|failed, eboot=, libsre=, psarc= (PSN copy only; the decrypted copies in
-             DIR/prep), problem=
+  --resolve  status=ok|problems|not_found, root=, game=, edat=, exe=, problem=code|text (one per line)
+  --prepare  the same, then status=ok|failed, eboot=, psarc= (PSN copy only; the decrypted copies in DIR/prep),
+             problem=
 Exit 0 when status=ok.
 
 Rules (after Project Pyrrhus's rpcs3_import.py):
@@ -38,6 +38,7 @@ its own command line; the functions used here run on 3.8).
 import argparse
 import glob
 import hashlib
+import ntpath
 import os
 import shutil
 import signal
@@ -54,14 +55,12 @@ TITLE = "NPUA80856"
 IGNORED = ("missing_disc", "no_decrypted_eboot")
 # The tested files (docs/GETTING-FILES.md, tools/check-game-files.py): (input, output, size, SHA-256)
 EBOOT = ("EBOOT.BIN", "EBOOT.elf", 19706080, "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc")
-LIBSRE = ("libsre.sprx", "libsre.prx", 239344, "9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6")
 # The data archive of a PSN copy: its .edat is bound to the buyer's licence (licence type 2), which the port's own EDAT
 # reader cannot open (patch 4014 opens licence type 3, the disc's package). The player's RPCS3 opens it with their .rap
 # and writes <name>.unedat; the result is the same data_ps3.psarc as the disc copy's (measured 2026-11-19).
 PSARC = ("data_ps3.psarc.edat", "data_ps3.psarc.edat.unedat", 3147174243,
          "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d")
 PSARC_NAME = "data_ps3.psarc"
-FIRMWARE = "4.93"   # the system software libsre.prx and flashMP3.pic were tested from (docs/GETTING-FILES.md)
 WATCHDOG = 30
 WINDOWS = os.name == "nt"
 FLATPAK_ID = "net.rpcs3.RPCS3"
@@ -75,11 +74,6 @@ HELP = {
                "documentation), then check again.",
     "game_incomplete": "The Killzone HD folder in RPCS3 is missing a file (named below). Install the game again in "
                        "RPCS3, then check again.",
-    "no_firmware": "RPCS3 has no PS3 system software installed (no sys/external/libsre.sprx in its dev_flash). "
-                   "Install the firmware in RPCS3 (see its documentation), then check again.",
-    "wrong_firmware": "RPCS3 has PS3 system software {found} installed; the port needs 4.93 (its libsre and MP3 "
-                      "decoder were tested from it). Install firmware 4.93 in RPCS3 (File, Install Firmware), then "
-                      "check again.",
     "no_exe": "The RPCS3 program itself was not found (rpcs3.exe, the rpcs3 command, an AppImage or the Flatpak). "
               "Pick it, or pick your files yourself.",
     "no_license": "RPCS3 needs this game's licence file (a .rap in its dev_hdd0/home/00000001/exdata folder) to "
@@ -87,26 +81,16 @@ HELP = {
                   "install its licence in RPCS3 as for playing it (see RPCS3's documentation), then try again.",
     "decrypt_failed": "RPCS3 did not make the file named below. Check that this RPCS3 runs the game, then try again, "
                       "or pick your files yourself.",
+    "bad_runtime": "RPCS3 stopped at its start-up check of the Visual C++ runtime: it loaded the DLL named below "
+                   "from another program's folder. Install the latest Microsoft Visual C++ 2015-2022 Redistributable "
+                   "(x64), start this setup from File Explorer rather than from another program, then try again.",
     "wrong_file": "RPCS3 made the file named below, but it is not the tested one: the game must be NPUA80856 "
-                  "version 01.00, and the firmware 4.93.",
+                  "version 01.00.",
 }
 
 
 def _problem(code, detail="", **fmt):
     return {"code": code, "text": HELP[code].format(**fmt) + (f" ({detail})" if detail else "")}
-
-
-def firmware_version(dev_flash):
-    """dev_flash's system software version ("4.93") from vsh/etc/version.txt, or None."""
-    try:
-        with open(os.path.join(dev_flash, "vsh", "etc", "version.txt"), encoding="ascii", errors="replace") as f:
-            for line in f:
-                if line.startswith("release:"):
-                    v = line.split(":")[1]
-                    return f"{int(v.split('.')[0])}.{v.split('.')[1][:2]}"
-    except (OSError, ValueError, IndexError):
-        pass
-    return None
 
 
 def edat_license(path):
@@ -263,7 +247,7 @@ def _same(a, b):
 
 
 def resolve(hint=None, exe=None, home=None):
-    """What the player's RPCS3 has for the port: {"status", "root", "game", "edat", "dev_flash", "exe" (argv),
+    """What the player's RPCS3 has for the port: {"status", "root", "game", "edat", "exe" (argv),
     "problems": [{"code", "text"}]}. Reads only."""
     res = None
     game = _game_of(hint)
@@ -277,8 +261,7 @@ def resolve(hint=None, exe=None, home=None):
         if res is None or (r["ok"] and not res["ok"]):
             res = r   # the first RPCS3 found (without the game) explains the problem best
     out = {"status": "not_found", "root": res.get("root"), "dev_hdd0": res.get("dev_hdd0") or "", "game": "", "edat": "",
-           "dev_flash": res.get("dev_flash")
-           or "", "exe": None, "problems": []}
+           "exe": None, "problems": []}
     if not res["ok"]:
         code = "not_rpcs3" if res.get("code") == "not_rpcs3" else "not_found"
         out["problems"].append(_problem(code))
@@ -297,12 +280,6 @@ def resolve(hint=None, exe=None, home=None):
         if missing:
             probs.append(_problem("game_incomplete", ", ".join(missing)))
         out["edat"] = os.path.join(game, "USRDIR", "data_ps3.psarc.edat")
-    fw = firmware_version(out["dev_flash"])
-    out["firmware"] = fw or ""
-    if not os.path.isfile(os.path.join(out["dev_flash"], "sys", "external", LIBSRE[0])) or not fw:
-        probs.append(_problem("no_firmware"))
-    elif fw != FIRMWARE:
-        probs.append(_problem("wrong_firmware", found=fw))
     out["exe"] = find_exe(res["root"], exe, home)
     if not out["exe"]:
         probs.append(_problem("no_exe"))
@@ -312,12 +289,26 @@ def resolve(hint=None, exe=None, home=None):
 
 
 # -------------------------------------------------------------------------------------------------- decrypt
-def rpcs3_env(cfg, environ=None):
+def windows_path(environ):
+    """The PATH a child RPCS3 gets on Windows: the Windows folders only. RPCS3 needs nothing from the player's PATH (its
+    own DLLs are beside rpcs3.exe), and a PATH inherited from whatever started the setup can hold another program's
+    Visual C++ runtime: in a report on 0.5.3 (issue #94) RPCS3 started by the setup loaded msvcp140.dll from a download
+    manager's runtime\\bin (most likely the setup was opened from it and inherited its PATH) and stopped at its
+    start-up check of these DLLs ("The module msvcp140.dll was incorrectly installed at ..."), with exit code 0 and no
+    file, while the same RPCS3 run by hand from PowerShell decrypted the same EBOOT."""
+    root = environ.get("SystemRoot") or environ.get("SYSTEMROOT") or environ.get("windir") or "C:\\Windows"
+    return ";".join([ntpath.join(root, "System32"), root, ntpath.join(root, "System32", "Wbem")])
+
+
+def rpcs3_env(cfg, environ=None, windows=WINDOWS):
     """The environment for a child RPCS3 whose settings, cache and log go to cfg, not to the player's own."""
     e = dict(os.environ if environ is None else environ)
     e["QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES"] = "1"
-    if WINDOWS:
+    if windows:
         e["RPCS3_CONFIG_DIR"] = os.path.join(cfg, "")   # RPCS3 cuts the value after its last separator
+        for k in [k for k in e if k.upper() == "PATH"]:
+            del e[k]
+        e["PATH"] = windows_path(e)
     else:
         e["XDG_CONFIG_HOME"] = os.path.join(cfg, "config")
         e["XDG_CACHE_HOME"] = os.path.join(cfg, "cache")
@@ -382,6 +373,24 @@ def _run_one(exe, cfg, src, out, prep, logf, watchdog):
     return proc.returncode, False
 
 
+BAD_MODULE = "Found incorrectly installed module: "
+
+
+def bad_module(cfg):
+    """The DLL path RPCS3's start-up check refused (its "Found incorrectly installed module" line in RPCS3.log under
+    the redirected settings), or None. RPCS3 shows that error in a window and still exits with 0."""
+    for path in glob.glob(os.path.join(cfg, "**", "RPCS3.log"), recursive=True):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if BAD_MODULE in line:
+                        m = line.split("path='", 1)
+                        return m[1].split("'", 1)[0] if len(m) == 2 else line.split(BAD_MODULE, 1)[1].strip()
+        except OSError:
+            pass
+    return None
+
+
 def _place(src, copy):
     """The input RPCS3 decrypts: a hard link when src is on the same drive (instant, no second copy of a 3 GB file;
     RPCS3 only reads its input and writes the result beside it), else a copy. Removing it never touches src."""
@@ -428,6 +437,11 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None, step=Non
                 with open(logpath, "rb") as f:
                     f.seek(before)
                     said = f.read().decode("utf-8", "replace")
+                bad = bad_module(cfg)
+                if bad:
+                    log(f"rpcs3: RPCS3 stopped at its DLL check: {loc.redact(bad)}")
+                    res["problems"].append(_problem("bad_runtime", f"{out_name}: {loc.redact(bad)}"))
+                    continue
                 code = "no_license" if "license file" in said or ".rap" in said else "decrypt_failed"
                 res["problems"].append(_problem(code, out_name))
                 continue
@@ -446,18 +460,17 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None, step=Non
 
 
 def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG, step=None):
-    """resolve(), then decrypt EBOOT.BIN and libsre.sprx into work/prep. The result of resolve() plus "eboot" and
-    "libsre" (paths) and status ok|failed."""
+    """resolve(), then decrypt EBOOT.BIN (and a PSN copy's .edat) into work/prep. The result of resolve() plus "eboot"
+    (and "psarc") and status ok|failed."""
     log = log or (lambda line: None)
     r = resolve(hint, exe)
     if r["status"] != "ok":
         return r
     prep = os.path.join(work, "prep")
     os.makedirs(prep, exist_ok=True)
-    have = {spec[1]: os.path.join(prep, spec[1]) for spec in (EBOOT, LIBSRE)}
-    want = [(src, spec) for src, spec in ((os.path.join(r["game"], "USRDIR", EBOOT[0]), EBOOT),
-                                          (os.path.join(r["dev_flash"], "sys", "external", LIBSRE[0]), LIBSRE))
-            if not (os.path.isfile(have[spec[1]]) and sha256(have[spec[1]]) == spec[3])]   # kept from a last run
+    have = os.path.join(prep, EBOOT[1])
+    want = [] if os.path.isfile(have) and sha256(have) == EBOOT[3] else \
+        [(os.path.join(r["game"], "USRDIR", EBOOT[0]), EBOOT)]   # else kept from a last run
     psarc = os.path.join(prep, PSARC_NAME)
     psn = edat_license(r["edat"]) in (1, 2)
     if psn and not (os.path.isfile(psarc) and os.path.getsize(psarc) == PSARC[2] and sha256(psarc) == PSARC[3]):
@@ -470,7 +483,7 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG, step=None):
     r["problems"] = d["problems"]
     r["status"] = "ok" if d["ok"] else "failed"
     if d["ok"]:
-        r["eboot"], r["libsre"] = have["EBOOT.elf"], have["libsre.prx"]
+        r["eboot"] = have
         if psn:
             r["psarc"] = psarc
     return r
@@ -479,7 +492,7 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG, step=None):
 # -------------------------------------------------------------------------------------------------- command line
 def lines(res):
     out = [f"status={res['status']}"]
-    for k in ("root", "source", "game", "edat", "dev_flash", "firmware", "eboot", "libsre", "psarc"):
+    for k in ("root", "source", "game", "edat", "eboot", "psarc"):
         if res.get(k):
             out.append(f"{k}={res[k]}")
     if res.get("exe"):

@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
 project(KZ1HD
-    VERSION 0.1.0
     LANGUAGES C CXX
     DESCRIPTION "Killzone 1 HD (NPUA80856), recompiled with ps3recomp"
 )
@@ -40,6 +39,16 @@ set(RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/recompiled" CACHE PATH
     "Directory holding the lifter's output: ppu_recomp.h and the lifted sources")
 get_filename_component(RECOMP_DIR "${RECOMP_DIR}" ABSOLUTE)
 
+# kz_version.h (VERSION, the patch set, ps3recomp's commit) in the build folder: version.cmake.
+set(KZ_VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../VERSION")
+set(KZ_PATCHSET_FILE "${PS3RECOMP_DIR}/.patchset")
+set(KZ_VERSION_OUT "${CMAKE_CURRENT_BINARY_DIR}/kz_version.h")
+include("${CMAKE_CURRENT_SOURCE_DIR}/version.cmake")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KZ_VERSION_FILE}")
+if(EXISTS "${KZ_PATCHSET_FILE}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${KZ_PATCHSET_FILE}")
+endif()
+message(STATUS "Project Vekta:   ${KZ_VERSION}")
 message(STATUS "ps3recomp SDK:   ${PS3RECOMP_DIR}")
 message(STATUS "Lifted output:   ${RECOMP_DIR}")
 
@@ -81,6 +90,16 @@ set(KZ_MARCH "x86-64-v3" CACHE STRING "-march for the host build (empty = compil
 if(KZ_MARCH AND NOT MSVC)
     add_compile_options(-march=${KZ_MARCH})
 endif()
+# cpu_check.c says so when the CPU is below that level, before any of that code runs: it alone is compiled for
+# baseline x86-64, and checks for the level KZ_MARCH names (x86-64-v2/v3/v4; anything else builds no check).
+set(KZ_CPU_REQUIRED 0)
+if(KZ_MARCH MATCHES "^x86-64-v([234])$")
+    set(KZ_CPU_REQUIRED ${CMAKE_MATCH_1})
+endif()
+set_source_files_properties(cpu_check.c PROPERTIES
+    COMPILE_OPTIONS "$<$<NOT:$<BOOL:${MSVC}>>:-march=x86-64>"
+    COMPILE_DEFINITIONS "KZ_CPU_REQUIRED=${KZ_CPU_REQUIRED}")
+message(STATUS "CPU check:       x86-64-v${KZ_CPU_REQUIRED} (0 = none)")
 
 # ENHANCEMENT: AMD FSR 3.1 as a temporal upscaler (docs/dev/upscalers.md). The FidelityFX SDK's FSR 3 upscaler and
 # Vulkan backend are built here from third_party/fidelityfx-fsr3 (its shaders compiled ahead by
@@ -210,15 +229,6 @@ if(PORT_ENABLE_SPU)
     endif()
 endif()
 
-# Lifted firmware libsre (optional, user-supplied): only _cellSpursLFQueuePushBody
-# is routed to it (stubs.cpp). Its own header name keeps it apart from the game's.
-set(LIBSRE_DIR "" CACHE PATH "Directory with the lifted libsre (libsre_recomp.h + .cpp)")
-set(LIBSRE_SOURCES "")
-if(LIBSRE_DIR)
-    file(GLOB LIBSRE_SOURCES CONFIGURE_DEPENDS "${LIBSRE_DIR}/*.cpp")
-    message(STATUS "Lifted libsre:   ${LIBSRE_DIR}")
-endif()
-
 # Native replacements of hot lifted PPU functions (native_ppu/native_ppu.h);
 # lift.sh tells the lifter which names they take over. Small and hot: they get
 # full optimization instead of the target-wide -O1 the lifted TUs need.
@@ -228,6 +238,7 @@ set_source_files_properties(${KZ_NATIVE_PPU} PROPERTIES COMPILE_OPTIONS "-O2")
 set_source_files_properties(glyphs.cpp PROPERTIES COMPILE_OPTIONS "-Wno-c23-extensions")
 
 add_executable(${PROJECT_NAME}
+    cpu_check.c     # first: the CPU check (constructor 101), compiled for baseline x86-64
     main.cpp
     stubs.cpp
     pcoptions.cpp
@@ -241,7 +252,6 @@ add_executable(${PROJECT_NAME}
     ${RECOMP_SOURCES}
     ${KZ_NATIVE_PPU}
     ${SPU_SOURCES}
-    ${LIBSRE_SOURCES}
 )
 
 # The lifted SPU sources use bare #include "spu_context.h". Scope that include
@@ -269,6 +279,9 @@ if(SPU_SOURCES)
         set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2;-g")
     endif()
 endif()
+# The firmware MP3 decoder's replacement (native/flashmp3.c) decodes with minimp3 (CC0, third_party/minimp3).
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/native/flashmp3.c" APPEND PROPERTY INCLUDE_DIRECTORIES
+             "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/minimp3")
 
 # app.rc carries the icon, the version block and the manifest, and needs a
 # resource compiler. Listing it as a source on a host that has none is not a
@@ -288,6 +301,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${PS3RECOMP_DIR}/runtime/platform"        # win32_compat.h and friends
     "${PS3RECOMP_DIR}/libs/video"
     "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}"              # kz_version.h (version.cmake), for main.cpp and app.rc
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -418,15 +432,11 @@ endif()
 #   - /bigobj on MSVC. A single lifted file routinely passes the 65,536-section
 #     limit of the default object format.
 if(MSVC)
-    set_source_files_properties(${RECOMP_SOURCES} ${LIBSRE_SOURCES} PROPERTIES
+    set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "/w;/bigobj")
 else()
-    set_source_files_properties(${RECOMP_SOURCES} ${LIBSRE_SOURCES} PROPERTIES
+    set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "-w;-ffp-contract=off;${KZ_PPU_FLAGS}")
-endif()
-if(LIBSRE_SOURCES)
-    set_property(SOURCE ${LIBSRE_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${LIBSRE_DIR}")
-    set_source_files_properties(stubs.cpp PROPERTIES COMPILE_DEFINITIONS KZ_LIBSRE)
 endif()
 
 # ---------------------------------------------------------------------------

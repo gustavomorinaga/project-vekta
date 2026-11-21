@@ -6,6 +6,7 @@ leaves no marker and the next run resumes there; a failed check names the files 
 work/paths.env, and a variable set in the environment wins; the status file, the progress lines, the job count, the
 log's home folder, --dry-run and --interactive. No game, no network."""
 import io
+import json
 import os
 import pathlib
 import shutil
@@ -16,6 +17,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "release"))
 import firstrun  # noqa: E402
+
+os.environ.pop("KZ_LINUX_TOOLCHAIN", None)   # the tests set it themselves where it matters (DLSS below)
 
 fails = 0
 
@@ -60,6 +63,10 @@ def fake_tree(tmp):
     (root / "tools/check-game-files.py").write_text(
         "import os, sys\n"
         "open(os.path.join(os.environ['KZ_WORK'], 'calls'), 'a').write('check\\n')\n"
+        "if os.environ.get('FAIL_STEP') == 'cpu':\n"
+        "    print('FAIL     CPU: this build of Project Vekta needs a CPU with x86-64-v3 (AVX2), and this one has "
+        "x86-64-v2. The game cannot run on it')\n"
+        "    sys.exit(1)\n"
         "if os.environ.get('FAIL_STEP') == 'check':\n"
         "    print('MISSING  EBOOT.elf (required): nothing at ' + os.environ['KZ_EBOOT'])\n"
         "    print('ok       PARAM.SFO')\n"
@@ -73,7 +80,7 @@ def fake_tree(tmp):
         p.chmod(0o755)
     game = tmp / "my files"
     game.mkdir()
-    for f in ("EBOOT.elf", "data_ps3.psarc", "libsre.prx"):
+    for f in ("EBOOT.elf", "data_ps3.psarc"):
         (game / f).write_text(f)
     return root, game
 
@@ -81,7 +88,6 @@ def fake_tree(tmp):
 def ctx(root, game, **kw):
     paths = firstrun.resolve_paths(str(root), str(root / "work"), {"eboot": str(game / "EBOOT.elf"),
                                                                   "psarc": str(game / "data_ps3.psarc"),
-                                                                  "libsre": str(game / "libsre.prx"),
                                                                   "game": str(game)})
     return firstrun.Ctx(root=str(root), paths=paths, jobs=3, work=str(root / "work"), **kw)
 
@@ -104,14 +110,11 @@ def run(root, game, fail=None, status=None):
     return rc, out.getvalue(), [x for x in got if "=" not in x], r, got
 
 
-for var in ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_LIBSRE", "PS3_DEV_FLASH", "KZ_WORK"):
+for var in ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "PS3_DEV_FLASH", "KZ_WORK"):
     os.environ.pop(var, None)
 
-check(firstrun.default_dev_flash("/r", windows=True) == os.path.join("/r", "Game", "dev_flash"),
-      "Windows: dev_flash is offered under Game/, not as a Linux path (RPCS3 keeps it beside rpcs3.exe)")
-check(firstrun.default_dev_flash("/r", windows=False) == os.path.join(os.path.expanduser("~"), ".config", "rpcs3",
-                                                                      "dev_flash"),
-      "Linux: dev_flash is RPCS3's, in ~/.config/rpcs3")
+check([i[0] for i in firstrun.INPUTS] == ["game", "eboot", "psarc"],
+      f"the first run asks for the game, the EBOOT and the archive, no firmware: {[i[0] for i in firstrun.INPUTS]}")
 
 with tempfile.TemporaryDirectory() as tmp:
     tmp = pathlib.Path(tmp)
@@ -219,7 +222,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # --interactive: a failed check asks for the failing file only, then asks once about DLSS, then builds. With paths
     # saved by an earlier install (no offer at the start), a failed check offers the RPCS3 route once (Enter: no)
-    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", "", "", str(game / "EBOOT.elf"), "n"])
+    answers = iter(["", str(tmp / "nowhere.elf"), "", "", "", str(game / "EBOOT.elf"), "n"])
     real_license = firstrun.fetch_license
     firstrun.fetch_license = lambda c: str(tmp / "LICENSE.txt")   # no network in a test
     real_import = firstrun.rpcs3_import   # no RPCS3 of this machine: the offer is tested in test_rpcs3_import.py
@@ -259,10 +262,29 @@ with tempfile.TemporaryDirectory() as tmp:
           "--interactive asks about DLSS once, with the licence's link and text; no is kept and fetches nothing")
     check("PROGRESS " not in console.getvalue() and "RESULT " not in console.getvalue() and "100.0%" in console.getvalue(),
           "the console shows the bar, not the protocol lines")
-    check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 8,
+    check(sum("EBOOT" in q for q in asked) == 2 and len([q for q in asked if "DLSS" not in q]) == 6,
           f"after a failed check only the failing file is asked again: {len(asked)} questions")
     check(sum(q.startswith("Your choice") for q in asked) == 1 and any("I have the files ready" in s for s in said),
           f"a failed check with saved paths offers the RPCS3 route once: {asked}")
+
+    # A CPU below the build's level fails the check with its own line: --interactive says why and ends there, without
+    # asking for files again or offering RPCS3 (neither could fix it)
+    firstrun.rpcs3_import = lambda: type("NoRpcs3", (), {"resolve": staticmethod(
+        lambda hint: {"status": "not_found", "problems": []}), "rpcs3_root_of": staticmethod(lambda p: str(tmp))})
+    asked.clear()
+    said.clear()
+    answers = iter([""] * 40)
+    os.environ["FAIL_STEP"] = "cpu"
+    calls = root / "work/calls"
+    calls.unlink(missing_ok=True)
+    rc = firstrun.interactive(ctx(root, game), A(), ask=ask, say=said.append, out=io.StringIO())
+    os.environ.pop("FAIL_STEP", None)
+    firstrun.rpcs3_import = real_import
+    checks_run = calls.read_text().split().count("check") if calls.exists() else 0
+    check(rc == 1 and checks_run == 1 and any("CPU: this build of Project Vekta needs" in s for s in said),
+          f"a failed CPU line ends the first run after one check, saying why: rc {rc}, {checks_run} check(s), {said[-1:]}")
+    check(not any(q.startswith(("Enter to choose", "Your choice")) for q in asked),
+          f"and asks neither for the files again nor about RPCS3: {asked}")
 
 # the applications-menu entry: written under $XDG_DATA_HOME, quoted for the Exec rules, removed again (Linux only)
 if os.name != "nt":
@@ -303,6 +325,9 @@ check(firstrun.jobs_for(None, cores=16) == 4, "unknown memory: four jobs")
 check(firstrun.jobs_for(32 * firstrun.GIB, cores=16) == 16, "32 GiB free and 16 cores: 16 jobs")
 check(firstrun.jobs_for(6 * firstrun.GIB, cores=16) == 3, "6 GiB free: 3 jobs")
 check(firstrun.jobs_for(2 * firstrun.GIB, cores=16) == 1, "little memory: one job")
+check(firstrun.env_jobs({"KZ_JOBS": "4"}) == 4 and firstrun.env_jobs({}) is None and
+      firstrun.env_jobs({"KZ_JOBS": "0"}) is None and firstrun.env_jobs({"KZ_JOBS": "x"}) is None,
+      "KZ_JOBS caps the jobs when it is a whole number of 1 or more")
 w = firstrun.redactor("D:\\Profiles\\jane", windows=True)
 for leak in ("D:\\Profiles\\jane\\x", "D:/Profiles/jane/x", "d:/profiles/JANE/x", "D_/Profiles/jane/x"):
     check(w(leak) == "~" + leak[len("D:/Profiles/jane"):], f"Windows home in any spelling: {leak} -> {w(leak)}")
@@ -329,6 +354,30 @@ with tempfile.TemporaryDirectory() as tmp:
     check(freed == 2000 and not (w / "toolchain-cache" / "downloads").exists() and not (w / "win-deps-build").exists()
           and all((w / r / "f.bin").exists() for r in ("toolchain-cache/cmake", "build", "vfs")),
           f"--cleanup removes the downloads and win-deps-build only: {freed}")
+
+# DLSS and the Linux release folder: libnvsdk_ngx.a needs libstdc++, the pinned Zig toolchain links libc++
+pinned = {"KZ_LINUX_TOOLCHAIN": "pinned"}
+check(firstrun.dlss_unavailable(pinned) == (os.name != "nt") and not firstrun.dlss_unavailable({}),
+      "DLSS is unavailable only with the pinned Linux toolchain")
+_old = os.environ.get("KZ_LINUX_TOOLCHAIN")
+try:
+    with tempfile.TemporaryDirectory() as tmp:
+        c = firstrun.Ctx(root=tmp, paths={}, work=tmp, dlss="accept")
+        os.environ.pop("KZ_LINUX_TOOLCHAIN", None)
+        check(c.dlss_on() and firstrun.cmd_dlss(c), "accepted DLSS with the system's compilers: fetched and built")
+        os.environ["KZ_LINUX_TOOLCHAIN"] = "pinned"
+        if os.name != "nt":
+            check(not c.dlss_on() and firstrun.cmd_dlss(c) == [] and "KZ_DLSS_SDK" not in c.env(),
+                  "accepted DLSS in the Linux release folder: nothing fetched, the build uses FSR 3.1")
+            rl = json.loads((pathlib.Path(firstrun.__file__).parents[2] / "installer" / "recomplauncher.json")
+                            .read_text(encoding="utf-8"))
+            opt = next(o for o in rl["prepare"]["options"] if o["id"] == "dlss")
+            check(opt["os"] == ["windows"], f"recomplauncher.json offers DLSS on Windows only: {opt['os']}")
+finally:
+    if _old is None:
+        os.environ.pop("KZ_LINUX_TOOLCHAIN", None)
+    else:
+        os.environ["KZ_LINUX_TOOLCHAIN"] = _old
 
 print("test_firstrun:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Host test for tools/release/assemble_payload.py and tools/release/launch.py: the payload of this repository (with
 a stand-in toolchain cache) keeps the repository's layout, holds only the allowlist, the shipped patched ps3recomp and
-the Windows toolchain entries with their own fetched.json (the Linux folder: run.sh, play.sh and the pinned Zig
+the Windows toolchain entries with their own fetched.json (the Linux folder: project-vekta, scripts/ and the pinned Zig
 toolchain with its other targets pruned, as a reproducible tar with execute bits), gives the embeddable Python's ._pth the tools folders, and
 has a manifest without timestamps; the same sources give the same zip; the scrub refuses game-data names and magics,
 home paths, a big file and a case clash; a toolchain entry not fetched from its pin or a stale patched tree refuses
@@ -10,6 +10,7 @@ Needs work/ps3recomp-patched (tools/ps3recomp-patched.sh; CI runs it first)."""
 import hashlib
 import io
 import json
+import re
 import os
 import pathlib
 import subprocess
@@ -78,7 +79,8 @@ with tempfile.TemporaryDirectory() as tmp:
     except ap.Refused as err:
         check("nvngx_dlss.dll" in str(err) and "NVIDIA" in str(err), str(err))
     (cache / "sdl2" / "bin" / "nvngx_dlss.dll").unlink()
-    for need in ("tools/kzbuild.py", "tools/release/firstrun.py", "tools/release/launch.py", "run.cmd", "play.cmd",
+    for need in ("tools/kzbuild.py", "tools/release/firstrun.py", "tools/release/launch.py", "scripts/run.cmd", "scripts/play.cmd",
+                 "scripts/prepare.cmd",
                  "port/kz1hd/CMakeLists.txt", "port/cmake/llvm-mingw.cmake", "re/function_seeds.txt", "VERSION",
                  "work/ps3recomp-patched/.patchset", "work/ps3recomp-patched/tools/ppu_lifter.py",
                  "work/toolchain-cache/fetched.json", "work/toolchain-cache/llvm-mingw/bin/llvm-mingw.exe",
@@ -104,8 +106,24 @@ with tempfile.TemporaryDirectory() as tmp:
 
     out = tmp / "payload"
     r = ap.main(["--out", str(out), "--cache", str(cache), "--zip", str(tmp / "a.zip")])
-    check(r == 0 and (out / "manifest.json").is_file() and (out / "run.cmd").read_bytes().endswith(b"\r\n"),
-          "the payload is written, run.cmd with CRLF")
+    check(r == 0 and (out / "manifest.json").is_file() and (out / "scripts" / "run.cmd").read_bytes().endswith(b"\r\n"),
+          "the payload is written, scripts/run.cmd with CRLF")
+    top = sorted(rel for rel in set(files) | set(gen) if "/" not in rel)
+    check(not [r for r in top if ap.startable(r, files.get(r, ""), "windows")],
+          f"without --launcher the Windows top has no startable file at all: {top}")
+    launcher = tmp / "Project Vekta.exe"
+    launcher.write_bytes(b"MZ")
+    wf, _, _ = ap.plan(str(ROOT), str(cache), str(launcher))
+    rl = json.loads(gen["recomplauncher.json"])
+    wmf = {e["path"] for e in ap.plan(str(ROOT), str(cache), str(launcher))[2]["files"]}
+    check("recomplauncher.json" in wmf and any(p in wmf for p in rl["start"]["program"]) and
+          any(p in wmf for p in rl["prepare"]["program"]),
+          "recomplauncher.json is in the Windows manifest, and its start and prepare programs are in the folder")
+    check([r for r in wf if "/" not in r and ap.startable(r, wf[r], "windows")] == ["Project Vekta.exe"],
+          "with it, Project Vekta.exe is the one startable file at the Windows top (Quiver's rule)")
+    check(ap.layout_problems(dict(wf, **{"run.cmd": str(launcher)}), "windows") and
+          ap.layout_problems({"VERSION": str(launcher)}, "windows"),
+          "a second .cmd at the top, or no launcher at all, is refused")
     check(ap.main(["--out", str(out), "--cache", str(cache)]) == 1, "an existing folder needs --replace")
     ap.main(["--out", str(out), "--cache", str(cache), "--replace", "--zip", str(tmp / "b.zip")])
     check((tmp / "a.zip").read_bytes() == (tmp / "b.zip").read_bytes(), "the same sources give the same zip")
@@ -139,15 +157,30 @@ with tempfile.TemporaryDirectory() as tmp:
     (cache / "ffmpeg-linux" / "lib" / "libavutil.so").write_bytes(b"\x7fELF")
     lf, lg, lman = ap.plan(str(ROOT), str(cache), platform="linux")
     lp = set(lf) | set(lg)
-    for need in ("run.sh", "play.sh", "tools/release/zig/cc", "tools/release/build_linux_deps.py", "tools/play.sh",
+    for need in ("project-vekta", "scripts/run.sh", "scripts/play.sh", "scripts/prepare.sh", "tools/release/zig/cc", "tools/release/build_linux_deps.py", "tools/play.sh",
                  "port/cmake/zig-linux.cmake", "work/toolchain-cache/zig/zig",
                  "work/toolchain-cache/zig/lib/libc/include/x86-linux-gnu/bits/a.h",
                  "work/toolchain-cache/zig/lib/libc/include/generic-glibc/b.h",
                  "work/toolchain-cache/zig/lib/std/std.zig",
                  "work/toolchain-cache/ffmpeg-linux/lib/libavutil.so.61.1.100"):
         check(need in lp, f"the Linux folder has {need}")
-    check(not any(p in lp for p in ("run.cmd", "play.cmd")) and not any(p.endswith("._pth") for p in lp),
+    check(not any(p.endswith(".cmd") for p in lp) and not any(p.endswith("._pth") for p in lp),
           "the Linux folder has no .cmd files and no ._pth")
+    lrl = json.loads(lg["recomplauncher.json"])
+    lmf = {e["path"] for e in lman["files"]}
+    check("recomplauncher.json" in lmf and any(p in lmf for p in lrl["start"]["program"]) and
+          any(p in lmf for p in lrl["prepare"]["program"]),
+          "recomplauncher.json is in the Linux manifest, and its start and prepare programs are in the folder")
+    check([r for r in lf if "/" not in r and ap.startable(r, lf[r], "linux")] == ["project-vekta"],
+          "project-vekta is the one startable file at the Linux top (.sh, #!/ or ELF: Quiver's rule)")
+    elf = tmp / "elf"
+    elf.write_bytes(b"\x7fELF....")
+    shebang = tmp / "noext"
+    shebang.write_text("#!/bin/sh\n")
+    check(ap.startable("x.sh", str(tmp / "VERSIONX"), "linux") and ap.startable("tool", str(elf), "linux") and
+          ap.startable("noext", str(shebang), "linux") and not ap.startable("lib.so", str(elf), "linux") and
+          not ap.startable("notes.txt", str(shebang), "linux"),
+          "on Linux .sh, #!/ and ELF files count; .so and .txt never")
     check(not any(p.startswith(("work/toolchain-cache/llvm-mingw/", "work/toolchain-cache/python/"))
                   for p in lp), "the Linux folder has no Windows toolchain")
     check(not any(s in p for p in lp for s in ("aarch64-linux-gnu", "/musl/", "/mingw/", "zig/doc/", "zig/RECORD"))
@@ -171,7 +204,8 @@ with tempfile.TemporaryDirectory() as tmp:
     v = lman["version"]
     top = f"project-vekta-{v}-linux/"
     check(all(n.startswith(top) for n in mem), "the tar has one top folder")
-    for x in ("run.sh", "play.sh", "tools/release/zig/cc", "work/toolchain-cache/zig/zig"):
+    for x in ("project-vekta", "scripts/run.sh", "scripts/play.sh", "scripts/prepare.sh", "tools/release/zig/cc",
+              "work/toolchain-cache/zig/zig"):
         check(mem.get(top + x) is not None and mem[top + x].mode == 0o755, f"{x} keeps its execute bit in the tar")
     check(mem[top + "VERSION"].mode == 0o644 and mem[top + "VERSION"].uid == 0, "a plain file is 644, owner 0")
     check(ap.scrub("t/zig", str(z / "zig"), toolchain=True, elf_ok=True) is None and
@@ -235,7 +269,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (root / launch.INSTALL_INI).unlink()
     text = pathlib.Path(log).read_text()
     check(f"cwd={w / 'vfs'}" in text and "skip=1 flips=2" in text and "disp=borderless" in text and
-          f"img={w / 'fw' / 'out' / 'libsre_image.bin'}" in text, f"play.sh's settings, the environment wins: {text}")
+          "img= " in text, f"play.sh's settings, the environment wins, no firmware image: {text}")
     exe.write_text('#!/bin/sh\necho "window closed"\nsleep 30\n')
     import time
     t0 = time.time()
@@ -302,8 +336,65 @@ with tempfile.TemporaryDirectory() as tmp:
         text = launch.early_exit_text(rc, log)
         check(time.monotonic() - t0 < launch.EARLY_EXIT and "exit code 1" in text and "could not load the EBOOT" in
               text, f"a game that stops at once is reported with the end of its log: {text}")
+        # KZ1HD's own exit codes (port/kz1hd/kz_exit.h): the CPU check's code gets the exe's own line from the log,
+        # else the stock text; any other code is not one of them
+        line = ("This build of Project Vekta needs a CPU with x86-64-v3 (AVX2), and this one has x86-64-v2. The game "
+                "cannot run on it.")
+        exe.write_text(f'#!/bin/sh\necho "[kz] CPU check: {line}"\nexit {launch.EXIT_CPU}\n')
+        argv, cwd, e, log = launch.plan(str(root), env)
+        rc = launch.run(argv, cwd, e, log, poll=0.05)
+        check(rc == launch.EXIT_CPU and launch.exit_code_text(rc, log) == line,
+              f"the CPU check's exit code shows the exe's own line: {rc} {launch.exit_code_text(rc, log)}")
+        pathlib.Path(log).write_text("")
+        check(launch.exit_code_text(launch.EXIT_CPU, log) == launch.EXIT_TEXT[launch.EXIT_CPU] and
+              "x86-64-v3" in launch.EXIT_TEXT[launch.EXIT_CPU],
+              "and kz_exit.h's text when the log has no line")
+        check(launch.exit_code_text(1, log) is None and launch.exit_code_text(0, log) is None,
+              "other exit codes are not the exe's own")
+        # The EBOOT check's code: the exe's own line, then the rebuild a stale build gets, and the game starts again
+        eboot_line = ("This build was made from another EBOOT.elf than the one in /x/USRDIR. Run 'Verify and rebuild' "
+                      "(Windows) or ./project-vekta --prepare (Linux).")
+        pathlib.Path(log).write_text("[kz] EBOOT check: built from 0123, this one is 4567\n"
+                                     f"[kz] EBOOT check: {eboot_line}\n")
+        check(launch.exit_code_text(launch.EXIT_EBOOT, log) == eboot_line,
+              f"the EBOOT check's code shows the exe's own line: {launch.exit_code_text(launch.EXIT_EBOOT, log)}")
+        real = {k: getattr(launch, k) for k in ("plan", "run", "ask", "update_build", "stale_build")}
+        runs, asked, rebuilt = [], [], []
+        planned = launch.plan(str(root), env)
+        launch.plan = lambda root, fullscreen=False: planned
+        launch.run = lambda *a, **kw: runs.append(1) or (launch.EXIT_EBOOT if len(runs) == 1 else 0)
+        launch.stale_build = lambda root: None
+        launch.update_build = lambda root, run=None: rebuilt.append(root) or True
+        try:
+            launch.ask = lambda text: asked.append(text) or True
+            rc = launch.main(["--root", str(root), "--build-if-needed"])
+            check(rc == 0 and len(runs) == 2 and rebuilt and asked and eboot_line in asked[0] and "Rebuild" in asked[0],
+                  f"--build-if-needed: the EBOOT code offers the rebuild, then starts the game again: rc {rc}, "
+                  f"{len(runs)} runs, {asked}")
+            runs.clear(); rebuilt.clear()
+            launch.ask = lambda text: False
+            rc = launch.main(["--root", str(root), "--build-if-needed"])
+            check(rc == launch.EXIT_EBOOT and len(runs) == 1 and not rebuilt, "no: nothing is rebuilt, the code stays")
+        finally:
+            for k, v in real.items():
+                setattr(launch, k, v)
     finally:
         launch.notify, launch.first_run = real_notify, real_first
+
+# Every file or folder above port/kz1hd the player's build reads ("../../<path>" in CMakeLists.txt, app.rc and the
+# CMake scripts beside them) is shipped in both folders: the build runs from the payload, not from a Git clone. A
+# path the rules miss broke the 0.6.0 test build on Windows (third_party/minimp3, 2026-11-20).
+refs = set()
+for f in (ROOT / "port" / "kz1hd").glob("*"):
+    if f.suffix in (".txt", ".rc", ".cmake"):
+        refs |= {m.rstrip("/") for m in re.findall(r"\.\./\.\./([A-Za-z0-9_./-]+)", f.read_text(errors="replace"))}
+for plat, rules in (("windows", ap.RULES + ap.RULES_WINDOWS), ("linux", ap.RULES + ap.RULES_LINUX)):
+    srcs = [r[0] for r in rules]
+    missing = sorted(p for p in refs if (ROOT / p).exists() and
+                     not any(p == s or p.startswith(s + "/") or s.startswith(p + "/") for s in srcs))
+    check(not missing, f"the {plat} folder ships everything port/kz1hd's build reads above it: missing {missing}")
+check("third_party/minimp3" in refs and "third_party/fidelityfx-fsr3" in refs and "VERSION" in refs,
+      f"the paths are found (minimp3, FSR 3, VERSION): {sorted(refs)}")
 
 r = subprocess.run([sys.executable, str(ROOT / "tools" / "release" / "assemble_payload.py"), "--dry-run", "--cache",
                     "/nonexistent"], capture_output=True, text=True)

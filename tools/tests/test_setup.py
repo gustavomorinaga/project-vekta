@@ -2,7 +2,7 @@
 """Host test for the Windows setup program's pieces: installer/vekta.iss names files the payload has (its LICENSE,
 VERSION and the launcher) and its art; the launcher (installer/launcher/launcher.c) starts the Python and the script
 at the paths assemble_payload.py gives them, and passes --build-if-needed, which launch.py takes; the launcher's
-version block comes from VERSION; launch.py --build-if-needed without run.cmd says what is missing; the Inno Setup
+version block comes from VERSION; launch.py --build-if-needed in an empty folder says what is missing; the Inno Setup
 pin is there; .cmd and .iss files keep CRLF; the pages check check-game-files.py's sizes, and the build in the
 wizard passes firstrun.py's own options and labels its steps. No compiler and no Wine: tools/release/build_launcher.py and
 build_setup.py run on the maintainer's machine (docs/BUILDING.md)."""
@@ -37,7 +37,8 @@ check(b"\r\n" in iss and b"\n" not in iss.replace(b"\r\n", b""), "vekta.iss has 
 text = iss.decode()
 for ref in re.findall(r'\{#Payload\}\\\\?([^"\s;]+)', text):
     # work\toolchain-cache\python: the bundled Python assemble_payload.py fetches into the Windows payload (run.cmd's)
-    check(ref == "*" or ref == "VERSION" or ref == "LICENSE" or ref.startswith("work\\toolchain-cache\\python\\")
+    # {#LauncherExe}: Project Vekta.exe, which assemble_payload.py --launcher puts at the payload's root
+    check(ref in ("*", "VERSION", "LICENSE", "{#LauncherExe}") or ref.startswith("work\\toolchain-cache\\python\\")
           or (ROOT / ref.replace("\\", "/")).exists(),
           f"vekta.iss names a payload file the payload has: {ref}")
 check('Source: "{#Payload}\\work\\ps3recomp-patched\\.patchset"' in text,
@@ -60,12 +61,11 @@ spec = importlib.util.spec_from_file_location("cgf", ROOT / "tools" / "check-gam
 cgf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cgf)
 sizes = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
-for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc"), ("LibsreSize", "libsre.prx")):
+for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc")):
     m = re.search(r'#define %s "(\d+)"' % define, text)
     check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
-m_fw = re.search(r'#define Firmware "([^"]+)"', text)
-check(m_fw and m_fw.group(1) == cgf.FIRMWARE and "FirmwareVersion(FlashPage.Values[0]) <> '{#Firmware}'" in text,
-      "the firmware page refuses a dev_flash of another system software than check-game-files.py's")
+check("FlashPage" not in text and "#define Firmware" not in text and "dev_flash" not in text,
+      "the setup asks for no firmware (no dev_flash page)")
 check("'USRDIR\\data_ps3.psarc.edat'" in text, "the wizard takes the game's .edat when the archive is left empty")
 # The build in the wizard runs firstrun.py with options it has, and names its steps
 import firstrun  # noqa: E402
@@ -92,10 +92,10 @@ check("RpcsBrowse.OnClick := @RpcsBrowseClick;" in text and "CheckRpcs3(D);" in 
       and "SourcePage.CheckListBox.ItemEnabled[0] := True;" in text
       and "CheckRpcs3(Pick('RPCS3', 'Rpcs3Dir'))" in text and "'Rpcs3Dir', RpcsHint" in text,
       "the page searches by itself and has Find RPCS3... for a folder the player picks (kept for next time)")
-check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID))" in text
+check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID))" in text
       and "Result := ' --rpcs3 ' + Quote(RpcsRoot);" in text, "the RPCS3 route skips the file pages and builds with --rpcs3")
-check(all(f"'{k}'" in text for k in ("status", "root", "dev_flash")) and "Pos('problem=', Lines[I]) = 1" in text
-      and set(rpcs3_import.lines({"status": "ok", "root": "r", "game": "g", "dev_flash": "d", "exe": ["x"],
+check(all(f"'{k}'" in text for k in ("status", "root", "game")) and "Pos('problem=', Lines[I]) = 1" in text
+      and set(rpcs3_import.lines({"status": "ok", "root": "r", "game": "g", "exe": ["x"],
               "problems": []})[0].split("=")[:1]) == {"status"},
       "the page reads the keys rpcs3_import.py writes")
 src = (ROOT / "tools/release/firstrun.py").read_text()
@@ -106,8 +106,9 @@ steps = {st.name for st in firstrun.STEPS}
 check(labels and labels <= steps and steps - labels <= {"stamp"}, f"StepLabel names firstrun.py's steps: {labels} {steps}")
 check("tools\\release\\firstrun.py" in text and "work\\toolchain-cache\\python\\python.exe" in text,
       "the wizard runs the payload's firstrun.py with its Python")
-for param in ("GAME", "EBOOT", "PSARC", "LIBSRE", "DEVFLASH", "DLSS"):
+for param in ("GAME", "EBOOT", "PSARC", "DLSS"):
     check(f"Pick('{param}'" in text, f"/{param}= is taken on the command line")
+check("LIBSRE" not in text and "libsre" not in text.lower(), "no libsre.prx is asked for (the runtime's own LFQueue)")
 # NVIDIA DLSS: an optional page whose box, unticked unless accepted before, accepts the licence firstrun.py shows;
 # its answer goes to firstrun.py and work\dlss-choice, and setup ships no NVIDIA file
 m_url = re.search(r'#define DlssLicenseURL "([^"]+)"', text)
@@ -120,7 +121,7 @@ check("' --dlss ' + DlssChoice" in text and "work\\dlss-choice'), DlssChoice" in
 check(not re.search(r"(?im)^Source:.*(nvngx|nvsdk|dlss)", text), "setup names no NVIDIA file to install")
 check('Name: "{app}\\work\\toolchain-cache\\dlss-sdk"' in text, "the uninstaller removes the DLSS download")
 
-for rel in ("installer/run.cmd", "installer/play.cmd"):
+for rel in ("installer/run.cmd", "installer/play.cmd", "installer/prepare.cmd"):
     data = (ROOT / rel).read_bytes()
     check(b"\n" not in data.replace(b"\r\n", b""), f"{rel} has CRLF line endings")
 
@@ -143,11 +144,18 @@ with tempfile.TemporaryDirectory() as tmp:
     err = io.StringIO()
     se = sys.stderr
     sys.stderr = err
+    # a game folder named (KZ_GAME) but not there: the check fails the same way on every machine, and no RPCS3 of
+    # this machine is looked for (with nothing given, the first start would search RPCS3's usual places)
+    old_game = os.environ.get("KZ_GAME")
+    os.environ["KZ_GAME"] = os.path.join(tmp, "no game here")
     try:
         r = launch.main(["--root", tmp, "--build-if-needed"])
     finally:
         sys.stderr = se
-    check(r == 1 and "no game folder" in err.getvalue(), f"no run.cmd: launch says what is missing: {err.getvalue()}")
+        os.environ.pop("KZ_GAME") if old_game is None else os.environ.__setitem__("KZ_GAME", old_game)
+    check(r == launch.FILE_MISSING and "missing or still encrypted" in err.getvalue(),
+          f"an empty folder, its game folder missing: the first run's check fails, and launch says so: {r} "
+          f"{err.getvalue()}")
     try:
         ap.plan(str(ROOT), tmp, str(pathlib.Path(tmp) / "missing.exe"))
         check(False, "a missing launcher refuses the payload")
@@ -307,12 +315,11 @@ with tempfile.TemporaryDirectory() as tmp:
     r = subprocess.run([sys.executable, str(ROOT / "tools/release/fake_game_files.py"), tmp], capture_output=True,
                        text=True)
     sw = dict(line[1:].split("=", 1) for line in r.stdout.split())
-    check(r.returncode == 0 and set(sw) == {"GAME", "EBOOT", "PSARC", "LIBSRE", "DEVFLASH"}, f"five switches: {sw}")
-    env = dict(os.environ, KZ_GAME=sw["GAME"], KZ_EBOOT=sw["EBOOT"], KZ_PSARC=sw["PSARC"], KZ_LIBSRE=sw["LIBSRE"],
-               PS3_DEV_FLASH=sw["DEVFLASH"])
+    check(r.returncode == 0 and set(sw) == {"GAME", "EBOOT", "PSARC"}, f"three switches: {sw}")
+    env = dict(os.environ, KZ_GAME=sw["GAME"], KZ_EBOOT=sw["EBOOT"], KZ_PSARC=sw["PSARC"])
     q = subprocess.run([sys.executable, str(ROOT / "tools/check-game-files.py"), "--quick"], capture_output=True,
                        text=True, env=env)
-    for label in ("PARAM.SFO", "EBOOT.elf", "libsre.prx"):
+    for label in ("PARAM.SFO", "EBOOT.elf"):
         check(f"DIFFERENT {label}" in q.stdout, f"{label}: the right kind and size, another hash: {q.stdout}")
     check("ok       data_ps3.psarc" in q.stdout and q.returncode == 1, "the archive passes --quick; the check fails")
     # Without a decrypted archive the game folder's own .edat is checked instead (patch 4014)
@@ -328,6 +335,25 @@ with tempfile.TemporaryDirectory() as tmp:
     q = subprocess.run([sys.executable, str(ROOT / "tools/check-game-files.py"), "--quick"], capture_output=True,
                        text=True, env=dict(env, KZ_PSARC=os.path.join(tmp, "none.psarc")))
     check("ok       data_ps3.psarc.edat" in q.stdout, f"the game's .edat of the tested size passes --quick: {q.stdout}")
+
+# The CPU question before the first page: the launcher (a dontcopy entry, first in [Files] so unpacking it reads
+# nothing before it) runs --cpu-check in InitializeSetup against the level tools/kzbuild.py builds for by default
+iss_text = (ROOT / "installer" / "vekta.iss").read_text()
+files = iss_text.split("[Files]", 1)[1].split("\n[", 1)[0]
+first = next(ln for ln in files.splitlines() if ln.startswith("Source:"))
+check(first.startswith('Source: "{#Payload}\\{#LauncherExe}"') and "dontcopy" in first,
+      f"the launcher is the first [Files] entry, dontcopy: {first}")
+check(re.search(r"function InitializeSetup: Boolean;.*?ExtractTemporaryFile\('\{#LauncherExe\}'\).*?'--cpu-check'.*?"
+                r"\(Level < \{#CpuLevel\}\)", iss_text, re.S) is not None,
+      "InitializeSetup extracts the launcher and compares its --cpu-check level with CpuLevel")
+sys.path.insert(0, str(ROOT / "tools"))
+import kzbuild  # noqa: E402
+m = re.search(r'#define CpuLevel "(\d)"', iss_text)
+check(m is not None and int(m.group(1)) == kzbuild.cpu_required(kzbuild.march({})),
+      f"the setup's CpuLevel is the level of tools/kzbuild.py's default KZ_MARCH: {m and m.group(1)}")
+lc = (ROOT / "installer" / "launcher" / "launcher.c").read_text()
+check('#include "../../port/kz1hd/cpu_level.h"' in lc and 'L"--cpu-check"' in lc and "return kz_cpu_level();" in lc,
+      "the launcher's --cpu-check exits with port/kz1hd/cpu_level.h's level")
 
 print("test_setup:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

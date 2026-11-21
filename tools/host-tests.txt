@@ -5,6 +5,7 @@ tools/tests/test_patch_series.py
 tools/tests/test_features.py
 tools/tests/test_website.py
 tools/tests/test_site.py
+tools/tests/test_press_badges.py
 tools/tests/test_release.py
 tools/tests/test_firstrun.py
 tools/tests/test_toolchain.py
@@ -63,4 +64,12 @@ tools/tests/test_place_checks.py
 tools/tests/test_version_check.py
 tools/tests/test_edat_seek.sh
 tools/tests/test_window_icon.py
+tools/tests/test_cpu_check.sh
+tools/tests/test_exe_resources.py
+tools/tests/test_eboot_check.sh
+tools/tests/test_launcher_contract.py
+tools/tests/test_heap_bytes.sh
+tools/tests/test_recomplauncher.py
 tools/tests/test_res_list.sh
+tools/tests/test_lfqueue.sh
+tools/tests/test_flashmp3.sh

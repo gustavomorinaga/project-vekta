@@ -30,6 +30,7 @@ sys.path.insert(0, HERE)
 import fetch_toolchain  # noqa: E402
 
 TOOLCHAIN_FILE = os.path.join(ROOT, "port", "cmake", "zig-linux.cmake")
+GLSLANG_CXX_FLAGS = "-Os -DNDEBUG"   # see the glslang build in main()
 PARTS = ("zig", "cmake-linux", "ninja-linux", "sdl2-src", "zlib", "glslang", "vulkan-headers", "ffmpeg-linux")
 FFMPEG_LIBS = ("libavcodec.", "libavformat.", "libavutil.", "libswscale.", "libswresample.")
 SONAME_RX = re.compile(r"(lib\w+\.so\.\d+)\.\d+\.\d+")
@@ -143,9 +144,13 @@ def main(argv=None):
             for f in os.listdir(os.path.join(a.prefix, "lib")):
                 if f.startswith("libz.so"):
                     os.remove(os.path.join(a.prefix, "lib", f))
+            # -Os, not Release's -O3: the pinned Zig's clang takes about 18 GB and 20 s on glslang's SPIRV/doc.cpp at
+            # -O1 and above (its inliner; -O2 -fno-inline or -Os: under 200 MB and 1 s, measured 2026-11-20), which
+            # killed release.yml's linux job (exit 137) and would stop a 16 GB PC's first build of the Linux folder
             cmake_build("glslang", c("glslang"), os.path.join(tmp, "glslang"), a.prefix, a.jobs,
                         ["-DBUILD_SHARED_LIBS=OFF", "-DENABLE_OPT=OFF", "-DENABLE_HLSL=ON", "-DGLSLANG_TESTS=OFF",
-                         "-DENABLE_GLSLANG_BINARIES=OFF", "-DBUILD_EXTERNAL=OFF", "-DENABLE_SPVREMAPPER=OFF"],
+                         "-DENABLE_GLSLANG_BINARIES=OFF", "-DBUILD_EXTERNAL=OFF", "-DENABLE_SPVREMAPPER=OFF",
+                         f"-DCMAKE_CXX_FLAGS_RELEASE={GLSLANG_CXX_FLAGS}"],
                         log, env)
             for d in os.listdir(c("ffmpeg-linux", "include")):
                 copytree(c("ffmpeg-linux", "include", d), os.path.join(a.prefix, "include", d))

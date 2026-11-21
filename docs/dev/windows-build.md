@@ -41,10 +41,10 @@ Proton it comes from the Linux side (`mangohud %command%` in Steam).
 
 ## A folder for a real Windows
 
-A folder with the exe and its DLLs, `libsre_image.bin`, RPCS3's `dev_flash`, the run folder (`PS3_GAME`, `game`,
+A folder with the exe and its DLLs, the run folder (`PS3_GAME`, `game`,
 `gamedata`, `cache` and the two .ini files) in `vfs/`, and a `KZ1HD.bat` that enters `vfs`, sets the variables of
 `tools/play.sh` (`GCM_PARK_SKIP`, `PS3RECOMP_VK_GUEST_PROGRAMS`, `PS3_VERBOSE=0`, `PS3_GCM_MAX_QUEUED_FLIPS=1`,
-`PS3RECOMP_VK_WINDOW=1`, `KZ_LIBSRE_IMAGE` and `PS3_DEV_FLASH` relative to `%~dp0`) and starts the exe with the path of
+`PS3RECOMP_VK_WINDOW=1`) and starts the exe with the path of
 `EBOOT.elf`. Copy files, not links: in the run folder `EBOOT.elf` and `data_ps3.psarc` are symbolic links, which
 Windows does not open (`cp -L`). With the archive, the folder is about 4.2 GB. It is a sketch of what the installer
 will do on the player's machine.
@@ -57,7 +57,7 @@ will do on the player's machine.
   read without `__try`/`__except` and the `ppu_resv_break` linkage (both from Project Helghast's patch 0002), the
   SPURS poll sleep and the F12 capture's `mkdir`.
 - **Port:** `win_compat.h` (`setenv`, `strcasecmp`), the libsre page committed before it is read (on Windows the
-  guest memory is only reserved), the heap size from `GetProcessMemoryInfo`, and `jm.c`'s private page with
+  guest memory is only reserved; gone in 0.6.0 with libsre), the heap size from `GetProcessMemoryInfo`, and `jm.c`'s private page with
   `VirtualAlloc`.
 
 ## Open items

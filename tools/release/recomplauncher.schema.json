@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/gustavomorinaga/project-vekta/blob/main/tools/release/recomplauncher.schema.json",
+  "title": "Project Vekta's recomplauncher.json",
+  "description": "The part of RecompLauncher's format 1 this project uses (its developer guide, docs/DEVELOPERS.md, read at elripalda/RecompLauncher baecaf4), written here; tools/release/recomplauncher.py checks the generated file against it.",
+  "type": "object",
+  "required": ["$schema", "format", "name", "repo", "inputs", "prepare", "start", "saves", "folders", "actions", "exit_codes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "const": "https://recomplauncher.com/schema/recomplauncher.json" },
+    "format": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "inputs": {
+      "type": "array", "minItems": 1, "maxItems": 32,
+      "items": {
+        "type": "object", "required": ["id", "label", "role", "formats"], "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+          "label": { "type": "string", "minLength": 1 },
+          "role": { "enum": ["game", "disc", "dlc", "update", "key", "runtime"] },
+          "optional": { "type": "boolean" },
+          "formats": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object", "required": ["type"], "additionalProperties": false,
+              "properties": {
+                "type": { "enum": ["file", "folder"] },
+                "extensions": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z0-9]+$" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "prepare": {
+      "type": "object", "required": ["program", "args", "label", "timeout", "version", "done"], "additionalProperties": false,
+      "properties": {
+        "program": { "$ref": "#/definitions/programs" },
+        "args": { "$ref": "#/definitions/args" },
+        "label": { "type": "string", "minLength": 1 },
+        "timeout": { "type": "integer", "minimum": 1 },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "done": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^\\{install\\}/" } },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "label", "args"], "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+              "label": { "type": "string", "minLength": 1 },
+              "note": { "type": "string" },
+              "gpu": { "enum": ["nvidia", "amd"] },
+              "os": { "type": "array", "items": { "enum": ["windows", "linux", "macos"] } },
+              "args": { "$ref": "#/definitions/args" },
+              "license": {
+                "type": "object", "required": ["name", "url"], "additionalProperties": false,
+                "properties": { "name": { "type": "string", "minLength": 1 }, "url": { "type": "string", "pattern": "^https://" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "start": {
+      "type": "object", "required": ["program"], "additionalProperties": false,
+      "properties": { "program": { "$ref": "#/definitions/programs" }, "args": { "$ref": "#/definitions/args" } }
+    },
+    "saves": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^\\{install\\}/" } },
+    "folders": {
+      "type": "object", "required": ["saves", "logs"],
+      "additionalProperties": { "$ref": "#/definitions/places" }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "label"], "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 }, "label": { "type": "string", "minLength": 1 },
+          "help": { "type": "string" }, "open": { "type": "string" }, "clear": { "type": "string" }
+        }
+      }
+    },
+    "exit_codes": {
+      "type": "object", "minProperties": 1,
+      "propertyNames": { "pattern": "^[0-9]+$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    }
+  },
+  "definitions": {
+    "programs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "args": { "type": "array", "items": { "type": "string" } },
+    "places": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["path"], "additionalProperties": false,
+        "properties": { "path": { "type": "string", "pattern": "^\\{install\\}" }, "if": { "type": "string" } }
+      }
+    }
+  }
+}
