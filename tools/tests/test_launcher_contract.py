@@ -50,6 +50,14 @@ with tempfile.TemporaryDirectory() as tmp:
     got = launch.firstrun_args(str(root), a, {})
     check(got == ["--game", os.path.abspath("my game"), "--eboot", os.path.abspath("e/EBOOT.elf"), "--psarc",
                   os.path.abspath("d.psarc")], f"--game, --eboot, --psarc pass on as absolute paths: {got}")
+    j = A()
+    j.jobs = 4
+    check(launch.firstrun_args(str(root), j, {}) == ["--jobs", "4"],
+          "--jobs passes on to firstrun.py")
+    (root / "work" / "paths.env").unlink()
+    check(launch.firstrun_args(str(root), j, {}) == ["--rpcs3", "--jobs", "4"],
+          "--jobs alone keeps the RPCS3 search")
+    (root / "work" / "paths.env").write_text("")
     b = A()
     b.rpcs3 = ""
     c = A()
