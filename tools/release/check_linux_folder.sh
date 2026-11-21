@@ -6,7 +6,7 @@
 # folder's work/. Exit 0 = ok, 1 = a check failed, 2 = usage.
 #   tools/release/check_linux_folder.sh FOLDER
 set -eu
-[ $# = 1 ] && [ -f "$1/run.sh" ] || { echo "usage: check_linux_folder.sh FOLDER (a Linux release folder)" >&2; exit 2; }
+[ $# = 1 ] && [ -f "$1/project-vekta" ] || { echo "usage: check_linux_folder.sh FOLDER (a Linux release folder)" >&2; exit 2; }
 f=$(cd "$1" && pwd)
 w="$f/work"
 export KZ_LINUX_TOOLCHAIN=pinned KZ_WORK="$w" KZ_ZIG="$w/toolchain-cache/zig/zig"

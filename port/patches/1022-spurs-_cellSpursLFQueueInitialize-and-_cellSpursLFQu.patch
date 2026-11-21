@@ -1,0 +1,463 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 17 Nov 2026 14:13:23 -0300
+Subject: [PATCH] spurs: _cellSpursLFQueueInitialize and
+ _cellSpursLFQueuePushBody without libsre
+
+A title whose PPU feeds an SPU task through a SPURS lock-free queue (an
+ANY2ANY CellSpursLFQueue: Killzone HD's Edge zlib requests, from its level
+streaming and its music loader) needs the queue's PPU side. The runtime had an
+initializer that wrote a guessed line and no push, so Killzone HD ran the
+firmware's own libsre for both, lifted from the player's PS3 system software
+4.93. The new libs/spurs/cellSpursLFQueue.c does what libsre does, as context
+handlers on the caller's reservation (the lifter's lwarx/ldarx and
+stwcx./stdcx. primitives, so other PPU threads and SPU GETLLAR/PUTLLC see the
+same atomicity as with the lifted libsre):
+
+- Initialize (libsre 0x02017134, 0x0200209C, 0x02001F6C): its argument checks,
+  the +0x2C init state, the SDK-version checks and the bytes it writes.
+- PushBody (libsre 0x020171B8): the ANY2ANY reserve (0x020030B8) and commit
+  (0x020035C8) arithmetic, the out-of-order commit mask, the wake-ups of the
+  pop and push waiters from their id rings, one per element made visible, and
+  the dispatch (0x0200439C) through cellSpursSendSignal, with a SPURS-owned
+  queue's (spurs | 1, wid << 8 | task) resolved by patch 1001's table.
+
+Written from a reading of the firmware 4.93 libsre PPU code (Ghidra and the
+disassembly); RPCS3 was not used. After Project Pyrrhus patch 6003 (MIT),
+which did the same for a direction-2 queue: the waiter rings, the commit mask
+and the approach.
+
+One difference on purpose: a blocking push into a full queue (or one with
+push waiters ahead) does not register a PPU waiter and sleep on the queue's
+lv2 event queue, which only cellSpursLFQueueAttachLv2EventQueue creates and
+which this runtime answers without creating; it retries until there is room.
+A direction-2 push is not written (logged; libsre's answer for directions 0
+and 1, CELL_SYNC_ERROR_PERM, is). The old initializer in cellSpurs.c stays
+for the generated NID table; the context handlers take the NIDs first.
+PS3_LFQ_TRACE=1 (default off) logs every push.
+
+Checked against libsre itself: 42,000 random lines and arguments run through
+both (Killzone HD's port, a local harness with the player's libsre) gave the
+same result, the same 128-byte line, the same element buffer and the same
+wake-ups in every case. tools/tests/test_lfqueue.sh replays 103 of those
+cases, the game's own init, the blocking push and the signal routing.
+Upstream candidate.
+---
+ libs/spurs/cellSpursLFQueue.c | 386 ++++++++++++++++++++++++++++++++++
+ runtime/ppu/ppu_sysprx.cpp    |   3 +
+ 2 files changed, 389 insertions(+)
+ create mode 100644 libs/spurs/cellSpursLFQueue.c
+
+diff --git a/libs/spurs/cellSpursLFQueue.c b/libs/spurs/cellSpursLFQueue.c
+new file mode 100644
+index 0000000..727ac12
+--- /dev/null
++++ b/libs/spurs/cellSpursLFQueue.c
+@@ -0,0 +1,386 @@
++/* cellSpursLFQueue.c -- the PPU side of the SPURS lock-free queue (CellSpursLFQueue: one 128-byte line in guest
++ * memory whose consumer, and possibly other producers, are SPU tasks), without the firmware's libsre.
++ *
++ * _cellSpursLFQueueInitialize and _cellSpursLFQueuePushBody, for an ANY2ANY queue (direction 3). Written for this
++ * runtime from a reading of the firmware 4.93 libsre PPU code (addresses at its load base 0x02000000 below): the
++ * checks, the bytes the initializer writes, the reserve and commit arithmetic and the order of the wake-ups are its
++ * own, so the line holds the same values after each call as it does with libsre. RPCS3 was not used. After Project
++ * Pyrrhus patch 6003 (MIT), which did the same for a direction-2 queue (Killzone 2) and showed the approach: the
++ * signal ring of waiter ids, the out-of-order commit mask and the line lock.
++ *
++ * Line layout (big-endian), as the ANY2ANY code uses it:
++ *   +0x00 u64 Q: u16 pops committed | u16 pop commit mask | u16 pop-waiter pack | u16 pops reserved
++ *   +0x08 u64 P: u16 pushes committed | u16 push commit mask | u16 push-waiter pack | u16 pushes reserved
++ *   +0x10 u32 size  +0x14 u32 depth  +0x18 u64 buffer (bit 0 set for ANY2ANY)  +0x20 u8,u8 0xFF 0xFF (ANY2ANY)
++ *   +0x24 u32 direction  +0x28 u32 event port of a PPU pop waiter  +0x2C u32 init state (1 running, 2 done)
++ *   +0x30 u16 port high  +0x32 u16[15] ids of the pop waiters  +0x50 u16 port low  +0x52 u16[15] ids of the push
++ *   waiters  +0x70 u64 eaSignal (the owner: a taskset, or a SPURS instance | 1)  +0x7C u32 event queue
++ * Indices run modulo 2 * depth; the element slot is the index modulo depth. A waiter pack holds three 5-bit counters
++ * modulo 30: bits 10-14 waiters woken, 5-9 wake-ups taken, 0-4 waiters registered; a waiter's id sits in the array
++ * at its counter modulo 15. Ids are (workload id << 8) | task id; 0xFFFF is a waiting PPU thread.
++ *
++ * What differs from libsre, on purpose: a blocking push into a queue that is full (or that has push waiters ahead of
++ * it) does not register a PPU waiter and sleep on the queue's lv2 event queue; it releases the line and tries again.
++ * That event queue only exists after cellSpursLFQueueAttachLv2EventQueue, which this runtime answers without
++ * creating one, so the libsre path had nothing to wait on either. A PPU producer therefore never writes 0xFFFF into
++ * the push-waiter ids; if an SPU writes a waiting PPU's 0xFFFF anyway, the wake-up is logged and dropped.
++ *
++ * PS3_LFQ_TRACE=1 (default off) logs every push. */
++#include "cellSpurs.h"
++#include "../../runtime/ppu/ppu_context.h"
++#include "../../runtime/ppu/ppu_memory.h"
++#include "../../runtime/platform/win32_compat.h"
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++extern PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++extern uint32_t g_ps3_sdk_version;
++void     ppu_resv_snap(uint64_t ea);
++int      ppu_stwcx32(uint64_t ea, uint32_t expected, uint32_t val);
++int      ppu_stdcx64(uint64_t ea, uint64_t expected, uint64_t val);
++void     ps3_hle_register_ctx(uint32_t nid, const char* name, void (*fn)(ppu_context*));
++uint32_t cellSpursHleTasksetByWid(uint32_t spurs_ea, uint32_t wid);
++s32      _cellSpursSendSignal(void* taskset, u32 taskId);
++
++#define LFQ_AGAIN  0x80410101u   /* the libsre-internal codes; the entry points return (code & 0xFF) | 0x80410900 */
++#define LFQ_INVAL  0x80410102u
++#define LFQ_PERM   0x80410109u
++#define LFQ_STAT   0x8041010Fu
++#define LFQ_ALIGN  0x80410110u
++#define LFQ_NULL   0x80410111u
++
++static int lfq_trace(void)
++{
++    static int t = -1;
++    if (t < 0) { const char* e = getenv("PS3_LFQ_TRACE"); t = (e && *e && *e != '0') ? 1 : 0; }
++    return t;
++}
++static uint32_t lfq_ret(uint32_t r) { return (int32_t)r < 0 ? (r & 0xFFu) | 0x80410900u : r; }
++
++/* The guest's lwarx/ldarx and stwcx./stdcx., as the lifter emits them, on the calling thread's context: the same
++ * reservation the libsre code had, so other PPU threads and SPU GETLLAR/PUTLLC see the same atomicity. */
++static uint64_t lfq_ldarx(ppu_context* c, uint32_t ea)
++{
++    ppu_resv_snap(ea);
++    uint64_t v = vm_read64(ea);
++    c->reserve_addr = ea; c->reserve_value = v;
++    return v;
++}
++static int lfq_stdcx(ppu_context* c, uint32_t ea, uint64_t v)
++{
++    int ok = c->reserve_addr == ea && ppu_stdcx64(ea, c->reserve_value, v);
++    c->reserve_addr = 0;
++    return ok;
++}
++static uint32_t lfq_lwarx(ppu_context* c, uint32_t ea)
++{
++    ppu_resv_snap(ea);
++    uint32_t v = vm_read32(ea);
++    c->reserve_addr = ea; c->reserve_value = v;
++    return v;
++}
++static int lfq_stwcx(ppu_context* c, uint32_t ea, uint32_t v)
++{
++    int ok = c->reserve_addr == ea && ppu_stwcx32(ea, (uint32_t)c->reserve_value, v);
++    c->reserve_addr = 0;
++    return ok;
++}
++
++static uint32_t mod30(int32_t d) { return (uint32_t)(d < 0 ? d + 30 : d); }
++/* (x - y) mod 2*depth, the way libsre compares: x may come from a signed halfword (extsh). */
++static int32_t ring_diff(int32_t x, int32_t y, int32_t depth) { return x < y ? x - y + 2 * depth : x - y; }
++static uint16_t f16(uint64_t w, int i) { return (uint16_t)(w >> (48 - 16 * i)); }   /* halfword i of a u64 */
++static uint64_t set16(uint64_t w, int i, uint32_t v)
++{
++    const int sh = 48 - 16 * i;
++    return (w & ~(0xFFFFull << sh)) | ((uint64_t)(v & 0xFFFFu) << sh);
++}
++
++/* ---- _cellSpursLFQueueInitialize ------------------------------------------------------------------------------ */
++
++/* libsre 0x02001F6C: the line for a fresh queue. */
++static void lfq_write_line(uint32_t q, uint32_t buf, uint32_t size, uint32_t depth, uint32_t dir, uint32_t owner)
++{
++    static const unsigned zero16[] = { 0x00, 0x02, 0x06, 0x08, 0x0A, 0x0E };
++    for (unsigned i = 0; i < sizeof zero16 / sizeof zero16[0]; i++) vm_write16(q + zero16[i], 0);
++    vm_write32(q + 0x10, size);
++    vm_write32(q + 0x14, depth);
++    vm_write64(q + 0x18, buf);
++    vm_write32(q + 0x24, dir);
++    for (unsigned i = 0; i < 16; i++) { vm_write16(q + 0x30 + 2 * i, 0); vm_write16(q + 0x50 + 2 * i, 0); }
++    vm_write64(q + 0x70, owner);
++    if (dir != 3) {
++        vm_write32(q + 0x28, 0);
++        vm_write64(q + 0x78, 0);
++        vm_write32(q + 0x20, 0xFFFFFFFFu);
++        return;
++    }
++    vm_write64(q + 0x18, (uint64_t)buf | 1);
++    vm_write16(q + 0x04, 0);
++    vm_write8(q + 0x20, 0xFF);
++    vm_write8(q + 0x21, 0xFF);
++    vm_write16(q + 0x0C, 0);
++    vm_write32(q + 0x28, 0xFFFFFFFFu);
++    vm_write16(q + 0x30, 0xFFFF);
++    vm_write16(q + 0x50, 0xFFFF);
++    vm_write32(q + 0x78, 0);
++    vm_write32(q + 0x7C, 0);
++}
++
++/* libsre 0x0200209C: argument checks, then the init state at +0x2C (0 -> 1 -> 2) so one caller builds the line. */
++static uint32_t lfq_init(ppu_context* c, uint32_t q, uint32_t buf, uint32_t size, uint32_t depth, uint32_t dir,
++                         uint32_t owner)
++{
++    if (!q) return LFQ_NULL;
++    if (size) {
++        if (!buf) return LFQ_NULL;
++        if (size > 0x4000 || (size & 0xF)) return LFQ_INVAL;
++    }
++    if (!depth || (depth & 0xFFFF8000u) || dir > 3) return LFQ_INVAL;
++    if ((q & 0x7F) || (buf & 0xF)) return LFQ_ALIGN;
++
++    /* sys_process_get_sdk_version, as libsre asks it (the syscall handler's own override included). */
++    const char* ov = getenv("PS3_SDK_VERSION");
++    uint32_t sdk = ov && *ov ? (uint32_t)strtoul(ov, NULL, 0) : g_ps3_sdk_version;
++    if (sdk == 0xFFFFFFFFu) sdk = 0x00493000;
++    const int checked = sdk > 0x0017FFFF;
++
++    uint32_t state;
++    for (;;) {
++        state = lfq_lwarx(c, q + 0x2C);
++        uint32_t next = state;
++        if (state == 0) {
++            if (checked)
++                for (unsigned i = 0; i < 16; i++)
++                    if (vm_read64(q + 8 * i)) { c->reserve_addr = 0; return LFQ_STAT; }
++            next = 1;
++        } else if (checked && state != 2) {
++            c->reserve_addr = 0;
++            return LFQ_STAT;
++        }
++        if (lfq_stwcx(c, q + 0x2C, next)) { state = next; break; }
++    }
++    if (state == 2) {   /* already built: the arguments must be the ones it was built with */
++        if (vm_read32(q + 0x10) != size || vm_read32(q + 0x14) != depth || vm_read64(q + 0x18) != buf)
++            return LFQ_INVAL;
++        if (checked && (vm_read64(q + 0x70) != owner || vm_read32(q + 0x24) != dir)) return LFQ_INVAL;
++        return 0;
++    }
++    lfq_write_line(q, buf, size, depth, dir, owner);
++    vm_write32(q + 0x2C, 2);
++    return 0;
++}
++
++uint32_t cellSpursLFQueueHleInitialize(ppu_context* c, uint32_t owner, uint32_t q, uint32_t buf, uint32_t size,
++                                       uint32_t depth, uint32_t dir)
++{
++    /* libsre 0x02017134: an aligned owner is a taskset, and one past the queue limit is refused. */
++    if (!(owner & 0xF) && vm_read32(owner + 0x74) > 31) return 0x80410902u;
++    return lfq_ret(lfq_init(c, q, buf, size, depth, dir, owner));
++}
++
++/* ---- _cellSpursLFQueuePushBody --------------------------------------------------------------------------------- */
++
++/* The wake-up the push hands to fpSendSignal (libsre's own cellSpursSendSignal). A queue owned by a SPURS instance
++ * rather than a taskset signals (spurs | 1, wid << 8 | task); libsre resolves the wid through workload data this HLE
++ * does not keep, so the HLE's taskset table answers. Settable for tests. */
++static int32_t lfq_send_signal(uint32_t ea, uint32_t id)
++{
++    if ((ea & 0xF) == 1) {
++        const uint32_t spurs = ea & ~0xFu, wid = id >> 8;
++        ea = cellSpursHleTasksetByWid(spurs, wid);
++        if (!ea) {
++            fprintf(stderr, "[lfq] no taskset for spurs 0x%08X wid %u (task %u)\n", spurs, wid, id & 0xFF);
++            return (int32_t)0x80410905;   /* CELL_SPURS_TASK_ERROR_SRCH */
++        }
++        id &= 0xFF;
++    }
++    return _cellSpursSendSignal((void*)(uintptr_t)ea, id);
++}
++int32_t (*cellSpursLFQueueHleSignal)(uint32_t ea, uint32_t id) = lfq_send_signal;
++
++/* libsre 0x020030B8 (ANY2ANY, with useEventQueue = 1 as the push passes it): reserve the next push index. Returns 0
++ * and the index, LFQ_AGAIN when the queue cannot take the push now and the caller may not wait, or 1 when libsre would
++ * register this thread as a waiter (see the top of the file: the caller tries again instead). */
++static uint32_t lfq_reserve(ppu_context* c, uint32_t q, uint32_t is_blocking, int32_t* pos)
++{
++    const int32_t depth = (int32_t)vm_read32(q + 0x14);
++    for (;;) {
++        uint64_t P = lfq_ldarx(c, q + 8);
++        const uint64_t Q = vm_read64(q);
++        const int32_t r4 = (int16_t)f16(P, 3);
++        const int32_t occ = ring_diff(r4, f16(Q, 0), depth);         /* reserved pushes not yet popped */
++        const int32_t inflight = ring_diff(r4, f16(P, 0), depth);    /* reserved pushes not yet committed */
++        const uint32_t pk = f16(P, 2), pc = pk & 31, pb = (pk >> 5) & 31, pa = (pk >> 10) & 31;
++        const uint32_t waiting = mod30((int32_t)pc - (int32_t)pa), woken = mod30((int32_t)pa - (int32_t)pb);
++        int blocked = occ + (int32_t)woken >= depth || inflight + (int32_t)woken > 15 || waiting != 0;
++        const int ring_full = waiting == 15 || woken == 15;
++        *pos = r4;
++        if (!blocked) {
++            const int32_t next = r4 + 1 < 2 * depth ? r4 + 1 : 0;
++            if (lfq_stdcx(c, q + 8, set16(P, 3, (uint32_t)next))) return 0;
++            continue;
++        }
++        if (ring_full || !is_blocking) {   /* libsre commits the line unchanged, then answers AGAIN */
++            if (lfq_stdcx(c, q + 8, P)) return LFQ_AGAIN;
++            continue;
++        }
++        c->reserve_addr = 0;
++        return 1;
++    }
++}
++
++/* libsre 0x0200439C: hand out the wake-ups the commit collected. */
++static uint32_t lfq_dispatch(uint32_t q, const uint32_t* ids, uint32_t n)
++{
++    for (uint32_t i = 0; i < n; i++) {
++        const uint32_t id = ids[i];
++        if ((id & 0xFF00) == 0xFF00) {   /* a waiting PPU thread: libsre sends to its event port */
++            const uint32_t port = (id & 0xFF) == 1 ? vm_read32(q + 0x28)
++                                                   : ((uint32_t)vm_read16(q + 0x30) << 16) | vm_read16(q + 0x50);
++            if (port == 0xFFFFFFFFu) return LFQ_PERM;
++            static int warned;
++            if (!warned++) fprintf(stderr, "[lfq] q=0x%08X: a PPU waiter's event port 0x%08X, not sent\n", q, port);
++            continue;
++        }
++        const int32_t r = cellSpursLFQueueHleSignal(vm_read32(q + 0x74), id);
++        if (r) return (uint32_t)r;
++    }
++    return 0;
++}
++
++/* libsre 0x020035C8 (ANY2ANY): commit the push at `pos` and wake the waiters the commit lets through, one per element
++ * that becomes visible: the pop waiters (SPU consumers waiting for data) first, then the push waiters. A wake-up
++ * moves the pop-waiter pack in Q, so then Q is committed first and P after it, with P unchanged since it was read. */
++static uint32_t lfq_complete(ppu_context* c, uint32_t q, int32_t pos)
++{
++    const int32_t depth = (int32_t)vm_read32(q + 0x14);
++    uint32_t ids[64], total = 0;
++    int mode_q = 0;   /* libsre's second form: the reservation on Q */
++    for (;;) {
++        uint64_t P, Q;
++        if (!mode_q) { P = lfq_ldarx(c, q + 8); Q = vm_read64(q); }
++        else         { Q = lfq_ldarx(c, q);     P = vm_read64(q + 8); }
++        const uint64_t P_read = P;
++        const int32_t P0 = f16(P, 0), Q0 = f16(Q, 0);
++        const int32_t off = ring_diff(pos, P0, depth);
++        uint32_t qpk = f16(Q, 2), ppk = f16(P, 2);
++        const uint32_t qa = (qpk >> 10) & 31, qb = (qpk >> 5) & 31, pa = (ppk >> 10) & 31, pb = (ppk >> 5) & 31;
++        int32_t q_busy = ring_diff((int16_t)f16(Q, 3), Q0, depth) + (int32_t)mod30((int32_t)qa - (int32_t)qb);
++        int32_t p_busy = ring_diff((int16_t)f16(P, 3), Q0, depth) + (int32_t)mod30((int32_t)pa - (int32_t)pb);
++        const uint32_t sh = (uint32_t)(15 - off) & 63;
++        uint32_t mask = f16(P, 1) | (sh < 32 ? 1u << sh : 0);
++        uint32_t run = 0;
++        while (run < 16 && (mask & (0x8000u >> run))) run++;
++        int32_t p0 = P0 + (int32_t)run;
++        if (p0 >= 2 * depth) p0 -= 2 * depth;
++        int32_t q_wait = q_busy <= 15 ? (int32_t)mod30((int32_t)(qpk & 31) - (int32_t)qa) : 0;
++        int32_t p_wait = depth > p_busy ? (int32_t)mod30((int32_t)(ppk & 31) - (int32_t)pa) : 0;
++        P = set16(set16(P, 0, (uint32_t)p0), 1, (mask << run) & 0xFFFF);
++        uint32_t n = 0;
++        int restart = 0;
++        for (int32_t k = (int32_t)run - 1; k >= 0 && !restart; k--) {
++            if (!((int32_t)total > k) && q_wait && q_busy <= 15) {
++                const uint32_t a = (qpk >> 10) & 31;
++                const uint32_t id = vm_read16(q + 0x32 + 2 * (a > 14 ? a - 15 : a));
++                if (total + n < 64) ids[total + n] = id == 0xFFFF ? 0xFF01 : id;
++                if (!mode_q) { mode_q = 1; restart = 1; break; }
++                qpk = (qpk & ~(31u << 10)) | (a == 29 ? 0 : (a + 1) << 10);
++                n++; q_busy++; q_wait--;
++            }
++            if (p_wait && p_busy < depth) {
++                const uint32_t a = (ppk >> 10) & 31;
++                const uint32_t id = vm_read16(q + 0x52 + 2 * (a > 14 ? a - 15 : a));
++                if (total + n < 64) ids[total + n] = id == 0xFFFF ? 0xFF02 : id;
++                ppk = (ppk & ~(31u << 10)) | (a == 29 ? 0 : (a + 1) << 10);
++                n++; p_busy++; p_wait--;
++            }
++        }
++        if (restart) { c->reserve_addr = 0; continue; }
++        P = set16(P, 2, ppk);
++        if (!mode_q) {
++            if (!lfq_stdcx(c, q + 8, P)) continue;
++            total += n;
++            break;
++        }
++        /* libsre retries a failed Q commit through its P load (one reservation granule on the Cell); here the retry
++         * reserves Q again, which is what that granule gave it. */
++        if (!lfq_stdcx(c, q, set16(Q, 2, qpk))) continue;
++        total += n;
++        int again = 0;
++        for (;;) {
++            const uint64_t now = lfq_ldarx(c, q + 8);
++            if (now != P_read || vm_read16(q + 4) != qpk) { c->reserve_addr = 0; again = 1; break; }
++            if (lfq_stdcx(c, q + 8, P)) break;
++        }
++        if (!again) break;
++    }
++    if (total > 64) { fprintf(stderr, "[lfq] q=0x%08X: %u wake-ups, 64 sent\n", q, total); total = 64; }
++    return lfq_dispatch(q, ids, total);
++}
++
++uint32_t cellSpursLFQueueHlePushBody(ppu_context* c, uint32_t q, uint32_t data, uint32_t is_blocking)
++{
++    if (q & 0x7F) return 0x80410910u;
++    if (!q || !data) return 0x80410911u;
++    const uint32_t dir = vm_read32(q + 0x24);
++    if (dir != 3) {
++        /* libsre's PPU2SPU push (0x020024F4) is not written here; the direction checks it starts with are. */
++        if (dir == 2) {
++            static int warned;
++            if (!warned++) fprintf(stderr, "[lfq] q=0x%08X: a direction-2 push is not implemented\n", q);
++        }
++        return lfq_ret(LFQ_PERM);
++    }
++    int32_t pos;
++    uint32_t r;
++    for (unsigned spins = 0; (r = lfq_reserve(c, q, is_blocking, &pos)) == 1; spins++) {
++        if (lfq_trace() && (spins == 1000 || spins % 30000 == 29999))
++            fprintf(stderr, "[lfq] push q=0x%08X waiting for room, %u tries\n", q, spins);
++        Sleep(spins < 64 ? 0 : 1);
++    }
++    if (r) return lfq_ret(r);
++    const int32_t depth = (int32_t)vm_read32(q + 0x14);
++    const uint32_t size = vm_read32(q + 0x10);
++    const uint32_t slot = (uint32_t)(pos >= depth ? pos - depth : pos);
++    const uint32_t dst = ((uint32_t)vm_read64(q + 0x18) & ~1u) + size * slot;
++    for (uint32_t o = 0; o < size;) {   /* coherent, a 128-byte line at a time */
++        const uint32_t n = 128 - ((dst + o) & 127) < size - o ? 128 - ((dst + o) & 127) : size - o;
++        VM_WRITE_COH(dst + o, vm_ptr8(data + o), n);
++        o += n;
++    }
++    r = lfq_complete(c, q, pos);
++    if (lfq_trace())
++        fprintf(stderr, "[lfq] push q=0x%08X pos=%d slot=0x%08X -> 0x%08X line %016llX %016llX\n", q, pos, dst, r,
++                (unsigned long long)vm_read64(q), (unsigned long long)vm_read64(q + 8));
++    if (r == 0x80410902u || r == 0x8041090Fu) return 0x80410914u;
++    return lfq_ret(r);
++}
++
++/* ---- the imports ------------------------------------------------------------------------------------------------ */
++
++/* Both take the calling thread's context: their store-conditionals need its reservation. */
++static void hle_lfq_init(ppu_context* ctx)
++{
++    ppu_context* const active = g_active_ctx;
++    g_active_ctx = ctx;
++    ctx->gpr[3] = (uint64_t)(int64_t)(int32_t)cellSpursLFQueueHleInitialize(
++        ctx, (uint32_t)ctx->gpr[3], (uint32_t)ctx->gpr[4], (uint32_t)ctx->gpr[5], (uint32_t)ctx->gpr[6],
++        (uint32_t)ctx->gpr[7], (uint32_t)ctx->gpr[8]);
++    g_active_ctx = active;
++}
++static void hle_lfq_push(ppu_context* ctx)
++{
++    ppu_context* const active = g_active_ctx;
++    g_active_ctx = ctx;
++    ctx->gpr[3] = (uint64_t)(int64_t)(int32_t)cellSpursLFQueueHlePushBody(
++        ctx, (uint32_t)ctx->gpr[3], (uint32_t)ctx->gpr[4], (uint32_t)ctx->gpr[5]);
++    g_active_ctx = active;
++}
++
++void cellSpursLFQueue_register_ctx_handlers(void)
++{
++    ps3_hle_register_ctx(0x011EE38Bu, "_cellSpursLFQueueInitialize", hle_lfq_init);
++    ps3_hle_register_ctx(0x8A85674Du, "_cellSpursLFQueuePushBody", hle_lfq_push);
++}
+diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
+index 50fccd5..d67e12f 100644
+--- a/runtime/ppu/ppu_sysprx.cpp
++++ b/runtime/ppu/ppu_sysprx.cpp
+@@ -635,6 +635,7 @@ extern "C" void np_score_register_ctx(void);   /* libs/network/sceNpScore.c */
+ extern "C" void cellSaveData_register_ctx_handlers(void); /* libs/system/cellSaveData.c */
+ extern "C" void avconf_register_ctx(void);     /* libs/misc/cellAvconfExt.c */
+ extern "C" void cellAudio_register_ctx_handlers(void);    /* libs/audio/cellAudio.c */
++extern "C" void cellSpursLFQueue_register_ctx_handlers(void); /* libs/spurs/cellSpursLFQueue.c */
+ static uint32_t g_net_errno_ea = 0;
+ static void hle_net_errno_loc(ppu_context* ctx)
+ {
+@@ -973,6 +974,8 @@ extern "C" void ppu_sysprx_register(void)
+     avconf_register_ctx();
+     /* cellAudioAddData/Add2chData/Add6chData take a float volume. */
+     cellAudio_register_ctx_handlers();
++    /* _cellSpursLFQueueInitialize/PushBody use the caller's reservation (lwarx/stwcx.). */
++    cellSpursLFQueue_register_ctx_handlers();
+     /* sys_net offline model (NIDs from PSL1GHT libnet exports). Covers every
+      * sys_net NID LBP imports so none fall to the unresolved-NID default. */
+     ps3_hle_register_ctx(0x6005CDE1u, "_sys_net_errno_loc",     hle_net_errno_loc);

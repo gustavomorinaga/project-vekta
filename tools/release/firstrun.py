@@ -2,10 +2,10 @@
 """The first run: check the player's own files, then patch, lift and build the port on their machine, as one command
 with one progress bar, and remember where the files are.
 
-    tools/release/firstrun.py [--game DIR] [--eboot FILE] [--psarc FILE] [--libsre FILE] [--dev-flash DIR]
+    tools/release/firstrun.py [--game DIR] [--eboot FILE] [--psarc FILE] [--dev-flash DIR]
                               [--dlss accept|decline] [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE]
                               [--bar] [--dry-run]
-    tools/release/firstrun.py --rpcs3 [DIR] [other options]   (the game and the firmware from the player's RPCS3)
+    tools/release/firstrun.py --rpcs3 [DIR] [other options]   (the game from the player's RPCS3)
     tools/release/firstrun.py --interactive [same options: they become the answers it offers]
     tools/release/firstrun.py --remove-desktop
     tools/release/firstrun.py --save-paths [--game DIR] [--eboot FILE] ...   (the Windows setup program)
@@ -20,22 +20,23 @@ describes. On Windows the same steps build KZ1HD.exe with the pinned toolchain (
 is no venv there (ps3recomp's lifters need only the standard library, CMake and Ninja come with the toolchain).
 
 The paths: each one from its option, else the environment (the KZ_* variables of tools/env.sh), else the last run's
-work/paths.env, else the defaults under Game/ (PS3_DEV_FLASH: RPCS3's dev_flash). Once the check passes they are
+work/paths.env, else the defaults under Game/. Once the check passes they are
 written to work/paths.env, which tools/env.sh reads, so tools/play.sh and the other scripts find them without
 exports (a variable set in the environment still wins).
 
---rpcs3 [DIR] (tools/release/rpcs3_import.py): the installed game folder, its data_ps3.psarc.edat and dev_flash
-are taken from the player's RPCS3 (DIR, else the usual places), and that RPCS3 decrypts copies of EBOOT.BIN and
-libsre.sprx into work/prep (checked by SHA-256), and of the .edat too for a PlayStation Store copy (bound to the
-buyer's licence, which the port cannot open); those paths are then saved like any others. --interactive offers it
+--rpcs3 [DIR] (tools/release/rpcs3_import.py): the installed game folder and its data_ps3.psarc.edat
+are taken from the player's RPCS3 (DIR, else the usual places), and that RPCS3 decrypts a copy of EBOOT.BIN into
+work/prep (checked by SHA-256), and of the .edat too for a PlayStation Store copy (bound to the buyer's licence, which
+the port cannot open); those paths are then saved like any others. --interactive offers it
 when an RPCS3 with the game is found and no paths were saved before.
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
-  check     tools/check-game-files.py (every run; a missing or different required file stops here)
+  check     tools/check-game-files.py (every run; a missing or different required file stops here, and so does a CPU
+            below the x86-64 level the build is made for, which ends --interactive without asking again)
   venv      work/venv with CMake, Ninja and ps3recomp's Python packages (pip: the one step that downloads; Linux
             with the system's compilers only: not on Windows nor with KZ_LINUX_TOOLCHAIN=pinned)
   patch     work/ps3recomp-patched: ps3recomp at its pinned commit with port/patches (a release folder ships it)
-  lift      work/lift and work/fw: the game's and the firmware's code as C++ (kzbuild.py lift)
+  lift      work/lift: the game's code as C++ (kzbuild.py lift)
   vfs       work/vfs: the folder the game runs from (kzbuild.py vfs; saves and settings there are kept)
   dlss      only when the player accepted NVIDIA's DLSS SDK licence (--dlss accept, or a yes to --interactive's
             question; the choice is kept in work/dlss-choice): the DLSS SDK files fetched from NVIDIA's repository and
@@ -99,22 +100,10 @@ INPUTS = [
     ("eboot", "KZ_EBOOT", "the decrypted EBOOT (EBOOT.elf)", ("Game", "EBOOT.elf")),
     ("psarc", "KZ_PSARC", "the decrypted data archive (data_ps3.psarc; optional: without it the game folder's own "
      "USRDIR/data_ps3.psarc.edat is read)", ("Game", "data_ps3.psarc")),
-    ("libsre", "KZ_LIBSRE", "the decrypted libsre from PS3 firmware 4.93 (libsre.prx)", ("Game", "libsre.prx")),
-    ("dev_flash", "PS3_DEV_FLASH", "RPCS3's dev_flash folder (for the MP3 decoder; optional)" +
-     (": in RPCS3's own folder, beside rpcs3.exe" if os.name == "nt" else ""), None),
 ]
 # What check-game-files.py names each input in its MISSING / WRONG / DIFFERENT lines.
 INPUT_OF = {"PARAM.SFO": "game", "TROPHY.TRP": "game", "data_ps3.psarc.edat": "game", "EBOOT.elf": "eboot",
-            "data_ps3.psarc": "psarc", "firmware": "dev_flash",
-            "libsre.prx": "libsre", "flashMP3.pic": "dev_flash"}
-
-
-def default_dev_flash(root=ROOT, windows=os.name == "nt"):
-    """tools/kzbuild.py's default_dev_flash: RPCS3's folder on Linux; on Windows, where RPCS3 keeps dev_flash beside
-    rpcs3.exe (anywhere), Game/dev_flash in this tree, as for the other files."""
-    if windows:
-        return os.path.join(root, "Game", "dev_flash")
-    return os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
+            "data_ps3.psarc": "psarc"}
 
 
 def _h16(text):
@@ -164,8 +153,9 @@ class Ctx:
         self.work = self.work or os.environ.get("KZ_WORK") or os.path.join(self.root, "work")
 
     def dlss_on(self):
-        """DLSS is built in only when the player accepted its licence."""
-        return self.dlss == "accept"
+        """DLSS is built in only when the player accepted its licence, and never with the pinned Linux toolchain
+        (dlss_unavailable)."""
+        return self.dlss == "accept" and not dlss_unavailable()
 
     def w(self, *rel):
         return os.path.join(self.work, *rel)
@@ -257,11 +247,13 @@ def cmd_patch(c):
 
 
 def play_command(root):
-    """What starts the game from this tree: play.cmd in a Windows release folder, else tools/play.sh."""
+    """What starts the game from this tree: the release folder's launcher (Project Vekta.exe, project-vekta), else
+    tools/release/launch.py on Windows and tools/play.sh elsewhere."""
     if os.name == "nt":
-        cmd = os.path.join(root, "play.cmd")
-        return cmd if os.path.isfile(cmd) else f"python {os.path.join(root, 'tools', 'release', 'launch.py')}"
-    return os.path.join(root, "tools", "play.sh")
+        exe = os.path.join(root, "Project Vekta.exe")
+        return exe if os.path.isfile(exe) else f"python {os.path.join(root, 'tools', 'release', 'launch.py')}"
+    entry = os.path.join(root, "project-vekta")
+    return entry if os.path.isfile(entry) else os.path.join(root, "tools", "play.sh")
 
 
 def cmd_venv(c):
@@ -272,6 +264,18 @@ def cmd_venv(c):
     cmds = [] if os.path.isfile(os.path.join(venv, "bin", "python")) else [[c.python, "-m", "venv", venv]]
     return cmds + [[os.path.join(venv, "bin", "pip"), "install", "--disable-pip-version-check", "-q", "cmake",
                     "ninja", "-r", os.path.join(c.root, "third_party", "ps3recomp", "requirements.txt")]]
+
+
+DLSS_LINUX_FOLDER = ("NVIDIA DLSS is not available in the Linux release folder (NVIDIA's Linux library is built "
+                     "for GCC's C++ library, the folder's pinned toolchain uses LLVM's): this build uses AMD FSR 3.1. "
+                     "For DLSS on Linux, build with your system's compilers (tools/install.sh, docs/BUILDING.md).")
+
+
+def dlss_unavailable(environ=None):
+    """True for the Linux release folder's pinned toolchain (KZ_LINUX_TOOLCHAIN=pinned): Zig links libc++, and
+    libnvsdk_ngx.a needs libstdc++, so KZ1HD would not link with DLSS. Windows and the system's compilers are fine."""
+    environ = os.environ if environ is None else environ
+    return os.name != "nt" and environ.get("KZ_LINUX_TOOLCHAIN") == "pinned"
 
 
 def cmd_dlss(c):
@@ -458,6 +462,13 @@ def jobs_for(avail, cores=None):
     return max(1, min(cores, 16, int((avail - 3 * GIB) / GIB)))
 
 
+def env_jobs(environ=None):
+    """KZ_JOBS from the environment (a whole number, 1 or more), else None: a player whose PC cannot take every core
+    compiling (heat, power supply) caps the jobs for any way the build is started, a launcher's included."""
+    v = (os.environ if environ is None else environ).get("KZ_JOBS", "").strip()
+    return int(v) if v.isdigit() and int(v) >= 1 else None
+
+
 LOW_MEMORY = 8 * GIB
 
 
@@ -592,9 +603,7 @@ def resolve_paths(root, work, given):
     saved = read_paths(work)
     out = {}
     for name, var, _, default in INPUTS:
-        p = given.get(name) or os.environ.get(var) or saved.get(name)
-        if not p:
-            p = os.path.join(root, *default) if default else default_dev_flash(root)
+        p = given.get(name) or os.environ.get(var) or saved.get(name) or os.path.join(root, *default)
         out[name] = os.path.abspath(os.path.expanduser(p))
     return out
 
@@ -630,6 +639,7 @@ class Runner:
         self.bar = Bar(out) if bar else None
         self.quiet = quiet   # the steps' own lines only: no PROGRESS / RESULT lines on the console
         self.reasons, self.fail_inputs = [], set()
+        self.cpu_failed = False   # the check's CPU line failed: no file the player gives fixes it
         self.t0 = time.monotonic()
         tot = sum(s.weight for s in steps) or 1.0
         self.frac = [s.weight / tot for s in steps]
@@ -758,6 +768,7 @@ class Runner:
                 label = ln.split()[1].rstrip(":")   # "WRONG    EBOOT.elf: <path>: ..." names it with a colon
                 if label in INPUT_OF:
                     self.fail_inputs.add(INPUT_OF[label])
+                self.cpu_failed |= label == "CPU"
             if fails:
                 return [" ".join(ln.split()) for ln in fails]
         lines = [ln.strip() for ln in out if ln.strip()]
@@ -804,7 +815,8 @@ def desktop_path():
 
 
 def desktop_entry(root):
-    """A freedesktop.org entry that starts tools/play.sh from this tree, with assets/icon.svg as its icon."""
+    """A freedesktop.org entry that starts the game from this tree (play_command: project-vekta in a release folder,
+    else tools/play.sh), with assets/icon.svg as its icon."""
     q = lambda p: '"' + re.sub(r'([\\"`$])', r"\\\\\1", p) + '"'  # noqa: E731 (Exec quoting, then the escape layer)
     return "\n".join([
         "[Desktop Entry]",
@@ -813,7 +825,7 @@ def desktop_entry(root):
         "Name=Project Vekta",
         "GenericName=Killzone HD (PC port)",
         "Comment=Plays the PC port of Killzone HD built from your own game",
-        f"Exec={q(os.path.join(root, 'tools', 'play.sh'))}",
+        f"Exec={q(play_command(root))}",
         f"Path={root}",
         f"Icon={os.path.join(root, 'assets', 'icon.svg')}",
         "Terminal=false",
@@ -859,14 +871,14 @@ def use_rpcs3(c, hint=None, say=print, step=None):
     r = rpcs3_import().prepare(c.work, hint or None, log=say, step=step)
     if r["status"] != "ok":
         return [p["text"] for p in r["problems"]]
-    c.paths.update(game=r["game"], eboot=r["eboot"], libsre=r["libsre"], dev_flash=r["dev_flash"])
+    c.paths.update(game=r["game"], eboot=r["eboot"])
     if r.get("psarc"):
         c.paths["psarc"] = r["psarc"]   # a PSN copy: its .edat is bound to the licence, RPCS3 opened it
     elif c.paths.get("psarc") and not os.path.isfile(c.paths["psarc"]):
         c.paths.pop("psarc")   # a wrong saved path (a folder): the port reads the game's own .edat instead
     write_paths(c.work, c.paths)
-    made = "EBOOT.elf, libsre.prx and data_ps3.psarc" if r.get("psarc") else "EBOOT.elf and libsre.prx"
-    say(f"From RPCS3: the game in {r['game']}, the firmware in {r['dev_flash']}; {made} made by "
+    made = "EBOOT.elf and data_ps3.psarc" if r.get("psarc") else "EBOOT.elf"
+    say(f"From RPCS3: the game in {r['game']}; {made} made by "
         f"your RPCS3 in {os.path.dirname(r['eboot'])}")
     return []
 
@@ -874,13 +886,12 @@ def use_rpcs3(c, hint=None, say=print, step=None):
 INSTALL_DOC = "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
 SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, also at """ + INSTALL_DOC + """):
   The easy way, through RPCS3:
-    1. In RPCS3, install PS3 system software 4.93 (File > Install Firmware).
-    2. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc, or your PlayStation Store copy
+    1. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc, or your PlayStation Store copy
        with its licence.
-    3. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
+    2. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
        Nothing is written into the game's or RPCS3's folders.
   Or, with the decrypted files you already have: choose "I have the files ready" and give the installed game
-  folder, EBOOT.elf, libsre.prx and the firmware's dev_flash (docs/GETTING-FILES.md says what each must be)."""
+  folder and EBOOT.elf (docs/GETTING-FILES.md says what each must be)."""
 
 
 def offer_rpcs3(c, hint, ask=input, say=print):
@@ -890,15 +901,15 @@ def offer_rpcs3(c, hint, ask=input, say=print):
     def look(h):
         r = rpcs3_import().resolve(h or None)
         if r["status"] == "ok":
-            say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']} and the PS3 firmware.")
+            say(f"Found RPCS3 in {r['root']}, with Killzone HD in {r['game']}.")
         else:
             say("Your RPCS3 cannot be used:\n" + "\n".join("  " + p["text"] for p in r["problems"])
-                if r["problems"] else "No RPCS3 with Killzone HD and the PS3 firmware was found.")
+                if r["problems"] else "No RPCS3 with Killzone HD was found.")
         return r["status"] == "ok"
     found = look(hint)
     while True:
-        say("  1. Use my RPCS3 install (it decrypts copies of the game's EBOOT and libsre, and of a PlayStation Store "
-            "copy's data archive, for the port)"
+        say("  1. Use my RPCS3 install (it decrypts a copy of the game's EBOOT, and of a PlayStation Store copy's "
+            "data archive, for the port)"
             + ("" if found else ": not available")
             + "\n  2. I have the files ready\n  3. Show me how"
             + "\n  4. My RPCS3 is somewhere else: type its folder")
@@ -945,7 +956,7 @@ def ask_paths(paths, only=None, ask=input, say=print):
 
 
 # The file each file input names; a folder given for one is looked into for it (in_folder).
-FILE_OF = {"eboot": "EBOOT.elf", "psarc": "data_ps3.psarc", "libsre": "libsre.prx"}
+FILE_OF = {"eboot": "EBOOT.elf", "psarc": "data_ps3.psarc"}
 
 
 def in_folder(name, path):
@@ -964,13 +975,13 @@ def rpcs3_hint(paths):
     None."""
     m = rpcs3_import()
     root_of = getattr(m, "rpcs3_root_of", None)
-    for name in ("game", "eboot", "libsre", "dev_flash", "psarc"):
+    for name in ("game", "eboot", "psarc"):
         r = root_of(paths.get(name)) if root_of and paths.get(name) else None
         if r:
             return r
     # a game folder that RPCS3's vfs.yml keeps outside the RPCS3 folder: the RPCS3 that has that very folder
     game_of = getattr(m, "_game_of", None)
-    for name in ("game", "eboot", "libsre"):
+    for name in ("game", "eboot"):
         p = paths.get(name)
         if game_of and p and game_of(p):
             r = m.resolve(p)
@@ -1002,7 +1013,7 @@ def fetch_license(c):
 def ask_dlss(c, ask=input, say=print):
     """Once: the licence's link and text, then accept or decline; the answer is kept in work/dlss-choice."""
     path = fetch_license(c) or "(could not be downloaded; read it at the link)"
-    say(DLSS_QUESTION.format(url=DLSS_LICENSE_URL, path=path, again="run.cmd" if os.name == "nt" else "tools/install.sh"))
+    say(DLSS_QUESTION.format(url=DLSS_LICENSE_URL, path=path, again="scripts\\run.cmd" if os.name == "nt" else "scripts/run.sh"))
     got = ask("Download NVIDIA DLSS and accept the NVIDIA DLSS SDK licence? [y/N] ").strip().lower()
     c.dlss = "accept" if got in ("y", "yes") else "decline"
     write_dlss(c.work, c.dlss)
@@ -1026,6 +1037,8 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
         if rc == 0:
             break
         say("\nThe check did not pass:\n" + "\n".join("  " + x for x in r.reasons))
+        if r.cpu_failed:   # the CPU: asking for the files again or offering RPCS3 would not help
+            return 1
         # Paths from an older install (no offer above), or paths into RPCS3's own folders (the game as RPCS3
         # installed it holds only the encrypted EBOOT.BIN): offer the RPCS3 route once more, with that RPCS3
         found = rpcs3_hint(c.paths)
@@ -1041,7 +1054,7 @@ def interactive(c, a, ask=input, say=print, out=sys.stdout):
         if ask("Enter to choose the files again, q to quit: ").strip().lower() == "q":
             return 1
         only = r.fail_inputs or None
-    if not c.dlss:
+    if not c.dlss and not dlss_unavailable():
         ask_dlss(c, ask, say)
     log = new_log(c, redactor())
     say(f"Building (log: {log.path})")
@@ -1071,9 +1084,9 @@ def main(argv=None):
                          "downloads the SDK from NVIDIA and builds DLSS in; decline: no DLSS. Kept for later runs "
                          "(work/dlss-choice); --interactive asks once when it was never answered")
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
-                    help="take the game and the firmware from your RPCS3 (DIR, else the usual places); your RPCS3 "
-                         "decrypts copies of EBOOT.BIN and libsre.sprx into work/prep")
-    ap.add_argument("--jobs", type=int, help="parallel jobs (default: from free memory)")
+                    help="take the game from your RPCS3 (DIR, else the usual places); your RPCS3 "
+                         "decrypts a copy of EBOOT.BIN into work/prep")
+    ap.add_argument("--jobs", type=int, help="parallel jobs (default: KZ_JOBS, else from free memory)")
     ap.add_argument("--cleanup", action="store_true",
                     help="after a good build, remove what no later build reads (the toolchain's downloaded archives, "
                          "the Windows libraries' build folder)")
@@ -1102,10 +1115,12 @@ def main(argv=None):
     work = os.environ.get("KZ_WORK") or os.path.join(root, "work")
     avail = available_ram()
     c = Ctx(root=root, paths=resolve_paths(root, work, {n: getattr(a, n) for n, *_ in INPUTS}),
-            jobs=a.jobs or jobs_for(avail), work=work, low_priority=low_memory(avail))
+            jobs=a.jobs or env_jobs() or jobs_for(avail), work=work, low_priority=low_memory(avail))
     if a.dlss and not a.dry_run:
         write_dlss(work, a.dlss)
     c.dlss = a.dlss or read_dlss(work)
+    if c.dlss == "accept" and dlss_unavailable():
+        print(DLSS_LINUX_FOLDER)
     if not a.dry_run:
         old = heal_moved_paths(c)
         if old:

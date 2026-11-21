@@ -15,7 +15,7 @@
 
 **[Install](docs/INSTALL.md)** · **[Status](#status)** · **[Features](docs/FEATURES.md)** ·
 **[Screenshots](docs/SCREENSHOTS.md)** · **[Requirements](docs/requirements.md)** ·
-**[Getting your files](docs/GETTING-FILES.md)** · **[Building](docs/BUILDING.md)** · **[How it works](docs/HOW-IT-WORKS.md)** · **[Known issues](docs/KNOWN_ISSUES.md)** ·
+**[Getting your files](docs/GETTING-FILES.md)** · **[Building](docs/BUILDING.md)** · **[How it works](docs/HOW-IT-WORKS.md)** · **[Known issues](docs/KNOWN_ISSUES.md)** · **[Troubleshooting](docs/TROUBLESHOOTING.md)** ·
 **[Roadmap](docs/ROADMAP.md)** · **[Glossary](docs/GLOSSARY.md)** · **[AI use](#how-ai-was-used)** ·
 **[Contributing](.github/CONTRIBUTING.md)** · **[Forking](docs/FORKING.md)**
 
@@ -37,9 +37,9 @@ Each player translates and builds the game's code on their own machine, from the
 ## What you need
 
 - **Your own game:** Killzone HD (NPUA80856, the US edition), installed from your own **Killzone Trilogy** disc or
-  bought on the PlayStation Store, and PS3 system software 4.93 (its `dev_flash`, for the music). When both are
-  installed in your RPCS3, the installers use them and your RPCS3 makes decrypted copies of the game's EBOOT and the
-  firmware's `libsre`; otherwise you give those two decrypted files yourself. The disc copy's data archive is read
+  bought on the PlayStation Store; no PS3 system software is needed. When it is installed in your RPCS3, the
+  installers use it and your RPCS3 makes a decrypted copy of the game's EBOOT;
+  otherwise you give that decrypted file yourself. The disc copy's data archive is read
   as it is installed; the Store copy's is bound to your licence, so your RPCS3 opens a copy of it too. What each file must be, and how the
   scripts check them: [docs/GETTING-FILES.md](docs/GETTING-FILES.md); every install step:
   [docs/INSTALL.md](docs/INSTALL.md).
@@ -54,15 +54,24 @@ or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 
 ## How to play
 
-Latest release: <!-- release -->[v0.5.4](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.5.4), a pre-release<!-- /release -->.
+Latest release: <!-- release -->[v0.6.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0), a pre-release<!-- /release -->.
 Every download builds the port on your PC from your own files, once, in about five minutes. Each download has its
 SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
 
 - **Windows, setup program** (`project-vekta-X.Y.Z-setup.exe`): it asks where your files are, builds, and puts
   **Project Vekta** in the Start menu.
-- **Windows, zip** (`project-vekta-X.Y.Z-windows.zip`): the same folder without the setup. `run.cmd` asks where your
-  files are and builds; `play.cmd` plays.
-- **Linux folder** (`project-vekta-X.Y.Z-linux.tar.gz`): `./run.sh` builds, `./play.sh` plays.
+- **Windows, zip** (`project-vekta-X.Y.Z-windows.zip`): the same folder without the setup. `Project Vekta.exe` builds
+  the first time (from your RPCS3, or `scripts\run.cmd` asks where your files are) and then plays.
+- **Linux folder** (`project-vekta-X.Y.Z-linux.tar.gz`): `./project-vekta` builds the first time (from your RPCS3,
+  or `scripts/run.sh` asks where your files are) and then plays.
+- **A game launcher** can install the zip or the Linux folder too: each has one program at its top and a
+  `recomplauncher.json` ([docs/INSTALL.md](docs/INSTALL.md#installing-through-a-launcher)). Problems:
+  [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+<p>
+<a href="https://recomplauncher.com/game/project-vekta"><img src="assets/press/recomplauncher/badge-dark.svg" width="313" height="56" alt="Get it on RecompLauncher"></a>
+<a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta"><img src="assets/press/quiver/badge@3x.png" width="206" height="56" alt="Get it on Quiver Launcher"></a>
+</p>
 
 Step by step, with what you see at each step: **[docs/INSTALL.md](docs/INSTALL.md)**. To build from a Git clone or
 the source archive instead: [For developers](#for-developers-building-from-source).
@@ -73,11 +82,11 @@ As of 2026-11-16, on Linux x64 with an NVIDIA RTX 3070 Ti, the maintainer's mach
 
 | | |
 |---|---|
-| Code translation | the whole EBOOT is translated (about 23,400 PPU functions) plus the SPU programs, job modules and the firmware pieces the game loads; this repository's scripts rebuild it byte for byte from the player's files |
+| Code translation | the whole EBOOT is translated (about 23,400 PPU functions) plus the SPU programs and job modules; this repository's scripts rebuild it byte for byte from the player's files |
 | Boot, menus, movies | work: intro movies, front end, options, pause menu, saves and Continue |
 | Campaign | the whole campaign, levels 1 to 11, played from start to end on Linux and on Windows (2026-11-16); the levels are not yet each compared with reference footage |
 | Frame rate | a steady 60 frames per second by default (the game logic runs at 60 Hz instead of the PS3's 30); an optional 144 Hz mode reaches about 131 to 134 frames per second in Level 1 and Level 7 |
-| Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music through the firmware's MP3 decoder |
+| Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music decoded with minimp3 in place of the PS3 system software's MP3 decoder |
 | Windows | the Windows exe is cross-built on Linux and runs under Wine, Proton and on a real Windows; the whole campaign plays there from start to end (2026-11-16); speed under Wine and Proton is lower (about 100 frames per second in Level 7) |
 | Distribution | you build the port from your own files: on Windows the setup program or folder builds it on your PC (since 0.2.0); on Linux from source, or (since 0.3.0) a Linux folder with its own toolchain (no compiler or packages needed) |
 
@@ -107,7 +116,7 @@ Nothing, unless you choose it. The port and its scripts make no network connecti
 the ones you start: cloning this repository with its ps3recomp submodule, your system's packages, the build tools'
 Python packages, and these, only when you choose them:
 
-- **NVIDIA DLSS**: only if you accept NVIDIA's DLSS SDK licence when `tools/install.sh` or `run.cmd` asks, or tick
+- **NVIDIA DLSS**: only if you accept NVIDIA's DLSS SDK licence when `tools/install.sh` or `scripts\run.cmd` asks, or tick
   the Windows setup's DLSS box (unticked by default), or pass `--dlss accept`, the build downloads the DLSS SDK's files from NVIDIA's repository on GitHub
   (`raw.githubusercontent.com/NVIDIA/DLSS`, pinned to v310.9.16 and checked by SHA-256) into
   `work/toolchain-cache/dlss-sdk/`. The question first downloads the licence's text from there, for you to read.
@@ -186,7 +195,7 @@ Step by step (what `tools/install.sh` runs):
 git clone --recurse-submodules https://github.com/gustavomorinaga/project-vekta
 cd project-vekta
 tools/ps3recomp-patched.sh   # ps3recomp v0.19.0 with port/patches applied, in work/
-tools/lift.sh                # translates your EBOOT, SPU code and firmware pieces, in work/lift
+tools/lift.sh                # translates your EBOOT and its SPU code, in work/lift
 tools/setup-vfs.sh           # the folder the game runs from, in work/vfs
 tools/build.sh               # work/build/KZ1HD
 tools/play.sh                # plays in a window

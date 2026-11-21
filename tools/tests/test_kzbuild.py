@@ -3,8 +3,8 @@
 tools/build.sh run (and the installer runs on Windows): the paths come from the environment, else work/paths.env,
 else the defaults, as in tools/env.sh; patch applies the series to a copy, rewrites only the files that changed and
 writes .patchset, and refuses a patch left out of the series; lift calls ps3recomp's lifters (stand-ins here) with
-the arguments and native-function lists of the shell script it replaced, and writes seeds.json and libsre's
---hle-stubs file; vfs copies PARAM.SFO and TROPDIR, links the EBOOT and the archive, takes the movies out of a small
+the arguments and native-function lists of the shell script it replaced, writes seeds.json and removes the work/fw
+of earlier versions (the firmware libsre's lift); vfs copies PARAM.SFO and TROPDIR, links the EBOOT and the archive, takes the movies out of a small
 PSARC and keeps the saves; build configures and runs Ninja (stand-ins on PATH). No game data, no compiler."""
 import io
 import json
@@ -52,11 +52,6 @@ name = os.path.basename(sys.argv[0])
 with open(os.path.join(os.environ["KZ_WORK"], "argv.log"), "a") as f:
     f.write(json.dumps([name, sys.argv[1:], os.environ.get("PPU_LIFT_NATIVE"), os.environ.get("SPU_LIFT_NATIVE")])
             + "\n")
-if name == "lift_prx.py":
-    out = sys.argv[sys.argv.index("--output") + 1]
-    os.makedirs(out, exist_ok=True)
-    json.dump({"cellSpurs": {"0x1": "a", "0x2": "b"}, "sysPrx": {"0x3": "c"}},
-              open(os.path.join(out, "libsre_imports.json"), "w"))
 for i in range(3):
     print(name + " line " + str(i))
 if name == "spu_lifter.py":
@@ -81,19 +76,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(kzbuild.resolve(base, root=str(root))["KZ_EBOOT"] == odd, "work/paths.env is read, odd characters and all")
     check(kzbuild.resolve(dict(base, KZ_EBOOT="/mine"), root=str(root))["KZ_EBOOT"] == "/mine",
           "a variable set in the environment wins over paths.env")
-    linux_flash = os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
-    was = kzbuild.WINDOWS
-    try:
-        kzbuild.WINDOWS = False
-        check(kzbuild.resolve(base, root=str(root))["PS3_DEV_FLASH"] == linux_flash,
-              "Linux: dev_flash is RPCS3's, in ~/.config/rpcs3")
-        kzbuild.WINDOWS = True
-        check(kzbuild.default_dev_flash(str(root)) == os.path.join(str(root), "Game", "dev_flash"),
-              "Windows: dev_flash defaults to Game/dev_flash, not a Linux path (RPCS3 keeps it beside rpcs3.exe)")
-    finally:
-        kzbuild.WINDOWS = was
-    check(kzbuild.resolve(dict(base, PS3_DEV_FLASH="/flash"), root=str(root))["PS3_DEV_FLASH"] == "/flash",
-          "PS3_DEV_FLASH set in the environment wins")
+    check("PS3_DEV_FLASH" not in kzbuild.resolve(base, root=str(root)), "no dev_flash path: no firmware is read")
 
     # patch
     sub = root / "third_party" / "ps3recomp"
@@ -132,7 +115,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # lift, with stand-ins for ps3recomp's lifters
     for t in ("ppu_loader", "find_functions", "ppu_lifter", "ppu_regcache", "extract_spu_images", "lift_jobmods",
-              "build_spu_workloads", "rebase_spu_elf", "spu_lifter", "lift_prx"):
+              "build_spu_workloads", "spu_lifter"):
         (pt / "tools" / f"{t}.py").write_text(STUB)
     (root / "tools").mkdir()
     (root / "tools" / "extract_spu_modules.py").write_text(STUB)
@@ -144,11 +127,9 @@ with tempfile.TemporaryDirectory() as tmp:
         (root / "port" / "kz1hd" / d).mkdir(parents=True, exist_ok=True)
         (root / "port" / "kz1hd" / d / f).write_text(text)
     files = tmp / "files"
-    (files / "dev").mkdir(parents=True)
-    for f in ("EBOOT.elf", "libsre.prx"):
-        (files / f).write_text(f)
-    env = dict(base, KZ_EBOOT=str(files / "EBOOT.elf"), KZ_LIBSRE=str(files / "libsre.prx"), KZ_JOBS="5",
-               PS3_DEV_FLASH=str(files / "dev"))
+    files.mkdir(parents=True)
+    (files / "EBOOT.elf").write_text("EBOOT.elf")
+    env = dict(base, KZ_EBOOT=str(files / "EBOOT.elf"), KZ_JOBS="5")
     e = kzbuild.resolve(env, root=str(root))
     try:
         kzbuild.cmd_lift(e, None)
@@ -157,29 +138,33 @@ with tempfile.TemporaryDirectory() as tmp:
     calls = [json.loads(line) for line in (root / "work" / "argv.log").read_text().splitlines()]
     check([c[0] for c in calls] == ["ppu_loader.py", "find_functions.py", "ppu_lifter.py", "ppu_regcache.py",
                                     "extract_spu_images.py", "extract_spu_modules.py", "lift_jobmods.py",
-                                    "build_spu_workloads.py", "lift_prx.py", "ppu_lifter.py"],
-          f"the lifters run in lift.sh's order (no flashMP3.pic: no MP3 lift): {[c[0] for c in calls]}")
+                                    "build_spu_workloads.py"],
+          f"the lifters run in lift.sh's order (no MP3 decoder lift any more): {[c[0] for c in calls]}")
     ppu = calls[2]
     check(ppu[2] == "func_0012,func_00AB" and ppu[3] is None, f"PPU_LIFT_NATIVE in file order, then line: {ppu[2:]}")
     check(ppu[1][ppu[1].index("-j") + 1] == "5" and "--setjmp" in ppu[1], f"the PPU lift's arguments: {ppu[1]}")
     check(calls[5][3] == "ab05_spu_func_01F0" and calls[5][2] == "func_0012,func_00AB", "SPU_LIFT_NATIVE from SPU on")
     check(json.loads((root / "work" / "lift" / "analysis" / "seeds.json").read_text()) == ["0x10", "0x20"],
           "seeds.json: the seed lines without comments or blanks")
-    stubs = json.loads((root / "work" / "fw" / "out" / "libsre_hle_stubs.json").read_text())
-    check(stubs == [{"library": "cellSpurs", "nid": "0x1", "stub": "a"}, {"library": "cellSpurs", "nid": "0x2",
-                     "stub": "b"}, {"library": "sysPrx", "nid": "0x3", "stub": "c"}], f"libsre's --hle-stubs: {stubs}")
-    (files / "dev" / "sys" / "external").mkdir(parents=True)
-    (files / "dev" / "sys" / "external" / "flashMP3.pic").write_text("mp3")
+    eid = (root / "work" / "lift" / "gen" / "eboot_id.h").read_text()
+    data = pathlib.Path(e["KZ_EBOOT"]).read_bytes()
+    check(f'#define KZ_EBOOT_SHA256 "{hashlib.sha256(data).hexdigest()}"' in eid and
+          f"#define KZ_EBOOT_SIZE {len(data)}LL" in eid,
+          f"the lift writes gen/eboot_id.h with the size and SHA-256 of the EBOOT it lifted (eboot_check.h): {eid}")
     (root / "work" / "argv.log").unlink()
+    for d in ("flashmp3", "flashmp3_src"):   # an earlier version's lift of the firmware's MP3 decoder
+        (root / "work" / "lift" / "spu" / d).mkdir(parents=True, exist_ok=True)
     # chunks an earlier lift left (another version's chunk count): the build globs these folders, so they go
     for d in ("lift", "fw"):
         (root / "work" / d / "gen").mkdir(parents=True, exist_ok=True)
         (root / "work" / d / "gen" / "old_recomp_099.cpp").write_text("int stale;\n")
     kzbuild.cmd_lift(e, None)
     names = [json.loads(line)[0] for line in (root / "work" / "argv.log").read_text().splitlines()]
-    check("rebase_spu_elf.py" in names and "spu_lifter.py" in names, "with flashMP3.pic the MP3 decoder is lifted")
-    check(not any((root / "work" / d / "gen" / "old_recomp_099.cpp").exists() for d in ("lift", "fw")),
-          "a lift leaves no source of an earlier lift in work/lift/gen or work/fw/gen")
+    check("rebase_spu_elf.py" not in names and not any((root / "work" / "lift" / "spu" / d).exists()
+          for d in ("flashmp3", "flashmp3_src")), "no MP3 decoder lift, and an earlier one's folders are removed")
+    check(not (root / "work" / "lift" / "gen" / "old_recomp_099.cpp").exists(),
+          "a lift leaves no source of an earlier lift in work/lift/gen")
+    check(not (root / "work" / "fw").exists(), "a lift removes the firmware libsre's work/fw of earlier versions")
 
     # vfs
     game = files / "NPUA80856"
@@ -276,7 +261,7 @@ with tempfile.TemporaryDirectory() as tmp:
         check(False, "build without a lift is refused")
     except kzbuild.Fail as err:
         check("run tools/lift.sh first" in str(err), str(err))
-    (root / "work" / "lift" / "gen").mkdir(parents=True)
+    (root / "work" / "lift" / "gen").mkdir(parents=True, exist_ok=True)   # the lift above left eboot_id.h there
     (root / "work" / "lift" / "gen" / "ppu_recomp.h").write_text("")
     sys.stdout = io.StringIO()
     try:

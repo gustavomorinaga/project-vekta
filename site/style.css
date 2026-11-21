@@ -60,6 +60,8 @@ header.box { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
 .headline strong { color: var(--red-hi); text-transform: uppercase; letter-spacing: .05em; }
 .note { color: var(--dim); margin: .4em 0; }
 .btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.badges { display: flex; flex-wrap: wrap; gap: 10px; }
+.badges img { display: block; max-width: 100%; height: auto; }
 .btn { display: inline-block; padding: 9px 18px; background: var(--red); color: #fff; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .btn.alt { background: #24322a; color: var(--text); }
 .btn:hover { text-decoration: none; filter: brightness(1.15); }

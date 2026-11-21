@@ -1,0 +1,12 @@
+#!/bin/sh
+# Project Vekta, Linux release folder: the one program to start (a launcher starts this, with no arguments, from this
+# folder). It plays; before the first build it checks your files and builds first, asking nothing when RPCS3 and the
+# game are in their usual places (tools/release/launch.py --build-if-needed). Its options: --game DIR, --eboot FILE,
+# --psarc FILE, --rpcs3 [DIR] (kept in work/paths.env), --fullscreen, --prepare (no window, no question: see
+# scripts/prepare.sh), --help. Exit codes: port/kz1hd/kz_exit.h. Uses no HOME, USER or XDG_RUNTIME_DIR of its own.
+# The first run's questions: scripts/run.sh. Needs Python 3.10 or newer, a Vulkan driver and the system's SDL2.
+here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+cd "$here" || exit 1
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null ||
+  { echo "project-vekta: Python 3.10 or newer is needed (python3): install it from your distribution" >&2; exit 1; }
+exec python3 "$here/tools/release/launch.py" --root "$here" --build-if-needed "$@"

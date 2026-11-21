@@ -3,7 +3,7 @@
 Ninja and llvm-mingw):
 
     tools/kzbuild.py patch        work/ps3recomp-patched: third_party/ps3recomp with port/patches/series applied
-    tools/kzbuild.py lift         work/lift and work/fw: the game's and the firmware's code as C++
+    tools/kzbuild.py lift         work/lift: the game's code as C++
     tools/kzbuild.py vfs          work/vfs: the folder the game runs from
     tools/kzbuild.py build        work/build/KZ1HD (Linux, clang) or work/build-win/KZ1HD.exe (Windows, llvm-mingw)
     tools/kzbuild.py build --win  work/build-win/KZ1HD.exe from Linux, with the pinned llvm-mingw
@@ -36,8 +36,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINDOWS = os.name == "nt"
-PATH_VARS = ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_LIBSRE", "KZ_WORK", "KZ_VFS", "PS3RECOMP_DIR", "PS3_DEV_FLASH",
-             "KZ_PY")
+PATH_VARS = ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_WORK", "KZ_VFS", "PS3RECOMP_DIR", "KZ_PY")
 # The data archive the port was made from (docs/GETTING-FILES.md): the decrypted data_ps3.psarc, which the game reads
 # either as the player's own file (KZ_PSARC) or, when there is none, from the installed game's data_ps3.psarc.edat,
 # decrypted by the runtime into work/edat-cache on the first open (patch 4014).
@@ -68,15 +67,6 @@ def venv_bin(work):
     return os.path.join(work, "venv", "Scripts" if WINDOWS else "bin")
 
 
-def default_dev_flash(root=ROOT):
-    """Where dev_flash is looked for when nothing names it. Linux: RPCS3's, ~/.config/rpcs3/dev_flash. Windows: RPCS3
-    keeps dev_flash in its own folder, beside rpcs3.exe, which can be anywhere, so the default is Game/dev_flash in this
-    tree, as for the other files."""
-    if WINDOWS:
-        return os.path.join(root, "Game", "dev_flash")
-    return os.path.join(os.path.expanduser("~"), ".config", "rpcs3", "dev_flash")
-
-
 def resolve(environ=None, root=ROOT):
     """tools/env.sh's values: {VAR: path} (and PATH with work/venv's tools first)."""
     e = dict(os.environ if environ is None else environ)
@@ -85,14 +75,12 @@ def resolve(environ=None, root=ROOT):
         e.setdefault(k, v)
     j = os.path.join
     d = {"KZ_GAME": j(root, "Game", "NPUA80856"), "KZ_EBOOT": j(root, "Game", "EBOOT.elf"),
-         "KZ_PSARC": j(root, "Game", "data_ps3.psarc"), "KZ_LIBSRE": j(root, "Game", "libsre.prx"),
-         "KZ_WORK": work0}
+         "KZ_PSARC": j(root, "Game", "data_ps3.psarc"), "KZ_WORK": work0}
     for k, v in d.items():
         e[k] = e.get(k) or v
     w = e["KZ_WORK"]
     e["KZ_VFS"] = e.get("KZ_VFS") or j(w, "vfs")
     e["PS3RECOMP_DIR"] = e.get("PS3RECOMP_DIR") or j(w, "ps3recomp-patched")
-    e["PS3_DEV_FLASH"] = e.get("PS3_DEV_FLASH") or default_dev_flash(root)
     if not e.get("KZ_PY"):
         venv_py = j(venv_bin(w), "python.exe" if WINDOWS else "python")
         e["KZ_PY"] = venv_py if os.path.isfile(venv_py) else sys.executable
@@ -308,12 +296,20 @@ def read_seeds(path):
         return [line.strip() for line in f if not line.startswith("#") and line.strip()]
 
 
-def libsre_hle_stubs(src, dst):
-    with open(src, encoding="utf-8") as f:
-        imports = json.load(f)
-    with open(dst, "w", encoding="utf-8") as f:
-        json.dump([{"library": lib, "nid": nid, "stub": stub} for lib, nids in imports.items()
-                   for nid, stub in nids.items()], f, indent=1)
+def write_eboot_id(eboot, gen):
+    """gen/eboot_id.h: the size and SHA-256 of the EBOOT the lift is made from, which port/kz1hd/main.cpp checks the
+    EBOOT it loads against (eboot_check.h). Only the two numbers: nothing of the file is copied."""
+    h = hashlib.sha256()
+    size = 0
+    with open(eboot, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+            size += len(block)
+    os.makedirs(gen, exist_ok=True)
+    with open(os.path.join(gen, "eboot_id.h"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("/* written by tools/kzbuild.py lift: the EBOOT.elf this lift was made from (port/kz1hd/eboot_check.h) */\n"
+                f'#define KZ_EBOOT_SHA256 "{h.hexdigest()}"\n#define KZ_EBOOT_SIZE {size}LL\n')
+    return h.hexdigest(), size
 
 
 def cmd_lift(e, a):
@@ -352,6 +348,7 @@ def cmd_lift(e, a):
     tail_file(j(k, "lift.log"), 2)
     # Guest registers in host locals inside each function (see the tool's header): ~+7% in Level 1 at 144 Hz.
     tail(run([py, j(t, "ppu_regcache.py"), j(k, "gen")], e, "capture"), 1)
+    write_eboot_id(eboot, j(k, "gen"))
 
     print("== SPU", flush=True)
     # Functions port/kz1hd/native/ reimplements: the lifter emits them as <name>_lifted.
@@ -369,39 +366,12 @@ def cmd_lift(e, a):
               j(s, "spu_workloads.c"), "--register-fn", "kz1_spu_register_all", "--constructor", "--title", "kz1hd"],
              e, "capture"), 1)
 
-    # The firmware's MP3 decoder, which MultiStream (SPU image 3) loads from dev_flash at LS 0x1A880 for the music:
-    # lifted at that base, registered in stubs.cpp.
-    mp3 = j(e["PS3_DEV_FLASH"], "sys", "external", "flashMP3.pic")
-    if os.path.isfile(mp3):
-        os.makedirs(j(s, "flashmp3"), exist_ok=True)
-        os.makedirs(j(s, "flashmp3_src"), exist_ok=True)
-        elf = j(s, "flashmp3_src", "flashMP3_1A880.elf")
-        run([py, j(t, "rebase_spu_elf.py"), mp3, elf, "0x1A880"], e, "null")
-        out = run([py, j(t, "spu_lifter.py"), "--auto-functions", elf, "--symbol-prefix", "kzmp3_", "--output",
-                   j(s, "flashmp3")], e, "capture")
-        lifted = [line for line in out.splitlines() if "function(s) lifted" in line]
-        if not lifted:
-            raise Fail("spu_lifter.py lifted no function of flashMP3.pic")
-        print("\n".join(lifted), flush=True)
-    else:
-        print(f"no {mp3} (PS3_DEV_FLASH): the game's music and sound stop at the first MP3", flush=True)
+    # Up to 0.5.x the firmware's MP3 decoder was lifted here; port/kz1hd/native/flashmp3.c answers its call now.
+    for old in ("flashmp3", "flashmp3_src"):
+        shutil.rmtree(j(s, old), ignore_errors=True)
 
-    print("== libsre", flush=True)
-    # The firmware's libsre runs for the two SPURS LFQueue calls the runtime does not reimplement (stubs.cpp): its
-    # image, function list and imports from lift_prx.py, the imports in the lifter's --hle-stubs form, then the lift.
-    fw = j(e["KZ_WORK"], "fw")
-    shutil.rmtree(j(fw, "gen"), ignore_errors=True)   # globbed by the build, as work/lift/gen
-    need_file(e["KZ_LIBSRE"], "libsre.prx (KZ_LIBSRE; docs/GETTING-FILES.md)")
-    os.makedirs(j(fw, "out"), exist_ok=True)
-    run([py, j(t, "lift_prx.py"), e["KZ_LIBSRE"], "--base", "0x02000000", "--output", j(fw, "out") + os.sep], e,
-        "null")
-    libsre_hle_stubs(j(fw, "out", "libsre_imports.json"), j(fw, "out", "libsre_hle_stubs.json"))
-    run([py, j(t, "ppu_lifter.py"), j(fw, "out", "libsre_image.bin"), "--raw", "--base", "0x02000000", "--toc",
-         "0x02039AB0", "--code-end", "0x0201DD4C", "--functions", j(fw, "out", "libsre_functions.json"),
-         "--hle-stubs", j(fw, "out", "libsre_hle_stubs.json"), "--symbol-prefix", "libsre_", "--header-name",
-         "libsre_recomp.h", "--source-name", "libsre_recomp", "--output", j(fw, "gen") + os.sep], e,
-        j(fw, "lift.log"))
-    tail_file(j(fw, "lift.log"), 1)
+    # work/fw held the firmware libsre lifted by the port before 0.6.0; the SPURS queue it ran is in the runtime now.
+    shutil.rmtree(j(e["KZ_WORK"], "fw"), ignore_errors=True)
 
 
 # ------------------------------------------------------------------------------------------------------------ vfs
@@ -532,11 +502,23 @@ def lift_defs(e):
     if not os.path.isfile(os.path.join(w, "lift", "gen", "ppu_recomp.h")):
         raise Fail(f"no lift in {os.path.join(w, 'lift')}: run tools/lift.sh first")
     return [f"-DPS3RECOMP_DIR={e['PS3RECOMP_DIR']}", f"-DRECOMP_DIR={os.path.join(w, 'lift', 'gen')}",
-            f"-DSPU_DIR={os.path.join(w, 'lift', 'spu')}", f"-DLIBSRE_DIR={os.path.join(w, 'fw', 'gen')}"]
+            f"-DSPU_DIR={os.path.join(w, 'lift', 'spu')}"]
 
 
 def ninja(e, b):
     run(["ninja", "-C", b] + (["-j", e["KZ_JOBS"]] if e.get("KZ_JOBS") else []), e)
+
+
+def march(e):
+    """The -march of the build (KZ_MARCH, default x86-64-v3): the Linux and Windows builds both pass it to CMake."""
+    return e.get("KZ_MARCH") or "x86-64-v3"
+
+
+def cpu_required(m):
+    """The x86-64 level port/kz1hd/cpu_check.c checks for with -march=m (CMakeLists.txt's rule): 2, 3 or 4; 0 for
+    any other -march (no check)."""
+    r = re.fullmatch(r"x86-64-v([234])", m or "")
+    return int(r.group(1)) if r else 0
 
 
 def build_linux(e):
@@ -550,7 +532,7 @@ def build_linux(e):
     # -O1 for the base flags, as in the maintainer's build; the lifted PPU code gets KZ_PPU_OPT (-O2) on its own.
     run(["cmake", "-G", "Ninja", "-S", os.path.join(e["KZ_ROOT"], "port", "kz1hd"), "-B", b,
          "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++", "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1",
-         f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}", "-DPS3RECOMP_RSX_VULKAN=ON", *dlss_defs(e), *defs], e, "null")
+         f"-DKZ_MARCH={march(e)}", "-DPS3RECOMP_RSX_VULKAN=ON", *dlss_defs(e), *defs], e, "null")
     ninja(e, b)
     place_dlss(e, b)
     print(f"build: {os.path.join(b, 'KZ1HD')}", flush=True)
@@ -609,7 +591,7 @@ def build_linux_pinned(e):
     e["KZ_ZIG"] = j(cache, "zig", "zig")
     run(["cmake", "-G", "Ninja", "-S", j(root, "port", "kz1hd"), "-B", b,
          f"-DCMAKE_TOOLCHAIN_FILE={j(root, 'port', 'cmake', 'zig-linux.cmake')}", f"-DKZ_LINUX_DEPS={deps}",
-         "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1", f"-DKZ_MARCH={e.get('KZ_MARCH') or 'x86-64-v3'}",
+         "-DCMAKE_C_FLAGS=-O1", "-DCMAKE_CXX_FLAGS=-O1", f"-DKZ_MARCH={march(e)}",
          "-DPS3RECOMP_RSX_VULKAN=ON", f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}",
          f"-DKZ_FFMPEG_INCLUDE_DIR={j(deps, 'include')}", f"-DPython3_EXECUTABLE={sys.executable}",
          # the link-only SDL2 in linux-deps must never be found at run time: no build RPATH
@@ -672,7 +654,7 @@ def build_windows(e):
                 shutil.copytree(j("/usr/include", h), j(ff, h), dirs_exist_ok=True)
     run(["cmake", "-G", "Ninja", "-S", j(root, "port", "kz1hd"), "-B", b,
          f"-DCMAKE_TOOLCHAIN_FILE={j(root, 'port', 'cmake', 'llvm-mingw.cmake')}", f"-DLLVM_MINGW_ROOT={j(cache, llvm)}",
-         f"-DKZ_WIN_DEPS={deps}", "-DCMAKE_BUILD_TYPE=Release", *defs, "-DPS3RECOMP_RSX_VULKAN=ON",
+         f"-DKZ_WIN_DEPS={deps}", "-DCMAKE_BUILD_TYPE=Release", f"-DKZ_MARCH={march(e)}", *defs, "-DPS3RECOMP_RSX_VULKAN=ON",
          f"-DPS3RECOMP_VULKAN_INCLUDE_DIR={j(deps, 'include')}", f"-DKZ_FFMPEG_INCLUDE_DIR={ff}",
          # the build's generators (gen_hle_nids.py and ps3recomp's): this Python, the bundled one on Windows,
          # which is neither registered nor on PATH
