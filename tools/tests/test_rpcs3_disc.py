@@ -76,7 +76,7 @@ if args[:2] == ["--headless", "--installpkg"]:
     logd = os.path.join(os.environ["XDG_CACHE_HOME"], "rpcs3")
     os.makedirs(logd, exist_ok=True)
     with open(os.path.join(logd, "RPCS3.log"), "w") as f:
-        f.write("klic: 00112233445566778899aabbccddeeff\nSuccessfully installed the package\n")
+        f.write("klic: (a stand-in licence line)\nSuccessfully installed the package\n")
     game = os.path.join(cfg, "rpcs3", "dev_hdd0", "game", "NPUA80856")
     for rel, data in json.loads(os.environ["FAKE_FILES"]).items():
         p = os.path.join(game, *rel.split("/"))
