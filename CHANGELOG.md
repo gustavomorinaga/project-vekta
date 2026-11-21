@@ -85,15 +85,6 @@ program and folder that build it. Until a release that calls itself playable
   without decrypting anything (#94). When RPCS3 stops at that check all the same, the setup now says so and names the
   DLL, instead of "RPCS3 did not make the file".
 
-## [0.5.4] - 2026-11-20 (pre-release)
-
-### Fixed
-- "Use my RPCS3 install" on Windows: the RPCS3 the setup starts to decrypt the game gets only the Windows folders on
-  its PATH. A PATH passed on by the program that opened the setup (a download manager in the report) could make RPCS3
-  load that program's copy of `msvcp140.dll`, stop at its start-up check with a "Fatal Error" window and exit with 0
-  without decrypting anything (#94). When RPCS3 stops at that check all the same, the setup now says so and names the
-  DLL, instead of "RPCS3 did not make the file".
-
 ## [0.5.3] - 2026-11-19 (pre-release)
 
 ### Fixed
