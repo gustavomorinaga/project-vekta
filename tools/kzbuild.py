@@ -579,8 +579,8 @@ def build_linux_pinned(e):
     """KZ1HD with the pinned Linux toolchain (tools/release/toolchain.json, host native): Zig as the compiler for
     x86_64-linux-gnu.2.31 (tools/release/zig/, port/cmake/zig-linux.cmake), the pinned CMake and Ninja, and the
     libraries build_linux_deps.py builds; nothing from the system but Python. The program needs only glibc 2.31 or
-    newer, the system's libSDL2-2.0.so.0 and a Vulkan driver; the pinned FFmpeg goes to <build>/lib, which
-    tools/play.sh puts on LD_LIBRARY_PATH."""
+    newer, the system's libSDL2-2.0.so.0 and a Vulkan driver; the pinned FFmpeg goes to <build>/lib (links to the
+    staged libraries, see place), which tools/play.sh puts on LD_LIBRARY_PATH."""
     root, w, j = e["KZ_ROOT"], e["KZ_WORK"], os.path.join
     b = e.get("KZ_BUILD") or j(w, "build")
     rel = j(root, "tools", "release")
@@ -607,7 +607,7 @@ def build_linux_pinned(e):
                 os.remove(dst)
             os.symlink(os.readlink(src), dst)
         else:
-            copy_newer(src, dst)
+            place(src, dst)
     print(f"build: {j(b, 'KZ1HD')}", flush=True)
 
 
@@ -617,6 +617,17 @@ FFMPEG_HEADERS = ("libavcodec", "libavformat", "libavutil", "libswscale", "libsw
 def copy_newer(src, dst):
     if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):
         shutil.copy2(src, dst)
+
+
+def place(src, dst):
+    """A library the program loads, beside it: a hard link to the staged file where the file system makes one, else a
+    copy (fetch_toolchain.place). Not for the DLSS library, which stays a copy (place_dlss): players swap that file,
+    and writing over a link would change the SDK's own file, which fetch_toolchain.py --set checks against its pin."""
+    rel = os.path.join(ROOT, "tools", "release")
+    if rel not in sys.path:
+        sys.path.insert(0, rel)
+    import fetch_toolchain   # noqa: E402
+    return fetch_toolchain.place(src, dst)
 
 
 def build_windows(e):
@@ -665,7 +676,7 @@ def build_windows(e):
     dll_dir = j(deps, "bin")
     for d in sorted(os.listdir(dll_dir)) if os.path.isdir(dll_dir) else []:
         if d.endswith(".dll") and not d.startswith(("avdevice-", "avfilter-")):
-            copy_newer(j(dll_dir, d), j(b, d))
+            place(j(dll_dir, d), j(b, d))
     if not any(f.startswith("avcodec-") and f.endswith(".dll") for f in os.listdir(b)):
         print(f"note: no FFmpeg DLLs in {b} (the movies are skipped)", flush=True)
     print(f"built: {j(b, 'KZ1HD.exe')}", flush=True)
