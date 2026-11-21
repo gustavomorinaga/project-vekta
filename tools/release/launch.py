@@ -203,6 +203,24 @@ def window_closed(log):
     return any(c in data for c in CLOSED)
 
 
+def closed_since(log, seen):
+    """window_closed for a log that is being written, reading only what it gained since the last call: the whole
+    file every second was a read as long as the session's log, for as long as the game ran. seen: [bytes read so
+    far, the last few of them] (a mark may lie across two reads), [0, b""] at first. A log shorter than what was
+    read was emptied (the exe does that when it starts): it is read from its start again."""
+    try:
+        with open(log, "rb") as f:
+            if os.fstat(f.fileno()).st_size < seen[0]:
+                seen[:] = [0, b""]
+            f.seek(seen[0])
+            new = f.read()
+    except OSError:
+        return False
+    data = seen[1] + new
+    seen[:] = [seen[0] + len(new), data[-(max(map(len, CLOSED)) - 1):]]
+    return any(c in data for c in CLOSED)
+
+
 def run(argv, cwd, env, log, poll=1.0):
     """Runs the game; its output goes to log (on Windows the exe writes KZ_LOG itself)."""
     own = env.get("KZ_LOG") == log
@@ -213,8 +231,9 @@ def run(argv, cwd, env, log, poll=1.0):
     with open(os.devnull if own else log, "wb") as out:
         p = subprocess.Popen(argv, cwd=cwd, env=env, stdout=out, stderr=subprocess.STDOUT)
         # The window closing leaves the process running headless: stop it then.
+        seen = [0, b""]
         while p.poll() is None:
-            if window_closed(log):
+            if closed_since(log, seen):
                 p.kill()
                 break
             time.sleep(poll)
