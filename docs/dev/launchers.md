@@ -16,7 +16,7 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
   places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR` (`project-vekta` changes to its own folder).
 - **The player's files:** `--game DIR` (the installed NPUA80856 folder, with `PARAM.SFO` and `USRDIR`), `--eboot FILE`
   (a decrypted `EBOOT.elf`, SHA-256 `c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc`), `--psarc
-  FILE`, `--rpcs3 [DIR]`, or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC`. They are kept in `work/paths.env` once the check
+  FILE`, `--rpcs3 [DIR]`, `--disc PATH` (the disc with no RPCS3 installed), or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC`. They are kept in `work/paths.env` once the check
   passes.
 - **The prepare step:** `scripts/prepare.cmd` and `scripts/prepare.sh` (`launch.py --prepare`). No window and no
   question; `progress <0..1> <text>` lines; on a failure one `reason <text>` line at the end; exit 0 when built.

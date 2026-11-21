@@ -224,7 +224,7 @@ and `.json`). Started with no arguments from its folder, either one plays; befor
 files and builds first (`tools/release/launch.py --build-if-needed`), asking nothing when RPCS3 and the game are in
 their usual places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR`.
 
-- `--game DIR`, `--eboot FILE`, `--psarc FILE`, `--rpcs3 [DIR]`, or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC` in the
+- `--game DIR`, `--eboot FILE`, `--psarc FILE`, `--rpcs3 [DIR]`, `--disc PATH` (the copied disc or its package, with the official RPCS3 downloaded for it), or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC` in the
   environment: where the files are. They are kept in `work/paths.env` once the check passes. A game folder given
   without a decrypted EBOOT (`--game` alone, as a launcher passes it) is taken as the folder RPCS3 installed: your
   RPCS3 makes the decrypted copy from its `EBOOT.BIN` (`--rpcs3` with that folder).

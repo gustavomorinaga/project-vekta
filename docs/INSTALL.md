@@ -27,6 +27,15 @@ RPCS3 then decrypts a copy of `EBOOT.BIN` into the port's own `work\prep` folder
 install"), with a "Find RPCS3..." button for an RPCS3 it did not find by itself. Either way the folder can be where
 `rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`).
 
+**No RPCS3? Straight from the disc.** With the Killzone Trilogy disc copied to your PC (its folder, with
+`PS3_EXTRA` in it, or just the package `PS3_EXTRA\...\DATA000.PKG`), `Project Vekta.exe --disc FOLDER`,
+`./project-vekta --disc FOLDER` or `scripts/prepare.sh --disc FOLDER` download the official RPCS3 (version
+0.0.43-20640 from RPCS3's own GitHub releases, about 37 MB on Windows and 83 MB on Linux, checked by SHA-256) into
+the port's `work\toolchain-cache\rpcs3`. It installs the package into `work\prep\disc`, with no window and none of
+your settings, and decrypts a copy of `EBOOT.BIN` into `work\prep`. About 4 GB more disk is used; a minute or less
+on an SSD. The PlayStation Store package needs your licence, so it goes through "Use my RPCS3 install" instead. A
+disc image (`.iso`) must be opened first (double-click it on Windows, or mount it on Linux).
+
 This project gives no decryption tools or instructions. The setup and the scripts only read your files; on the RPCS3
 route your own RPCS3 decrypts copies of them, and nothing is written into the game's or RPCS3's folders.
 

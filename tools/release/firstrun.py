@@ -6,6 +6,7 @@ with one progress bar, and remember where the files are.
                               [--dlss accept|decline] [--jobs N] [--root DIR] [--status-file FILE] [--stop-file FILE]
                               [--bar] [--dry-run]
     tools/release/firstrun.py --rpcs3 [DIR] [other options]   (the game from the player's RPCS3)
+    tools/release/firstrun.py --disc PATH [other options]     (the game from the disc, no RPCS3 installed)
     tools/release/firstrun.py --interactive [same options: they become the answers it offers]
     tools/release/firstrun.py --remove-desktop
     tools/release/firstrun.py --save-paths [--game DIR] [--eboot FILE] ...   (the Windows setup program)
@@ -29,6 +30,10 @@ are taken from the player's RPCS3 (DIR, else the usual places), and that RPCS3 d
 work/prep (checked by SHA-256), and of the .edat too for a PlayStation Store copy (bound to the buyer's licence, which
 the port cannot open); those paths are then saved like any others. --interactive offers it
 when an RPCS3 with the game is found and no paths were saved before.
+
+--disc PATH (tools/release/rpcs3_disc.py): the Killzone Trilogy disc's folder or its PS3_EXTRA package, with no RPCS3
+installed: the official RPCS3, downloaded at a pinned version and SHA-256 into work/toolchain-cache/rpcs3, installs
+the package into work/prep/disc and decrypts a copy of its EBOOT.BIN into work/prep; the paths are saved like --rpcs3's.
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
   check     tools/check-game-files.py (every run; a missing or different required file stops here, and so does a CPU
@@ -883,6 +888,25 @@ def use_rpcs3(c, hint=None, say=print, step=None):
     return []
 
 
+def rpcs3_disc():
+    """tools/release/rpcs3_disc.py (beside this file; the tests replace this function with a stand-in)."""
+    import rpcs3_disc as m   # noqa: E402
+    return m
+
+
+def use_disc(c, disc, say=print, step=None):
+    """--disc: the game installed from the player's disc by the pinned official RPCS3 and its decrypted EBOOT
+    (rpcs3_disc.prepare); saved in work/paths.env. Returns [] when done, else the problems' texts."""
+    r = rpcs3_disc().prepare(c.work, disc, log=say, step=step)
+    if r["status"] != "ok":
+        return [p["text"] for p in r["problems"]]
+    c.paths.update(game=r["game"], eboot=r["eboot"])
+    c.paths.pop("psarc", None)   # the disc's .edat is read by the port itself
+    write_paths(c.work, c.paths)
+    say(f"From the disc: the game installed in {r['game']}; EBOOT.elf made in {os.path.dirname(r['eboot'])}")
+    return []
+
+
 INSTALL_DOC = "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
 SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, also at """ + INSTALL_DOC + """):
   The easy way, through RPCS3:
@@ -1086,6 +1110,10 @@ def main(argv=None):
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
                     help="take the game from your RPCS3 (DIR, else the usual places); your RPCS3 "
                          "decrypts a copy of EBOOT.BIN into work/prep")
+    ap.add_argument("--disc", metavar="PATH",
+                    help="the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) with no RPCS3 "
+                         "installed: the official RPCS3 is downloaded (pinned, SHA-256 checked) to install and decrypt "
+                         "it into work/")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: KZ_JOBS, else from free memory)")
     ap.add_argument("--cleanup", action="store_true",
                     help="after a good build, remove what no later build reads (the toolchain's downloaded archives, "
@@ -1149,7 +1177,22 @@ def main(argv=None):
     log = new_log(c, redactor())
     r = Runner(c, STEPS, log, status_file=a.status_file, bar=a.bar)
     r.emit(f"LOG {log.path}")
-    if a.rpcs3 is not None:
+    if a.disc:
+        r.emit(f"PROGRESS step=0/{len(STEPS)} name=disc done=0 total=0 elapsed=0 pct=0.0")
+        t0 = time.monotonic()
+        step = lambda i, n, name: r.emit(  # noqa: E731
+            f"PROGRESS step=0/{len(STEPS)} name=disc done={i} total={n} elapsed={int(time.monotonic() - t0)} "
+            f"pct=0.0 file={name}")
+        try:
+            probs = use_disc(c, a.disc, say=r.emit, step=step)
+        except Exception as e:   # noqa: BLE001  (any surprise still ends the setup's wait)
+            probs = [f"the disc step stopped: {type(e).__name__}: {e}"]
+        if probs:
+            print("firstrun: the disc cannot be used:\n" + "\n".join("  " + p for p in probs), file=sys.stderr)
+            rc = r.failed("disc", *("the disc cannot be used: " + p for p in probs))
+            log.close()
+            return rc
+    elif a.rpcs3 is not None:
         # Before the steps, but inside the status protocol: the setup's build page waits for a RESULT line, so a
         # failure here must end with one (it hung on a failed --rpcs3 that only printed to stderr).
         r.emit(f"PROGRESS step=0/{len(STEPS)} name=rpcs3 done=0 total=0 elapsed=0 pct=0.0")
