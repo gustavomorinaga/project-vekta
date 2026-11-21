@@ -7,6 +7,12 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by
+  GitHub, that the repository's release workflow built that very file from the tagged commit.
+  `gh attestation verify <file> --repo gustavomorinaga/project-vekta` checks a download against it
+  ([docs/INSTALL.md](docs/INSTALL.md)).
+
 ### Changed
 - A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by
   undecuple): the README banner, the social preview, the Windows setup's pictures and the program icons (now
