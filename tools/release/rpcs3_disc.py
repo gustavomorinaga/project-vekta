@@ -10,7 +10,8 @@ install" does with the player's own RPCS3.
 PATH is the disc's folder (its PS3_EXTRA is searched for the package) or the package file itself (DATA000.PKG).
 Results are `key=value` lines, as rpcs3_import.py's (UTF-8 with a BOM in --out):
   --find     status=ok|problems, pkg=, problem=code|text
-  --prepare  status=ok|failed, pkg=, game=, edat=, eboot=, exe=, problem=code|text
+  --prepare  status=ok|problems|failed, pkg=, game=, edat=, eboot=, exe=, problem=code|text
+             (problems: the package or the free space was refused before anything was downloaded or written)
 Exit 0 when status=ok.
 
 Rules (the plan's route B, chosen 2026-11-19; the prototype passed on Linux and Windows 11 that day):
@@ -23,7 +24,8 @@ Rules (the plan's route B, chosen 2026-11-19; the prototype passed on Linux and 
   - RPCS3's exit code proves nothing (it was 143 on Linux and 0xC0000409 on Windows after a good install as well as
     a failed one): the install is judged by the files' count, size and SHA-256 (docs/GETTING-FILES.md);
   - RPCS3's log names the package's licence in plain text: it is never shown, copied or attached, only a few known
-    lines are read, and it is deleted after each run.
+    lines are read, and it is deleted after each run (the build that follows logs its own [edat] lines, with no
+    key in them).
 Standard library only, Python 3.8+.
 """
 import argparse
@@ -357,17 +359,19 @@ def prepare(work, disc, exe=None, log=None, step=None):
         return res
     res["pkg"] = pkg
     prep = os.path.join(work, "prep")
-    os.makedirs(prep, exist_ok=True)
     game = os.path.join(prep, "disc", TITLE)
     ready = os.path.isdir(game) and not check_installed(game)   # installed by an earlier run
     if not ready:
         log("rpcs3: checking the package (its SHA-256, about half a minute)")
         code = check_pkg(pkg)
-        if not code and shutil.disk_usage(prep).free < NEED_FREE:
-            code = "no_space"
-        if code:
+        if not code:
+            os.makedirs(work, exist_ok=True)
+            if shutil.disk_usage(work).free < NEED_FREE:
+                code = "no_space"
+        if code:   # refused before anything is written: no work/prep is left behind
             res["problems"].append(_problem(code))
             return res
+    os.makedirs(prep, exist_ok=True)
     res["status"] = "failed"
     if exe is None:
         exe, code = fetch(work, log)

@@ -127,6 +127,9 @@ with tempfile.TemporaryDirectory() as tmp:
     check(len(psn) == len(data) and rd.check_pkg(str(tmp / "psn" / "x.pkg")) == "psn_pkg", "same size, other hash: Store")
     make_pkg(tmp / "cut" / "x.pkg", body=b"pack")
     check(rd.check_pkg(str(tmp / "cut" / "x.pkg")) == "bad_pkg", "another size: a damaged copy")
+    refused = rd.prepare(str(tmp / "w-cut"), str(tmp / "cut" / "x.pkg"), exe=["unused"])
+    check(refused["status"] == "problems" and refused["problems"][0]["code"] == "bad_pkg"
+          and not (tmp / "w-cut" / "prep").exists(), f"a refused package leaves no work/prep: {refused}")
 
     # ---- the pinned download
     work = tmp / "work"
@@ -169,7 +172,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(not home_cfg.exists(), "the player's own settings were not touched")
     check(not (work / "prep" / "disc-rpcs3").exists(), "RPCS3's settings and logs are removed")
     leaked = [p for p in work.rglob("*") if p.is_file() and b"klic" in p.read_bytes()]
-    check(not leaked, f"no file keeps the licence line: {leaked}")
+    check(not leaked, f"after the install no file keeps the licence line: {leaked}")
     check(sha(data) == rd.DISC_PKG[1] and (disc / "PS3_EXTRA" / "D0F4" / "DATA000.PKG").read_bytes() == data,
           "the disc is only read")
 
