@@ -50,6 +50,7 @@ only.
 import argparse
 import fnmatch
 import gzip
+import lzma
 import hashlib
 import json
 import os
@@ -470,15 +471,26 @@ def write_zip(path, out, top):
     os.replace(tmp, path)
 
 
+TAR_XZ, TAR_GZ = (".tar.xz", ".txz"), (".tar.gz", ".tgz")
+
+
 def write_tar(path, out, top):
-    """A tar.gz of the payload under top/, in name order, with fixed times and owners and the files' own execute
-    bits (the Linux folder's programs and scripts must run): the same payload gives the same bytes."""
+    """A tar of the payload under top/, in name order, with fixed times and owners and the files' own execute bits
+    (the Linux folder's programs and scripts must run): the same payload gives the same bytes. Its name says how it
+    is packed: .tar.xz (what a release carries from 0.7.0: xz -6, a third smaller than gzip for this folder and
+    unpacked by tar and by the launchers alike) or .tar.gz / .tgz (gzip -6, as up to 0.6.0)."""
     names = sorted(os.path.relpath(os.path.join(d, f), out).replace(os.sep, "/")
                    for d, _, fs in os.walk(out) for f in fs)
+    if path.lower().endswith(TAR_XZ):
+        def packed(raw):
+            return lzma.LZMAFile(raw, "wb", format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=6)
+    else:
+        def packed(raw):
+            return gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=6)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     tmp = path + ".tmp"
-    with open(tmp, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=6) as gz, \
-            tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as t:
+    with open(tmp, "wb") as raw, packed(raw) as z, \
+            tarfile.open(fileobj=z, mode="w", format=tarfile.PAX_FORMAT) as t:
         for rel in names:
             src = os.path.join(out, *rel.split("/"))
             info = tarfile.TarInfo(f"{top}/{rel}")
@@ -502,7 +514,8 @@ def main(argv=None):
     ap.add_argument("--zip", help="also write the portable zip (its top folder: project-vekta-<version>)")
     ap.add_argument("--platform", choices=("windows", "linux"), default="windows",
                     help="the Windows folder (default) or the Linux one (the pinned Zig toolchain, run.sh, play.sh)")
-    ap.add_argument("--tar", help="also write the folder as a .tar.gz with its execute bits (the Linux folder)")
+    ap.add_argument("--tar", help="also write the folder as a .tar.xz (or .tar.gz) with its execute bits (the Linux "
+                                  "folder)")
     ap.add_argument("--dry-run", action="store_true", help="check and list, write nothing")
     a = ap.parse_args(argv)
     if not a.out and not a.dry_run:
@@ -511,6 +524,8 @@ def main(argv=None):
     try:
         if a.platform == "linux" and (a.launcher or a.zip):
             raise Refused("--launcher and --zip are for the Windows folder (the Linux one ships as --tar)")
+        if a.tar and not a.tar.lower().endswith(TAR_XZ + TAR_GZ):
+            raise Refused(f"--tar {a.tar}: the name must end in .tar.xz or .tar.gz (it says how the tar is packed)")
         files, gen, manifest = plan(a.repo, cache, a.launcher, a.platform)
         if a.dry_run:
             print(f"payload ok: {manifest['count']} files, {manifest['bytes'] / 1e6:.1f} MB "
