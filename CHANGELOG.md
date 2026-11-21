@@ -13,6 +13,8 @@ program and folder that build it. Until a release that calls itself playable
   lettered KZ1) are drawn in steel blue with a V chevron by one script, `tools/release/installer_art.py`, with the
   Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the
   keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.
+- The Linux folder is now a `.tar.xz` (`project-vekta-X.Y.Z-linux.tar.xz`), about a third smaller to download than
+  the `.tar.gz` it replaces. `tar xf` unpacks it, and so do the launchers.
 
 ## [0.6.0] - 2026-11-20 (pre-release)
 

@@ -337,7 +337,7 @@ come with it.
 tools/release/fetch_toolchain.py --host native                          # Zig, CMake, Ninja, SDL2, FFmpeg
 tools/release/fetch_toolchain.py --only zlib,glslang,vulkan-headers     # the sources it also builds
 tools/release/assemble_payload.py --platform linux --out work/release/linux \
-    [--tar work/release/project-vekta-<version>-linux.tar.gz]
+    [--tar work/release/project-vekta-<version>-linux.tar.xz]
 ```
 
 There, `./project-vekta` (the one program at the folder's top) builds on the first start, from the player's RPCS3

@@ -89,6 +89,11 @@ check(all(f"project-vekta-0.2.0-{f}" in body for f in ("setup.exe", "windows.zip
 check("setup.exe" not in release_notes.notes("0.1.0", es["0.2.0"], True), "v0.1.0's notes name the source only")
 check("linux.tar.gz" not in body and "project-vekta-0.3.0-linux.tar.gz" in release_notes.notes("0.3.0", es["0.2.0"]),
       "notes after 0.2.0 name the Linux folder, 0.2.0's do not")
+n060, n070 = release_notes.notes("0.6.0", es["0.2.0"]), release_notes.notes("0.7.0", es["0.2.0"])
+check("project-vekta-0.6.0-linux.tar.gz" in n060 and "linux.tar.xz" not in n060 and
+      "project-vekta-0.7.0-linux.tar.xz" in n070 and "linux.tar.gz" not in n070 and
+      "project-vekta-0.7.0-source.tar.gz" in n070,
+      "from 0.7.0 the notes name the Linux folder's .tar.xz (the source archive stays a .tar.gz)")
 check(release_notes.first_release("0.1.0", es) and not release_notes.first_release("0.2.0", es),
       "the first release is the one with no published version before it")
 with tempfile.TemporaryDirectory() as tmp:
@@ -216,9 +221,14 @@ with tempfile.TemporaryDirectory() as tmp:
         (assets / (n + ".sha256")).write_text(f"{h}  {n}\n")
         sums += f"{h}  {n}\n"
     (assets / "SHA256SUMS").write_text(sums)
+    linux_ext = "xz" if tuple(int(x) for x in v.split(".")) >= (0, 7, 0) else "gz"
     check(release_check.files(v) == [src, f"project-vekta-{v}-setup.exe", f"project-vekta-{v}-windows.zip",
-                                     f"project-vekta-{v}-linux.tar.gz"],
+                                     f"project-vekta-{v}-linux.tar.{linux_ext}"],
           "the release carries the source archive, the setup program, the Windows zip and the Linux folder")
+    check(release_check.files("0.6.0")[-1] == "project-vekta-0.6.0-linux.tar.gz" and
+          release_check.files("0.7.0")[-1] == "project-vekta-0.7.0-linux.tar.xz" and
+          release_check.files("1.0.0")[-1] == "project-vekta-1.0.0-linux.tar.xz",
+          "the Linux folder is a .tar.gz up to 0.6.0 and a .tar.xz from 0.7.0")
     check(release_check.files("0.2.0") == [pack_source.name("0.2.0"), "project-vekta-0.2.0-setup.exe",
                                            "project-vekta-0.2.0-windows.zip"], "0.2.0, published before it, has no "
           "Linux folder")
