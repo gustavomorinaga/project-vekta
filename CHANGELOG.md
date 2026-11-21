@@ -14,6 +14,84 @@ program and folder that build it. Until a release that calls itself playable
   Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the
   keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.
 
+## [0.6.0] - 2026-11-20 (pre-release)
+
+### Added
+- "Get it on" badges for RecompLauncher and Quiver Launcher in the README, the install page and the project page,
+  linking to the port's page on each. The RecompLauncher badge is the one from its press kit, unchanged; the Quiver
+  badge is text only, since Quiver has no press kit and its logo is a mark. The project page's install box also lost
+  its outdated lines: it lists the setup program and the release folders, and what goes online.
+- `KZ1HD.exe` carries a version: Explorer's Details tab shows Project Vekta and the release, and `KZ1HD --version`
+  (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens
+  every log, so a log says which build wrote it.
+- `KZ1HD.exe` has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already
+  asked for at run time.
+- One program to start in each release folder: `Project Vekta.exe` on Windows and the new `project-vekta` on Linux.
+  With no arguments it plays, and before the first build it checks your files and builds first, asking nothing
+  when RPCS3 and the game are in their usual places. It takes `--game`, `--eboot`, `--psarc`, `--rpcs3 [DIR]` (or
+  `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC`), kept in `work/paths.env`, and `--prepare`, which checks and builds with no
+  window or question and prints `progress` lines for a launcher. Each failure has its own exit code and fix text,
+  one table for the game and the launcher (`port/kz1hd/kz_exit.h`, listed in docs/BUILDING.md). A missing Vulkan
+  driver is named before the game starts.
+- `recomplauncher.json` at the top of the Windows and Linux folders, for launchers that read it (RecompLauncher):
+  it names the game folder to ask for, the optional decrypted `EBOOT.elf`, the build step with its NVIDIA DLSS tick,
+  the program to start, the saves, the logs and the exit codes. It is made from one source with the version stamped
+  (`tools/release/recomplauncher.py`) and checked against a schema in the repository.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): what you see, what to do and what to attach, for each exit
+  code; [docs/INSTALL.md](docs/INSTALL.md) has a section on installing through a game launcher, and
+  [docs/dev/launchers.md](docs/dev/launchers.md) the contract for launcher developers. CONTRIBUTORS.md lists who
+  helped.
+- A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel
+  Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now
+  the game says which level it needs and which one the CPU has (a message box on Windows, the launcher's message, the
+  log), and exits with code 75. The first run's check and the Windows setup's first page ask the same before the
+  build: the first run stops there, and the setup asks whether to install anyway.
+- The game checks that its `EBOOT.elf` is the one the build was made from (by size and SHA-256, in tens of
+  milliseconds) before it starts. With another one (another version of the game, a file replaced after the build),
+  it says so instead of running code that does not match, opens no window and exits with code 76; the launcher
+  offers to rebuild. `KZ_EBOOT_CHECK=0` skips it.
+
+### Changed
+- No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself
+  (minimp3, CC0) in place of the system software's MP3 decoder, which ran translated from your `dev_flash`; compared
+  with it in Levels 1 and 4: the same frames, the same silences, samples within 50 dB SNR. The `flashMP3.pic` the game
+  still asks for is a stand-in the port writes, with no code in it. The installers no longer ask for `dev_flash` or
+  check its version; the RPCS3 route works with no firmware installed in RPCS3.
+- The release folders keep their scripts in `scripts/`: `run.cmd`, `play.cmd` and the new `prepare.cmd` on Windows,
+  `run.sh`, `play.sh` and `prepare.sh` on Linux, so that the launcher is the one program at the top (a launcher
+  such as Quiver starts the one it finds there). An install over an earlier version removes the old `run.cmd` and
+  `play.cmd`.
+- The firmware's `libsre.prx` is no longer needed: the SPURS queue the game sends its compressed data requests
+  through, which ran the firmware's own libsre code, is now in the port's runtime (ps3recomp patch 1022, checked
+  against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it,
+  and on the RPCS3 route your RPCS3 decrypts only the game's EBOOT. The lift no longer makes `work/fw`, and removes
+  the one an earlier version made.
+
+### Fixed
+- The Linux folder builds the game again: `KZ1HD` called `mallinfo2`, which the folder's own toolchain (glibc 2.31)
+  does not have, so its link stopped with "undefined symbol: mallinfo2". Builds with the system's compilers were
+  not affected.
+- NVIDIA DLSS is offered on Windows only in the release folders: NVIDIA's Linux library is built for GCC's C++
+  library and does not link with the Linux folder's own toolchain, so a ticked DLSS stopped that build while
+  compiling. The Linux folder now builds with AMD FSR 3.1 and says why; DLSS on Linux needs a build with the
+  system's compilers (`tools/install.sh`).
+- The number of build jobs can be capped for any way the build starts: `KZ_JOBS` in the environment (a launcher
+  started with it included) and `--jobs N` on the prepare step (`scripts/prepare.sh`, `project-vekta --prepare`),
+  which before took only the memory-based default. For a PC that gets too hot or switches off while compiling
+  (docs/TROUBLESHOOTING.md).
+- The Linux folder's first build no longer needs about 18 GB of memory: its bundled compiler took that much on one
+  file of glslang (the shader compiler the build includes) at the usual optimisation. glslang is now built optimised
+  for size, and the whole step peaks under 500 MB.
+
+## [0.5.4] - 2026-11-20 (pre-release)
+
+### Fixed
+- "Use my RPCS3 install" on Windows: the RPCS3 the setup starts to decrypt the game gets only the Windows folders on
+  its PATH. A PATH passed on by the program that opened the setup (a download manager in the report) could make RPCS3
+  load that program's copy of `msvcp140.dll`, stop at its start-up check with a "Fatal Error" window and exit with 0
+  without decrypting anything (#94). When RPCS3 stops at that check all the same, the setup now says so and names the
+  DLL, instead of "RPCS3 did not make the file".
+
 ## [0.5.3] - 2026-11-19 (pre-release)
 
 ### Fixed

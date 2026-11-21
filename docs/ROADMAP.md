@@ -4,7 +4,7 @@ Native PC versions (Linux and Windows, Vulkan) of the PS3 Killzone games by stat
 [ps3recomp](https://github.com/sp00nznet/ps3recomp), starting with Killzone HD. Technical plan:
 [dev/recomp-plan.md](dev/recomp-plan.md). The port's journal: [dev/port-journal.md](dev/port-journal.md).
 
-Updated 2026-11-09 (after 0.3.0: ps3recomp v0.19.0, long-session fixes, the field of view for the world and the weapon). Tick items as they are done; each phase's
+Updated 2026-11-18 (after 0.5.2: recorded routes done, the converted-vertex cache noted). Tick items as they are done; each phase's
 percentage comes from its items and its weight.
 
 ## Principles
@@ -27,7 +27,7 @@ each phase's estimated relative effort.
 
 | Phase | Weight | Done |
 |---|---|---|
-| 0. Environment | 3 | 70 % |
+| 0. Environment | 3 | 100 % |
 | 1. PPU translated | 3 | 100 % |
 | 2. Boot to the main loop | 4 | 100 % |
 | 3. SPU and SPURS | 7 | 95 % |
@@ -75,8 +75,10 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] Vulkan validation layers and RenderDoc (`PS3RECOMP_VK_VALIDATION=1`, named passes, F12 under RenderDoc;
       [dev/testing.md](dev/testing.md), 2026-11-13)
 - [x] Moved to ps3recomp v0.18.0, re-applying our patches one by one (2026-10-28)
-- [ ] Record and replay routes per level: inputs recorded per game-clock tick from a checkpoint and replayed through
-      the virtual pad, for repeatable benchmarks and regression tests
+- [x] Record and replay routes per level: inputs recorded per game-clock tick from the player's first tick and replayed
+      through the virtual pad (`KZ_ROUTE_REC`, `KZ_ROUTE_PLAY`); a played route is rebased once (`KZ_ROUTE_REBASE`) so
+      later replays follow it exactly, and `tools/perf/ab.sh` compares two builds in alternating runs on it
+      ([dev/perf-bench.md](dev/perf-bench.md), 2026-11-10)
 
 ### Phase 1. PPU translated
 - [x] `ppu_loader`/`ppu_lifter` on the EBOOT; the port compiles and links
@@ -89,6 +91,7 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 ### Phase 3. SPU and SPURS
 - [x] SPU images, job modules and libsre translated
 - [x] One frame's jobs complete; Level 1 runs
+- [x] The SPURS lock-free queue in the runtime, no libsre needed (patch 1022, [dev/libsre-removal.md](dev/libsre-removal.md), 2026-11-17)
 - [x] The `jm_post` WWS job manager documented ([dev/wws-jm-post.md](dev/wws-jm-post.md)) and run on the PC
 - [x] Rare hang entering Level 1: no longer reproduces with `jm_post` on the PC (0 in 22 loads of the 11 levels, 2026-10-17)
 - [ ] Slow memory growth: about 0.24 MB/min in Level 1 standing still (15 min, 2026-10-17). Low priority
@@ -113,6 +116,7 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] All 11 levels load and reach gameplay
 - [x] Crash on a Lua script error fixed (the game's own setjmp/longjmp lifted)
 - [x] Continuous music and sound: the firmware's MP3 decoder (flashMP3.pic) translated
+- [x] The MP3 decoder's call answered by minimp3, checked against the firmware's decoder; no system software needed ([dev/flashmp3-native.md](dev/flashmp3-native.md), 2026-11-18)
 - [x] Hang with sound on (a zlib queue with two producers; PPU reservations per cache line)
 - [x] Hang in Strange Company (level 4) with sound on: libsre runs on the calling thread's stack
 - [x] Cutscene sound (`cellAudioAdd2chData`)
@@ -176,7 +180,8 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] Game logic at 60 Hz, a steady 60 fps by default
 - [x] Optional 144 Hz mode (about 131 to 134 fps in Level 1 since 2026-10-21)
 - [ ] A steady 144 fps (about 10 % short on the main thread in Level 7; PSGL rewrites and redundant commands measured
-      on 2026-11-10 and set aside, the next place to look is the engine's own code: [dev/performance.md](dev/performance.md))
+      on 2026-11-10 and set aside, the next place to look is the engine's own code: [dev/performance.md](dev/performance.md)).
+      The converted-vertex cache (2026-11-10) takes 13 to 15 % off the RSX thread but does not move the main thread
 - [x] Frame map ([dev/frame-map.md](dev/frame-map.md), 2026-11-13): each pass's target, size and format in Levels 1,
       4, 7, 8 and 11; the scene is 8-bit RGBA with a 256x1 grading ramp, no HDR scene and no shadow maps; the
       cameras' projection sites

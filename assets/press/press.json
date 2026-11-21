@@ -1,0 +1,18 @@
+{
+  "script": "73e6cc79f018fe563d5b5f302e90acdd86ea9c84f80015e63e5075bd28c321ab",
+  "pillow": "12.3.0",
+  "links": {
+    "recomplauncher": "https://recomplauncher.com/game/project-vekta",
+    "quiver": "https://quiverlauncher.com/apps/killzone-hd-project-vekta"
+  },
+  "fonts": {
+    "Rajdhani-Bold.ttf": "691470dd3286a14e9677940d0bf75796179841ba5215cbda1a2c8910a3226afd",
+    "Rajdhani-Medium.ttf": "12ff7dcfe4c206e3875ac53b1762eab57de6a2fa7f5a86c26b97b88d6591eac2"
+  },
+  "files": {
+    "quiver/badge.png": "30a0dac24e7754ee50f92fb87cfb95bf844b356a99c60c2cf4a75204ac864173",
+    "quiver/badge@3x.png": "6ef4f412c732c044d1dbdf68333fb21549a12da053477f1ee47bb51a7119baa6",
+    "recomplauncher/badge-dark.png": "21182acee84aa869a68923e4647b0ff4e4e2bf968004590c893a1003fe631600",
+    "recomplauncher/badge-dark.svg": "ad29e778c2e8c6c6dbe95fa100914ea2e8d36346c0fa09308ec2a051c5c300a8"
+  }
+}

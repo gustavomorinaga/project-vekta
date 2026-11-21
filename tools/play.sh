@@ -19,7 +19,6 @@ cd "$KZ_VFS" || exit 1
 export GCM_PARK_SKIP=${GCM_PARK_SKIP:-1} PS3RECOMP_VK_GUEST_PROGRAMS=${PS3RECOMP_VK_GUEST_PROGRAMS:-1}
 # The per-wait diagnostics only cost time and disk in play (~100 MB per session).
 export PS3_VERBOSE=${PS3_VERBOSE:-0} KZ_STATS=${KZ_STATS:-1}
-export KZ_LIBSRE_IMAGE=${KZ_LIBSRE_IMAGE:-$KZ_WORK/fw/out/libsre_image.bin}
 export PS3RECOMP_VK_WINDOW=1 PS3_TITLE="Killzone HD"
 # Above 30 fps: the game clock at 60 Hz (KZ_TICK_HZ=30 is the original) and
 # the game's own vblank at the PS3's 59.94, a steady 60 fps; flips shown on a
@@ -58,4 +57,6 @@ while kill -0 $pid 2>/dev/null; do
     sleep 1
 done
 kill -9 $pid 2>/dev/null
+# the exe's own reasons for not starting (port/kz1hd/kz_exit.h: the CPU check, the EBOOT check), said here too
+grep -a '^\[kz\] \(CPU\|EBOOT\) check: [A-Z]' "$KZ_WORK/play.log" >&2
 echo "log: $KZ_WORK/play.log"

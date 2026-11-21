@@ -3,8 +3,8 @@
 
     tools/check-game-files.py [--quick] [--root DIR] [--work DIR]
 
-Reads the paths from the same environment variables as tools/env.sh (KZ_GAME, KZ_EBOOT, KZ_PSARC, KZ_LIBSRE,
-PS3_DEV_FLASH), with the same defaults under Game/. Each file is checked by size and SHA-256 (--quick: size and
+Reads the paths from the same environment variables as tools/env.sh (KZ_GAME, KZ_EBOOT, KZ_PSARC),
+with the same defaults under Game/. Each file is checked by size and SHA-256 (--quick: size and
 magic only, skipping the 3 GB archive's hash). Prints one line per file and what to do about a mismatch; exits 1
 if a required file is missing or different. Standard library only; reads, never writes.
 
@@ -12,7 +12,8 @@ With --root (the port's folder) and --work (its work folder), tools/release/firs
 place the build runs in, each FAIL saying what to do: a path holding [ ] or ; (CMake reads them as list syntax and
 stops while configuring), a folder inside OneDrive (it syncs and locks the build's files while they are written), and
 a PC clock behind the port's own files (Ninja then sees them as changed forever). After Project Helghast's
-firstrun_check.py checks P1, O1 and T1 (undecuple, MIT); written here.
+firstrun_check.py checks P1, O1 and T1 (undecuple, MIT); written here. It also checks the CPU against the x86-64
+level the build is made for (KZ_MARCH, default x86-64-v3): port/kz1hd/cpu_check.c's test, before an hour of building.
 """
 import hashlib
 import os
@@ -20,9 +21,6 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = os.environ.get("KZ_GAME", os.path.join(ROOT, "Game", "NPUA80856"))
-# tools/kzbuild.py's default_dev_flash: on Windows RPCS3 keeps dev_flash beside rpcs3.exe, anywhere
-DEV_FLASH = os.environ.get("PS3_DEV_FLASH") or (os.path.join(ROOT, "Game", "dev_flash") if os.name == "nt"
-                                                else os.path.expanduser("~/.config/rpcs3/dev_flash"))
 
 # The data archive: the player's decrypted data_ps3.psarc when there is one (as up to 0.4.0), else the installed
 # game's data_ps3.psarc.edat, which the port opens itself (tools/kzbuild.py data, patch 4014).
@@ -47,12 +45,6 @@ FILES = [
      "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc", b"\x7fELF", True,
      "the decrypted EBOOT of the installed game (an ELF, not the EBOOT.BIN container)"),
     ARCHIVE,
-    ("libsre.prx", os.environ.get("KZ_LIBSRE", os.path.join(ROOT, "Game", "libsre.prx")), 239344,
-     "9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6", b"\x7fELF", True,
-     "the decrypted libsre from PS3 firmware 4.93 (sys/external/libsre.sprx in dev_flash)"),
-    ("flashMP3.pic", os.path.join(DEV_FLASH, "sys", "external", "flashMP3.pic"), 69695,
-     "adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a", None, False,
-     "the firmware's MP3 decoder, read as installed (without it the music and sound stop at the first MP3)"),
 ]
 
 
@@ -102,24 +94,61 @@ def place_problems(root, work, environ=None, now=None):
     return out
 
 
-FIRMWARE = "4.93"   # the PS3 system software libsre.prx and flashMP3.pic were tested from
+# The x86-64 levels by /proc/cpuinfo's flag names (port/kz1hd/cpu_level.h has the same rules by CPUID bit; the
+# kernel drops the AVX flags when it does not save the YMM state)
+CPU_FLAGS = {2: {"cx16", "lahf_lm", "popcnt", "pni", "sse4_1", "sse4_2", "ssse3"},
+             3: {"avx", "avx2", "bmi1", "bmi2", "f16c", "fma", "abm", "movbe", "xsave"},
+             4: {"avx512f", "avx512bw", "avx512cd", "avx512dq", "avx512vl"}}
+CPU_NEEDS = {2: "SSE4.2, POPCNT: Intel Nehalem (2008) or AMD Bulldozer (2011) and later",
+             3: "AVX2, FMA, BMI2: Intel Haswell (2013) or AMD Excavator (2015) and later",
+             4: "AVX-512: Intel Skylake-X, Ice Lake or later, AMD Zen 4 or later"}
+LAUNCHER = "Project Vekta.exe"
 
 
-def firmware_version(dev_flash):
-    """The system software version installed in a dev_flash folder ("4.93"), from vsh/etc/version.txt's
-    "release:04.9300:" line; None when the file is not there or not readable."""
+def cpu_level_of_flags(flags):
+    level = 1
+    for n in (2, 3, 4):
+        if not CPU_FLAGS[n] <= flags:
+            break
+        level = n
+    return level
+
+
+def cpu_level(root, windows=os.name == "nt", cpuinfo="/proc/cpuinfo", run=None):
+    """This CPU's x86-64 level, or None when it cannot be told: Linux reads /proc/cpuinfo; Windows asks the release
+    folder's launcher (Project Vekta.exe --cpu-check, which exits with it; a Git clone has no launcher)."""
+    if windows:
+        exe = os.path.join(root or ROOT, LAUNCHER)
+        if not os.path.isfile(exe):
+            return None
+        import subprocess
+        try:
+            rc = (run or subprocess.run)([exe, "--cpu-check"], timeout=30).returncode
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return rc if rc in (1, 2, 3, 4) else None
     try:
-        with open(os.path.join(dev_flash, "vsh", "etc", "version.txt"), encoding="ascii", errors="replace") as f:
-            for line in f:
-                if line.startswith("release:"):
-                    v = line.split(":")[1]
-                    return f"{int(v.split('.')[0])}.{v.split('.')[1][:2]}"
-    except (OSError, ValueError, IndexError):
-        pass
-    return None
+        with open(cpuinfo, encoding="ascii", errors="replace") as f:
+            line = next((ln for ln in f if ln.startswith("flags")), "")
+    except OSError:
+        return None
+    return cpu_level_of_flags(set(line.partition(":")[2].split())) if line else None
 
 
-RPCS3_ROUTE = ("when the game and the firmware are installed in RPCS3, run the first run again (run.cmd, run.sh or "
+def cpu_line(have, need):
+    """check-game-files' line for the CPU: FAIL when it is below the level the build is made for. The FAIL's label
+    is "CPU:" (firstrun.py ends the first run on it: no file the player gives can fix it)."""
+    if not need:
+        return None
+    if have is None:
+        return f"ok       CPU: not checked here (the build needs x86-64-v{need})"
+    if have >= need:
+        return f"ok       CPU: x86-64-v{have} (the build needs x86-64-v{need})"
+    return (f"FAIL     CPU: this build of Project Vekta needs a CPU with x86-64-v{need} ({CPU_NEEDS[need]}), and this "
+            f"one has x86-64-v{have}. The game cannot run on it")
+
+
+RPCS3_ROUTE = ("when the game is installed in RPCS3, run the first run again (scripts/run.cmd, scripts/run.sh or "
                "install.sh) and choose \"Use my RPCS3 install\": your RPCS3 makes the decrypted copies")
 
 
@@ -130,8 +159,6 @@ def folder_note(label, path):
     if os.path.isfile(os.path.join(usr, "EBOOT.BIN")) or os.path.isfile(os.path.join(usr, "data_ps3.psarc.edat")):
         return (f"{path} is the installed game's folder, which holds only the encrypted EBOOT.BIN and .edat, not "
                 f"{label}; {RPCS3_ROUTE}")
-    if os.path.isdir(os.path.join(path, "sys", "external")):
-        return f"{path} is a firmware folder (dev_flash), which holds the encrypted .sprx, not {label}; {RPCS3_ROUTE}"
     return f"{path} is a folder; give the file {label} itself"
 
 
@@ -147,8 +174,8 @@ def edat_license(path):
 def wrong_kind(label, head):
     """What to say about a file that starts with the wrong bytes, by what it is instead."""
     if head == b"SCE\0":
-        return ("this is still encrypted (an EBOOT.BIN or .sprx). The port needs the decrypted file; when the game and "
-                "the firmware are installed in RPCS3, `firstrun.py --rpcs3` (offered by run.cmd, run.sh and "
+        return ("this is still encrypted (an EBOOT.BIN). The port needs the decrypted file; when the game is "
+                "installed in RPCS3, `firstrun.py --rpcs3` (offered by scripts/run.cmd, scripts/run.sh and "
                 "install.sh) has your RPCS3 decrypt a copy")
     if head == b"NPD\0" and label == "data_ps3.psarc":
         return ("this is the .edat the package installs. Leave data_ps3.psarc unset (KZ_PSARC, the setup's field "
@@ -164,21 +191,16 @@ def main():
     for line in place_problems(opt("--root"), opt("--work")):
         print(line)
         bad = True
-    fw = firmware_version(DEV_FLASH) if os.path.isdir(DEV_FLASH) else None
-    if fw and fw != FIRMWARE:
-        print(f"WRONG    firmware: {DEV_FLASH} holds PS3 system software {fw}; the port needs {FIRMWARE} (libsre.prx and "
-              f"flashMP3.pic come from it)\n         install system software {FIRMWARE} in RPCS3 (File, Install "
-              "Firmware), then take dev_flash and libsre from it again")
-        bad = True
-    elif fw:
-        print(f"ok       firmware {fw}")
+    if opt("--root"):   # the first run's check: the CPU against the level the build will be made for (KZ_MARCH)
+        import kzbuild
+        line = cpu_line(cpu_level(opt("--root")), kzbuild.cpu_required(kzbuild.march(os.environ)))
+        if line:
+            print(line)
+            bad = bad or line.startswith("FAIL")
     for label, path, size, digest, magic, required, what in FILES:
         tag = "required" if required else "optional"
         if not os.path.isfile(path):
             where = folder_note(label, path) if os.path.isdir(path) else f"nothing at {path}"
-            if label == "flashMP3.pic" and os.path.isdir(DEV_FLASH) and not os.path.isdir(os.path.join(DEV_FLASH, "sys")):
-                where = (f"{DEV_FLASH} is not a dev_flash folder (no sys{os.sep}external in it); RPCS3 keeps dev_flash "
-                         "in its own folder, beside rpcs3.exe")
             print(f"MISSING  {label} ({tag}): {where}\n         expected: {what}")
             bad |= required
             continue
@@ -192,7 +214,7 @@ def main():
         if label == "data_ps3.psarc.edat" and edat_license(path) in (1, 2):
             print(f"WRONG    {label}: {path} is the PlayStation Store copy's archive, bound to your licence "
                   f"(licence type {edat_license(path)}), which the port cannot open itself. Run the first run again "
-                  "(run.cmd, run.sh or install.sh) and choose \"Use my RPCS3 install\": your RPCS3 opens a copy of it "
+                  "(scripts/run.cmd, scripts/run.sh or install.sh) and choose \"Use my RPCS3 install\": your RPCS3 opens a copy of it "
                   "with your licence (.rap) into data_ps3.psarc\n         expected: the disc package's .edat (licence "
                   "type 3), or a decrypted data_ps3.psarc")
             bad = True

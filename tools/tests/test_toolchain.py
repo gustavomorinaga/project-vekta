@@ -222,5 +222,11 @@ with tempfile.TemporaryDirectory() as td:
 r = subprocess.run([sys.executable, str(REL / "fetch_toolchain.py"), "--check"], capture_output=True, text=True)
 check(r.returncode == 0 and "manifest ok" in r.stdout, "--check passes on the real manifest")
 
+# The Linux folder's glslang is built with -Os: the pinned Zig's clang takes about 18 GB on SPIRV/doc.cpp at -O1 and
+# above (release.yml's linux job was killed for memory, exit 137; a 16 GB PC's first build would stop the same way)
+bld = (ROOT / "tools" / "release" / "build_linux_deps.py").read_text()
+check('GLSLANG_CXX_FLAGS = "-Os -DNDEBUG"' in bld and 'f"-DCMAKE_CXX_FLAGS_RELEASE={GLSLANG_CXX_FLAGS}"' in bld,
+      "build_linux_deps.py builds glslang with -Os (not Release's -O3)")
+
 print("test_toolchain:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

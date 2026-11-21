@@ -9,8 +9,7 @@
 ; and the pinned Windows toolchain, nothing of the game. What setup does: a per-user install (no admin) into
 ; %LOCALAPPDATA%\Programs\ProjectVekta by default (a folder without spaces: the compiler and CMake take any, but a
 ; short plain path keeps the tools' command lines readable). It asks where your own files are (docs/GETTING-FILES.md):
-; the installed game folder (NPUA80856), the decrypted EBOOT.elf, data_ps3.psarc and libsre.prx, and optionally the
-; firmware's dev_flash; it checks their kind and size before copying anything, keeps the answers in work\paths.env
+; the installed game folder (NPUA80856), the decrypted EBOOT.elf and (optionally) data_ps3.psarc; it checks their kind and size before copying anything, keeps the answers in work\paths.env
 ; (firstrun.py --save-paths) and, with "Build now" (the default), builds the port in the wizard (about five minutes;
 ; the full SHA-256 check is the build's first step). Start-menu entries (the game, "Verify and rebuild", "Open saves
 ; folder", "Make a support package", the project page, the uninstaller) and an optional desktop shortcut, all on
@@ -18,10 +17,10 @@
 ; nothing, except NVIDIA DLSS when the player ticks its box (unticked by default): the box accepts NVIDIA's DLSS SDK
 ; licence, and the build then fetches the SDK's files from NVIDIA's repository on this machine (firstrun.py --dlss
 ; accept; nvngx_dlss.dll goes beside KZ1HD.exe). The answer is kept in work\dlss-choice and offered again on an
-; upgrade; running setup again (or run.cmd --dlss accept|decline) changes it.
-; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>
-; /LIBSRE=<file> [/DEVFLASH=<dir>]] [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with all four
-; files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
+; upgrade; running setup again (or scripts\run.cmd --dlss accept|decline) changes it.
+; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>]
+; [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with the game and
+; its files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
 ; asks. /RPCS3=<dir> (or the folder picked with "Find RPCS3..." last time) is where the "Your game" page looks for
 ; RPCS3 first. The saves and settings go to %APPDATA%\Project Vekta, or with the "portable" task (/MERGETASKS="portable")
 ; to the install folder's work\vfs; vekta-install.ini [install] portable tells launch.py which. The uninstaller removes
@@ -50,12 +49,13 @@
 ; The tested files' sizes, as tools/check-game-files.py has them (tools/tests/test_setup.py checks they agree)
 #define EbootSize "19706080"
 #define PsarcSize "3147174243"
-#define Firmware "4.93"
-#define LibsreSize "239344"
 #define TitleId "NPUA80856"
 #define FilesDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md"
 #define InstallDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
 #define LauncherExe "Project Vekta.exe"
+; The x86-64 level the build is made for: tools/kzbuild.py's default KZ_MARCH, x86-64-v3 (port/kz1hd/cpu_check.c;
+; tools/tests/test_setup.py checks they agree)
+#define CpuLevel "3"
 #define SiteURL "https://gustavomorinaga.github.io/project-vekta/"
 #define IssuesURL "https://github.com/gustavomorinaga/project-vekta/issues"
 ; firstrun.py's DLSS_LICENSE_URL (tools/tests/test_setup.py checks they agree)
@@ -124,10 +124,17 @@ Type: filesandordirs; Name: "{app}\assets"
 Type: filesandordirs; Name: "{app}\docs"
 Type: filesandordirs; Name: "{app}\work\ps3recomp-patched"
 Type: filesandordirs; Name: "{app}\work\toolchain-cache"
+; up to 0.5.x run.cmd and play.cmd sat beside the launcher; from 0.6.0 they are in scripts\, so that the launcher is the
+; one program at the top (a launcher such as Quiver starts the one it finds there)
+Type: files; Name: "{app}\run.cmd"
+Type: files; Name: "{app}\play.cmd"
 ; v0.2.0's Start menu entry, replaced by "Verify and rebuild"
 Type: files; Name: "{group}\Build again (your files, the lift, the compile).lnk"
 
 [Files]
+; The launcher answers the CPU question before the first page (InitializeSetup: --cpu-check); first, so that unpacking
+; it reads nothing before it.
+Source: "{#Payload}\{#LauncherExe}"; DestDir: "{tmp}"; Flags: dontcopy
 ; The "Your game" page asks tools/release/rpcs3_import.py what the player's RPCS3 has, before anything is installed:
 ; the bundled Python and the two modules go to a temporary folder (after Project Pyrrhus's kz2.iss, MIT). They come
 ; first, and the payload starts a new solid block (solidbreak): with solid compression, unpacking a file means
@@ -156,7 +163,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: 
 
 [Run]
 Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"; Description: "&Play {#AppName} now"; Flags: postinstall nowait skipifsilent; Check: BuildSucceeded
-Filename: "{app}\run.cmd"; WorkingDir: "{app}"; Description: "&Build now in a console (it asks again where your files are)"; Flags: postinstall shellexec skipifsilent unchecked; Check: BuildNotDone
+Filename: "{app}\scripts\run.cmd"; WorkingDir: "{app}"; Description: "&Build now in a console (it asks again where your files are)"; Flags: postinstall shellexec skipifsilent unchecked; Check: BuildNotDone
 
 [UninstallDelete]
 Type: files; Name: "{app}\vekta-install.ini"
@@ -198,13 +205,12 @@ var
   RpcsNote: TNewStaticText;
   RpcsBrowse: TNewButton;
   RpcsLooked, RpcsOK: Boolean;
-  RpcsHint, RpcsRoot, RpcsGame, RpcsFlash, RpcsProblems: String;
+  RpcsHint, RpcsRoot, RpcsGame, RpcsProblems: String;
   GamePage: TInputDirWizardPage;
   FilesPage: TInputFileWizardPage;
-  FlashPage: TInputQueryWizardPage;
   DlssPage: TWizardPage;
   DlssCheck: TNewCheckBox;
-  FlashBrowse, StopBtn: TNewButton;
+  StopBtn: TNewButton;
   StopFile: String;
   BuildRan, BuildOK, BuildStopped: Boolean;
   BuildReason, BuildLog: String;
@@ -363,7 +369,7 @@ begin
   if not (((Kind = 'ELF') and (M = #127 + 'ELF')) or ((Kind = 'PSAR') and (M = 'PSAR'))) then begin
     if M = 'SCE' + #0 then
       Result := Name + ': this is the encrypted container (as EBOOT.BIN or a .sprx), not the decrypted file. ' +
-        'With the game and the firmware installed in RPCS3, go Back and choose "Use my RPCS3 install".'
+        'With the game installed in RPCS3, go Back and choose "Use my RPCS3 install".'
     else if (Kind = 'PSAR') and (CompareText(ExtractFileExt(Path), '.edat') = 0) then
       Result := Name + ': this is the .edat the package installs, not the decrypted archive.'
     else
@@ -389,32 +395,6 @@ begin
     P := FileProblem(FilesPage.Values[1], 'data_ps3.psarc', 'PSAR', StrToInt64('{#PsarcSize}'));
     if P <> '' then Result := Result + P + ' (Or leave it empty when the game folder has USRDIR\data_ps3.psarc.edat.)' + #13#10;
   end;
-  P := FileProblem(FilesPage.Values[2], 'libsre.prx', 'ELF', StrToInt64('{#LibsreSize}'));
-  if P <> '' then Result := Result + P + #13#10;
-end;
-
-{ The system software version in a dev_flash folder ('4.93'), from vsh\etc\version.txt's "release:04.9300:" line;
-  '' when it cannot be read. The same rule as tools/check-game-files.py's firmware_version. }
-function FirmwareVersion(Dir: String): String;
-var
-  Lines: TArrayOfString;
-  I: Integer;
-  V: String;
-begin
-  Result := '';
-  if not LoadStringsFromFile(AddBackslash(Dir) + 'vsh\etc\version.txt', Lines) then Exit;
-  for I := 0 to GetArrayLength(Lines) - 1 do
-    if Pos('release:', Lines[I]) = 1 then begin
-      V := Copy(Lines[I], 9, 7);   { 04.9300 }
-      if (Length(V) = 7) and (V[3] = '.') then
-        Result := IntToStr(StrToIntDef(Copy(V, 1, 2), 0)) + '.' + Copy(V, 4, 2);
-      Exit;
-    end;
-end;
-
-function FlashOK(Dir: String): Boolean;
-begin
-  Result := FileExists(AddBackslash(Dir) + 'sys\external\flashMP3.pic');
 end;
 
 { An empty file field gets the file of that name next to one already picked, or in the game's USRDIR }
@@ -424,7 +404,7 @@ var
   D: String;
 begin
   if FilesPage.Values[I] <> '' then Exit;
-  for J := 0 to 2 do
+  for J := 0 to 1 do
     if (J <> I) and (FilesPage.Values[J] <> '') then begin
       D := AddBackslash(ExtractFileDir(FilesPage.Values[J])) + Name;
       if FileExists(D) then begin
@@ -440,16 +420,6 @@ procedure FillFiles;
 begin
   FillFile(0, 'EBOOT.elf');
   FillFile(1, 'data_ps3.psarc');
-  FillFile(2, 'libsre.prx');
-end;
-
-procedure FlashBrowseClick(Sender: TObject);
-var
-  D: String;
-begin
-  D := FlashPage.Values[0];
-  if BrowseForFolder('The firmware''s dev_flash folder (holds sys\external\flashMP3.pic):', D, False) then
-    FlashPage.Values[0] := D;
 end;
 
 { A value from the command line (/GAME= and the others), else the last install's }
@@ -520,13 +490,34 @@ begin
     CheckRpcs3(D);
 end;
 
+{ Before the first page: a CPU below the level the build is made for (the launcher's --cpu-check, the test KZ1HD.exe
+  makes when it starts, port/kz1hd/cpu_level.h) could install and build, but the game would never start. Say so, and
+  install only when the player still wants to. A launcher that cannot be run says nothing. }
+function InitializeSetup: Boolean;
+var
+  Level: Integer;
+begin
+  Result := True;
+  try
+    ExtractTemporaryFile('{#LauncherExe}');
+    if Exec(ExpandConstant('{tmp}\{#LauncherExe}'), '--cpu-check', '', SW_HIDE, ewWaitUntilTerminated, Level) and
+       (Level >= 1) and (Level < {#CpuLevel}) then
+      Result := SuppressibleMsgBox('This PC''s CPU is too old for Project Vekta: the build is made for CPUs with ' +
+        'x86-64-v{#CpuLevel} (AVX2, FMA, BMI2: Intel Haswell (2013) or AMD Excavator (2015) and later), and this ' +
+        'one has x86-64-v' + IntToStr(Level) + '. The game cannot run on it.' + #13#10#13#10 +
+        'Install anyway?', mbError, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
+  except
+    Log('CPU check skipped: ' + GetExceptionMessage);
+  end;
+end;
+
 procedure InitializeWizard;
 begin
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
     'From your RPCS3, or from files you pick.',
-    'Setup looks for RPCS3 with Killzone HD ({#TitleId}) and the PS3 firmware installed. With it, your RPCS3 ' +
-    'decrypts copies of the game''s EBOOT and the firmware''s libsre into the install folder during the build, and ' +
-    'nothing needs preparing by hand. Your game and RPCS3 folders are only read.', True, False);
+    'Setup looks for RPCS3 with Killzone HD ({#TitleId}) installed. With it, your RPCS3 ' +
+    'decrypts a copy of the game''s EBOOT into the install folder during the build, and nothing needs preparing by ' +
+    'hand. Your game and RPCS3 folders are only read.', True, False);
   SourcePage.Add('Use my RPCS3 install');
   SourcePage.Add('I will pick the game folder and the decrypted files myself');
   SourcePage.Add('Show me how');
@@ -557,33 +548,16 @@ begin
     'picking the folder it is in also works). Setup only reads it.', False, '');
   GamePage.Add('Installed game folder ({#TitleId}):');
   FilesPage := CreateInputFilePage(GamePage.ID, 'Your decrypted files',
-    'Three files made from your own game and PS3 firmware.',
-    'Decrypted, as docs/GETTING-FILES.md says: not EBOOT.BIN, not the .sprx. The data archive may stay empty: the ' +
+    'Files made from your own game.',
+    'Decrypted, as docs/GETTING-FILES.md says: not EBOOT.BIN. The data archive may stay empty: the ' +
     'port then reads the game folder''s own data_ps3.psarc.edat. This installer ' +
     'includes no decryption tools and downloads nothing for them; the files are only read.');
   FilesPage.Add('EBOOT.elf (the game''s executable, decrypted):', 'ELF files (*.elf)|*.elf|All files|*.*', '.elf');
   FilesPage.Add('data_ps3.psarc (optional: the data archive, decrypted; empty = the game''s own .edat):', 'PSARC files (*.psarc)|*.psarc|All files|*.*', '.psarc');
-  FilesPage.Add('libsre.prx (SPURS, from PS3 system software 4.93, decrypted):', 'PRX files (*.prx)|*.prx|All files|*.*', '.prx');
-  FlashPage := CreateInputQueryPage(FilesPage.ID, 'PS3 firmware (for the music)',
-    'The firmware''s dev_flash folder, as RPCS3 keeps it.',
-    'The game''s music decoder is read from dev_flash\sys\external\flashMP3.pic. Optional, but without it the music ' +
-    'and sound stop at the first MP3. RPCS3 keeps dev_flash in its own folder.');
-  FlashPage.Add('dev_flash folder (holds sys\external\flashMP3.pic):', False);
-  FlashPage.Edits[0].Width := FlashPage.SurfaceWidth - ScaleX(90);
-  FlashBrowse := TNewButton.Create(FlashPage);
-  FlashBrowse.Parent := FlashPage.Surface;
-  FlashBrowse.Left := FlashPage.SurfaceWidth - ScaleX(80);
-  FlashBrowse.Top := FlashPage.Edits[0].Top - ScaleY(1);
-  FlashBrowse.Width := ScaleX(80);
-  FlashBrowse.Height := FlashPage.Edits[0].Height + ScaleY(2);
-  FlashBrowse.Caption := 'B&rowse...';
-  FlashBrowse.OnClick := @FlashBrowseClick;
-  CreateDlssPage(FlashPage.ID);
+  CreateDlssPage(FilesPage.ID);
   GamePage.Values[0] := Pick('GAME', 'Game');
   FilesPage.Values[0] := Pick('EBOOT', 'Eboot');
   FilesPage.Values[1] := Pick('PSARC', 'Psarc');
-  FilesPage.Values[2] := Pick('LIBSRE', 'Libsre');
-  FlashPage.Values[0] := Pick('DEVFLASH', 'DevFlash');
   { unticked unless the player accepted before (an upgrade) or passed /DLSS=accept }
   DlssCheck.Checked := CompareText(Pick('DLSS', 'Dlss'), 'accept') = 0;
 end;
@@ -597,8 +571,6 @@ begin
   SetPreviousData(PreviousDataKey, 'Game', GamePage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Eboot', FilesPage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Psarc', FilesPage.Values[1]);
-  SetPreviousData(PreviousDataKey, 'Libsre', FilesPage.Values[2]);
-  SetPreviousData(PreviousDataKey, 'DevFlash', FlashPage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Dlss', DlssChoice);
   SetPreviousData(PreviousDataKey, 'Rpcs3Dir', RpcsHint);   { the folder picked with Find RPCS3..., else '' }
 end;
@@ -608,7 +580,7 @@ end;
   the usual places), and again for the folder picked with "Find RPCS3...". }
 procedure CheckRpcs3(Hint: String);
 var
-  Py, Res, Problem, Fw, Args: String;
+  Py, Res, Problem, Args: String;
   Lines: TArrayOfString;
   RC, I, Waited: Integer;
   Wait: TOutputProgressWizardPage;
@@ -623,7 +595,7 @@ begin
   if Hint <> '' then Args := ' --rpcs3 ' + Quote(Hint);
   { A progress page while the helper is unpacked and runs (a second or two): the wizard keeps answering, and the
     player sees that something is happening }
-  Wait := CreateOutputProgressPage('Your game', 'Looking for RPCS3, Killzone HD and the PS3 firmware...');
+  Wait := CreateOutputProgressPage('Your game', 'Looking for RPCS3 and Killzone HD...');
   Wait.ProgressBar.Style := npbstMarquee;
   Wait.Show;
   try
@@ -656,15 +628,13 @@ begin
     RpcsOK := ResultValue(Lines, 'status') = 'ok';
     RpcsRoot := ResultValue(Lines, 'root');
     RpcsGame := ResultValue(Lines, 'game');
-    RpcsFlash := ResultValue(Lines, 'dev_flash');
-    Fw := ResultValue(Lines, 'firmware');
     for I := 0 to GetArrayLength(Lines) - 1 do
       if Pos('problem=', Lines[I]) = 1 then begin
         Problem := Copy(Lines[I], 9, MaxInt);
         if Pos('|', Problem) > 0 then Problem := Copy(Problem, Pos('|', Problem) + 1, MaxInt);
         RpcsProblems := RpcsProblems + '- ' + Problem + #13#10;
       end;
-    Log('rpcs3: status ' + ResultValue(Lines, 'status') + ', root ' + RpcsRoot + ', firmware ' + Fw);
+    Log('rpcs3: status ' + ResultValue(Lines, 'status') + ', root ' + RpcsRoot);
   end;
   if RpcsOK then begin
     SourcePage.CheckListBox.ItemCaption[0] := 'Use my RPCS3 install (' + RpcsRoot + ')';
@@ -673,7 +643,7 @@ begin
     if (Hint = GetPreviousData('Rpcs3Dir', '')) and (GetPreviousData('Source', '') = 'files') then
       SourcePage.SelectedValueIndex := 1;
     RpcsNote.Font.Color := clWindowText;
-    RpcsNote.Caption := 'Found: Killzone HD in ' + RpcsGame + ', PS3 system software ' + Fw + ' in ' + RpcsFlash + '.';
+    RpcsNote.Caption := 'Found: Killzone HD in ' + RpcsGame + '.';
   end else begin
     SourcePage.CheckListBox.ItemCaption[0] := 'Use my RPCS3 install (not available: the reason is below)';
     SourcePage.CheckListBox.ItemEnabled[0] := False;
@@ -685,7 +655,7 @@ begin
   end;
 end;
 
-{ The RPCS3 route: the game folder, the files and dev_flash come from RPCS3, so their pages are skipped }
+{ The RPCS3 route: the game folder and the files come from RPCS3, so their pages are skipped }
 function UseRpcs3: Boolean;
 begin
   Result := RpcsOK and (SourcePage.SelectedValueIndex = 0);
@@ -784,13 +754,12 @@ begin
   end else if (CurPageID = SourcePage.ID) and (SourcePage.SelectedValueIndex = 2) then begin
     { "Show me how": the steps (the same as firstrun.py's SHOW_ME_HOW), then the page again }
     MsgBox('The easy way, through RPCS3:' + #13#10 +
-      '1. In RPCS3, install PS3 system software {#Firmware} (File, Install Firmware).' + #13#10 +
-      '2. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc, or your PlayStation Store ' +
+      '1. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc, or your PlayStation Store ' +
       'copy with its licence.' + #13#10 +
-      '3. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
+      '2. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
       'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
       'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +
-      'myself" and give the installed game folder, EBOOT.elf, libsre.prx and the firmware''s dev_flash.' + #13#10#13#10 +
+      'myself" and give the installed game folder and EBOOT.elf.' + #13#10#13#10 +
       'Every step: {#InstallDoc}' + #13#10 + 'What each file must be: {#FilesDoc}', mbInformation, MB_OK);
     Result := False;
   end else if CurPageID = GamePage.ID then begin
@@ -806,22 +775,6 @@ begin
       MsgBox(Problem + #13#10 + 'What each file must be: {#FilesDoc}', mbError, MB_OK);
       Result := False;
     end;
-  end else if CurPageID = FlashPage.ID then begin
-    FlashPage.Values[0] := RemoveBackslashUnlessRoot(Trim(FlashPage.Values[0]));
-    if FlashPage.Values[0] = '' then
-      Result := MsgBox('Without dev_flash the music and sound stop at the first MP3. Go on without it?',
-        mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES
-    else if not FlashOK(FlashPage.Values[0]) then begin
-      MsgBox('No sys\external\flashMP3.pic in this folder. Pick the firmware''s dev_flash folder, or leave the ' +
-        'field empty to go on without the music.', mbError, MB_OK);
-      Result := False;
-    end else if (FirmwareVersion(FlashPage.Values[0]) <> '') and
-                (FirmwareVersion(FlashPage.Values[0]) <> '{#Firmware}') then begin
-      MsgBox('This dev_flash holds PS3 system software ' + FirmwareVersion(FlashPage.Values[0]) + '; the port needs ' +
-        '{#Firmware} (libsre.prx and the music decoder come from it). Install system software {#Firmware} in RPCS3 ' +
-        '(File, Install Firmware), take libsre from it again, then pick its dev_flash.', mbError, MB_OK);
-      Result := False;
-    end;
   end;
 end;
 
@@ -829,11 +782,11 @@ end;
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := WizardSilent and ((PageID = SourcePage.ID) or (PageID = GamePage.ID) or (PageID = FilesPage.ID) or
-    (PageID = FlashPage.ID) or (PageID = DlssPage.ID));
-  if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID) or (PageID = FlashPage.ID)) then Result := True;
+    (PageID = DlssPage.ID));
+  if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID)) then Result := True;
 end;
 
-{ All four required files, checked; silent installs with any of them missing build nothing }
+{ The required files, checked; silent installs with any of them missing build nothing }
 function FilesReady: Boolean;
 var
   P: String;
@@ -860,15 +813,12 @@ begin
   if GamePage.Values[0] <> '' then Result := Result + ' --game ' + Quote(ResolveGame(GamePage.Values[0]));
   if FilesPage.Values[0] <> '' then Result := Result + ' --eboot ' + Quote(FilesPage.Values[0]);
   if FilesPage.Values[1] <> '' then Result := Result + ' --psarc ' + Quote(FilesPage.Values[1]);
-  if FilesPage.Values[2] <> '' then Result := Result + ' --libsre ' + Quote(FilesPage.Values[2]);
-  if FlashPage.Values[0] <> '' then Result := Result + ' --dev-flash ' + Quote(FlashPage.Values[0]);
 end;
 
 { The file firstrun.py's rpcs3 step is decrypting (its PROGRESS line's file=, rpcs3_import.py's output names) }
 function RpcsFile(Name: String): String;
 begin
   if Name = 'EBOOT.elf' then Result := 'the game''s EBOOT'
-  else if Name = 'libsre.prx' then Result := 'libsre, from the firmware'
   else if Name = 'data_ps3.psarc.edat.unedat' then
     Result := 'the data archive of your PlayStation Store copy (3 GB: a minute or more)'
   else Result := Name;

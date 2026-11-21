@@ -111,6 +111,8 @@ h4 { font-size: 1.05rem; color: var(--head2); margin: 1.2rem 0 .3rem; }
 .headline strong { color: var(--steel); text-transform: uppercase; letter-spacing: .05em; }
 .note { color: var(--dim); margin: .4em 0; max-width: 60ch; }
 .btns { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0 0; }
+.badges { display: flex; flex-wrap: wrap; gap: .6rem; margin: .6rem 0; }
+.badges img { display: block; max-width: 100%; height: auto; }
 .btn { display: inline-block; padding: .5em 1.4em; background: var(--steel); color: var(--on-steel); text-decoration: none;
   clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
 .btn.alt { background: var(--panel2); color: var(--text); }

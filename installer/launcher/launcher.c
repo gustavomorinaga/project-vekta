@@ -6,10 +6,13 @@
  *     <dir>\work\toolchain-cache\python\pythonw.exe "<dir>\tools\release\launch.py" --root "<dir>" --build-if-needed
  *         <own arguments>
  * where <dir> is the folder this exe is in, waits for it (shortcuts and Steam see one process for the whole session)
- * and returns its exit code. --build-if-needed: before the first build, launch.py opens run.cmd in a console.
+ * and returns its exit code. --build-if-needed: before the first build, launch.py checks the files and builds
+ * (asking nothing when RPCS3 and the game are in their usual places; else scripts\run.cmd in a console).
  *
  * --launcher-dry-run (first argument): write the command line it would run, or the error, to
  * <dir>\launcher-dry-run.txt (UTF-8) and exit without starting anything or showing a dialog (the Wine test).
+ *
+ * --cpu-check (first argument): exit with this CPU's x86-64 level, 1 to 4 (port/kz1hd/cpu_level.h).
  *
  * Build: tools/release/build_launcher.py (the pinned llvm-mingw; plain Win32, -Os, no PE timestamp).
  */
@@ -21,6 +24,7 @@
 #endif
 #include <windows.h>
 #include <wchar.h>
+#include "../../port/kz1hd/cpu_level.h"
 
 #define BIG 32768
 
@@ -83,6 +87,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR unused, int show)
     const wchar_t *rootarg = (slash > dir && slash[-1] == L':') ? L"\\." : L"";
 
     const wchar_t *rest = after_argv0(GetCommandLineW());
+    /* --cpu-check: exit with this CPU's x86-64 level (1-4), for the setup's first page and firstrun.py's check
+     * (the same test KZ1HD.exe makes before it starts: port/kz1hd/cpu_level.h). */
+    if (wcsncmp(rest, L"--cpu-check", 11) == 0 && (rest[11] == 0 || rest[11] == L' ')) return kz_cpu_level();
     int dry = 0;
     if (wcsncmp(rest, L"--launcher-dry-run", 18) == 0 && (rest[18] == 0 || rest[18] == L' ')) {
         dry = 1;

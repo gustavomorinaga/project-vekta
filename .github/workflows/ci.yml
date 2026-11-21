@@ -6,7 +6,7 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**"]   # and the release branches PRs merge into (release/vX.Y.Z)
   pull_request:
 permissions:
   contents: read
@@ -37,12 +37,17 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/lint"
           "$RUNNER_TEMP/lint/bin/pip" install --quiet --disable-pip-version-check ruff==0.16.9 shellcheck-py==0.11.0.1
           PATH="$RUNNER_TEMP/lint/bin:$PATH" RUFF_FORMAT=github bash tools/lint.sh
-      - name: bubblewrap for the sandbox test, SDL2 for ps3recomp's own tests
+      - name: bubblewrap for the sandbox test, SDL2 for ps3recomp's own tests, qemu-user for the CPU check's test
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap libsdl2-dev >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap libsdl2-dev qemu-user >/dev/null
           # Ubuntu's AppArmor blocks unprivileged user namespaces, which bwrap needs; this runner is thrown away after
           sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: The pinned Zig, which builds the CPU check's static baseline program for the emulated Nehalem
+        run: python3 tools/release/fetch_toolchain.py --only zig --cache "$RUNNER_TEMP/toolchain-cache"
       - name: Host tests (no game data; the list is tools/host-tests.txt)
+        env:
+          KZ_REQUIRE_QEMU: "1"   # tools/tests/test_cpu_check.sh: the run on an emulated Nehalem must happen here
+          KZ_ZIG: ${{ runner.temp }}/toolchain-cache/zig/zig
         run: bash tools/run-host-tests.sh --gh
 
   windows-host:
@@ -58,7 +63,26 @@ jobs:
       - name: Patches apply to the pinned ps3recomp
         run: bash tools/ps3recomp-patched.sh
       - name: Wine
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends wine64 >/dev/null
+        # Twice on 2026-11-18 this step sat silent until the job's 20 minutes ran out (two runner images; the same
+        # step took 25 s in the runs before and after). Each apt call now has its own time limit, apt's network
+        # retries and lock wait are bounded, a stuck attempt is tried again, and a failed one shows apt's last lines.
+        timeout-minutes: 12
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120)
+          log="$RUNNER_TEMP/apt-wine.log"
+          for try in 1 2 3; do
+            if timeout 150 sudo -E apt-get "${apt_opts[@]}" update -qq >"$log" 2>&1 &&
+               timeout 300 sudo -E apt-get "${apt_opts[@]}" install -y -qq --no-install-recommends wine64 >>"$log" 2>&1; then
+              dpkg-query -W wine64
+              exit 0
+            fi
+            echo "::warning::apt attempt $try for Wine failed or timed out; its last lines:"
+            tail -n 20 "$log"
+            sleep 10
+          done
+          exit 1
       - name: Windows host tests under Wine (the toolchain from tools/release/toolchain.json, SHA-256 checked)
         run: bash tools/wine-host-tests.sh
 

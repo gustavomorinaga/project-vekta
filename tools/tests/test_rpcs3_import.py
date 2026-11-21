@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Host test for tools/release/rpcs3_import.py ("use my RPCS3 install") and firstrun.py's --rpcs3: in a made-up RPCS3
-folder with Killzone HD installed in dev_hdd0/game, the wrapper finds the game, its .edat and dev_flash, drops the
+folder with Killzone HD installed in dev_hdd0/game, the wrapper finds the game and its .edat (with no PS3 system software installed), drops the
 two problems rpcs3_locate.py reports for a game that is not a disc, runs a stand-in RPCS3 with --decrypt on copies in
 work/prep (its settings redirected there, stdin the null device), judges the results by hash, stops a hung RPCS3
 with the watchdog, and never writes into the game's or RPCS3's folders. Also: rpcs3_locate.py is still the copy
@@ -36,7 +36,8 @@ check(got == "5ea2c6e42c0eb8e78abcd57381302494f86394c3a24d02bad0bcaab7bd9129ea",
       f"rpcs3_locate.py is Project Pyrrhus's copy, unedited: {got}")
 
 # A stand-in RPCS3: records its environment and stdin, then makes <name>.elf / <name>.prx / <name>.edat.unedat beside
-# each --decrypt input (as RPCS3 does). FAKE_MODE: ok, bad (wrong contents), hang (never finishes), none (makes nothing).
+# each --decrypt input (as RPCS3 does). FAKE_MODE: ok, bad (wrong contents), hang (never finishes), none (makes nothing),
+# dllcheck (stops at RPCS3's start-up check of the Visual C++ DLLs: its log line, exit 0, nothing made).
 FAKE = r'''#!/usr/bin/env python3
 import os, sys, time
 mode = os.environ.get("FAKE_MODE", "ok")
@@ -49,6 +50,13 @@ if mode == "norap":
     print("RPCS3: SELF: Failed to locate the game license file: x/exdata/UP9000-NPUA80856_00-X.rap.")
 if mode == "hang":
     time.sleep(60)
+if mode == "dllcheck":
+    d = os.path.join(os.environ["XDG_CACHE_HOME"], "rpcs3")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "RPCS3.log"), "a") as f:
+        f.write("E SYS: Found incorrectly installed module: 'msvcp140.dll' (path='D:\\Profile\\AppData\\Local\\"
+                "Other\\runtime\\bin\\MSVCP140.dll', windows='C:\\Windows')\n")
+    sys.exit(0)
 args = sys.argv[1:]
 for i, a in enumerate(args):
     if a == "--decrypt" and mode not in ("none", "norap"):
@@ -89,10 +97,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (game / "USRDIR" / "data_ps3.psarc.edat").write_bytes(b"NPD\0 archive")
     ext = rp / "dev_flash" / "sys" / "external"
     ext.mkdir(parents=True)
-    (ext / "libsre.sprx").write_bytes(b"SCE\0 encrypted libsre")
-    ver = rp / "dev_flash" / "vsh" / "etc" / "version.txt"
-    ver.parent.mkdir(parents=True)
-    ver.write_text("release:04.9300:\nbuild:1,20260101:x\n")
+    # an empty dev_flash: no system software is installed in this RPCS3, and none is needed
     exdata = rp / "dev_hdd0" / "home" / "00000001" / "exdata"   # the player's licences (a made-up name; never read)
     exdata.mkdir(parents=True)
     (exdata / "UP9000-NPUA80856_00-NOTAREALLICENCE.rap").write_bytes(b"x" * 16)
@@ -102,14 +107,14 @@ with tempfile.TemporaryDirectory() as tmp:
     exe.chmod(0o755)
     flog = tmp / "fake.log"
     os.environ["FAKE_LOG"] = str(flog)
-    ri.EBOOT, ri.LIBSRE = spec("EBOOT.BIN", "EBOOT.elf"), spec("libsre.sprx", "libsre.prx")
+    ri.EBOOT = spec("EBOOT.BIN", "EBOOT.elf")
     before = tree_state(rp)
 
     # resolve: found, the HDD game's two disc problems dropped, the program in the folder
     r = ri.resolve(str(rp))
     check(r["status"] == "ok" and r["problems"] == [], f"resolve: ok, no problems: {r['problems']}")
     check(r["game"] == str(game) and r["edat"] == str(game / "USRDIR" / "data_ps3.psarc.edat")
-          and r["dev_flash"] == str(rp / "dev_flash") and r["exe"] == [str(exe)], f"resolve: the paths: {r}")
+          and r["exe"] == [str(exe)] and "firmware" not in r, f"resolve: the paths, no firmware: {r}")
     check(ri.lines(r)[0] == "status=ok" and f"game={game}" in ri.lines(r), "resolve: key=value lines")
 
     # a path into RPCS3 (the game as it installed it, a file in it, dev_flash) means that RPCS3: a player who gave the
@@ -119,56 +124,59 @@ with tempfile.TemporaryDirectory() as tmp:
           "rpcs3_root_of climbs from dev_hdd0/game/NPUA80856, a file in it and dev_flash to the RPCS3 folder")
     r = ri.resolve(str(game))
     check(r["status"] == "ok" and r["game"] == str(game), f"resolve with the game's own folder as the hint: {r}")
-    check(firstrun.rpcs3_hint({"eboot": str(game), "libsre": str(game)}) == str(rp)
+    check(firstrun.rpcs3_hint({"eboot": str(game), "game": str(game)}) == str(rp)
           and firstrun.rpcs3_hint({"eboot": str(tmp / "nowhere")}) is None,
           "firstrun finds the RPCS3 the player's paths point into")
     check(firstrun.in_folder("eboot", str(game)) == str(game) and firstrun.in_folder("game", str(game)) == str(game),
           "a game folder given for EBOOT.elf (no EBOOT.elf in it) is kept, for the check to name")
     # check-game-files names the folder for what it is instead of "nothing at"
-    env = dict(os.environ, KZ_GAME=str(game), KZ_EBOOT=str(game), KZ_PSARC=str(game), KZ_LIBSRE=str(game),
-               PS3_DEV_FLASH=str(game))
+    env = dict(os.environ, KZ_GAME=str(game), KZ_EBOOT=str(game), KZ_PSARC=str(game))
     out = __import__("subprocess").run([sys.executable, str(ROOT / "tools" / "check-game-files.py"), "--quick"],
                                        capture_output=True, text=True, env=env).stdout
     check("MISSING  EBOOT.elf (required): " + str(game) + " is the installed game's folder" in out
-          and "Use my RPCS3 install" in out and "is not a dev_flash folder" in out and f"nothing at {game}\n" not in out,
+          and "Use my RPCS3 install" in out and f"nothing at {game}\n" not in out,
           f"check-game-files on the report's paths says the folder is the encrypted game and how to go on: {out}")
 
     # prepare: the copies decrypted in work/prep, settings redirected there, stdin empty, folders untouched
     work = tmp / "work"
     p = ri.prepare(str(work), str(rp))
     prep = work / "prep"
-    check(p["status"] == "ok" and p["eboot"] == str(prep / "EBOOT.elf") and p["libsre"] == str(prep / "libsre.prx"),
-          f"prepare: ok, the two files in work/prep: {p}")
+    check(p["status"] == "ok" and p["eboot"] == str(prep / "EBOOT.elf") and "libsre" not in p,
+          f"prepare: ok, the EBOOT in work/prep and nothing else: {p}")
     check((prep / "EBOOT.elf").read_bytes() == b"plain EBOOT.BIN", "prepare: the EBOOT made by RPCS3 is kept")
     call = flog.read_text().splitlines()
     cfg = str(prep / "rpcs3")
-    check(len(call) == 2 and call[0].startswith(f"{cfg}/config|{cfg}/cache|''|--decrypt {prep}/in/EBOOT.BIN|")
-          and call[1].startswith(f"{cfg}/config|{cfg}/cache|''|--decrypt {prep}/in/libsre.sprx|"),
-          f"prepare: one RPCS3 run per copy (a failure stops a batch), settings in work/prep, stdin empty: {call}")
+    check(len(call) == 1 and call[0].startswith(f"{cfg}/config|{cfg}/cache|''|--decrypt {prep}/in/EBOOT.BIN|"),
+          f"prepare: one RPCS3 run, for the EBOOT only (no firmware file), settings in work/prep, stdin empty: {call}")
     check(all(c.endswith("|UP9000-NPUA80856_00-NOTAREALLICENCE.rap") for c in call),
           f"RPCS3 sees a copy of this game's licence, and no other, in its redirected settings: {call}")
     check(not (prep / "in").exists() and not (prep / "rpcs3").exists(), "prepare: the copies and settings are removed")
     check(tree_state(rp) == before, "prepare: nothing written into RPCS3's or the game's folders")
     p = ri.prepare(str(work), str(rp))
-    check(p["status"] == "ok" and len(flog.read_text().splitlines()) == 2, "prepare again: the kept files are reused")
+    check(p["status"] == "ok" and len(flog.read_text().splitlines()) == 1, "prepare again: the kept file is reused")
     check((exdata / "UP9000-NPUA80856_00-NOTAREALLICENCE.rap").read_bytes() == b"x" * 16,
           "the player's licence is still there after the clean-up (only the copy was removed)")
 
     # results judged by their hash, not by RPCS3's exit code
-    for f in ("EBOOT.elf", "libsre.prx"):
-        (prep / f).unlink()
+    (prep / "EBOOT.elf").unlink()
     os.environ["FAKE_MODE"] = "bad"
     p = ri.prepare(str(work), str(rp))
-    check(p["status"] == "failed" and [x["code"] for x in p["problems"]] == ["wrong_file", "wrong_file"]
+    check(p["status"] == "failed" and [x["code"] for x in p["problems"]] == ["wrong_file"]
           and not (prep / "EBOOT.elf").exists(), f"a result with another hash is refused: {p['problems']}")
     os.environ["FAKE_MODE"] = "none"
     p = ri.prepare(str(work), str(rp))
-    check(p["status"] == "failed" and [x["code"] for x in p["problems"]] == ["decrypt_failed", "decrypt_failed"],
+    check(p["status"] == "failed" and [x["code"] for x in p["problems"]] == ["decrypt_failed"],
           f"no result (exit 0 all the same): decrypt_failed: {p['problems']}")
     os.environ["FAKE_MODE"] = "norap"
     p = ri.prepare(str(work), str(rp))
     check(p["status"] == "failed" and p["problems"][0]["code"] == "no_license" and ".rap" in p["problems"][0]["text"],
           f"RPCS3 asking for the .rap is named as the missing licence: {p['problems']}")
+    os.environ["FAKE_MODE"] = "dllcheck"
+    p = ri.prepare(str(work), str(rp))
+    # one RPCS3 run in 0.6.0, for the EBOOT only (0.5.x also decrypted libsre: two problems there)
+    check(p["status"] == "failed" and [x["code"] for x in p["problems"]] == ["bad_runtime"]
+          and "MSVCP140.dll" in p["problems"][0]["text"] and "Redistributable" in p["problems"][0]["text"],
+          f"RPCS3 stopped by its DLL check (exit 0, issue #94) is named, with the DLL's path: {p['problems']}")
     os.environ["FAKE_MODE"] = "hang"
     t0 = time.monotonic()
     p = ri.prepare(str(work), str(rp), watchdog=1)
@@ -176,20 +184,17 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ["FAKE_MODE"] = "ok"
     check(tree_state(rp) == before, "after the failures too, nothing written into RPCS3's or the game's folders")
 
-    # the firmware's version: another one than 4.93 is named, with the version found
-    ver.write_text("release:04.9000:\n")
-    r = ri.resolve(str(rp))
-    check([x["code"] for x in r["problems"]] == ["wrong_firmware"] and "4.90" in r["problems"][0]["text"]
-          and "4.93" in r["problems"][0]["text"], f"firmware 4.90: wrong_firmware names both versions: {r['problems']}")
-    ver.unlink()
-    check([x["code"] for x in ri.resolve(str(rp))["problems"]] == ["no_firmware"], "no version.txt: no_firmware")
-    ver.write_text("release:04.9300:\n")
-    check(ri.resolve(str(rp))["firmware"] == "4.93", "resolve reports the firmware's version")
+    # issue #94: on Windows RPCS3 gets only the Windows folders on PATH, never the PATH the setup was started with
+    e = ri.rpcs3_env("C:\\vk\\work\\prep\\rpcs3", {"PATH": "C:\\Other\\runtime\\bin;C:\\Windows\\System32",
+                                                    "Path": "C:\\Other\\runtime\\bin", "SYSTEMROOT": "C:\\Windows",
+                                                    "USERPROFILE": "D:\\Profile"}, windows=True)
+    check(e["PATH"] == "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem" and "Path" not in e
+          and e["USERPROFILE"] == "D:\\Profile" and "RPCS3_CONFIG_DIR" in e,
+          f"Windows: RPCS3's PATH is the Windows folders only, the rest of the environment kept: {e}")
+    check(ri.rpcs3_env("/c", {"PATH": "/usr/bin:/opt/x"}, windows=False)["PATH"] == "/usr/bin:/opt/x",
+          "Linux: PATH unchanged")
 
     # what resolve reports when a piece is missing
-    (ext / "libsre.sprx").rename(tmp / "libsre.sprx")
-    check([x["code"] for x in ri.resolve(str(rp))["problems"]] == ["no_firmware"], "no libsre.sprx: no_firmware")
-    (tmp / "libsre.sprx").rename(ext / "libsre.sprx")
     (game / "USRDIR" / "data_ps3.psarc.edat").rename(tmp / "x.edat")
     r = ri.resolve(str(rp))
     check([x["code"] for x in r["problems"]] == ["game_incomplete"] and "data_ps3.psarc.edat" in r["problems"][0]["text"],
@@ -203,15 +208,15 @@ with tempfile.TemporaryDirectory() as tmp:
     # package) stays with the port's own reader
     edat = game / "USRDIR" / "data_ps3.psarc.edat"
     disc_edat = edat.read_bytes()
-    check(ri.edat_license(str(tmp / "nothing")) is None and ri.edat_license(str(ver)) is None,
+    check(ri.edat_license(str(tmp / "nothing")) is None and ri.edat_license(str(game / "PARAM.SFO")) is None,
           "no file, or a file that is not NPD: no licence type")
     edat.write_bytes(b"NPD\0" + (4).to_bytes(4, "big") + (3).to_bytes(4, "big") + b" disc package")
     check(ri.edat_license(str(edat)) == 3, "licence type 3 read from the NPD header")
     psn_work = tmp / "work-psn"
     n0 = len(flog.read_text().splitlines())
     p = ri.prepare(str(psn_work), str(rp))
-    check(p["status"] == "ok" and "psarc" not in p and len(flog.read_text().splitlines()) == n0 + 2,
-          f"licence type 3: only EBOOT and libsre go to RPCS3: {p}")
+    check(p["status"] == "ok" and "psarc" not in p and len(flog.read_text().splitlines()) == n0 + 1,
+          f"licence type 3: only the EBOOT goes to RPCS3: {p}")
     edat.write_bytes(b"NPD\0" + (4).to_bytes(4, "big") + (2).to_bytes(4, "big") + b" psn copy")
     check(ri.edat_license(str(edat)) == 2, "licence type 2 read from the NPD header")
     ri.PSARC = spec("data_ps3.psarc.edat", "data_ps3.psarc.edat.unedat")
@@ -227,13 +232,13 @@ with tempfile.TemporaryDirectory() as tmp:
           and (psn_work / "prep" / "data_ps3.psarc").read_bytes() == b"plain data_ps3.psarc.edat"
           and f"psarc={psn_work / 'prep' / 'data_ps3.psarc'}" in ri.lines(p),
           f"licence type 2: RPCS3 decrypts the .edat into work/prep/data_ps3.psarc: {p}")
-    check(len(call) == n0 + 3 and f"--decrypt {psn_work}/prep/in/data_ps3.psarc.edat|" in call[-1]
+    check(len(call) == n0 + 2 and f"--decrypt {psn_work}/prep/in/data_ps3.psarc.edat|" in call[-1]
           and call[-1].endswith("|UP9000-NPUA80856_00-NOTAREALLICENCE.rap"),
           f"on a copy, with the player's licences visible through the copy: {call[n0:]}")
     check(tree_state(rp) == before and not (psn_work / "prep" / "in").exists(),
           "nothing written into RPCS3's or the game's folders, and the copy removed")
     p = ri.prepare(str(psn_work), str(rp))
-    check(p["status"] == "ok" and p.get("psarc") and len(flog.read_text().splitlines()) == n0 + 3,
+    check(p["status"] == "ok" and p.get("psarc") and len(flog.read_text().splitlines()) == n0 + 2,
           "prepare again: the kept data_ps3.psarc is reused")
     c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(psn_work))
     said = []
@@ -264,10 +269,11 @@ with tempfile.TemporaryDirectory() as tmp:
     c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "work2"))
     said = []
     check(firstrun.use_rpcs3(c, str(rp), said.append) == [] and c.paths["eboot"] == str(tmp / "work2" / "prep" /
-          "EBOOT.elf") and c.paths["game"] == str(game) and c.paths["dev_flash"] == str(rp / "dev_flash"),
+          "EBOOT.elf") and c.paths["game"] == str(game) and "dev_flash" not in c.paths,
           f"use_rpcs3: the paths: {c.paths}")
     saved = firstrun.read_paths(c.work)
-    check(saved.get("libsre") == str(tmp / "work2" / "prep" / "libsre.prx"), f"use_rpcs3: saved in paths.env: {saved}")
+    check(saved.get("eboot") == str(tmp / "work2" / "prep" / "EBOOT.elf") and "libsre" not in saved,
+          f"use_rpcs3: saved in paths.env: {saved}")
     c = firstrun.Ctx(root=str(ROOT), paths={}, work=str(tmp / "work3"))
     answers = iter([""])
     check(firstrun.offer_rpcs3(c, str(rp), ask=lambda q: next(answers), say=said.append) and

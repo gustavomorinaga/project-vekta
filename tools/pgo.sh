@@ -40,7 +40,7 @@ export KZ_VFS="$T"
 quiet "$P/configure-gen.log" cmake -G Ninja -S "$HERE" -B "$B" -DKZ_PGO_GEN=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_C_FLAGS="$(cache CMAKE_C_FLAGS)" -DCMAKE_CXX_FLAGS="$(cache CMAKE_CXX_FLAGS)" \
     -DPS3RECOMP_DIR="$(cache PS3RECOMP_DIR)" -DKZ_MARCH="$(cache KZ_MARCH)" -DPS3RECOMP_RSX_VULKAN="$(cache PS3RECOMP_RSX_VULKAN)" \
-    -DRECOMP_DIR="$(cache RECOMP_DIR)" -DSPU_DIR="$(cache SPU_DIR)" -DLIBSRE_DIR="$(cache LIBSRE_DIR)"
+    -DRECOMP_DIR="$(cache RECOMP_DIR)" -DSPU_DIR="$(cache SPU_DIR)"
 quiet "$P/build-gen.log" ninja -C "$B"
 
 rm -f "$P"/*.profraw
@@ -65,7 +65,7 @@ else
         echo "pgo.sh: route $n: $route ($hz Hz)"
         (cd "$KZ_VFS" && KZ_UNLOCK_LEVELS=1 KZ_ROUTE_PLAY="$route" KZ_ROUTE_EXIT=1 KZ_ROUTE_LOOSE=1 KZ_TICK_HZ="$hz" \
             LLVM_PROFILE_FILE="$P/kz-%p.profraw" PAD_FILE="$pad" PS3_VERBOSE=0 AUDIO_RATE=1 PS3RECOMP_VK_WINDOW=0 \
-            GCM_PARK_SKIP=1 PS3RECOMP_VK_GUEST_PROGRAMS=1 KZ_LIBSRE_IMAGE="$KZ_WORK/fw/out/libsre_image.bin" \
+            GCM_PARK_SKIP=1 PS3RECOMP_VK_GUEST_PROGRAMS=1 \
             timeout -s KILL "${KZ_PGO_ROUTE_MAX:-900}" "$B/KZ1HD" "$KZ_VFS/PS3_GAME/USRDIR/EBOOT.elf" > "$log" 2>&1) &
         run=$!
         # the main menu's background movie (descriptor 2), then Campaign > Select level > level 1 > Normal

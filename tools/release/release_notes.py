@@ -58,6 +58,11 @@ FIXES_052_NOTE = ("This release has been tried only on the maintainer's machine 
 FIXES_053_NOTE = ("This release has been tried only on the maintainer's machine (Windows: the test setup installed, "
                   "built and played from both the disc and the PlayStation Store copies); no other machine has built "
                   "it yet. Reports of an install or a build elsewhere, working or not, are welcome as issues.")
+# v0.5.4: the fix was confirmed on the reporter's own Windows 11 machine (issue #94, 2026-11-20).
+FIXES_054_NOTE = ("The fix in this release was confirmed on the reporter's own Windows 11 machine with a test build of "
+                  "the same code (#94): the setup, given the PATH that had stopped 0.5.3, decrypted both files with "
+                  "RPCS3, built and played. Reports of an install or a build elsewhere, working or not, are welcome "
+                  "as issues.")
 
 # v0.1.0 carried the source archive only; later releases also carry the Windows setup program and folder (release.yml).
 SOURCE_ONLY = (
@@ -76,6 +81,14 @@ LINUX_FOLDER = (
     "./play.sh plays. The game needs glibc 2.31 or newer, a Vulkan driver and the system's SDL2. "
     "project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its pinned commit, for building "
     "with your own compilers ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). ")
+# From 0.6.0 each folder has one program at its top (Project Vekta.exe, project-vekta) that builds on the first start
+# and then plays; the first run's questions and the launchers' prepare step are in scripts/.
+LINUX_FOLDER_060 = (
+    "Linux: project-vekta-{version}-linux.tar.gz is the same kind of folder with its own toolchain (Zig, CMake, "
+    "Ninja; nothing to install but Python 3): unpack it and start ./project-vekta, which builds the first time and "
+    "then plays (scripts/run.sh asks for your files step by step). The game needs glibc 2.31 or newer, a Vulkan "
+    "driver and the system's SDL2. project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its "
+    "pinned commit, for building with your own compilers ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). ")
 FILES = (
     "Windows: project-vekta-{version}-setup.exe installs the port's sources and the pinned toolchain for your user "
     "(no admin rights). It asks where your files are and builds the port in the wizard (about five minutes; untick "
@@ -92,6 +105,23 @@ NEED_PREPARED = ("you need your own Killzone HD (NPUA80856) from the Killzone Tr
 NEED_050 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, and PS3 system software "
             "4.93; when both are installed in your RPCS3, the installers use them and your RPCS3 makes the decrypted "
             "copies of the EBOOT and libsre, otherwise you give those two decrypted files yourself")
+# From 0.5.3 the PlayStation Store copy installs too: its data archive is bound to the buyer's licence (licence type 2),
+# which only the player's RPCS3 holds (the .rap named after the content ID), so it goes through the RPCS3 route.
+STORE_COPY = ("or the PlayStation Store copy (content ID UP9000-NPUA80856_00-GKILLZONE1000001, through your RPCS3, which "
+              "holds its licence, UP9000-NPUA80856_00-GKILLZONE1000001.rap)")
+NEED_053 = NEED_050.replace("from the Killzone Trilogy disc, installed,", "from the Killzone Trilogy disc " + STORE_COPY +
+                            ", installed,")
+# From 0.6.0 no PS3 system software is needed: the EBOOT is the one decrypted file.
+NEED_060 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc " + STORE_COPY + ", installed; when "
+            "it is installed in your RPCS3, the installers use it and your RPCS3 makes the decrypted copy of the EBOOT, "
+            "otherwise you give that decrypted file yourself. No PS3 system software is needed")
+
+
+def need_text(v):
+    return (NEED_060 if v >= (0, 6, 0) else NEED_053 if v >= (0, 5, 3) else NEED_050 if v >= (0, 5, 0) else
+            NEED_PREPARED)
+
+
 # After 0.4.0 the paragraph on the downloads comes first, under this heading, with the player's install page.
 INSTALL_FIRST = (0, 4, 0)
 INSTALL_PAGE = ("How to install, step by step, with what each step asks and shows: "
@@ -151,9 +181,13 @@ def notes(version, entry, first=False):
     else:
         lists = ([f"New in {version}:\n{bullets(new)}"] if new else []) + ([f"Fixed:\n{bullets(fixed)}"] if fixed else [])
     v = tuple(int(x) for x in version.split("."))
+    linux = LINUX_FOLDER_060 if v >= (0, 6, 0) else LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE
     files = (SOURCE_ONLY.format(version=version, blob=blob) if version == "0.1.0" else
-             FILES.format(version=version, blob=blob, need=NEED_050 if v >= (0, 5, 0) else NEED_PREPARED, linux=(
-                 LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE).format(version=version, blob=blob)))
+             FILES.format(version=version, blob=blob, need=need_text(v), linux=linux.format(version=version, blob=blob)))
+    if v >= (0, 6, 0):
+        files = files.replace("setup program: run.cmd builds, play.cmd plays.",
+                              "setup program: Project Vekta.exe builds the first time and then plays (scripts\\run.cmd "
+                              "asks for your files step by step).")
     install_first = v > INSTALL_FIRST
     return "\n\n".join([
         f"Project Vekta {version}, {kind}: {STATUS}, see [docs/RELEASE-CRITERIA.md]({blob}/docs/RELEASE-CRITERIA.md).",
@@ -162,7 +196,7 @@ def notes(version, entry, first=False):
         f"See [CHANGELOG.md]({blob}/CHANGELOG.md) for the full list.",
         *([] if install_first else [files]),
         *({"0.1.0": [FIRST_BUILD_NOTE], "0.2.0": [SETUP_BUILD_NOTE], "0.3.0": [OVER_020_NOTE], "0.5.0": [INSTALL_050_NOTE], "0.5.1": [INSTALL_050_NOTE],
-           "0.5.2": [FIXES_052_NOTE], "0.5.3": [FIXES_053_NOTE]}.get(version, [])),
+           "0.5.2": [FIXES_052_NOTE], "0.5.3": [FIXES_053_NOTE], "0.5.4": [FIXES_054_NOTE]}.get(version, [])),
     ]) + "\n"
 
 
