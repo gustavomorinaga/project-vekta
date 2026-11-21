@@ -462,6 +462,13 @@ def jobs_for(avail, cores=None):
     return max(1, min(cores, 16, int((avail - 3 * GIB) / GIB)))
 
 
+def env_jobs(environ=None):
+    """KZ_JOBS from the environment (a whole number, 1 or more), else None: a player whose PC cannot take every core
+    compiling (heat, power supply) caps the jobs for any way the build is started, a launcher's included."""
+    v = (os.environ if environ is None else environ).get("KZ_JOBS", "").strip()
+    return int(v) if v.isdigit() and int(v) >= 1 else None
+
+
 LOW_MEMORY = 8 * GIB
 
 
@@ -1079,7 +1086,7 @@ def main(argv=None):
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
                     help="take the game from your RPCS3 (DIR, else the usual places); your RPCS3 "
                          "decrypts a copy of EBOOT.BIN into work/prep")
-    ap.add_argument("--jobs", type=int, help="parallel jobs (default: from free memory)")
+    ap.add_argument("--jobs", type=int, help="parallel jobs (default: KZ_JOBS, else from free memory)")
     ap.add_argument("--cleanup", action="store_true",
                     help="after a good build, remove what no later build reads (the toolchain's downloaded archives, "
                          "the Windows libraries' build folder)")
@@ -1108,7 +1115,7 @@ def main(argv=None):
     work = os.environ.get("KZ_WORK") or os.path.join(root, "work")
     avail = available_ram()
     c = Ctx(root=root, paths=resolve_paths(root, work, {n: getattr(a, n) for n, *_ in INPUTS}),
-            jobs=a.jobs or jobs_for(avail), work=work, low_priority=low_memory(avail))
+            jobs=a.jobs or env_jobs() or jobs_for(avail), work=work, low_priority=low_memory(avail))
     if a.dlss and not a.dry_run:
         write_dlss(work, a.dlss)
     c.dlss = a.dlss or read_dlss(work)

@@ -464,6 +464,8 @@ def firstrun_args(root, a, environ=None):
     elif not given and not any(environ.get(v) for _, v in INPUTS) and \
             not os.path.isfile(os.path.join(root, "work", "paths.env")):
         out.append("--rpcs3")
+    if getattr(a, "jobs", None):
+        out += ["--jobs", str(a.jobs)]
     if getattr(a, "dlss", None):   # the player's answer to NVIDIA's DLSS SDK licence (recomplauncher.json's tick)
         out += ["--dlss", a.dlss]
     return out
@@ -596,6 +598,9 @@ def parser():
                     help="check the files and build without a window or a question: 'progress <0..1> <text>' lines, "
                          "a 'reason <text>' line on a failure, exit 0 when built (else kz_exit.h's code)")
     ap.add_argument("--timeout", type=float, metavar="SECS", help="with --prepare: stop after SECS (it resumes)")
+    ap.add_argument("--jobs", type=int, metavar="N",
+                    help="parallel build jobs (default: KZ_JOBS, else from free memory); fewer for a PC that gets "
+                         "too hot or switches off while compiling")
     for name, var in INPUTS:
         ap.add_argument("--" + name, metavar="DIR" if name == "game" else "FILE",
                         help=f"your {name} ({var}; kept in work/paths.env)")
