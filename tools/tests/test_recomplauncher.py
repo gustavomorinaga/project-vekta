@@ -57,6 +57,12 @@ game = next(i for i in doc["inputs"] if i["id"] == "game")
 check(game["role"] == "game" and game["formats"] == [{"type": "folder"}] and "NPUA80856" in game["label"],
       "the game input is the installed NPUA80856 folder")
 check(not re.search(r"firmware|dev_flash|\.pup|libsre", rl.text(doc), re.I), "nothing in it asks for firmware")
+# prepare.done: the file a finished build always leaves, so the launcher knows the game is built (RecompLauncher's
+# "No prepare.done" warning, 2026-11-20): firstrun.py's last step writes work/build-stamp.json after a good compile
+import inspect  # noqa: E402
+check(doc["prepare"]["done"] == ["{install}/work/build-stamp.json"] and firstrun.STEPS[-1].name == "stamp" and
+      'c.w("build-stamp.json")' in inspect.getsource(firstrun.STEPS[-1].after),
+      "prepare.done is work/build-stamp.json, which firstrun.py's last step (stamp) writes after a good build")
 check(doc["start"]["program"] == [launch_name for launch_name in ("Project Vekta.exe", "project-vekta")] and
       "args" not in doc["start"], "start: the folders' one program each, with no arguments (it plays)")
 
@@ -66,7 +72,8 @@ bad = [("prepare.version", lambda d: d["prepare"].__setitem__("version", "0.6"))
        ("a role", lambda d: d["inputs"][0].__setitem__("role", "firmware")),
        ("an exit code", lambda d: d["exit_codes"].__setitem__("x", "y")),
        ("a save outside the folder", lambda d: d["saves"].append("{home}/x")),
-       ("no start program", lambda d: d["start"].__setitem__("program", []))]
+       ("no start program", lambda d: d["start"].__setitem__("program", [])),
+       ("no prepare.done", lambda d: d["prepare"].pop("done"))]
 for what, spoil in bad:
     d = copy.deepcopy(doc)
     spoil(d)

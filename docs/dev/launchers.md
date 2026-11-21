@@ -49,7 +49,7 @@ make.
 ## RecompLauncher
 
 `recomplauncher.json` (format 1) names the game folder input (role `game`), the optional `EBOOT.elf`, the prepare
-step with its DLSS tick, the program to start, the saves, the log folders and the exit codes. The format was read
+step with its DLSS tick and its `done` file (`work/build-stamp.json`, which the first run writes only after a good build, so the launcher knows the game is built), the program to start, the saves, the log folders and the exit codes. The format was read
 from RecompLauncher's developer guide; `tools/release/recomplauncher.schema.json` is written here (RecompLauncher's
 own schema is GPL-3.0 and is not copied). Before a listing: a local "Add a build" test with a release dry run's
 folder.
