@@ -49,12 +49,16 @@ the port from the player's own files ([BUILDING.md](BUILDING.md)).
 2. Commit that ("Release vX.Y.Z"), merge it through a pull request, then tag the merge commit `vX.Y.Z` and push the tag.
 3. `.github/workflows/release.yml` checks the tag against `VERSION`, writes the notes from the `CHANGELOG.md` entry,
    builds the four files, installs and uninstalls the setup program on a Windows runner, builds the Linux folder's
-   toolchain in a Debian 11 container with no compiler, and opens a **draft**
+   toolchain in a Debian 11 container with no compiler, signs the four files' build provenance (the `attest` job:
+   an attestation GitHub stores, checked there against each file) and opens a **draft**
    pre-release with them. Read the draft and publish it by hand.
 4. Publishing runs `.github/workflows/release-check.yml`, which checks the published release against the tag
    (`tools/release/release_check.py`): title, pre-release flag, the files, their sums, and the links.
 
 A dry run (Actions, release, "Run workflow") builds the files and previews the notes without publishing anything.
+Its "attest" box also runs the `attest` job on the dry run's files: tick it to try that job before a tag (after a
+change to it, or to the repository's settings), and leave it off otherwise, since what it signs goes to Sigstore's
+public log for good.
 
 ## Release criteria for v1.0.0 (playable)
 

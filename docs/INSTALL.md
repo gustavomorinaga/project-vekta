@@ -35,7 +35,10 @@ Your PC: Windows x64 or Linux x64, a CPU with AVX2, and a Vulkan graphics card a
 more where Windows cannot make links, so the setup asks for 5.8 GB) or about 1.9 GB on Linux.
 
 Download from the [releases page](https://github.com/gustavomorinaga/project-vekta/releases). Each file has a
-`.sha256` beside it, and `SHA256SUMS` lists them all.
+`.sha256` beside it, and `SHA256SUMS` lists them all. From 0.7.0 on, each file also has a signed statement of where
+it was built (a build provenance attestation, kept by GitHub): with [GitHub's CLI](https://cli.github.com),
+`gh attestation verify project-vekta-X.Y.Z-setup.exe --repo gustavomorinaga/project-vekta` says whether this
+repository's release workflow built that very file.
 
 ## Windows: the setup program
 
