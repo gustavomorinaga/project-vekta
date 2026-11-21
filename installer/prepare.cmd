@@ -2,7 +2,7 @@
 rem Project Vekta, Windows release folder (scripts\prepare.cmd): checks your files and builds without a window or a
 rem question (tools\release\launch.py --prepare), for a launcher. Prints "progress <0..1> <text>" lines and, on a
 rem failure, one "reason <text>" line; exit 0 when built, else a code of port\kz1hd\kz_exit.h. Its options pass through:
-rem --game DIR, --eboot FILE, --psarc FILE, --rpcs3 [DIR], --timeout SECS.
+rem --game DIR, --eboot FILE, --psarc FILE, --rpcs3 [DIR], --disc PATH, --timeout SECS.
 setlocal
 cd /d "%~dp0.."
 set "PY=%~dp0..\work\toolchain-cache\python\python.exe"

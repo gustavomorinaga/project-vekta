@@ -61,6 +61,11 @@ build from BtbN/FFmpeg-Builds (served unchanged from this repository's `deps-ffm
 source for that build; [docs/dev/deps-mirror.md](docs/dev/deps-mirror.md)); on Linux [Zig](https://ziglang.org) (MIT, with the licences of the libc headers and
 libc++ it bundles), CMake, Ninja, SDL2's source and FFmpeg's LGPL shared libraries from BtbN/FFmpeg-Builds.
 
+RPCS3: the official RPCS3 build 0.0.43-20640 (<https://github.com/RPCS3/rpcs3>, GPL-2.0) is not in this repository
+nor in any release, and no RPCS3 code is used here. Only when the player chooses the game straight from the disc
+(`--disc`, `tools/release/rpcs3_disc.py`), it is downloaded from RPCS3's own GitHub releases on the player's PC,
+checked by SHA-256, and run as a separate program to install the player's package and decrypt its EBOOT.
+
 ## The game
 
 Killzone and Killzone HD are (c) Sony Interactive Entertainment. Killzone was created by Guerrilla Games. This
