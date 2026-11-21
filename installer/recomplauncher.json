@@ -24,6 +24,7 @@
     "label": "Checking your files and building the port on this PC (about five minutes; nothing of the game is downloaded)",
     "timeout": 7200,
     "version": "stamped by tools/release/recomplauncher.py: the release's VERSION",
+    "done": ["{install}/work/build-stamp.json"],
     "options": [
       {
         "id": "dlss",
