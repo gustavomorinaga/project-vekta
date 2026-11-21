@@ -209,6 +209,7 @@
 <p class="meta">not released yet</p>
 <ul class="rlist">
 <li><span class="kind">Changed</span>A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the README banner, the social preview, the Windows setup&#x27;s pictures and the program icons (now lettered KZ1) are drawn in steel blue with a V chevron by one script, <code>tools/release/installer_art.py</code>, with the Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.</li>
+<li><span class="kind">Changed</span>The build no longer keeps a second and a third copy of FFmpeg&#x27;s libraries and a second copy of the Vulkan headers: what it stages for the compile and beside the program are hard links to the toolchain folder&#x27;s files where the file system makes them (NTFS, ext4, btrfs), and copies as before where it does not (exFAT). About 260 MB less disk on Windows and 280 MB less on Linux.</li>
 </ul>
 </article>
 <article class="rel">
@@ -248,13 +249,13 @@
 <h3>Changelog</h3>
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The build no longer keeps a second and a third copy of FFmpeg&#x27;s libraries and a second copy of the Vulkan headers...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> &quot;Get it on&quot; badges for RecompLauncher and Quiver Launcher in the README, the install page and the project page...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> KZ1HD.exe carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and KZ1HD --version (Windows...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> KZ1HD.exe has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> One program to start in each release folder: Project Vekta.exe on Windows and the new project-vekta on Linux. With no...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> recomplauncher.json at the top of the Windows and Linux folders, for launchers that read it (RecompLauncher): it names...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> docs/TROUBLESHOOTING.md: what you see, what to do and what to attach, for each exit code; docs/INSTALL.md has a...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

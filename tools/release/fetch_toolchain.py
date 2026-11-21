@@ -146,6 +146,35 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+def place(src, dst):
+    """dst as the file src without a second copy on disk: a hard link where the file system makes one, else (another
+    drive, exFAT) a copy, made when dst is missing or older than src. For what the build stages out of the cache and
+    only reads afterwards (FFmpeg's libraries are 120 MB, kept three times before). dst is replaced, never written
+    in place, since it may be a link to another file. Returns "kept", "link" or "copy"."""
+    if os.path.exists(dst) and os.path.samefile(src, dst):
+        return "kept"
+    current = os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src)   # a copy that is not older
+    tmp = dst + ".new"
+    if os.path.lexists(tmp):
+        os.remove(tmp)
+    try:
+        os.link(src, tmp)
+        how = "link"
+    except OSError:
+        if current:
+            return "kept"
+        shutil.copy2(src, tmp)
+        how = "copy"
+    try:
+        os.replace(tmp, dst)
+    except OSError:
+        os.remove(tmp)
+        if not current:   # a current copy that is in use (the game is running) stays as it is
+            raise
+        return "kept"
+    return how
+
+
 def open_url(url):
     return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "project-vekta-fetch"}),
                                   timeout=60)
