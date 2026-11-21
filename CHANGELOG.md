@@ -13,6 +13,10 @@ program and folder that build it. Until a release that calls itself playable
   lettered KZ1) are drawn in steel blue with a V chevron by one script, `tools/release/installer_art.py`, with the
   Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the
   keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.
+- The first run takes the movies out of the game's archive faster and with less memory: each movie is written to
+  its file as it is read, instead of being put together in memory first, which copied the whole movie so far at
+  every block (`tools/psarc_ls.py`; on made-up data a 31 MB movie took 2.8 s of copying, now 0.01 s). An archive
+  that is cut short is named in the error.
 
 ## [0.6.0] - 2026-11-20 (pre-release)
 

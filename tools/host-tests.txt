@@ -11,6 +11,7 @@ tools/tests/test_firstrun.py
 tools/tests/test_toolchain.py
 tools/tests/test_dlss_distribution.py
 tools/tests/test_kzbuild.py
+tools/tests/test_psarc_ls.py
 tools/tests/test_payload.py
 tools/tests/test_setup.py
 tools/tests/test_check_install.py
