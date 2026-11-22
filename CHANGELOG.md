@@ -24,7 +24,8 @@ program and folder that build it. Until a release that calls itself playable
 - The setup fits a 1280x800 screen at 150% display scale (Next and Cancel were under the taskbar), and its "Your
   game" page shows its three choices without a scroll bar at 125% and above (#135).
 - Uninstalling removes the install folder again: a file the game writes at start (`flashMP3.pic`) and the empty
-  folders the build left in `work\vfs` kept it there. Saves and settings stay, as before (#132).
+  folders the build left in `work\vfs` kept it there. Saves and settings stay, as before (#132).- The setup, the launcher's page and the docs now say the first build takes 5 to 30 minutes instead of about five:
+  on four cores and a hard disk it took close to half an hour (#134).
 
 ## [0.6.0] - 2026-11-20 (pre-release)
 
