@@ -341,6 +341,18 @@ static DWORD WINAPI frame_clock(LPVOID)
     int rsx_ok = (rsx_backend_init(WINDOW_WIDTH, WINDOW_HEIGHT, title) == 0);
     fprintf(stderr, "[rsx] %s backend init %s\n", RSX_BACKEND_NAME,
             rsx_ok ? "OK -- window open" : "FAILED");
+#if defined(PS3RECOMP_RSX_VULKAN)
+    /* No Vulkan while a window was asked for (PS3RECOMP_VK_WINDOW, launch.py sets it): the game would run on with
+     * nothing on screen and the player would see nothing at all (#131). Say so and stop with KZ_EXIT_NO_VULKAN, whose
+     * line tools/release/launch.py shows. Headless runs (the build's data step) go on: they need no window. */
+    const char* want_window = getenv("PS3RECOMP_VK_WINDOW");
+    if (!rsx_ok && want_window && want_window[0] && want_window[0] != '0') {
+        fprintf(stderr, "[kz] Vulkan check: The game could not start Vulkan on this PC (see the lines above). Install "
+                        "or update your graphics card's driver.\n");
+        fflush(NULL);
+        _exit(KZ_EXIT_NO_VULKAN);
+    }
+#endif
 
     /* KZ_VBLANK_HZ: the emulated vblank rate (default 59.94, the PS3's: two
      * vblanks are then one tick of the game's 30 Hz clock, so a frame that fits
