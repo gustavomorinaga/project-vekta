@@ -511,6 +511,21 @@ begin
   end;
 end;
 
+{ The height of an option page's list that shows all its items without a scroll bar: one line of the list's own
+  font, measured at the running display scale, plus each item's padding (#135) }
+function OptionListHeight(Page: TInputOptionWizardPage): Integer;
+var
+  Probe: TNewStaticText;
+begin
+  Probe := TNewStaticText.Create(Page);
+  Probe.Parent := Page.Surface;
+  Probe.Font.Assign(Page.CheckListBox.Font);
+  Probe.AutoSize := True;
+  Probe.Caption := 'Ag';
+  Result := Page.CheckListBox.Items.Count * (Probe.Height + ScaleY(6)) + ScaleY(6);
+  Probe.Free;
+end;
+
 procedure InitializeWizard;
 begin
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
@@ -523,7 +538,8 @@ begin
   SourcePage.Add('Show me how');
   SourcePage.SelectedValueIndex := 1;
   { The automatic search runs when the page is first shown; "Find RPCS3..." looks in the folder the player picks }
-  SourcePage.CheckListBox.Height := ScaleY(66);
+  { Three items tall at any display scale: a fixed ScaleY height put the list in a scroll box at 125% (#135) }
+  SourcePage.CheckListBox.Height := OptionListHeight(SourcePage);
   RpcsBrowse := TNewButton.Create(SourcePage);
   RpcsBrowse.Parent := SourcePage.Surface;
   RpcsBrowse.Left := 0;
