@@ -86,6 +86,9 @@ UninstallDisplayName={#AppName}
 ; Dark always, as the site and the game (Inno 6.7.3's help, WizardStyle: pages, message boxes and the title bar;
 ; a Windows high-contrast theme, or /NOSTYLE, still wins). After Project Pyrrhus's and Project Helghast's setups.
 WizardStyle=modern dark
+; Modern style draws the wizard at 120% of its base size by default; at 100% it still holds every page and fits a
+; 1280x800 screen at 150% display scale, where 120% put Next and Cancel under the taskbar (#135)
+WizardSizePercent=100
 ; the Welcome page carries the side image (Inno 6 hides it by default)
 DisableWelcomePage=no
 ; Inno picks the closest size for the screen's DPI (100/125/150/200 %); paths relative to this script
@@ -194,6 +197,19 @@ Type: files; Name: "{app}\work\vfs\PS3_GAME\PARAM.SFO"
 Type: filesandordirs; Name: "{app}\work\vfs\PS3_GAME\TROPDIR"
 Type: filesandordirs; Name: "{app}\work\vfs\PS3_GAME\USRDIR\Movies"
 Type: filesandordirs; Name: "{app}\work\vfs\PS3_GAME\USRDIR\Menu"
+; The firmware MP3 decoder's stand-in, which the game writes at start (port/kz1hd/stubs.cpp), then the folders
+; the build made in work\vfs, deepest first, only when empty: with the "portable" task they hold the saves (#132)
+Type: files; Name: "{app}\work\vfs\dev_flash\sys\external\flashMP3.pic"
+Type: dirifempty; Name: "{app}\work\vfs\dev_flash\sys\external"
+Type: dirifempty; Name: "{app}\work\vfs\dev_flash\sys"
+Type: dirifempty; Name: "{app}\work\vfs\dev_flash"
+Type: dirifempty; Name: "{app}\work\vfs\game\{#TitleId}\USRDIR"
+Type: dirifempty; Name: "{app}\work\vfs\game\{#TitleId}"
+Type: dirifempty; Name: "{app}\work\vfs\game"
+Type: dirifempty; Name: "{app}\work\vfs\PS3_GAME\USRDIR"
+Type: dirifempty; Name: "{app}\work\vfs\PS3_GAME"
+Type: dirifempty; Name: "{app}\work\vfs"
+Type: dirifempty; Name: "{app}\work"
 Type: filesandordirs; Name: "{app}\tools\__pycache__"
 Type: filesandordirs; Name: "{app}\tools\release\__pycache__"
 Type: filesandordirs; Name: "{app}\work\ps3recomp-patched\tools\__pycache__"
@@ -511,6 +527,21 @@ begin
   end;
 end;
 
+{ The height of an option page's list that shows all its items without a scroll bar: one line of the list's own
+  font, measured at the running display scale, plus each item's padding (#135) }
+function OptionListHeight(Page: TInputOptionWizardPage): Integer;
+var
+  Probe: TNewStaticText;
+begin
+  Probe := TNewStaticText.Create(Page);
+  Probe.Parent := Page.Surface;
+  Probe.Font.Assign(Page.CheckListBox.Font);
+  Probe.AutoSize := True;
+  Probe.Caption := 'Ag';
+  Result := Page.CheckListBox.Items.Count * (Probe.Height + ScaleY(6)) + ScaleY(6);
+  Probe.Free;
+end;
+
 procedure InitializeWizard;
 begin
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
@@ -523,7 +554,8 @@ begin
   SourcePage.Add('Show me how');
   SourcePage.SelectedValueIndex := 1;
   { The automatic search runs when the page is first shown; "Find RPCS3..." looks in the folder the player picks }
-  SourcePage.CheckListBox.Height := ScaleY(66);
+  { Three items tall at any display scale: a fixed ScaleY height put the list in a scroll box at 125% (#135) }
+  SourcePage.CheckListBox.Height := OptionListHeight(SourcePage);
   RpcsBrowse := TNewButton.Create(SourcePage);
   RpcsBrowse.Parent := SourcePage.Surface;
   RpcsBrowse.Left := 0;
