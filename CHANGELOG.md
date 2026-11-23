@@ -92,10 +92,14 @@ program and folder that build it. Until a release that calls itself playable
   `robustBufferAccess: on`; `PS3RECOMP_VK_ROBUST=0` turns it off for comparison (patch 2083).
 - A second candidate fix for #129, from a tester's crash reports on an RX 6600: AMD's Windows driver closes the game
   while it compiles the MLAA pass (the game's anti-aliasing, redone as a GPU shader), every time, in the same place.
-  On that driver the MLAA pass is now left out: the glow and motion blur still run, the picture has no MLAA (as with
-  Anti-aliasing off) and the PC screen greys the Anti-aliasing row. The log names each post pass as it compiles
-  (`building the MLAA pass`, `the MLAA pass: built in N ms`); `PS3RECOMP_MLAA_BUILD=1` builds it anyway, to try a
-  new driver (patch 2086).
+  On that driver the MLAA now uses a second form of its shader that does its arithmetic without 64-bit integers, the
+  one thing it used that the glow and motion blur (which build there) do not: the picture is the same, byte for byte,
+  and the RX 6600 that closed the game plays level 1 with it (patch 2087). Other cards keep the faster first form;
+  cards without 64-bit integer support, which had no MLAA, now get it too. If a driver still closes the game while
+  compiling it, the next start leaves the MLAA out on that driver (the glow and motion blur still run, the PC screen
+  greys the Anti-aliasing row) and a new driver tries again. The log names each post pass as it compiles
+  (`building the MLAA pass`, `the MLAA pass: built in N ms`); `PS3RECOMP_MLAA_BUILD=1` builds it whatever happened
+  before (patches 2086-2087).
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
   (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
 - A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran

@@ -67,13 +67,12 @@ are linked.
 
 ## Windows
 
-- **Windows, AMD RX 5000/6000: the game closes a few seconds into level 1 (#129), under investigation.** Seen with
-  0.6.0 on an RX 6600 and an RX 5700 XT; the same build plays on NVIDIA cards. Two test builds' crash reports
-  (2026-11-23, RX 6600, driver 26.10.1) put it inside AMD's Vulkan driver, while it compiles the MLAA pass (the
-  game's anti-aliasing as a GPU shader) when the level's gameplay starts, every time; neither `robustBufferAccess`
-  nor keeping the pipeline cache to one user at a time stopped it. The next release leaves the MLAA pass out on
-  AMD's Windows driver (no anti-aliasing there unless an upscaler such as FSR 3.1 does it; the glow and motion blur
-  stay), not yet tried on those cards. If it still happens to you, attach the support package to #129.
+- **Windows, AMD RX 5000/6000: the game closed a few seconds into level 1 in 0.6.0 (#129).** AMD's Vulkan driver
+  (26.10.1, RX 6600) closed the game while compiling the MLAA pass (the game's anti-aliasing as a GPU shader). A test
+  build with a second form of that shader, without the 64-bit integers the driver choked on, played level 1 through
+  on the same card with the MLAA on; the next release uses that form on AMD's Windows driver. If a driver still
+  closes the game in that compile, the next start leaves the MLAA out on it (the glow and motion blur stay). If it
+  still happens to you, attach the support package to #129.
 - **The game's `.edat` on another drive is copied** (not tried on Windows yet, 2026-11-15): without a decrypted
   `data_ps3.psarc` the run folder links the game's `data_ps3.psarc.edat`; where Windows can make neither a symbolic
   nor a hard link (the game on another drive than the port, without Developer Mode) it copies the 3.15 GB file into

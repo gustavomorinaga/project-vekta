@@ -109,9 +109,15 @@ hand, so none of it has been seen on a real hang yet.
 - `KZ_CRASH_TEST=gpu-lost` (or `PS3RECOMP_VK_FAKE_DEVICE_LOST=<frames>`) makes the backend report a lost device once,
   after 300 presented frames, on a working GPU: the whole path down to exit code 78, on any PC.
 - The post passes' compiles (on their own thread) are logged as `building the <pass> pass` and
-  `the <pass> pass: built in N ms` (patch 2086). On AMD's Windows driver (driver id 1) the MLAA pass is not built
-  (#129: the driver closed the game while compiling it, every time) and the log says `the MLAA pass: not built on
-  this driver`; `PS3RECOMP_MLAA_BUILD=1` builds it on every driver, `0` on none (to see the AMD path on another GPU).
+  `the <pass> pass: built in N ms` (patch 2086). While the MLAA compiles, `<shader cache>/mlaa-compile.pending`
+  names the driver and the shader (patch 2087, #129: AMD's Windows driver closed the game in that compile); found at
+  the next start for the same pair, the MLAA is not built (`its compile did not return on this driver last time`).
+  `PS3RECOMP_MLAA_BUILD=1` builds it whatever the marker says, `0` never (to see that path on any GPU).
+  The MLAA shader has two forms (patch 2087): `rsx_vk_mlaa.comp` (64-bit integers) and `rsx_vk_mlaa32.comp` (pairs of
+  32-bit words, the same bytes out, 5-30 % slower on an RTX 3070 Ti) for AMD's Windows driver and devices without
+  shaderInt64; the log says `the MLAA shader: the <form> form`, `PS3RECOMP_MLAA_SHADER=32|64` picks one.
+  `tools/tests/test_mlaa_u64.sh` checks the 32-bit arithmetic against the 64-bit one; on a GPU, run
+  `tools/mlaa_harness/mlaa_vk_test` with each form's SPIR-V and compare the outputs.
 
 ### Running under RenderDoc
 
