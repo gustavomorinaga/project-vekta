@@ -460,18 +460,19 @@ begin
   Text.AutoSize := False;
   Text.WordWrap := True;
   Text.Width := DlssPage.SurfaceWidth;
-  Text.Height := ScaleY(84);
   Text.Caption := 'Project Vekta builds with AMD FSR 3.1 as its temporal upscaler. NVIDIA DLSS is NVIDIA''s ' +
     'software under NVIDIA''s licence, not this project''s, and this installer does not include it: with the box ' +
     'ticked, the build downloads the DLSS SDK''s files from NVIDIA''s own repository and builds DLSS in. Left ' +
     'unticked, nothing of NVIDIA''s is downloaded and DLSS shows as "(not built)" in the game''s PC menu. Run ' +
     'setup again to change this.';
+  { As tall as its wrapped lines at the running scale: a fixed ScaleY(84) cut the last line at 125% }
+  Text.AdjustHeight;
   DlssCheck := TNewCheckBox.Create(DlssPage);
   DlssCheck.Parent := DlssPage.Surface;
   DlssCheck.Top := Text.Top + Text.Height + ScaleY(8);
   DlssCheck.Width := DlssPage.SurfaceWidth;
   DlssCheck.Height := ScaleY(34);
-  DlssCheck.Caption := '&Download NVIDIA DLSS (NVIDIA RTX GPUs). I accept the NVIDIA DLSS SDK license';
+  DlssCheck.Caption := '&Download NVIDIA DLSS. I accept the NVIDIA DLSS SDK license';
   Link := TNewStaticText.Create(DlssPage);
   Link.Parent := DlssPage.Surface;
   Link.Top := DlssCheck.Top + DlssCheck.Height + ScaleY(6);
@@ -553,7 +554,8 @@ begin
     'hand. Your game, disc and RPCS3 folders are only read.', True, False);
   SourcePage.Add('Use my RPCS3 install');
   SourcePage.Add('I will pick the game folder and the decrypted files myself');
-  SourcePage.Add('From my Killzone Trilogy disc, with no RPCS3 (the official RPCS3 is downloaded)');
+  { One line at 125% too: OptionListHeight counts one line per item (two lines put the list in a scroll box) }
+  SourcePage.Add('From my Killzone Trilogy disc (no RPCS3 needed)');
   SourcePage.Add('Show me how');
   SourcePage.SelectedValueIndex := 1;
   if (Pick('DISC', 'Disc') <> '') and ((ExpandConstant('{param:DISC|}') <> '') or
@@ -702,8 +704,7 @@ begin
     if SourcePage.SelectedValueIndex <> 2 then SourcePage.SelectedValueIndex := 1;
     RpcsNote.Font.Color := clRed;
     RpcsNote.Caption := 'Your RPCS3 cannot be used:' + #13#10 + RpcsProblems + #13#10 +
-      'If your RPCS3 is elsewhere, press "Find RPCS3..." and pick its folder. Or fix that and run the setup ' +
-      'again, pick your files yourself, or install the game from your disc.';
+      'Press "Find RPCS3..." for another folder, or choose another way above.';   { one line: room for the reason at 125% }
   end;
 end;
 
