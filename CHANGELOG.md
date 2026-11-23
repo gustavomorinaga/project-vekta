@@ -36,6 +36,8 @@ program and folder that build it. Until a release that calls itself playable
   disk on Windows and 280 MB less on Linux.
 - The Linux folder is now a `.tar.xz` (`project-vekta-X.Y.Z-linux.tar.xz`), about a third smaller to download than
   the `.tar.gz` it replaces. `tar xf` unpacks it, and so do the launchers.
+- The install and troubleshooting pages also say that on Windows 10 RPCS3's `.7z` needs 7-Zip to unpack, and that
+  RPCS3 needs the graphics driver's `vulkan-1.dll`, which a Windows 10 without a driver lacks.
 
 ### Fixed
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
