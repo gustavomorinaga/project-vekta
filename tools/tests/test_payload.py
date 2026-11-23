@@ -35,6 +35,11 @@ def check(cond, what):
         print("FAIL:", what)
 
 
+TC = "work/toolchain-cache/"
+UNUSED_KEPT = {TC + "glslang/glslang/CMakeLists.txt", TC + "vulkan-headers/include/vulkan/vulkan.h"}
+UNUSED_DROPPED = {TC + "glslang/Test/baseResults/100.frag.out", TC + "vulkan-headers/registry/vk.xml"}
+
+
 def fake_cache(cache, m):
     """Each Windows entry as a small tree, fetched.json holding the manifest's hashes, and a Linux entry too."""
     done = {}
@@ -50,6 +55,12 @@ def fake_cache(cache, m):
     (linux / "libclang_rt.asan-x86_64.so").write_bytes(b"\x7fELF")
     (cache / "zlib" / "amiga").mkdir()
     (cache / "zlib" / "amiga" / "Makefile.pup").write_text("all:\n")
+    # what neither build reads, beside what both read: glslang's CMake files and sources, the Vulkan headers
+    for keep, drop in (("glslang/glslang/CMakeLists.txt", "glslang/Test/baseResults/100.frag.out"),
+                       ("vulkan-headers/include/vulkan/vulkan.h", "vulkan-headers/registry/vk.xml")):
+        for f in (keep, drop):
+            (cache / f).parent.mkdir(parents=True, exist_ok=True)
+            (cache / f).write_text("x\n")
     (cache / "downloads").mkdir()
     (cache / "downloads" / "big.zip").write_bytes(b"x")
     (cache / "fetched.json").write_text(json.dumps(done))
@@ -92,6 +103,8 @@ with tempfile.TemporaryDirectory() as tmp:
     check(not any("/lib/linux/" in p or "/amiga/" in p for p in paths), "clang's Linux runtimes and zlib's Amiga "
           "files are left out")
     check(not any("__pycache__" in p or p.endswith(".pyc") for p in paths), "no Python caches")
+    check(UNUSED_KEPT <= paths and not UNUSED_DROPPED & paths, "glslang's test shaders and the Vulkan registry are "
+          f"left out, the sources and headers stay: {sorted((UNUSED_KEPT - paths) | (UNUSED_DROPPED & paths))}")
     tc = {e["name"] for e in ft.entries_for(m, "windows")}
     check(json.loads(gen["work/toolchain-cache/fetched.json"]) == {n: e["sha256"] for e in m["components"]
                                                                    for n in [e["name"]] if n in tc},
@@ -183,6 +196,8 @@ with tempfile.TemporaryDirectory() as tmp:
           "on Linux .sh, #!/ and ELF files count; .so and .txt never")
     check(not any(p.startswith(("work/toolchain-cache/llvm-mingw/", "work/toolchain-cache/python/"))
                   for p in lp), "the Linux folder has no Windows toolchain")
+    check(UNUSED_KEPT <= lp and not UNUSED_DROPPED & lp, "the Linux folder too leaves out glslang's test shaders and "
+          f"the Vulkan registry: {sorted((UNUSED_KEPT - lp) | (UNUSED_DROPPED & lp))}")
     check(not any(s in p for p in lp for s in ("aarch64-linux-gnu", "/musl/", "/mingw/", "zig/doc/", "zig/RECORD"))
           and "work/toolchain-cache/ffmpeg-linux/lib/libavutil.so" not in lp,
           "Zig's other targets, docs and wheel files and FFmpeg's link names are left out")

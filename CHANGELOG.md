@@ -21,6 +21,9 @@ program and folder that build it. Until a release that calls itself playable
   its file as it is read, instead of being put together in memory first, which copied the whole movie so far at
   every block (`tools/psarc_ls.py`; on made-up data a 31 MB movie took 2.8 s of copying, now 0.01 s). An archive
   that is cut short is named in the error.
+- The release folders no longer carry two sets of files that no build reads (glslang's test shaders and the
+  registry Vulkan's headers are generated from): about 55 MB and 3,400 files less on disk after install, and about
+  5 MB less to download.
 
 ### Fixed
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
