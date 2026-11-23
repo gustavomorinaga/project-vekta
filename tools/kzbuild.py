@@ -458,6 +458,13 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+def data_archive(e, printed):
+    """The plaintext archive named by the game's "[kz] data ready: <path>" line. The game prints the path in the
+    ANSI code page on Windows and the log is read as UTF-8, so an install folder with accents comes back garbled
+    (#130): take only the file name, a hex hash, and look for it where the game keeps it (edat_cache)."""
+    return os.path.join(edat_cache(e), re.split(r"[\\/]", printed.strip())[-1])
+
+
 def cmd_data(e, a):
     if archive(e)[0] == "psarc":
         print("data: the decrypted data_ps3.psarc is used as it is; nothing to prepare", flush=True)
@@ -486,7 +493,7 @@ def cmd_data(e, a):
     if not m:
         raise Fail(f"the game stopped (exit {rc}) before it opened its archive; the last lines of {log}:\n"
                    + "\n".join(text.splitlines()[-12:]))
-    dec = m.group(1).strip()
+    dec = data_archive(e, m.group(1))
     size = os.path.getsize(dec) if os.path.isfile(dec) else -1
     if size != PSARC_SIZE or sha256_file(dec) != PSARC_SHA256:
         raise Fail(f"the opened archive {dec} is not the tested one ({size} bytes; docs/GETTING-FILES.md); "
