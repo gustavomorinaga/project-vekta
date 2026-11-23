@@ -392,7 +392,7 @@ jobs:
             gh run download "$GITHUB_RUN_ID" --name "project-vekta-$VERSION$a" --dir .
           done
           files="project-vekta-$VERSION-source.tar.gz project-vekta-$VERSION-setup.exe"
-          files="$files project-vekta-$VERSION-windows.zip project-vekta-$VERSION-linux.tar.gz"
+          files="$files project-vekta-$VERSION-windows.zip project-vekta-$VERSION-linux.tar.xz"
           for f in $files; do
             { test -s "$f" && test -s "$f.sha256" && sha256sum -c "$f.sha256"; } || {
               echo "::error::$f or its .sha256 is missing or does not match"; exit 1; }
