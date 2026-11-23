@@ -277,7 +277,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (w / "logs").mkdir()
     (w / "crash").mkdir()
     (w / "play.log").write_text(
-        "[kz] Project Vekta 9.8.7 (abc)\n[kz-sys] os: Linux 6.1\n[kz-sys] gpu: AMD Radeon RX 6600\n"
+        "[kz] Project Vekta 9.8.7 (patch set 55c305b52dd2f64e, ps3recomp ae92407)\n[kz-sys] os: Linux 6.1\n[kz-sys] gpu: AMD Radeon RX 6600\n"
         "[kz-sys] driver: Mesa 24.0\n[kz-sys] started-by: zip\n"
         f"[vfs] {home}/games/kz\n[kz-crash] begin\n[kz-crash] signature: KZ-1A2B-3C4D\n[kz-crash] end\n")
     for i in range(4):
@@ -320,7 +320,12 @@ with tempfile.TemporaryDirectory() as tmp:
     check("Port version: 9.8.7" in f and "GPU: AMD Radeon RX 6600" in f and "Driver: Mesa 24.0" in f and
           "Crash signature: KZ-1A2B-3C4D" in f and "Last session: exit -11" in f and "Sources included:" in f and
           "crash and hang reports (work/crash): 10" in f and "Linux kernel log" in f and "Frame names: 10 frames" in f
-          and "earlier game logs: 3" in f, f"facts.txt: {f}")
+          and "earlier game logs: 3" in f and "Patch set: 55c305b52dd2f64e" in f, f"facts.txt: {f}")
+    # The kernel log's host field goes, whatever name it holds (boot lines keep the distribution's default)
+    kfiles, _ = support.linux_kernel(run=lambda *a, **k: "2026-11-23T08:00:01-03:00 cachyos kernel: amdgpu: ring gfx "
+                                                         "timeout\n2026-11-23T08:00:02-03:00 cachyos kernel: usb 1-1\n")
+    check(kfiles == {"system/linux-kernel.txt": "2026-11-23T08:00:01-03:00 kernel: amdgpu: ring gfx timeout\n"},
+          f"the kernel lines without the host field: {kfiles}")
     # The bug form's link
     url = launch.issue_url(str(root), {"KZ_STARTED_BY": "zip", "HOME": home})
     from urllib.parse import parse_qs, urlparse

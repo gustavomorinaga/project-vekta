@@ -207,7 +207,10 @@ def linux_kernel(run=_run):
     text = run(["journalctl", "-k", "--since", "-24h", "--no-pager", "-q", "-o", "short-iso"], timeout=20)
     if text is None:
         return {}, ["Linux kernel log: not readable here (skipped)"]
-    lines = [ln for ln in text.splitlines() if KERNEL_RX.search(ln)][-KERNEL_LINES:]
+    # short-iso lines are "<time> <host> kernel: ...": the host field goes (lines from before a rename, or boot lines
+    # with the distribution's default name, would keep a host name the redaction does not know)
+    lines = [re.sub(r"^(\S+) \S+ (kernel:)", r"\1 \2", ln) for ln in text.splitlines()
+             if KERNEL_RX.search(ln)][-KERNEL_LINES:]
     note = [f"Linux kernel log (last 24 h, GPU lines): {len(lines)} lines"]
     return ({"system/linux-kernel.txt": "\n".join(lines) + "\n"} if lines else {}), note
 
@@ -269,7 +272,11 @@ def summary(root, log_text=None):
         except OSError:
             m = VERSION_RX.search(log_text)
             version = m.group(1) if m else "unknown"
-    return {"version": version, "commit": man.get("commit") or "", "patchset": man.get("patchset") or "",
+    patchset = man.get("patchset") or ""
+    if not patchset:   # a source tree has no manifest: the game's version line names it
+        m = re.search(r"\(patch set ([0-9a-f]{8,64})[,)]", log_text)
+        patchset = m.group(1) if m else ""
+    return {"version": version, "commit": man.get("commit") or "", "patchset": patchset,
             "system": (kz.get("os") or [platform.platform()])[0],
             "gpu": ((kz.get("gpu") or [""])[0] or (gpu.group(1).strip() if gpu else ""))[:160],
             "driver": ((kz.get("driver") or [""])[0] or (drv.group(1).strip() if drv else ""))[:160],
