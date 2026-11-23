@@ -16,6 +16,10 @@ program and folder that build it. Until a release that calls itself playable
 - The Linux folder is now a `.tar.xz` (`project-vekta-X.Y.Z-linux.tar.xz`), about a third smaller to download than
   the `.tar.gz` it replaces. `tar xf` unpacks it, and so do the launchers.
 
+### Fixed
+- The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
+  (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
+
 ## [0.6.0] - 2026-11-20 (pre-release)
 
 ### Added
