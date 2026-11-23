@@ -18,6 +18,10 @@ program and folder that build it. Until a release that calls itself playable
   every block (`tools/psarc_ls.py`; on made-up data a 31 MB movie took 2.8 s of copying, now 0.01 s). An archive
   that is cut short is named in the error.
 
+### Fixed
+- The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
+  (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
+
 ## [0.6.0] - 2026-11-20 (pre-release)
 
 ### Added
