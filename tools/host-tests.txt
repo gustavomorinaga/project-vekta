@@ -24,6 +24,7 @@ tools/tests/test_check_tree.sh
 tools/tests/test_check_coauthors.sh
 tools/tests/test_mlaa_ref.sh
 tools/tests/test_mlaa_size.sh
+tools/tests/test_mlaa_u64.sh
 tools/tests/test_glow_ref.sh
 tools/tests/test_sandbox.sh
 tools/tests/test_upstream_suite.sh

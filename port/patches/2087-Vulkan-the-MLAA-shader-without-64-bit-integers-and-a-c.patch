@@ -1,0 +1,258 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 23 Nov 2026 17:30:00 +0000
+Subject: [PATCH] Vulkan: the MLAA shader without 64-bit integers, and a
+ compile marker instead of the AMD driver check
+
+Patch 2086 left the MLAA pass out on AMD's Windows driver: its shader
+compiler ended the process on rsx_vk_mlaa.comp every time (#129; RX 6600,
+26.10.1, amdvlk64.dll+0x771aee). What sets that shader apart from the
+glow and motion blur, which build there, is the SPU float emulation on
+64-bit integers (GL_ARB_gpu_shader_int64).
+
+The emulation now keeps its 64-bit values as uvec2 (low and high word),
+with umulExtended, uaddCarry and usubBorrow: the same arithmetic bit for
+bit (a C model of both forms agrees on 30 million random fmul, ffma,
+fsum and ffi cases; tools/mlaa_harness: GPU = C reference), and no
+shaderInt64 in the shader.
+
+The driver check goes. In its place, a marker file in the shader cache
+folder (mlaa-compile.pending) names the driver (vendor, device, driver
+version) and the shader (FNV-1a of its SPIR-V) while the compile runs,
+and is removed when it returns. Found at the next start for the same
+driver and shader, the compile never returned, and the MLAA is not
+built again there (the log says so; the glow and motion blur run, the
+PC screen greys Anti-aliasing). A new driver or shader tries again.
+PS3RECOMP_MLAA_BUILD=1 builds it whatever the marker says, 0 never.
+---
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -254,6 +254,7 @@
+     int              aniso_ok;        /* samplerAnisotropy enabled          */
+     int              int64_ok;        /* shaderInt64 enabled (the MLAA pass) */
+     u32              driver_id;       /* VkPhysicalDeviceDriverProperties::driverID, 0 unknown */
++    char             driver_key[48];  /* vendor:device:driverVersion, for the MLAA compile marker */
+     int              indep_blend_ok;  /* independentBlend enabled (rsx_blend_state.h) */
+     u32              aniso_max;       /* maxSamplerAnisotropy, at most 16   */
+     u32              max_dim;         /* maxImageDimension2D of the device  */
+@@ -865,6 +866,7 @@
+ #else
+     const int on_windows = 0;
+ #endif
++    snprintf(s_vk.driver_key, sizeof s_vk.driver_key, "%04X:%04X:%08X", p->vendorID, p->deviceID, p->driverVersion);
+     char ver[48];
+     rsx_vk_driver_version_text(ver, sizeof ver, p->vendorID, driver_id, p->driverVersion, on_windows);
+     uint64_t hs[VK_MAX_MEMORY_HEAPS]; uint32_t hf[VK_MAX_MEMORY_HEAPS];
+@@ -4270,16 +4272,49 @@
+     VK_LOG("the %s pass: %s in %.0f ms\n", what, r == VK_SUCCESS ? "built" : "failed", (double)(vk_now_ns() - t0) / 1e6);
+     return r;
+ }
+-/* Whether the MLAA's compute pipeline is built (#129). AMD's Windows driver (driver id 1, VK_DRIVER_ID_AMD_PROPRIETARY;
+- * RX 6600 and RX 5700 XT, 26.10.1) ends the process inside its shader compiler while it compiles that one shader, a
+- * null read in amdvlk64.dll, every time; the glow and motion blur passes are built either way. Without it the frame
+- * gets no MLAA (as with Anti-aliasing off), and the PC screen greys that row (rsx_vulkan_mlaa_available).
+- * PS3RECOMP_MLAA_BUILD=1 builds it on every driver (to test a driver release), 0 on none. */
++/* Whether the MLAA's compute pipeline is built (#129). AMD's Windows driver (26.10.1, RX 6600) ended the process
++ * inside its shader compiler on the first form of rsx_vk_mlaa.comp (64-bit integers, shaderInt64); the shader now
++ * uses none (patch 2087). In case a driver still does: a marker file in the cache folder names the driver and the
++ * shader while the compile runs, and is removed when it returns. Found at the next start for the same driver and
++ * shader, the compile never returned (the process ended in it), and the MLAA is not built again there: the frame
++ * gets no MLAA (as with Anti-aliasing off), the PC screen greys that row (rsx_vulkan_mlaa_available), and the glow
++ * and motion blur still run. A new driver or a new shader tries again. PS3RECOMP_MLAA_BUILD=1 builds it whatever
++ * the marker says, 0 never. */
++static const char* vk_cache_dir(void);
++static void vk_mlaa_marker(char* path, size_t n, char* key, size_t kn)
++{
++    u32 h = 2166136261u;                         /* FNV-1a of the shader */
++    for (size_t i = 0; i < sizeof rsx_vk_mlaa_comp_spv / sizeof rsx_vk_mlaa_comp_spv[0]; i++) {
++        h = (h ^ rsx_vk_mlaa_comp_spv[i]) * 16777619u;
++    }
++    snprintf(key, kn, "%s shader %08X\n", s_vk.driver_key, h);
++    const char* d = vk_cache_dir();
++    if (d) snprintf(path, n, "%s/mlaa-compile.pending", d); else if (n) path[0] = 0;
++}
+ static int vk_mlaa_build_wanted(void)
+ {
++    static int wanted = -1;
++    if (wanted >= 0) return wanted;
+     const char* e = getenv("PS3RECOMP_MLAA_BUILD");
+-    if (e && *e) return atoi(e) != 0;
+-    return s_vk.driver_id != 1u;
++    if (e && *e) return wanted = atoi(e) != 0;
++    char path[600], key[96], got[96] = "";
++    vk_mlaa_marker(path, sizeof path, key, sizeof key);
++    FILE* f = path[0] ? fopen(path, "rb") : NULL;
++    if (f) { size_t r = fread(got, 1, sizeof got - 1, f); got[r] = 0; fclose(f); }
++    wanted = strcmp(got, key) != 0;
++    if (!wanted)
++        VK_LOG("the MLAA pass: its compile did not return on this driver last time (the game closed in it?), so it is "
++               "not built (#129; delete %s or set PS3RECOMP_MLAA_BUILD=1 to try again)\n", path);
++    return wanted;
++}
++static void vk_mlaa_marker_set(int on)
++{
++    char path[600], key[96];
++    vk_mlaa_marker(path, sizeof path, key, sizeof key);
++    if (!path[0]) return;
++    if (!on) { remove(path); return; }
++    FILE* f = fopen(path, "wb");
++    if (f) { fputs(key, f); fflush(f); fclose(f); }
+ }
+ 
+ /* Killzone HD's jm_post MLAA on the GPU (vulkan/rsx_vk_mlaa.comp): the
+@@ -4580,11 +4615,13 @@
+                        .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
+             .layout = s_mlaa.layout,
+         };
++        vk_mlaa_marker_set(1);
+         const VkResult r = vk_create_post_pipeline(&pci, &s_mlaa.pipe, "MLAA");
++        vk_mlaa_marker_set(0);
+         pvkDestroyShaderModule(s_vk.device, mod, NULL);
+         if (r != VK_SUCCESS) return -1;
+     } else {
+-        VK_LOG("the MLAA pass: not built on this driver (#129; PS3RECOMP_MLAA_BUILD=1 builds it); the glow and motion blur still run\n");
++        VK_LOG("the MLAA pass: not built; the glow and motion blur still run\n");
+     }
+     /* the buffers for the title's 1280x720 (rsx_mlaa_buffer_sizes); another drawn size remakes buf[1..8] (vk_mlaa_resize) */
+     uint64_t sz[9];
+@@ -5092,7 +5129,7 @@
+  * place of the MLAA (vk_eng_mlaa: vk_tm_scene_end), so a title's options
+  * screen can show the anti-aliasing setting as not in use. Any thread. */
+ int rsx_vulkan_temporal_active(void) { return s_tm.ok; }
+-/* 0 when the MLAA pass is not built on this driver (vk_mlaa_build_wanted, #129); 1 before the device is up. */
++/* 0 when the MLAA pass is not built (vk_mlaa_build_wanted, #129); 1 before the device is up. */
+ int rsx_vulkan_mlaa_available(void) { return !s_vk.device || vk_mlaa_build_wanted(); }
+ 
+ static int vk_eng_depth_readback(void* user, u32 depth, u32 x, u32 y, u32 w, u32 h,
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -114,7 +114,7 @@
+  * when the game runs under RenderDoc, a RenderDoc capture of the next frame. */
+ void rsx_vulkan_capture_request(void);
+ int  rsx_vulkan_reflex_available(void);
+-/* 0 when this driver does not get the GPU MLAA pass (patch 2086, #129: AMD's Windows driver); 1 otherwise. */
++/* 0 when the GPU MLAA pass is not built (patches 2086-2087, #129: its compile ended the process there before); 1 otherwise. */
+ int  rsx_vulkan_mlaa_available(void);
+ /* Render breadcrumbs (patch 2084): the last 64 guest render passes, port passes, submits and presents given to
+  * the GPU, oldest first, one line each ending in '\n' ("frame 812 batch 4410 done: pass 3: A 0x0C3A0000 640x360
+--- a/libs/video/vulkan/rsx_vk_mlaa.comp
++++ b/libs/video/vulkan/rsx_vk_mlaa.comp
+@@ -1,5 +1,4 @@
+ #version 450
+-#extension GL_ARB_gpu_shader_int64 : require
+ // Killzone HD's jm_post MLAA (SPU modules af58/85fc) on the GPU, the same rules
+ // as the game port's C reference (port/kz1hd/native/mlaa_ref.c; the decoding
+ // is in docs/wws-jm-post.md of the Killzone port). Stages, by push constant:
+@@ -39,13 +38,36 @@
+ int W, H, CJ, RJ;                         // image size, columns per column job, rows per row job
+ 
+ // ---------------- SPU single precision as the port runs it (truncation, FTZ) ----------------
+-int msb64(uint64_t v) { uint hi = uint(v >> 32); return hi != 0u ? 32 + findMSB(hi) : findMSB(uint(v)); }
++// The 64-bit integers of this emulation are uvec2 (x the low word, y the high
++// word), with no shaderInt64: AMD's Windows driver (26.10.1) ended the process
++// inside its shader compiler on the uint64_t form of this shader (#129). Same
++// arithmetic, bit for bit (tools/mlaa_harness: GPU = C reference).
++uvec2 u64(uint v) { return uvec2(v, 0u); }
++bool u64z(uvec2 a) { return (a.x | a.y) == 0u; }
++bool u64gt(uvec2 a, uvec2 b) { return a.y > b.y || (a.y == b.y && a.x > b.x); }
++uvec2 u64add(uvec2 a, uvec2 b) { uint c; uint lo = uaddCarry(a.x, b.x, c); return uvec2(lo, a.y + b.y + c); }
++uvec2 u64sub(uvec2 a, uvec2 b) { uint br; uint lo = usubBorrow(a.x, b.x, br); return uvec2(lo, a.y - b.y - br); }
++uvec2 u64mul(uint a, uint b) { uint hi, lo; umulExtended(a, b, hi, lo); return uvec2(lo, hi); }
++// shifts by 0..63
++uvec2 u64shl(uvec2 a, uint n)
++{
++    if (n == 0u) return a;
++    if (n >= 32u) return uvec2(0u, a.x << (n - 32u));
++    return uvec2(a.x << n, (a.y << n) | (a.x >> (32u - n)));
++}
++uvec2 u64shr(uvec2 a, uint n)
++{
++    if (n == 0u) return a;
++    if (n >= 32u) return uvec2(a.y >> (n - 32u), 0u);
++    return uvec2((a.x >> n) | (a.y << (32u - n)), a.y >> n);
++}
++int msb64(uvec2 v) { return v.y != 0u ? 32 + findMSB(v.y) : findMSB(v.x); }
+ // m * 2^e with sign s, rounded toward zero; below normal -> 0, above -> FLT_MAX
+-uint fpack(uint s, uint64_t m, int e)
++uint fpack(uint s, uvec2 m, int e)
+ {
+-    if (m == 0ul) return s << 31;
++    if (u64z(m)) return s << 31;
+     int n = msb64(m);
+-    uint man = n > 23 ? uint(m >> uint(n - 23)) : uint(m << uint(23 - n));
++    uint man = n > 23 ? u64shr(m, uint(n - 23)).x : u64shl(m, uint(23 - n)).x;
+     int be = e + n + 127;
+     if (be <= 0) return s << 31;
+     if (be >= 255) return (s << 31) | 0x7F7FFFFFu;
+@@ -64,32 +86,40 @@
+     uint sa, sb, ma, mb; int ea, eb;
+     bool na = fsplit(a, sa, ma, ea), nb = fsplit(b, sb, mb, eb);
+     if (!na || !nb) return (sa ^ sb) << 31;
+-    return fpack(sa ^ sb, uint64_t(ma) * uint64_t(mb), ea + eb);
++    return fpack(sa ^ sb, u64mul(ma, mb), ea + eb);
++}
++// m >> r with a sticky bit for what falls off (r >= 1); 1 when everything does
++uvec2 shr_sticky(uvec2 m, int r)
++{
++    if (r >= 64) return uvec2(1u, 0u);
++    uvec2 v = u64shr(m, uint(r));
++    if (!u64z(u64shl(m, uint(64 - r)))) v.x |= 1u;
++    return v;
+ }
+ // exact (sp mp 2^ep) + (sc mc 2^ec), truncated: the larger term's top bit at
+ // bit 62, the other shifted to it with a sticky bit
+-uint fsum(uint sp, uint64_t mp, int ep, uint sc, uint64_t mc, int ec)
++uint fsum(uint sp, uvec2 mp, int ep, uint sc, uvec2 mc, int ec)
+ {
+-    if (mp == 0ul) return mc != 0ul ? fpack(sc, mc, ec) : ((sp & sc) << 31);
+-    if (mc == 0ul) return fpack(sp, mp, ep);
++    if (u64z(mp)) return !u64z(mc) ? fpack(sc, mc, ec) : ((sp & sc) << 31);
++    if (u64z(mc)) return fpack(sp, mp, ep);
+     int tp = ep + msb64(mp), tc = ec + msb64(mc);
+     int E = max(tp, tc) - 62;
+-    uint64_t ap, ac;
++    uvec2 ap, ac;
+     int k = ep - E;                       // >= 0 for the larger, may be < 0 for the other
+-    if (k >= 0) ap = mp << uint(k); else { int r = -k; ap = r >= 64 ? 1ul : ((mp >> uint(r)) | (((mp << uint(64 - r)) != 0ul) ? 1ul : 0ul)); }
++    ap = k >= 0 ? u64shl(mp, uint(k)) : shr_sticky(mp, -k);
+     k = ec - E;
+-    if (k >= 0) ac = mc << uint(k); else { int r = -k; ac = r >= 64 ? 1ul : ((mc >> uint(r)) | (((mc << uint(64 - r)) != 0ul) ? 1ul : 0ul)); }
+-    if (sp == sc) return fpack(sp, ap + ac, E);
++    ac = k >= 0 ? u64shl(mc, uint(k)) : shr_sticky(mc, -k);
++    if (sp == sc) return fpack(sp, u64add(ap, ac), E);
+     if (ap == ac) return 0u;
+-    return ap > ac ? fpack(sp, ap - ac, E) : fpack(sc, ac - ap, E);
++    return u64gt(ap, ac) ? fpack(sp, u64sub(ap, ac), E) : fpack(sc, u64sub(ac, ap), E);
+ }
+ uint ffma(uint a, uint b, uint c)
+ {
+     uint sa, sb, sc, ma, mb, mc; int ea, eb, ec;
+     bool na = fsplit(a, sa, ma, ea), nb = fsplit(b, sb, mb, eb);
+     fsplit(c, sc, mc, ec);
+-    if (!na || !nb) return fsum(sa ^ sb, 0ul, 0, sc, uint64_t(mc), ec);
+-    return fsum(sa ^ sb, uint64_t(ma) * uint64_t(mb), ea + eb, sc, uint64_t(mc), ec);
++    if (!na || !nb) return fsum(sa ^ sb, uvec2(0u), 0, sc, u64(mc), ec);
++    return fsum(sa ^ sb, u64mul(ma, mb), ea + eb, sc, u64(mc), ec);
+ }
+ uint ffnms(uint a, uint b, uint c) { return ffma(a ^ 0x80000000u, b, c); }
+ const uint FREST[32] = uint[32](
+@@ -106,12 +136,12 @@
+ {
+     int e = int((est >> 23) & 0xFFu);
+     if (e == 0) return 0u;
+-    uint64_t m = ((uint64_t(0x2000u | ((est >> 10) & 0x1FFFu))) << 19) - uint64_t(est & 0x3FFu) * uint64_t(a & 0x7FFFFu);
+-    if (m < (1ul << 32)) { m <<= 1; e--; if (e == 0) return 0u; }
+-    return (est & 0x80000000u) | (uint(e) << 23) | (uint(m >> 9) & 0x7FFFFFu);
++    uvec2 m = u64sub(u64shl(u64(0x2000u | ((est >> 10) & 0x1FFFu)), 19u), u64mul(est & 0x3FFu, a & 0x7FFFFu));
++    if (m.y == 0u) { m = u64shl(m, 1u); e--; if (e == 0) return 0u; }
++    return (est & 0x80000000u) | (uint(e) << 23) | (u64shr(m, 9u).x & 0x7FFFFFu);
+ }
+-uint fcsflt(int v) { if (v == 0) return 0u; return fpack(v < 0 ? 1u : 0u, uint64_t(uint(abs(v))), 0); }
+-uint fcuflt(uint v, int scale) { return v != 0u ? fpack(0u, uint64_t(v), -scale) : 0u; }
++uint fcsflt(int v) { if (v == 0) return 0u; return fpack(v < 0 ? 1u : 0u, u64(uint(abs(v))), 0); }
++uint fcuflt(uint v, int scale) { return v != 0u ? fpack(0u, u64(v), -scale) : 0u; }
+ uint fcfltu16(uint f)
+ {
+     uint s, m; int e;
+-- 
+2.43.0
