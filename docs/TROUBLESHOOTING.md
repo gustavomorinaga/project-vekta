@@ -6,7 +6,7 @@ bug report. The codes and their one-line texts are `port/kz1hd/kz_exit.h` (the s
 
 | What you see | Exit code | What to do | What to attach |
 |---|---|---|---|
-| The launcher says the game is not built yet | 70 | Start Project Vekta again and let it check your files and build (about five minutes), or run its prepare step (`scripts/prepare.cmd`, `scripts/prepare.sh`). | Nothing yet; if the build then fails, see below. |
+| The launcher says the game is not built yet | 70 | Start Project Vekta again and let it check your files and build (5 to 30 minutes), or run its prepare step (`scripts/prepare.cmd`, `scripts/prepare.sh`). | Nothing yet; if the build then fails, see below. |
 | "These files are another edition or version of the game" | 71 | The port works only with NPUA80856, version 01.00 (disc or PlayStation Store). The European edition (NPEA00418, BCES-01743) is another build. [GETTING-FILES.md](GETTING-FILES.md) has the sizes and SHA-256 of each file. | The `DIFFERENT` line of the newest `work/logs/firstrun-*.log`. |
 | "A file the port needs is missing or still encrypted" | 72 | Point it at the installed game folder (the one with `PARAM.SFO` and `USRDIR`): `--game DIR`, or the first run's questions (`scripts\run.cmd`, `scripts/run.sh`). An encrypted `EBOOT.BIN` needs your RPCS3 to make the decrypted copy: `--rpcs3`. | The `MISSING` or `WRONG` lines of the newest `work/logs/firstrun-*.log`. |
 | "No RPCS3 with the game installed was found" | 73 | Give RPCS3's folder (`--rpcs3 DIR`: where `rpcs3.exe` is, its config folder on Linux, or the game folder RPCS3 installed), or your own files (`--game`, `--eboot`). | Where your RPCS3 is (no files from it). |
