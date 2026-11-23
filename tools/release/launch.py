@@ -88,7 +88,8 @@ NOT_PREPARED, WRONG_EDITION, FILE_MISSING, NO_RPCS3, BUILD_FAILED, NO_VULKAN, ST
                          "STOPPED"))
 # KZ1HD writes its own line for these into the log: (the start of that line, the part of it not shown)
 EXE_LINES = {EXIT_CPU: ("[kz] CPU check: ", "[kz] CPU check: "),
-             EXIT_EBOOT: ("[kz] EBOOT check: This build", "[kz] EBOOT check: ")}
+             EXIT_EBOOT: ("[kz] EBOOT check: This build", "[kz] EBOOT check: "),
+             NO_VULKAN: ("[kz] Vulkan check: ", "[kz] Vulkan check: ")}
 EARLY_EXIT = 20                     # seconds: a game that ends sooner, its window not closed, did not start
 
 
