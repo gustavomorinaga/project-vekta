@@ -49,7 +49,7 @@ Everything stays in the folder the game runs from, `work/vfs/` (made by `tools/s
 | Log of the last run | `work/play.log` |
 | Earlier game logs (five, and three that ended in a crash) | `work/logs/play-*.log` |
 | How each session ended | `work/logs/sessions.jsonl` |
-| Crash and hang reports | `work/crash/` |
+| Crash and hang reports (where in the program it stopped, no game data) | `work/crash/` |
 
 The launcher writes your home folder as `~` in `work/play.log` after each session.
 

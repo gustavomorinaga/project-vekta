@@ -54,6 +54,7 @@
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
 #include "res_list.h"    /* the sizes the Resolution row offers */
+#include "sys_info.h"    /* kz_sys_pair: the session header's settings line */
 
 extern "C" {
 extern uint8_t* vm_base;
@@ -285,6 +286,14 @@ extern "C" void kz_view_update(void)
         kz_view.aspect = a;
         rsx_vulkan_set_stretch(a > 0.0f);
     }
+}
+
+/* The session header's settings line (main.cpp, "[kz-sys] settings: ..."): kz1hd_pc.ini as read at start, with the
+ * defaults kz_pc_settings_env filled in, as space-separated name=value pairs. */
+extern "C" void kz_pc_settings_line(char* out, unsigned long cap)
+{
+    if (cap) out[0] = 0;
+    for (auto& kv : s_ini) kz_sys_pair(out, cap, kv.first.c_str(), kv.second.c_str());
 }
 
 extern "C" void kz_pc_settings_env(void)
