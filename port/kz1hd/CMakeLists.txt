@@ -240,6 +240,7 @@ set_source_files_properties(glyphs.cpp PROPERTIES COMPILE_OPTIONS "-Wno-c23-exte
 add_executable(${PROJECT_NAME}
     cpu_check.c     # first: the CPU check (constructor 101), compiled for baseline x86-64
     main.cpp
+    crash_report.c  # [kz-crash] and [kz-hang] reports, KZ_CRASH_TEST (docs/dev/crash-reports.md)
     sys_info.c      # the [kz-sys] session header
     stubs.cpp
     pcoptions.cpp
