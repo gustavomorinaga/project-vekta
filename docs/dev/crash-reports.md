@@ -9,7 +9,7 @@ log alone, and how to test it without waiting for a real crash. The code is `por
 Right after the version line, one line per fact:
 
 ```
-[kz] Project Vekta 0.7.0 ...
+[kz] Project Vekta <version> ...
 [kz-sys] os: Windows 11 (10.0.22631)
 [kz-sys] cpu: AMD Ryzen 7 7800X3D 8-Core Processor
 [kz-sys] cores: 8 cores, 16 threads
@@ -44,7 +44,7 @@ An unhandled fault on any thread, or `abort()` (`std::terminate`, a failed asser
 [kz-crash] module: KZ1HD.exe+0x2c3d4
 [kz-crash] thread: 4242 spu 1:0
 [kz-crash] uptime: 72.4 s
-[kz-crash] version: Project Vekta 0.7.0 ...
+[kz-crash] version: Project Vekta <version> ...
 [kz-crash] registers: rip=0x... rsp=0x... rbp=0x... eflags=0x...
 [kz-crash] registers: rax=0x... (five lines in all)
 [kz-crash] #0 KZ1HD.exe+0x2c3d4
