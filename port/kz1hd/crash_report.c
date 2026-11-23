@@ -1240,10 +1240,11 @@ void kz_crash_test_start(void)
     static const char* const kinds[] = { "null-main", "null-thread", "abort", "illegal", "stack", "fastfail", "hang" };
     const char* k = getenv("KZ_CRASH_TEST");
     if (!k || !*k) return;
+    if (strcmp(k, "gpu-lost") == 0) return;   /* main.cpp hands it to the Vulkan backend (a lost device, exit 78) */
     for (size_t i = 0; i < sizeof kinds / sizeof *kinds; i++) if (strcmp(k, kinds[i]) == 0) s_test = kinds[i];
     if (!s_test) {
         fprintf(stderr, "[kz] KZ_CRASH_TEST=%s: not a kind (null-main, null-thread, abort, illegal, stack, fastfail, "
-                        "hang); ignored\n", k);
+                        "hang, gpu-lost); ignored\n", k);
         return;
     }
     const char* d = getenv("KZ_CRASH_TEST_DELAY");
