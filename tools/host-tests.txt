@@ -60,6 +60,8 @@ tools/tests/test_hud_layout.sh
 tools/tests/test_view_aspect.sh
 tools/tests/test_post.sh
 tools/tests/test_vk_debug.sh
+tools/tests/test_vk_driver.sh
+tools/tests/test_vk_breadcrumbs.sh
 tools/tests/test_pc_deps.sh
 tools/tests/test_edat_cache.sh
 tools/tests/test_rpcs3_import.py
@@ -74,6 +76,7 @@ tools/tests/test_eboot_check.sh
 tools/tests/test_launcher_contract.py
 tools/tests/test_heap_bytes.sh
 tools/tests/test_recomplauncher.py
+tools/tests/test_sessions.py
 tools/tests/test_res_list.sh
 tools/tests/test_lfqueue.sh
 tools/tests/test_flashmp3.sh

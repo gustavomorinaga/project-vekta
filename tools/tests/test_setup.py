@@ -134,7 +134,7 @@ check("' --dlss ' + DlssChoice" in text and "work\\dlss-choice'), DlssChoice" in
 check(not re.search(r"(?im)^Source:.*(nvngx|nvsdk|dlss)", text), "setup names no NVIDIA file to install")
 check('Name: "{app}\\work\\toolchain-cache\\dlss-sdk"' in text, "the uninstaller removes the DLSS download")
 
-for rel in ("installer/run.cmd", "installer/play.cmd", "installer/prepare.cmd"):
+for rel in ("installer/run.cmd", "installer/play.cmd", "installer/prepare.cmd", "installer/support.cmd"):
     data = (ROOT / rel).read_bytes()
     check(b"\n" not in data.replace(b"\r\n", b""), f"{rel} has CRLF line endings")
 
@@ -292,7 +292,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     def red(s):
         return s.replace("D:\\Profiles\\player", "~")
-    dest, skipped = support.build(str(root), str(data), str(out), red, "20261102-000000")
+    dest, skipped = support.build(str(root), str(data), str(out), red, "20261102-000000", system=lambda: ({}, []))
     import zipfile  # noqa: E402
     with zipfile.ZipFile(dest) as z:
         names = sorted(z.namelist())
@@ -309,7 +309,8 @@ with tempfile.TemporaryDirectory() as tmp:
     trimmed = support.trim(texts, 2000)
     check(trimmed == ["big.log"] and sum(len(v) for v in texts.values()) <= 2000 and
           texts["big.log"].startswith(support.MARKER), "the oldest lines of the largest log go first")
-    check(support.build(str(t / "none"), str(t / "none"), str(out), red, "x") == ("", []), "nothing to collect")
+    check(support.build(str(t / "none"), str(t / "none"), str(out), red, "x", system=lambda: ({}, [])) == ("", []),
+          "nothing to collect")
 
 # Stage 4: the uninstaller's saves folder is launch.py's; an install over an earlier one replaces only the payload's
 # own folders (never the build, the game folder, the logs or the player's choices)

@@ -53,12 +53,14 @@
     "saves": [{ "path": "{install}/work/vfs/gamedata" }],
     "logs": [{ "path": "{install}/work" }],
     "build_logs": [{ "path": "{install}/work/logs" }],
+    "crash": [{ "path": "{install}/work/crash" }],
     "settings": [{ "path": "{install}/work/vfs" }]
   },
   "actions": [
     { "id": "saves", "label": "Saves", "help": "Your save data.", "open": "saves" },
-    { "id": "logs", "label": "Game log", "help": "play.log, the log of the last session: attach it to a bug report.", "open": "logs" },
-    { "id": "build_logs", "label": "Build logs", "help": "The logs of the check and the build (firstrun-*.log).", "open": "build_logs" },
+    { "id": "logs", "label": "Game log", "help": "play.log, the log of the last session. For a bug report, attach the support package instead: scripts/support.sh or scripts/support.cmd in the install folder makes it.", "open": "logs" },
+    { "id": "build_logs", "label": "Build logs", "help": "The logs of the check and the build (firstrun-*.log), the earlier game logs (play-*.log) and sessions.jsonl, how each session ended.", "open": "build_logs" },
+    { "id": "crash", "label": "Crash reports", "help": "The crash and hang reports the game wrote (crash-*.txt, hang-*.txt); the support package includes them.", "open": "crash" },
     { "id": "settings", "label": "Settings file", "help": "kz1hd_pc.ini, the PC settings the game's PC page writes.", "open": "settings" }
   ],
   "exit_codes": { "0": "filled in by tools/release/recomplauncher.py from port/kz1hd/kz_exit.h" }

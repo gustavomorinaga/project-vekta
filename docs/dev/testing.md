@@ -88,6 +88,31 @@ which kinds fire where, and the host test: [crash-reports.md](crash-reports.md).
   the draw engine makes (`colour 0:0x... 1280x720 RGBA8`). Without `VK_EXT_debug_utils` nothing is named.
   [frame-map.md](frame-map.md) says what each pass is.
 
+## GPU hangs and lost devices
+
+Added for #129 (AMD RX 5000/6000 on Windows closing a few seconds into level 1, 2026-11-23); written without a GPU at
+hand, so none of it has been seen on a real hang yet.
+
+- At start the log names the GPU and its driver (ps3recomp patch 2082): `[RSX vulkan] gpu: <name>, vendor 0x1002
+  (AMD), device 0x73FF, driver version 2.0.302, VRAM 8176 MiB` (the driver version decoded as the vendor packs it) and,
+  when the driver has `VkPhysicalDeviceDriverProperties`, `[RSX vulkan] driver: <driverName> <driverInfo> (driver id
+  N, conformance a.b.c.d)`, where AMD's and Intel's `driverInfo` is the release a player knows (`24.10.1`).
+- `robustBufferAccess` is on whenever the device has it (patch 2083; the log says `robustBufferAccess: on`): a buffer
+  read past its end gives zeros instead of undefined behaviour, which AMD's driver may answer with a hang.
+  `PS3RECOMP_VK_ROBUST=0` turns it off, for an A/B run on a card that showed the problem.
+- Render breadcrumbs (patch 2084): the last 64 guest passes (by the names above), port passes, submits and presents,
+  each marked `done`, `submitted` (not known to be finished) or `recording`. `PS3RECOMP_VK_BREADCRUMBS=0` turns them
+  off. The crash reporter prints them as `render:` lines through `rsx_vulkan_breadcrumbs()`.
+- A fence wait longer than 2 s logs `[RSX vulkan] GPU has not finished for N s (<where>)` each second and keeps waiting
+  (the breadcrumbs once a run); a lost device logs `[RSX vulkan] device lost in <call>` and the breadcrumbs, and the
+  game ends with exit code 78, `KZ_EXIT_GPU_LOST` (patch 2085, `kz_gpu_lost` in `main.cpp`).
+- `KZ_CRASH_TEST=gpu-lost` (or `PS3RECOMP_VK_FAKE_DEVICE_LOST=<frames>`) makes the backend report a lost device once,
+  after 300 presented frames, on a working GPU: the whole path down to exit code 78, on any PC.
+- The post passes' compiles (on their own thread) are logged as `building the <pass> pass` and
+  `the <pass> pass: built in N ms` (patch 2086). On AMD's Windows driver (driver id 1) the MLAA pass is not built
+  (#129: the driver closed the game while compiling it, every time) and the log says `the MLAA pass: not built on
+  this driver`; `PS3RECOMP_MLAA_BUILD=1` builds it on every driver, `0` on none (to see the AMD path on another GPU).
+
 ### Running under RenderDoc
 
 Turn the temporal upscalers off first (PC page: Upscaler other than DLSS or FSR 3.1, or `temporal=off` in

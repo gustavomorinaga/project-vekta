@@ -228,6 +228,7 @@ void rsx_vulkan_set_reflex(int mode);
 int  rsx_vulkan_reflex_available(void);
 int  rsx_vulkan_temporal_built(void);
 int  rsx_vulkan_temporal_active(void);   /* ps3recomp patch 2079 */
+int  rsx_vulkan_mlaa_available(void);    /* ps3recomp patch 2086 */
 void rsx_vulkan_set_motion_blur(int on);
 void rsx_vulkan_set_mlaa(int on);
 void rsx_vulkan_set_glow_strength(int strength256);
@@ -677,7 +678,7 @@ static const int kDepRow[PC_DEP_COUNT] = { 2, 4, 7, 17, 19, 12 };   /* Resolutio
 static unsigned deps_mask(void)
 {
     const pc_deps_in in = { s_ini["display"].c_str(), s_ini["widescreen"].c_str(), s_ini["upscaler"].c_str(),
-                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available() };
+                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available(), !rsx_vulkan_mlaa_available() };
     return pc_deps_mask(&in);
 }
 static void get_deps(ppu_context* c) { attr_log("get_deps", c); wrf((uint32_t)c->gpr[4], (float)deps_mask()); }

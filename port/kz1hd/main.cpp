@@ -311,7 +311,8 @@ extern "C" void kz_validation_summary(void)
     rsx_vulkan_validation_summary();
 #endif
 }
-extern "C" void kz_quit(const char* why)
+/* why goes to the log; code is the exit code: 0 for a quit, KZ_EXIT_GPU_LOST for a lost GPU (kz_gpu_lost). */
+static void kz_quit_code(const char* why, int code)
 {
     static volatile int once;
     if (__atomic_exchange_n(&once, 1, __ATOMIC_ACQ_REL)) return;
@@ -328,8 +329,24 @@ extern "C" void kz_quit(const char* why)
     /* an instrumented build (KZ_PGO_GEN): _exit skips the profile runtime's atexit writer (pgo_write.h) */
     if (kz_pgo_write()) fprintf(stderr, "[kz-pgo] profile written at quit\n");
     fflush(NULL);
-    _exit(0);
+    _exit(code);
 }
+extern "C" void kz_quit(const char* why) { kz_quit_code(why, 0); }
+
+#if defined(PS3RECOMP_RSX_VULKAN)
+/* The GPU was lost (#129: AMD cards on Windows, the game closing a few seconds into level 1). ps3recomp's Vulkan
+ * backend (patch 2085) has logged "device lost in <call>" and the render breadcrumbs, and calls this on the thread
+ * that found it: nothing more can be drawn, so the game ends as a quit does (the saves being written finish, the
+ * logs are flushed) but with KZ_EXIT_GPU_LOST, whose text tools/release/launch.py and recomplauncher.json give the
+ * player. KZ_CRASH_TEST=gpu-lost (main) tries this path on a working GPU. */
+extern "C" void rsx_vulkan_set_device_lost_hook(void (*hook)(void));
+static void kz_gpu_lost(void)
+{
+    fprintf(stderr, "[kz] GPU lost: The graphics driver stopped responding (the GPU was lost): update the graphics "
+                    "driver, and attach the support package to a bug report.\n");
+    kz_quit_code("the GPU was lost", KZ_EXIT_GPU_LOST);
+}
+#endif
 
 /* SIGTERM, SIGINT (Ctrl+C in the terminal) and SIGHUP quit as closing the
  * window does; the frame clock does the quitting, outside the handler. */
@@ -851,6 +868,14 @@ int main(int argc, char** argv)
 #ifndef _WIN32
     { struct sigaction sa = {}; sa.sa_handler = on_quit_signal;
       sigaction(SIGTERM, &sa, NULL); sigaction(SIGINT, &sa, NULL); sigaction(SIGHUP, &sa, NULL); }
+#endif
+#if defined(PS3RECOMP_RSX_VULKAN)
+    rsx_vulkan_set_device_lost_hook(kz_gpu_lost);
+    /* KZ_CRASH_TEST=gpu-lost: the backend reports a lost device once, at its first fence wait after 300 presented
+     * frames (about 5 s at 60 Hz; PS3RECOMP_VK_FAKE_DEVICE_LOST, patch 2085), while the GPU is fine, so the log
+     * lines, the breadcrumbs and exit code 78 can be tried on any PC. */
+    { const char* t = getenv("KZ_CRASH_TEST");
+      if (t && !strcmp(t, "gpu-lost")) setenv("PS3RECOMP_VK_FAKE_DEVICE_LOST", "300", 0); }
 #endif
     CreateThread(NULL, 4u * 1024 * 1024, frame_clock, NULL, 0, NULL);
 
