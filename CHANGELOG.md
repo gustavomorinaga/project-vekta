@@ -14,6 +14,10 @@ program and folder that build it. Until a release that calls itself playable
   Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the
   keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.
 
+### Fixed
+- The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
+  (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
+
 ## [0.6.0] - 2026-11-20 (pre-release)
 
 ### Added
