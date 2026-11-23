@@ -1,0 +1,131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 23 Nov 2026 14:55:00 +0000
+Subject: [PATCH] Vulkan: one user of the pipeline cache at a time; the post
+ passes are named in the log as they compile
+
+Symptom (#129): on AMD cards under Windows (RX 6600 and RX 5700 XT,
+driver 26.10.1) the game closed a few seconds into level 1's gameplay.
+With the crash reports (port) a tester's build said where: a null read
+inside amdvlk64.dll, 14 frames deep in the driver, on the thread
+vk_mlaa_build starts to compile the post passes (MLAA, then the motion
+blur and the glow) through the pipeline cache. All three reports end
+right after "GPU MLAA ... still being built"; on NVIDIA the same build
+finishes. robustBufferAccess (2083) did not change it.
+
+While that thread compiles, the frame compiles the guest's programs
+through the same VkPipelineCache and the saver thread reads it back with
+vkGetPipelineCacheData. Vulkan allows that (a cache created without the
+externally-synchronized flag is synchronized by the driver), but it is
+the one place where three threads meet in the driver at once. Now a
+mutex keeps the cache to one user at a time: the three post passes'
+vkCreateComputePipelines, the guest programs' vkCreateGraphicsPipelines
+and the saver's two reads. A guest program first seen while a post pass
+compiles waits for it, once a session on a cold driver cache.
+PS3RECOMP_VK_PCACHE_LOCK=0 lets them run together again, to tell whether
+this is what stops a crash.
+
+Each post pass is named in the log before and after its compile
+("building the MLAA pass", "the MLAA pass: built in N ms"), so if a
+driver still ends the process inside one, the last line says which.
+---
+ libs/video/rsx_vulkan_backend.c | 47 ++++++++++++++++++++++++++++-----
+ 1 file changed, 41 insertions(+), 6 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 35403b5..df26f71 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -4256,6 +4256,34 @@ static u32 vk_eng_depth_packed(void* user, u32 depth, u32 remap, u32 rsx_fmt)
+ }
+ 
+ static VkPipelineCache s_vk_pcache;          /* defined with the pipeline cache below */
++/* One user of the pipeline cache at a time (#129). The post passes (MLAA, glow, motion blur) are compiled on a thread
++ * of their own while the frame compiles the guest's programs through the same cache and the saver reads it back.
++ * Vulkan allows that (the cache is synchronized by the driver), but on AMD's Windows driver the game closed inside
++ * the driver, on that thread, seconds after it started (amdvlk64.dll, a null read; RX 6600, 26.10.1). The cost: a
++ * guest program first seen while a post pass compiles waits for it, once a session on a cold driver cache.
++ * PS3RECOMP_VK_PCACHE_LOCK=0 lets them run together again (to tell whether this is what fixed a crash). */
++static pthread_mutex_t s_vk_pcache_mutex = PTHREAD_MUTEX_INITIALIZER;
++static u64 vk_now_ns(void);
++static int vk_pcache_lock_on(void)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("PS3RECOMP_VK_PCACHE_LOCK"); on = !(e && *e && atoi(e) == 0); }
++    return on;
++}
++static void vk_pcache_lock(void)   { if (vk_pcache_lock_on()) pthread_mutex_lock(&s_vk_pcache_mutex); }
++static void vk_pcache_unlock(void) { if (vk_pcache_lock_on()) pthread_mutex_unlock(&s_vk_pcache_mutex); }
++/* A post pass's compute pipeline through the cache, named in the log before and after: when a driver ends the
++ * process while compiling one, the log's last line says which. */
++static VkResult vk_create_post_pipeline(const VkComputePipelineCreateInfo* pci, VkPipeline* out, const char* what)
++{
++    VK_LOG("building the %s pass\n", what);
++    const u64 t0 = vk_now_ns();
++    vk_pcache_lock();
++    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_vk_pcache, 1, pci, NULL, out);
++    vk_pcache_unlock();
++    VK_LOG("the %s pass: %s in %.0f ms\n", what, r == VK_SUCCESS ? "built" : "failed", (double)(vk_now_ns() - t0) / 1e6);
++    return r;
++}
+ static VkPipelineCache vk_pipeline_cache(void);
+ 
+ /* Killzone HD's jm_post MLAA on the GPU (vulkan/rsx_vk_mlaa.comp): the
+@@ -4350,7 +4378,7 @@ static int vk_mb_init(void)
+                    .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
+         .layout = s_mb.layout,
+     };
+-    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_vk_pcache, 1, &pci, NULL, &s_mb.pipe);
++    const VkResult r = vk_create_post_pipeline(&pci, &s_mb.pipe, "motion blur");
+     pvkDestroyShaderModule(s_vk.device, mod, NULL);
+     if (r != VK_SUCCESS) return -1;
+     const VkDeviceSize sz[4] = { 640 * 360 * 4, 640 * 360 * 4, 640 * 360 * 4, 64 };
+@@ -4441,7 +4469,7 @@ static int vk_glow_init(void)
+                    .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
+         .layout = s_glow.layout,
+     };
+-    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_vk_pcache, 1, &pci, NULL, &s_glow.pipe);
++    const VkResult r = vk_create_post_pipeline(&pci, &s_glow.pipe, "glow");
+     pvkDestroyShaderModule(s_vk.device, mod, NULL);
+     if (r != VK_SUCCESS) return -1;
+     const VkDeviceSize sz[5] = { 640 * 360 * 4, 320 * 180 * 4, 320 * 180 * 4, 640 * 360 * 4, 128 };
+@@ -4555,7 +4583,7 @@ static int vk_mlaa_init(void)
+                    .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
+         .layout = s_mlaa.layout,
+     };
+-    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_vk_pcache, 1, &pci, NULL, &s_mlaa.pipe);
++    const VkResult r = vk_create_post_pipeline(&pci, &s_mlaa.pipe, "MLAA");
+     pvkDestroyShaderModule(s_vk.device, mod, NULL);
+     if (r != VK_SUCCESS) return -1;
+     /* the buffers for the title's 1280x720 (rsx_mlaa_buffer_sizes); another drawn size remakes buf[1..8] (vk_mlaa_resize) */
+@@ -5904,9 +5932,12 @@ static void vk_pipeline_cache_save(void)
+ {
+     if (!s_vk_pcache || !__atomic_exchange_n(&s_vk_pcache_dirty, 0, __ATOMIC_ACQ_REL)) return;
+     size_t size = 0;
+-    if (pvkGetPipelineCacheData(s_vk.device, s_vk_pcache, &size, NULL) != VK_SUCCESS || !size) return;
++    vk_pcache_lock();
++    if (pvkGetPipelineCacheData(s_vk.device, s_vk_pcache, &size, NULL) != VK_SUCCESS || !size) { vk_pcache_unlock(); return; }
+     void* data = malloc(size);
+-    if (data && pvkGetPipelineCacheData(s_vk.device, s_vk_pcache, &size, data) == VK_SUCCESS) {
++    const int got = data && pvkGetPipelineCacheData(s_vk.device, s_vk_pcache, &size, data) == VK_SUCCESS;
++    vk_pcache_unlock();
++    if (got) {
+         char path[600];
+         snprintf(path, sizeof path, "%s/pipelines.bin", vk_cache_dir());
+         vk_cache_write(path, data, size);
+@@ -6337,7 +6368,11 @@ static VkResult vk_eng_build(const vk_plist_rec* R, VkShaderModule vs, VkShaderM
+         .pViewportState = &vps, .pRasterizationState = &ras, .pMultisampleState = &ms,
+         .pDepthStencilState = &ds, .pColorBlendState = &cb, .pDynamicState = &dy,
+         .layout = layout, .renderPass = rp, .subpass = 0 };
+-    return pvkCreateGraphicsPipelines(s_vk.device, vk_pipeline_cache(), 1, &gci, NULL, out);
++    const VkPipelineCache pc = vk_pipeline_cache();
++    vk_pcache_lock();
++    const VkResult r = pvkCreateGraphicsPipelines(s_vk.device, pc, 1, &gci, NULL, out);
++    vk_pcache_unlock();
++    return r;
+ }
+ 
+ /* ---- pipeline list ---------------------------------------------------------
+-- 
+2.43.0
+

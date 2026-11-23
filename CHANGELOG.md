@@ -62,6 +62,11 @@ program and folder that build it. Until a release that calls itself playable
   (#129), not yet confirmed on those cards: the GPU now reads zeros instead of undefined memory when a draw reads
   past the end of a buffer (Vulkan's `robustBufferAccess`, which NVIDIA's driver did not need). `play.log` says
   `robustBufferAccess: on`; `PS3RECOMP_VK_ROBUST=0` turns it off for comparison (patch 2083).
+- A second candidate fix for #129, from a tester's crash report on an RX 6600: the game closed inside AMD's driver
+  while it compiled the MLAA, glow and motion blur passes on a thread of their own, at the same time as the frame
+  compiled the game's shaders and the saver read the pipeline cache. The cache now has one user at a time, and the
+  log names each of those passes as it compiles (`building the MLAA pass`, `the MLAA pass: built in N ms`);
+  `PS3RECOMP_VK_PCACHE_LOCK=0` lets them run together again (patch 2086).
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
   (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
 - A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran
