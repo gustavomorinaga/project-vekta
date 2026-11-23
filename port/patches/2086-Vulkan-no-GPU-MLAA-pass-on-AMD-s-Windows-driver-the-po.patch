@@ -1,0 +1,174 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 23 Nov 2026 20:00:00 +0000
+Subject: [PATCH] Vulkan: no GPU MLAA pass on AMD's Windows driver; the post
+ passes are named in the log as they compile
+
+Symptom (#129): on AMD cards under Windows (RX 6600 and RX 5700 XT,
+driver 26.10.1) the game closed a few seconds into level 1's gameplay.
+The crash reports (port) of a tester's builds say where: a null read
+inside amdvlk64.dll (+0x771aee every time), 14 frames deep in the
+driver, under vkCreateComputePipelines for the MLAA pass
+(rsx_vk_mlaa.comp) on the thread vk_mlaa_build starts. The log's last
+line is "building the MLAA pass", never "built". It is not the device
+(robustBufferAccess, 2083, changed nothing) and not the pipeline cache
+shared with the frame and the saver: a build where only one thread used
+the cache at a time closed the same way, in the same place, and made
+the frame wait on that compile. AMD's shader compiler fails on that
+shader; on NVIDIA and Mesa it builds.
+
+Now, on AMD's Windows driver (driverID VK_DRIVER_ID_AMD_PROPRIETARY),
+the MLAA pipeline is not built: its buffers and descriptor set are, and
+the glow and motion blur passes (which run on that buffer after the
+MLAA) are built and run as before. The frame gets no MLAA there, as
+with Anti-aliasing off; rsx_vulkan_mlaa_available says so, for a title
+to grey its option. PS3RECOMP_MLAA_BUILD=1 builds it on every driver
+(to try a new driver release), 0 on none.
+
+Each post pass is named in the log before and after its compile
+("building the MLAA pass", "the MLAA pass: built in N ms"), so if a
+driver ends the process inside the glow or motion blur pass next, the
+last line says which.
+---
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -253,6 +253,7 @@
+     int              bc_ok;           /* textureCompressionBC enabled       */
+     int              aniso_ok;        /* samplerAnisotropy enabled          */
+     int              int64_ok;        /* shaderInt64 enabled (the MLAA pass) */
++    u32              driver_id;       /* VkPhysicalDeviceDriverProperties::driverID, 0 unknown */
+     int              indep_blend_ok;  /* independentBlend enabled (rsx_blend_state.h) */
+     u32              aniso_max;       /* maxSamplerAnisotropy, at most 16   */
+     u32              max_dim;         /* maxImageDimension2D of the device  */
+@@ -855,6 +856,7 @@
+         dp.driverName[VK_MAX_DRIVER_NAME_SIZE - 1] = 0;
+         dp.driverInfo[VK_MAX_DRIVER_INFO_SIZE - 1] = 0;
+         driver_id = (u32)dp.driverID;
++        s_vk.driver_id = driver_id;
+         conf = dp.conformanceVersion;
+         snprintf(name, sizeof name, "%s%s%s", dp.driverName, dp.driverInfo[0] ? " " : "", dp.driverInfo);
+     }
+@@ -4257,6 +4259,28 @@
+ 
+ static VkPipelineCache s_vk_pcache;          /* defined with the pipeline cache below */
+ static VkPipelineCache vk_pipeline_cache(void);
++static u64 vk_now_ns(void);
++/* A post pass's compute pipeline through the cache, named in the log before and after: when a driver ends the
++ * process while compiling one, the log's last line says which (#129). */
++static VkResult vk_create_post_pipeline(const VkComputePipelineCreateInfo* pci, VkPipeline* out, const char* what)
++{
++    VK_LOG("building the %s pass\n", what);
++    const u64 t0 = vk_now_ns();
++    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_vk_pcache, 1, pci, NULL, out);
++    VK_LOG("the %s pass: %s in %.0f ms\n", what, r == VK_SUCCESS ? "built" : "failed", (double)(vk_now_ns() - t0) / 1e6);
++    return r;
++}
++/* Whether the MLAA's compute pipeline is built (#129). AMD's Windows driver (driver id 1, VK_DRIVER_ID_AMD_PROPRIETARY;
++ * RX 6600 and RX 5700 XT, 26.10.1) ends the process inside its shader compiler while it compiles that one shader, a
++ * null read in amdvlk64.dll, every time; the glow and motion blur passes are built either way. Without it the frame
++ * gets no MLAA (as with Anti-aliasing off), and the PC screen greys that row (rsx_vulkan_mlaa_available).
++ * PS3RECOMP_MLAA_BUILD=1 builds it on every driver (to test a driver release), 0 on none. */
++static int vk_mlaa_build_wanted(void)
++{
++    const char* e = getenv("PS3RECOMP_MLAA_BUILD");
++    if (e && *e) return atoi(e) != 0;
++    return s_vk.driver_id != 1u;
++}
+ 
+ /* Killzone HD's jm_post MLAA on the GPU (vulkan/rsx_vk_mlaa.comp): the
+  * stages run in place on the title's 1280x720 R8G8B8A8 display buffer at the
+@@ -4324,7 +4348,7 @@
+ static int vk_mlaa_on(void)
+ {
+     if (s_mlaa_on < 0) { const char* e = getenv("PS3RECOMP_MLAA_ON"); s_mlaa_on = !e || atoi(e) != 0; }
+-    return s_mlaa_on;
++    return s_mlaa_on && s_mlaa.pipe;
+ }
+ 
+ static int vk_mb_init(void)
+@@ -4350,7 +4374,7 @@
+                    .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
+         .layout = s_mb.layout,
+     };
+-    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_vk_pcache, 1, &pci, NULL, &s_mb.pipe);
++    const VkResult r = vk_create_post_pipeline(&pci, &s_mb.pipe, "motion blur");
+     pvkDestroyShaderModule(s_vk.device, mod, NULL);
+     if (r != VK_SUCCESS) return -1;
+     const VkDeviceSize sz[4] = { 640 * 360 * 4, 640 * 360 * 4, 640 * 360 * 4, 64 };
+@@ -4441,7 +4465,7 @@
+                    .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
+         .layout = s_glow.layout,
+     };
+-    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_vk_pcache, 1, &pci, NULL, &s_glow.pipe);
++    const VkResult r = vk_create_post_pipeline(&pci, &s_glow.pipe, "glow");
+     pvkDestroyShaderModule(s_vk.device, mod, NULL);
+     if (r != VK_SUCCESS) return -1;
+     const VkDeviceSize sz[5] = { 640 * 360 * 4, 320 * 180 * 4, 320 * 180 * 4, 640 * 360 * 4, 128 };
+@@ -4532,7 +4556,7 @@
+ 
+ static int vk_mlaa_init(void)
+ {
+-    if (s_mlaa.pipe) return 0;
++    if (s_mlaa.set) return 0;
+     if (s_mlaa.failed || !s_vk.int64_ok) return -1;
+     s_mlaa.failed = 1;
+     VkDescriptorSetLayoutBinding b[9];
+@@ -4545,19 +4569,23 @@
+                                        .setLayoutCount = 1, .pSetLayouts = &s_mlaa.dsl,
+                                        .pushConstantRangeCount = 1, .pPushConstantRanges = &pr };
+     if (pvkCreatePipelineLayout(s_vk.device, &lci, NULL, &s_mlaa.layout) != VK_SUCCESS) return -1;
+-    VkShaderModuleCreateInfo mci = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+-                                     .codeSize = sizeof rsx_vk_mlaa_comp_spv, .pCode = rsx_vk_mlaa_comp_spv };
+-    VkShaderModule mod;
+-    if (pvkCreateShaderModule(s_vk.device, &mci, NULL, &mod) != VK_SUCCESS) return -1;
+-    VkComputePipelineCreateInfo pci = {
+-        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+-        .stage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+-                   .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
+-        .layout = s_mlaa.layout,
+-    };
+-    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_vk_pcache, 1, &pci, NULL, &s_mlaa.pipe);
+-    pvkDestroyShaderModule(s_vk.device, mod, NULL);
+-    if (r != VK_SUCCESS) return -1;
++    if (vk_mlaa_build_wanted()) {
++        VkShaderModuleCreateInfo mci = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
++                                         .codeSize = sizeof rsx_vk_mlaa_comp_spv, .pCode = rsx_vk_mlaa_comp_spv };
++        VkShaderModule mod;
++        if (pvkCreateShaderModule(s_vk.device, &mci, NULL, &mod) != VK_SUCCESS) return -1;
++        VkComputePipelineCreateInfo pci = {
++            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
++            .stage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
++                       .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
++            .layout = s_mlaa.layout,
++        };
++        const VkResult r = vk_create_post_pipeline(&pci, &s_mlaa.pipe, "MLAA");
++        pvkDestroyShaderModule(s_vk.device, mod, NULL);
++        if (r != VK_SUCCESS) return -1;
++    } else {
++        VK_LOG("the MLAA pass: not built on this driver (#129; PS3RECOMP_MLAA_BUILD=1 builds it); the glow and motion blur still run\n");
++    }
+     /* the buffers for the title's 1280x720 (rsx_mlaa_buffer_sizes); another drawn size remakes buf[1..8] (vk_mlaa_resize) */
+     uint64_t sz[9];
+     rsx_mlaa_buffer_sizes(RSX_MLAA_GUEST_W, RSX_MLAA_GUEST_H, sz);
+@@ -5064,6 +5092,8 @@
+  * place of the MLAA (vk_eng_mlaa: vk_tm_scene_end), so a title's options
+  * screen can show the anti-aliasing setting as not in use. Any thread. */
+ int rsx_vulkan_temporal_active(void) { return s_tm.ok; }
++/* 0 when the MLAA pass is not built on this driver (vk_mlaa_build_wanted, #129); 1 before the device is up. */
++int rsx_vulkan_mlaa_available(void) { return !s_vk.device || vk_mlaa_build_wanted(); }
+ 
+ static int vk_eng_depth_readback(void* user, u32 depth, u32 x, u32 y, u32 w, u32 h,
+                                  float* out, u32 out_pitch);
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -114,6 +114,8 @@
+  * when the game runs under RenderDoc, a RenderDoc capture of the next frame. */
+ void rsx_vulkan_capture_request(void);
+ int  rsx_vulkan_reflex_available(void);
++/* 0 when this driver does not get the GPU MLAA pass (patch 2086, #129: AMD's Windows driver); 1 otherwise. */
++int  rsx_vulkan_mlaa_available(void);
+ /* Render breadcrumbs (patch 2084): the last 64 guest render passes, port passes, submits and presents given to
+  * the GPU, oldest first, one line each ending in '\n' ("frame 812 batch 4410 done: pass 3: A 0x0C3A0000 640x360
+  * RGBA8; 12 draws, last vs ... ps ..."; done, submitted or recording), into buf, always terminated when n > 0;
+-- 
+2.43.0

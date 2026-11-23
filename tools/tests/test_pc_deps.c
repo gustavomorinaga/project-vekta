@@ -25,7 +25,9 @@ int main(void)
     in = def; in.upscaler = "fsr"; EXPECT(on(&in, PC_DEP_SHARPNESS), "AMD FSR 1: FSR Sharpness in use");
     in = def; in.temporal_running = 1; EXPECT(!on(&in, PC_DEP_ANTIALIASING), "FSR 3.1 or DLSS running: Anti-aliasing greyed");
     in = def; in.reflex_available = 1; EXPECT(on(&in, PC_DEP_REFLEX), "VK_NV_low_latency2: Reflex in use");
-    in = (struct pc_deps_in){ 0, 0, 0, 0, 0 };
+    in = def; in.mlaa_unavailable = 1; EXPECT(!on(&in, PC_DEP_ANTIALIASING), "no MLAA pass on this driver (#129): Anti-aliasing greyed");
+    EXPECT(on(&in, PC_DEP_RESOLUTION) && on(&in, PC_DEP_ASPECT), "no MLAA pass leaves the others alone");
+    in = (struct pc_deps_in){ 0, 0, 0, 0, 0, 0 };
     EXPECT(on(&in, PC_DEP_RESOLUTION) && on(&in, PC_DEP_ASPECT) && !on(&in, PC_DEP_SHARPNESS),
            "missing keys read as the defaults (window, widescreen on, bilinear)");
     if (fails) return 1;

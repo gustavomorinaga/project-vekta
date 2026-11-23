@@ -101,9 +101,10 @@ hand, so none of it has been seen on a real hang yet.
   game ends with exit code 78, `KZ_EXIT_GPU_LOST` (patch 2085, `kz_gpu_lost` in `main.cpp`).
 - `KZ_CRASH_TEST=gpu-lost` (or `PS3RECOMP_VK_FAKE_DEVICE_LOST=<frames>`) makes the backend report a lost device once,
   after 300 presented frames, on a working GPU: the whole path down to exit code 78, on any PC.
-- The pipeline cache has one user at a time (patch 2086): the post passes' compiles (on their own thread, logged as
-  `building the <pass> pass` and `the <pass> pass: built in N ms`), the guest programs' and the saver's reads.
-  `PS3RECOMP_VK_PCACHE_LOCK=0` lets them run together, as before (#129: AMD's driver closed the game in there).
+- The post passes' compiles (on their own thread) are logged as `building the <pass> pass` and
+  `the <pass> pass: built in N ms` (patch 2086). On AMD's Windows driver (driver id 1) the MLAA pass is not built
+  (#129: the driver closed the game while compiling it, every time) and the log says `the MLAA pass: not built on
+  this driver`; `PS3RECOMP_MLAA_BUILD=1` builds it on every driver, `0` on none (to see the AMD path on another GPU).
 
 ### Running under RenderDoc
 
