@@ -156,7 +156,8 @@ for scripted input (see `tools/run.sh` and `docs/dev/testing.md`).
 
 What CI runs on every push and pull request needs no game files and no GPU: `tools/ps3recomp-patched.sh`,
 `tools/check-tree.sh`, `tools/lint.sh` (shellcheck and ruff) and `tools/run-host-tests.sh` (the list is
-`tools/host-tests.txt`; bash, Python 3, a C compiler and bubblewrap). Write a new test in `tools/tests/` and add it to the list.
+`tools/host-tests.txt`; bash, Python 3, a C compiler and bubblewrap; `-j N` runs N tests at the same time, as CI
+does). Write a new test in `tools/tests/` and add it to the list.
 
 ## Windows x64 (cross-built on Linux)
 
@@ -330,8 +331,8 @@ packages to install. Its compiler is [Zig](https://ziglang.org) 0.17.0 (`zig cc`
 `tools/release/toolchain.json` from its PyPI wheel) aimed at `x86_64-linux-gnu.2.31` (`port/cmake/zig-linux.cmake`,
 the wrappers in `tools/release/zig/`), so what it builds runs on any distribution with that glibc or newer; CMake,
 Ninja, SDL2 (built to link against, the system's `libSDL2-2.0.so.0` is used at run time), zlib, glslang, the Vulkan
-headers and FFmpeg 9's shared libraries (copied to `work/build/lib`, which `tools/play.sh` puts on the library path)
-come with it.
+headers and FFmpeg 9's shared libraries (placed in `work/build/lib`, as hard links where the file system makes them;
+`tools/play.sh` puts that folder on the library path) come with it.
 
 ```sh
 tools/release/fetch_toolchain.py --host native                          # Zig, CMake, Ninja, SDL2, FFmpeg

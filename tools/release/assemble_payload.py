@@ -22,7 +22,8 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
   work/toolchain-cache/    the Windows entries of tools/release/toolchain.json (llvm-mingw, CMake, Ninja, the
                   embeddable Python, SDL2, zlib, glslang, the Vulkan headers, FFmpeg), unpacked by fetch_toolchain.py
                   --host windows, with a fetched.json for them only (the build fetches nothing), minus PRUNE
-                  (clang's Linux runtimes, zlib's Amiga files). The Python's ._pth
+                  (clang's Linux runtimes, zlib's Amiga files, glslang's test shaders, the XML Vulkan's headers
+                  are generated from). The Python's ._pth
                   also names tools/, tools/release/ and ps3recomp's tools/: the embeddable Python never puts a
                   script's own folder on sys.path, and the lifters import their neighbours.
   VERSION, LICENSE, NOTICE.md, README.md, licenses/, assets/icon.svg, docs/GETTING-FILES.md, docs/BUILDING.md
@@ -137,6 +138,10 @@ MAX_FILE = 8 << 20
 # and SHA-256, tools/release/toolchain.json's file_sets) refuse the payload, whatever the file is called.
 NVIDIA_NAMES = ["nvngx*", "nvsdk_ngx*", "libnvidia-ngx*", "*nvngx_dlss*"]
 NVIDIA_DIRS = ["dlss-sdk"]
+# In the sources both platforms build: glslang's test shaders and their expected results (its CMake enters Test/ only
+# with GLSLANG_TESTS, which both deps scripts turn off) and the XML and scripts Vulkan's headers are generated from
+# (the deps scripts take include/ only). 37 MB and 19 MB unpacked, in each package.
+UNUSED_SOURCES = {"glslang": ["Test/*"], "vulkan-headers": ["registry/*"]}
 # Toolchain files the Windows build never uses, left out (paths inside the entry's tree): among them clang's Linux
 # runtimes in the Windows llvm-mingw (ELF files) and zlib's Amiga makefiles (Makefile.pup reads as a game-data name).
 # Project Pyrrhus's llvm-mingw list also drops the other targets (ARM, 32-bit), LLDB, its Python and make.
@@ -149,7 +154,7 @@ PRUNE = {"llvm-mingw": ["aarch64-w64-mingw32/*", "armv7-w64-mingw32/*", "i686-w6
          "zlib": ["amiga/*"],
          # the build takes FFmpeg's headers and DLLs only (build_win_deps.py), SDL2's x86_64 tree only
          "ffmpeg": ["bin/*.exe", "bin/avdevice-*.dll", "bin/avfilter-*.dll", "doc/*", "lib/*"], "sdl2": ["i686-w64-mingw32/*", "docs/*", "test/*"],
-         "cmake": ["doc/*", "man/*"]}
+         "cmake": ["doc/*", "man/*"], **UNUSED_SOURCES}
 # The Linux folder (--platform linux): Zig keeps only what the x86_64-linux-gnu target reads (its libc headers for
 # Linux and glibc, glibc's stubs, libc++ and the standard library it builds compiler_rt from); FFmpeg its libraries.
 ZIG_KEEP_INCLUDE = ("any-linux-any", "generic-glibc", "x86-linux-any", "x86-linux-gnu")
@@ -162,7 +167,7 @@ PRUNE_LINUX = {"zig": ["lib/libc/mingw/*", "lib/libc/musl/*", "lib/libc/wasi/*",
                "sdl2-src": ["test/*", "Xcode/*", "Xcode-iOS/*", "VisualC/*", "VisualC-GDK/*", "VisualC-WinRT/*",
                             "android-project/*", "android-project-ant/*", "docs/*"],
                "ffmpeg-linux": ["bin/*", "doc/*", "man/*", "share/*", "lib/pkgconfig/*", "lib/libavdevice*",
-                                "lib/libavfilter*", "lib/*.so"]}
+                                "lib/libavfilter*", "lib/*.so"], **UNUSED_SOURCES}
 # The ._pth of the embeddable Python: its own zip and folder, then the folders whose scripts import their neighbours
 # (relative to the ._pth, in work/toolchain-cache/python/).
 PTH_EXTRA = ["..\\..\\..\\tools", "..\\..\\..\\tools\\release", "..\\..\\ps3recomp-patched\\tools"]
