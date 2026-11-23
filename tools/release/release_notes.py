@@ -93,7 +93,7 @@ LINUX_FOLDER_060 = (
 LINUX_FOLDER_070 = LINUX_FOLDER_060.replace("-linux.tar.gz", "-linux.tar.xz")
 FILES = (
     "Windows: project-vekta-{version}-setup.exe installs the port's sources and the pinned toolchain for your user "
-    "(no admin rights). It asks where your files are and builds the port in the wizard (about five minutes; untick "
+    "(no admin rights). It asks where your files are and builds the port in the wizard (5 to 30 minutes; untick "
     "\"Build now\" and the first start builds); its launcher, Project Vekta.exe, plays. "
     "project-vekta-{version}-windows.zip is the same folder without the "
     "setup program: run.cmd builds, play.cmd plays. {linux}"
