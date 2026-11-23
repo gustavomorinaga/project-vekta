@@ -10,7 +10,9 @@
  */
 #ifndef KZ_CPU_LEVEL_H
 #define KZ_CPU_LEVEL_H
+#include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 typedef struct {
     uint32_t l1_ecx, l1_edx;   /* leaf 1 */
@@ -20,6 +22,29 @@ typedef struct {
 } kz_cpu_bits;
 
 #define KZ_BIT(r, n) (((r) >> (n)) & 1u)
+
+/* The message for a CPU below the build's level, the same words tools/release/launch.py shows for KZ_EXIT_CPU
+ * (cpu_check.c, the launcher). */
+static inline void kz_cpu_message(char* out, size_t n, int have, int need)
+{
+    snprintf(out, n,
+             "This build of Project Vekta needs a CPU with x86-64-v%d (%s), and this one has x86-64-v%d. "
+             "The game cannot run on it.",
+             need, need >= 4 ? "AVX-512: Intel Skylake-X, Ice Lake or later, AMD Zen 4 or later"
+                             : need == 3 ? "AVX2, FMA, BMI2: Intel Haswell (2013) or AMD Excavator (2015) and later"
+                                         : "SSE4.2, POPCNT: Intel Nehalem (2008) or AMD Bulldozer (2011) and later",
+             have);
+}
+
+/* The level a build made with the default KZ_MARCH (x86-64-v3, tools/kzbuild.py) needs. The Windows launcher
+ * refuses a CPU below it before it starts Python, so the player hears it at once: started cold, Python and a
+ * first scan of the 100 MB KZ1HD.exe took 30 to 90 s before KZ1HD's own check spoke (#133). A KZ_MARCH set in the
+ * environment may have built for another level: the launcher then leaves the check to KZ1HD. */
+#define KZ_CPU_LEVEL_DEFAULT 3
+static inline int kz_launcher_refuses(int have, int march_set)
+{
+    return !march_set && have < KZ_CPU_LEVEL_DEFAULT;
+}
 
 /* Pure: the level these bits give. */
 static inline int kz_cpu_level_of(const kz_cpu_bits* b)

@@ -87,6 +87,15 @@ int main(void)
         printf("%s %s: x86-64-v%d%s\n", got == CPUS[i].want ? "ok  " : "FAIL", CPUS[i].name, got,
                got == CPUS[i].want ? "" : " (expected another level)");
     }
+    /* The launcher's rule (#133): below v3 it refuses at once, unless KZ_MARCH chose the build's level */
+    int rule = kz_launcher_refuses(2, 0) && !kz_launcher_refuses(3, 0) && !kz_launcher_refuses(4, 0) &&
+               !kz_launcher_refuses(2, 1) && kz_launcher_refuses(1, 0);
+    char msg[400];
+    kz_cpu_message(msg, sizeof msg, 2, KZ_CPU_LEVEL_DEFAULT);
+    rule = rule && strstr(msg, "needs a CPU with x86-64-v3 (AVX2") && strstr(msg, "this one has x86-64-v2");
+    printf("%s the launcher refuses a CPU below x86-64-v3 with the CPU message, unless KZ_MARCH is set\n",
+           rule ? "ok  " : "FAIL");
+    if (!rule) fails++;
     int here = kz_cpu_level();
     printf("this CPU: x86-64-v%d\n", here);
     if (here < 1 || here > 4) fails++;

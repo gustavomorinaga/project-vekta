@@ -20,6 +20,10 @@ program and folder that build it. Until a release that calls itself playable
 ### Fixed
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
   (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
+- A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran
+  on with no window and closed after about 45 seconds without a word (#131).
+- On a CPU too old for the port, `Project Vekta.exe` says so at once. Before, the message could take 30 to 90
+  seconds on the first start after the PC was switched on, with nothing on screen meanwhile (#133).
 
 ## [0.6.0] - 2026-11-20 (pre-release)
 
