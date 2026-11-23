@@ -13,6 +13,10 @@ program and folder that build it. Until a release that calls itself playable
   lettered KZ1) are drawn in steel blue with a V chevron by one script, `tools/release/installer_art.py`, with the
   Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the
   keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.
+- The setup, the launcher's page and the docs now say the first build takes 5 to 30 minutes instead of about five:
+  on four cores and a hard disk it took close to half an hour (#134).
+- The install and troubleshooting pages say that RPCS3 needs Microsoft's Visual C++ runtime on a fresh Windows,
+  without which "Use my RPCS3 install" fails (#136).
 - The build no longer keeps a second and a third copy of FFmpeg's libraries and a second copy of the Vulkan headers:
   what it stages for the compile and beside the program are hard links to the toolchain folder's files where the
   file system makes them (NTFS, ext4, btrfs), and copies as before where it does not (exFAT). About 260 MB less
