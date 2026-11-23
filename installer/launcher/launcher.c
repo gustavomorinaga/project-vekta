@@ -14,6 +14,9 @@
  *
  * --cpu-check (first argument): exit with this CPU's x86-64 level, 1 to 4 (port/kz1hd/cpu_level.h).
  *
+ * A CPU below x86-64-v3 (kz_launcher_refuses) gets the CPU message at once and KZ_EXIT_CPU, before Python starts
+ * (#133); with --launcher-dry-run the message goes to the dry-run file instead of a dialog.
+ *
  * Build: tools/release/build_launcher.py (the pinned llvm-mingw; plain Win32, -Os, no PE timestamp).
  */
 #ifndef UNICODE
@@ -25,6 +28,7 @@
 #include <windows.h>
 #include <wchar.h>
 #include "../../port/kz1hd/cpu_level.h"
+#include "../../port/kz1hd/kz_exit.h"
 
 #define BIG 32768
 
@@ -95,6 +99,17 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR unused, int show)
         dry = 1;
         rest += 18;
         while (*rest == L' ') rest++;
+    }
+
+    int have = kz_cpu_level();
+    if (kz_launcher_refuses(have, GetEnvironmentVariableW(L"KZ_MARCH", NULL, 0) > 0)) {
+        char msg[400];
+        wchar_t wmsg[400];
+        kz_cpu_message(msg, sizeof msg, have, KZ_CPU_LEVEL_DEFAULT);
+        MultiByteToWideChar(CP_UTF8, 0, msg, -1, wmsg, 400);
+        if (dry) dry_write(wmsg);
+        else MessageBoxW(NULL, wmsg, L"Project Vekta", MB_OK | MB_ICONERROR);
+        return KZ_EXIT_CPU;
     }
 
     _snwprintf(py, BIG, L"%ls\\work\\toolchain-cache\\python\\pythonw.exe", dir);
