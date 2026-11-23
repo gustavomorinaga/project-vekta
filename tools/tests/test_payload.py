@@ -396,6 +396,16 @@ with tempfile.TemporaryDirectory() as tmp:
               "and kz_exit.h's text when the log has no line")
         check(launch.exit_code_text(1, log) is None and launch.exit_code_text(0, log) is None,
               "other exit codes are not the exe's own")
+        # No Vulkan at start (#131): KZ1HD exits with NO_VULKAN and its own line, which the launcher shows
+        vk_line = ("The game could not start Vulkan on this PC (see the lines above). Install or update your "
+                   "graphics card's driver.")
+        pathlib.Path(log).write_text("vkCreateInstance failed (VkResult -9)\n[rsx] Vulkan backend init FAILED\n"
+                                     f"[kz] Vulkan check: {vk_line}\n")
+        check(launch.exit_code_text(launch.NO_VULKAN, log) == vk_line,
+              f"the Vulkan check's code shows the exe's own line: {launch.exit_code_text(launch.NO_VULKAN, log)}")
+        main_cpp = (ROOT / "port" / "kz1hd" / "main.cpp").read_text()
+        check(f'"[kz] Vulkan check: {vk_line[:40]}' in main_cpp and "_exit(KZ_EXIT_NO_VULKAN)" in main_cpp,
+              "KZ1HD writes that line and exits with KZ_EXIT_NO_VULKAN when Vulkan does not start")
         # The EBOOT check's code: the exe's own line, then the rebuild a stale build gets, and the game starts again
         eboot_line = ("This build was made from another EBOOT.elf than the one in /x/USRDIR. Run 'Verify and rebuild' "
                       "(Windows) or ./project-vekta --prepare (Linux).")
