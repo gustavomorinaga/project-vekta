@@ -588,6 +588,7 @@ typedef struct {
     const CONTEXT* ctx;         /* the registers; NULL for abort */
     uintptr_t   frames[KZ_MAX_FRAMES];
     int         nframes;
+    unsigned long tid;          /* the thread that faulted (the report may be written from another) */
 } kz_crash;
 
 static char s_crash_file[96 * 1024];
@@ -645,7 +646,7 @@ static void report_crash(kz_crash* c)
     r_s(&r, "module: "); r_frame(&r, pc, NULL); r_end(&r);
     {
         char nm[64];
-        unsigned long tid = cur_tid();
+        unsigned long tid = c->tid ? c->tid : cur_tid();
         thread_name(tid, nm, sizeof nm);
         r_s(&r, "thread: "); r_dec(&r, tid); r_s(&r, " "); r_s(&r, nm); r_end(&r);
     }
@@ -706,14 +707,61 @@ static int crash_enter(void)
     return 0;
 }
 
+typedef struct {
+    EXCEPTION_POINTERS* ep;
+    unsigned long tid;
+    uintptr_t lo, hi;   /* the faulting thread's stack (Windows) */
+} kz_fault;
+static void crash_collect(kz_fault* f);
+#ifdef _WIN32
+static DWORD WINAPI kz_crash_report_thread(LPVOID p);
+#endif
+
 static LONG WINAPI kz_crash_filter(EXCEPTION_POINTERS* ep)
 {
 #ifndef _WIN32
     if (t_recover_armed) { t_recover_armed = 0; siglongjmp(t_recover, 1); }   /* a fault inside our own unwind */
 #endif
     if (!crash_enter()) return EXCEPTION_CONTINUE_SEARCH;
+#if defined(_WIN32)
+    {
+        uintptr_t lo = 0, hi = 0;
+#if defined(__x86_64__)
+        stack_bounds(&lo, &hi);
+#endif
+        kz_fault f = { ep, cur_tid(), lo, hi };
+        HANDLE h = NULL;
+        /* Out of stack: the little that is left (the 64 KB guarantee, when the system keeps it) may be too little for the
+         * report, so a new thread writes it and this one waits. */
+        if ((uint32_t)ep->ExceptionRecord->ExceptionCode == 0xC00000FDu)
+            h = CreateThread(NULL, 256 * 1024, kz_crash_report_thread, &f, 0, NULL);
+        if (h) {
+            WaitForSingleObject(h, 30000);
+            CloseHandle(h);
+        } else {
+            crash_collect(&f);
+        }
+    }
+#else
+    kz_fault f = { ep, cur_tid(), 0, 0 };
+    crash_collect(&f);
+#endif
+    __atomic_store_n(&s_crash_done, 1, __ATOMIC_RELEASE);
+    LONG r = s_prev_filter ? s_prev_filter(ep) : EXCEPTION_CONTINUE_SEARCH;
+    if (r == EXCEPTION_CONTINUE_EXECUTION) return r;
+#ifdef _WIN32
+    if (!s_wer) TerminateProcess(GetCurrentProcess(), (UINT)ep->ExceptionRecord->ExceptionCode);
+#endif
+    return r;
+}
+
+/* What the filter reports: the exception, its thread and (Windows) that thread's stack. */
+static void crash_collect(kz_fault* f)
+{
+    EXCEPTION_POINTERS* ep = f->ep;
     static kz_crash c;
     memset(&c, 0, sizeof c);
+    c.tid = f->tid;
     const EXCEPTION_RECORD* er = ep->ExceptionRecord;
     c.code = (uint32_t)er->ExceptionCode;
     c.ctx = ep->ContextRecord;
@@ -731,9 +779,7 @@ static LONG WINAPI kz_crash_filter(EXCEPTION_POINTERS* ep)
 #if defined(_WIN32) && defined(__x86_64__)
     {
         CONTEXT copy = *ep->ContextRecord;
-        uintptr_t lo, hi;
-        stack_bounds(&lo, &hi);
-        c.nframes = unwind_win(&copy, c.frames, KZ_MAX_FRAMES, lo, hi, 0, 0, 0);
+        c.nframes = unwind_win(&copy, c.frames, KZ_MAX_FRAMES, f->lo, f->hi, 0, 0, 0);
     }
 #elif defined(_WIN32)
     c.frames[0] = pc; c.nframes = 1;
@@ -747,14 +793,15 @@ static LONG WINAPI kz_crash_filter(EXCEPTION_POINTERS* ep)
 #endif
     if (!c.nframes) { c.frames[0] = pc; c.nframes = 1; }
     report_crash(&c);
-    __atomic_store_n(&s_crash_done, 1, __ATOMIC_RELEASE);
-    LONG r = s_prev_filter ? s_prev_filter(ep) : EXCEPTION_CONTINUE_SEARCH;
-    if (r == EXCEPTION_CONTINUE_EXECUTION) return r;
-#ifdef _WIN32
-    if (!s_wer) TerminateProcess(GetCurrentProcess(), c.code);
-#endif
-    return r;
 }
+
+#ifdef _WIN32
+static DWORD WINAPI kz_crash_report_thread(LPVOID p)
+{
+    crash_collect((kz_fault*)p);
+    return 0;
+}
+#endif
 
 /* abort(), std::terminate and failed asserts. ps3_stdio_init's handler (installed with signal() later) calls this one
  * after its flush; returning lets abort() end the process as it would have. */
