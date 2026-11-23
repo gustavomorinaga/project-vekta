@@ -19,6 +19,13 @@ program and folder that build it. Until a release that calls itself playable
   GitHub, that the repository's release workflow built that very file from the tagged commit.
   `gh attestation verify <file> --repo gustavomorinaga/project-vekta` checks a download against it
   ([docs/INSTALL.md](docs/INSTALL.md)).
+- When the graphics driver stops responding (the GPU is lost), the game now says so in `play.log` (`[RSX vulkan]
+  device lost in ...`, with the last passes the GPU was given) and ends with its own exit code, 78, whose text tells
+  you to update the driver and report it; before, it closed without a word. A GPU that takes longer than 2 s logs
+  `GPU has not finished for N s` each second. `KZ_CRASH_TEST=gpu-lost` tries this on a working GPU (ps3recomp
+  patches 2084, 2085).
+- `play.log` names the graphics card's driver and its version (for AMD and Intel also the release, such as
+  `24.10.1`) and the card's video memory, for bug reports (patch 2082).
 
 ### Changed
 - A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by
@@ -51,6 +58,10 @@ program and folder that build it. Until a release that calls itself playable
   data goes), [docs/FAQ.md](docs/FAQ.md), [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) and [docs/AI.md](docs/AI.md).
 
 ### Fixed
+- A candidate fix for AMD Radeon RX 5000 and 6000 cards on Windows closing the game a few seconds into level 1
+  (#129), not yet confirmed on those cards: the GPU now reads zeros instead of undefined memory when a draw reads
+  past the end of a buffer (Vulkan's `robustBufferAccess`, which NVIDIA's driver did not need). `play.log` says
+  `robustBufferAccess: on`; `PS3RECOMP_VK_ROBUST=0` turns it off for comparison (patch 2083).
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
   (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
 - A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran
