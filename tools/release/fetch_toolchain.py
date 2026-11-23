@@ -150,7 +150,9 @@ def place(src, dst):
     """dst as the file src without a second copy on disk: a hard link where the file system makes one, else (another
     drive, exFAT) a copy, made when dst is missing or older than src. For what the build stages out of the cache and
     only reads afterwards (FFmpeg's libraries are 120 MB, kept three times before). dst is replaced, never written
-    in place, since it may be a link to another file. Returns "kept", "link" or "copy"."""
+    in place, since it may be a link to another file. With a link, any other file at dst gives way, a newer one too:
+    what is staged is the pinned file, also after a pin went back to an older build (where only a copy can be made,
+    a newer file at dst stays, as it always did). Returns "kept", "link" or "copy"."""
     if os.path.exists(dst) and os.path.samefile(src, dst):
         return "kept"
     current = os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src)   # a copy that is not older

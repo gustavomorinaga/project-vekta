@@ -70,6 +70,11 @@ with tempfile.TemporaryDirectory() as tmp:
         os.link(other, dst)
         check(ft.place(str(src), str(dst)) == "link" and other.read_bytes() == b"another file" and
               dst.read_bytes() == b"library one", "a dst that is a link to another file is replaced, not written in place")
+        # a file of its own at dst that is newer than src (left by a newer pin, or put there by hand) gives way too
+        dst.unlink()
+        write(dst, b"library from a newer pin", T0 + 500)
+        check(ft.place(str(src), str(dst)) == "link" and os.path.samefile(src, dst) and
+              dst.read_bytes() == b"library one", "with a link, a newer file of its own at dst becomes the pinned file")
         check(kzbuild.place(str(src), str(tmp / "deps" / "beside-the-program")) == "link",
               "kzbuild.place is fetch_toolchain.place")
         dst.unlink()
