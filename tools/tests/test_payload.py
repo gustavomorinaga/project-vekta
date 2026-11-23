@@ -275,6 +275,51 @@ with tempfile.TemporaryDirectory() as tmp:
     t0 = time.time()
     launch.run(argv, cwd, e, log, poll=0.05)
     check(time.time() - t0 < 10, "a closed window stops the game")
+    # while the game runs, the watcher reads only what the log gained (it read the whole log every second before)
+    grow = tmp / "growing.log"
+    seen = [0, b""]
+    check(not launch.closed_since(str(grow), seen) and seen == [0, b""], "no log yet: not closed")
+    grow.write_bytes(b"[rsx] frame\n" * 4000)
+    reads = []
+    real_open = open
+
+    class Counted:
+        """The log's file, noting how many bytes each read returns."""
+        def __init__(self, f):
+            self.f, self.fileno, self.seek = f, f.fileno, f.seek
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.f.close()
+
+        def read(self):
+            data = self.f.read()
+            reads.append(len(data))
+            return data
+
+    def counting_open(path, *a, **k):
+        f = real_open(path, *a, **k)
+        return Counted(f) if str(path) == str(grow) else f
+    launch.open = counting_open
+    try:
+        check(not launch.closed_since(str(grow), seen) and reads == [48000] and seen[0] == 48000,
+              f"the first look reads what is there: {reads} {seen[0]}")
+        check(not launch.closed_since(str(grow), seen) and reads[-1] == 0, f"nothing new: nothing read: {reads}")
+        with real_open(grow, "ab") as f:
+            f.write(b"[rsx] frame\nwindow clo")
+        check(not launch.closed_since(str(grow), seen) and reads[-1] == 22, f"only the new bytes are read: {reads}")
+        with real_open(grow, "ab") as f:
+            f.write(b"sed\n")
+        check(launch.closed_since(str(grow), seen) and reads[-1] == 4,
+              f"a mark that lies across two reads is seen: {reads}")
+        # the exe empties its log when it starts: a log shorter than what was read is read from its start
+        grow.write_bytes(b"window disabled\n")
+        check(launch.closed_since(str(grow), seen) and reads[-1] == 16 and seen[0] == 16,
+              f"an emptied log is read from its start: {reads}")
+    finally:
+        del launch.open
     # On Windows the exe writes its own log (KZ_LOG), and only once it runs: the last session's "window closed" in
     # that file must not stop the next one before it has started (an install over an earlier version keeps the log)
     pathlib.Path(log).write_text("[kz] quitting (window closed)\n")
