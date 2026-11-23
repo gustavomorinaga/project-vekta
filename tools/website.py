@@ -477,8 +477,8 @@ def sections(root, problems):
         "connection of their own. The downloads are the ones you start (the release, or this repository and its "
         "ps3recomp submodule, the build tools) and two you opt into: NVIDIA DLSS, fetched from NVIDIA only if you "
         "accept its licence, and the new-version check, off by default. The whole list: "
-        f"<a href=\"{REPO}#what-goes-online\">What goes online</a>; where saves and settings go: "
-        f"<a href=\"{REPO}#where-your-data-goes\">Where your data goes</a>.</p>\n"
+        f"<a href=\"{gh('docs/PRIVACY.md')}#what-goes-online\">What goes online</a>; where saves and settings go: "
+        f"<a href=\"{gh('docs/PRIVACY.md')}#where-your-data-goes\">Where your data goes</a>.</p>\n"
         "<p class=\"small\">Viewing the main page loads the Rajdhani font from Google Fonts, which sees your visit; "
         "the repository, the setup and the game do not. The plain page loads no fonts.</p>\n"))
 
