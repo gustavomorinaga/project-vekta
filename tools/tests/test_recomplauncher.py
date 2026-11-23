@@ -7,6 +7,7 @@ asks for firmware; and the checker refuses what the schema does not allow. The p
 folder's manifest: tools/tests/test_payload.py. No game data."""
 import copy
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -38,14 +39,25 @@ check(doc["prepare"]["version"] == version and rl.build(version="9.9.9")["prepar
 check(doc["exit_codes"] == {"0": "ok", **{str(c): t for c, t in launch.EXIT.values()}},
       "exit_codes are kz_exit.h's table (launch.py's), and 0 is a normal quit")
 args = doc["prepare"]["args"] + doc["prepare"]["options"][0]["args"]
-filled = [a.replace("{input:game}", "/games/NPUA80856").replace("{input:eboot}", "/x/EBOOT.elf") for a in args]
+filled = [a.replace("{input:game}", "/games/NPUA80856").replace("{input:eboot}", "/x/EBOOT.elf")
+          .replace("{input:disc}", "") for a in args]
 a = launch.parser().parse_args(["--prepare", *filled])
 check(a.prepare and a.game == "/games/NPUA80856" and a.eboot == "/x/EBOOT.elf" and a.dlss == "accept",
       f"launch.py --prepare takes the file's arguments as filled in: {filled}")
 check(launch.firstrun_args("/nowhere", a, {})[:4] == ["--game", "/games/NPUA80856", "--eboot", "/x/EBOOT.elf"] and
       "--dlss" in launch.firstrun_args("/nowhere", a, {}), "and passes them on to firstrun.py")
-check(all(a.endswith(("={input:game}", "={input:eboot}")) or "{" not in a for a in doc["prepare"]["args"]),
+check(all(a.endswith(("={input:game}", "={input:eboot}", "={input:disc}")) or "{" not in a for a in doc["prepare"]["args"]),
       "each input is one argument (--x={input:id}), so an optional one left out leaves nothing behind")
+# The disc instead of the game folder: the game input left out (empty), --disc wins over the RPCS3 route
+filled = [a.replace("{input:game}", "").replace("{input:eboot}", "").replace("{input:disc}", "/discs/Trilogy")
+          for a in doc["prepare"]["args"]]
+a = launch.parser().parse_args(["--prepare", *filled])
+fa = launch.firstrun_args("/nowhere", a, {})
+check(fa[:2] == ["--disc", os.path.abspath("/discs/Trilogy")] and "--rpcs3" not in fa and "--game" not in fa,
+      f"the disc input alone gives firstrun.py --disc: {fa}")
+check({i["id"]: i.get("optional", False) for i in doc["inputs"]} == {"game": True, "disc": True, "eboot": True}
+      and next(i for i in doc["inputs"] if i["id"] == "disc")["role"] == "disc",
+      "the game folder or the disc: both optional, the disc with RecompLauncher's disc role")
 opt = doc["prepare"]["options"][0]
 check(opt["license"]["url"] == firstrun.DLSS_LICENSE_URL and opt["gpu"] == "nvidia",
       "the DLSS tick shows NVIDIA's licence, firstrun.py's link, to NVIDIA cards only")

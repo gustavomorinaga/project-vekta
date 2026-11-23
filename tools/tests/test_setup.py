@@ -77,7 +77,7 @@ check("'USRDIR\\data_ps3.psarc.edat'" in text, "the wizard takes the game's .eda
 import firstrun  # noqa: E402
 opts = set(re.findall(r"' --([a-z0-9-]+)", text))
 known = {n.replace("_", "-") for n, *_ in firstrun.INPUTS} | {"root", "status-file", "stop-file", "save-paths", "dlss",
-                                                              "rpcs3"}
+                                                              "rpcs3", "disc"}
 known |= {"resolve", "out"}   # the "Your game" page's call of rpcs3_import.py
 check(opts and opts <= known, f"vekta.iss passes only firstrun.py's and rpcs3_import.py's options: {sorted(opts - known)}")
 # "Your game": the RPCS3 route asks rpcs3_import.py --resolve with the bundled Python before installing, skips the
@@ -98,7 +98,7 @@ check("RpcsBrowse.OnClick := @RpcsBrowseClick;" in text and "CheckRpcs3(D);" in 
       and "SourcePage.CheckListBox.ItemEnabled[0] := True;" in text
       and "CheckRpcs3(Pick('RPCS3', 'Rpcs3Dir'))" in text and "'Rpcs3Dir', RpcsHint" in text,
       "the page searches by itself and has Find RPCS3... for a folder the player picks (kept for next time)")
-check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID))" in text
+check("if (UseRpcs3 or UseDisc) and ((PageID = GamePage.ID) or (PageID = FilesPage.ID))" in text
       and "Result := ' --rpcs3 ' + Quote(RpcsRoot);" in text, "the RPCS3 route skips the file pages and builds with --rpcs3")
 check(all(f"'{k}'" in text for k in ("status", "root", "game")) and "Pos('problem=', Lines[I]) = 1" in text
       and set(rpcs3_import.lines({"status": "ok", "root": "r", "game": "g", "exe": ["x"],
@@ -109,10 +109,17 @@ for opt in ("root", "status-file", "stop-file", "save-paths"):
     check(f'"--{opt}"' in src, f"firstrun.py has --{opt}")
 labels = set(re.findall(r"Name = '([a-z-]+)' then Result", text))
 steps = {st.name for st in firstrun.STEPS}
-check(labels and labels <= steps and steps - labels <= {"stamp"}, f"StepLabel names firstrun.py's steps: {labels} {steps}")
+# "disc" (firstrun.py --disc, before the steps) is a PROGRESS name of its own, as rpcs3 is
+check(labels and labels <= steps | {"disc"} and steps - labels <= {"stamp"},
+      f"StepLabel names firstrun.py's steps: {labels} {steps}")
+check("if (UseRpcs3 or UseDisc) and ((PageID = GamePage.ID) or (PageID = FilesPage.ID))" in text
+      and "Result := ' --disc ' + Quote(RemoveBackslashUnlessRoot(DiscPage.Values[0]));" in text
+      and "if (PageID = DiscPage.ID) and not UseDisc then Result := True;" in text
+      and "SourcePage.Add('Show me how');" in text and "SourcePage.SelectedValueIndex = 3) then" in text,
+      "the disc route has its page, skips the file pages and builds with --disc; Show me how is the last choice")
 check("tools\\release\\firstrun.py" in text and "work\\toolchain-cache\\python\\python.exe" in text,
       "the wizard runs the payload's firstrun.py with its Python")
-for param in ("GAME", "EBOOT", "PSARC", "DLSS"):
+for param in ("GAME", "EBOOT", "PSARC", "DISC", "DLSS"):
     check(f"Pick('{param}'" in text, f"/{param}= is taken on the command line")
 check("LIBSRE" not in text and "libsre" not in text.lower(), "no libsre.prx is asked for (the runtime's own LFQueue)")
 # NVIDIA DLSS: an optional page whose box, unticked unless accepted before, accepts the licence firstrun.py shows;

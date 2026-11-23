@@ -92,7 +92,8 @@ HELP = {
                 "try again, or install the game in your own RPCS3 and choose \"Use my RPCS3 install\".",
     "bad_download": "The RPCS3 download is not the pinned file (its size or SHA-256 differs); it was deleted. Try "
                     "again later.",
-    "unpack": "The RPCS3 download could not be unpacked (on Windows this uses Windows' own tar.exe, or 7-Zip).",
+    "unpack": "The RPCS3 download could not be unpacked. Windows 11 unpacks it by itself; on Windows 10, install "
+              "7-Zip (free, https://www.7-zip.org) and try again.",
     "install_failed": "RPCS3 did not install the package (the files below are missing or differ). Copy the package "
                       "from the disc again; a damaged copy is refused.",
     "install_timeout": "RPCS3 did not finish installing the package in time and was stopped.",
@@ -391,7 +392,13 @@ def prepare(work, disc, exe=None, log=None, step=None):
     if not (os.path.isfile(eboot) and imp.sha256(eboot) == imp.EBOOT[3]):
         if step:
             step(1, 2, imp.EBOOT[1])
-        d = imp.decrypt(exe, [(os.path.join(game, "USRDIR", imp.EBOOT[0]), imp.EBOOT)], prep, log=log)
+        try:
+            d = imp.decrypt(exe, [(os.path.join(game, "USRDIR", imp.EBOOT[0]), imp.EBOOT)], prep, log=log)
+        finally:   # RPCS3's own lines name the package's licence: not kept (rpcs3_import keeps them for its route)
+            try:
+                os.remove(os.path.join(prep, "rpcs3-decrypt.log"))
+            except OSError:
+                pass
         if not d["ok"]:
             res["problems"] = d["problems"]
             return res

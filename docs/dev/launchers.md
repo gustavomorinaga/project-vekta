@@ -35,7 +35,8 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
   `releaseAssetFilter`, one filter for every system's files): after the first `.tar.xz` release, see that both
   launchers offer it on Linux.
 - **`recomplauncher.json`** at the top of both folders (`tools/release/recomplauncher.py`, from
-  `installer/recomplauncher.json`): the same contract in RecompLauncher's format 1.
+  `installer/recomplauncher.json`): the same contract in RecompLauncher's format 1. Its inputs are the game folder
+  or the disc (role `disc`, `--disc={input:disc}`), both optional, and the decrypted EBOOT.
 - **Not yet:** the launchers' mode hints (`RECOMPLAUNCHER_MODE=bigpicture|desktop`, `RECOMPLAUNCHER_PAD=xbox|
   playstation`, Steam Deck Game Mode) are not read; planned for 0.7.0 (full screen in Big Picture mode, the button
   icons of the pad that is plugged in).

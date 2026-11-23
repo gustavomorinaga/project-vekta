@@ -171,6 +171,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(all(r["stdin"] == "" for r in runs), "stdin is the null device")
     check(not home_cfg.exists(), "the player's own settings were not touched")
     check(not (work / "prep" / "disc-rpcs3").exists(), "RPCS3's settings and logs are removed")
+    check(not (work / "prep" / "rpcs3-decrypt.log").exists(), "the decrypt step's RPCS3 log is removed too")
     leaked = [p for p in work.rglob("*") if p.is_file() and b"klic" in p.read_bytes()]
     check(not leaked, f"after the install no file keeps the licence line: {leaked}")
     check(sha(data) == rd.DISC_PKG[1] and (disc / "PS3_EXTRA" / "D0F4" / "DATA000.PKG").read_bytes() == data,
