@@ -24,6 +24,12 @@ your system's packages and the build tools' Python packages. Three more happen o
   most once a day, before the game starts, and names a newer one. The request carries no identifier; nothing is
   downloaded or installed. `tools/release/version_check.py --disable` or `KZ_VERSION_CHECK=0` turns it off.
 
+**Bug reports go online only by your hand.** The support package (below) is a zip on your Desktop: the launcher
+never uploads it. After making one, the launcher asks whether to open the bug report form on GitHub; only on a yes
+it opens your web browser at `github.com/gustavomorinaga/project-vekta/issues/new`, with the port's version, your
+system (operating system, GPU and driver), how you installed it and the crash signature written into the address.
+GitHub sees that visit like any other; nothing is sent until you attach the zip and submit the form yourself.
+
 A game launcher that installs the port (RecompLauncher, Quiver Launcher) makes its own connections under its own
 rules; the port adds none to them.
 
@@ -41,7 +47,22 @@ Everything stays in the folder the game runs from, `work/vfs/` (made by `tools/s
 | Saves | `gamedata/dev_hdd0/home/00000001/savedata/` |
 | Local trophy log | `gamedata/trophies/` |
 | Log of the last run | `work/play.log` |
+| Earlier game logs (five, and three that ended in a crash) | `work/logs/play-*.log` |
+| How each session ended | `work/logs/sessions.jsonl` |
+| Crash and hang reports | `work/crash/` |
 
-Nothing is written outside the install's `work/` folder, and nothing is written into your game files or your RPCS3
+The launcher writes your home folder as `~` in `work/play.log` after each session.
+
+**The support package** (Start menu: "Make a support package", `scripts/support.cmd`, `scripts/support.sh`, or yes
+when the launcher offers it after the game closed unexpectedly) collects into one zip on your Desktop: the logs and
+crash reports above, the build logs, your settings and key map, and two things from outside the install folder,
+read for it only: on Windows, the error reports Windows logged for `KZ1HD.exe` in the last 24 hours (Application log
+events 1000, 1001 and 1002) and the display driver's events (System log event 4101 and the AMD, NVIDIA and Intel
+driver sources), read with Windows' own `wevtutil`; on Linux, the GPU lines of the kernel log of the last 24 hours
+(`journalctl -k`), when your user may read it. Your home folder becomes `~`, the PC's name and the event log's
+Computer and User lines are taken out, and it never holds saves, game files or `work/paths.env` (where your game
+files are). [TROUBLESHOOTING.md](TROUBLESHOOTING.md#where-the-logs-are) lists its contents.
+
+Nothing is written outside the install's `work/` folder (but the support package on your Desktop), and nothing is written into your game files or your RPCS3
 folders. The Windows setup program is the one exception: unless you pick its "Portable" option, the settings and
 saves go to `%APPDATA%\Project Vekta` instead (`scripts\play.cmd --move-data portable` or `--move-data appdata` moves them later, [INSTALL.md](INSTALL.md)).

@@ -88,8 +88,9 @@ The Start menu also has:
 
 - **Verify and rebuild**: checks the install and your files, then rebuilds what changed.
 - **Open saves folder**: opens the folder with your saves and settings.
-- **Make a support package**: puts one zip on the Desktop with the logs and settings, for a bug report. It holds no
-  saves and no game files, and your user folder is written as `~`.
+- **Make a support package**: puts one zip on the Desktop with the logs, the crash reports and the settings, for a
+  bug report. It holds no saves and no game files, and your user folder is written as `~`. The launcher also offers
+  it when the game closes unexpectedly.
 
 To install a newer version, run its setup over the old one. The build, your file paths, your saves and your choices
 stay. The uninstaller asks whether to delete your saves and settings too; the default is No.
@@ -161,5 +162,8 @@ the RecompLauncher badge are their owners' (the badges: [assets/press/](../asset
 - An install over a version before 0.4.0 that failed at the link: delete `work\build-win` in the install folder
   (Linux: `work/build`) and run `scripts\run.cmd` (`scripts/run.sh`) again. Since 0.4.0 the build empties an old build folder
   itself.
-- Open an issue with the bug template and attach the support package or the log from `work\logs\`. Never attach
-  game files or saves.
+- Open an issue with the bug template and attach the support package. When the game closes unexpectedly, the
+  launcher offers to make it, then to open the bug form on GitHub filled in. To make it yourself: the Start menu's
+  "Make a support package" (setup), `scripts\support.cmd` (Windows zip), `scripts/support.sh` or
+  `./project-vekta --support-package` (Linux). [TROUBLESHOOTING.md](TROUBLESHOOTING.md#where-the-logs-are) says what
+  it holds. Never attach game files or saves.

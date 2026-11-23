@@ -8,6 +8,18 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code;
+  not when you quit), the launcher says what the exit code means and shows the crash signature, and offers to make
+  the support package; after it, to open the bug report form on GitHub with the version, system and signature
+  filled in (only on a yes; the zip is never uploaded). A session that never ended (power loss) is named at the next
+  start. `work/play.log` now ends with `[launcher] session ended: exit <code> (<meaning>) after <N> s, <kind>`, and
+  `work/logs/sessions.jsonl` keeps one line per session.
+- The support package also holds the earlier game logs, `sessions.jsonl`, the game's crash and hang reports with the
+  names of its functions (from your own build's symbol table), Windows' error reports for the game and its display
+  driver events of the last 24 hours (on Linux the kernel log's GPU lines), what the game's log says about the PC,
+  and a line of your own when you make it in a terminal. `scripts/support.cmd` and `scripts/support.sh` make it in
+  the Windows zip and the Linux folder, as the setup's Start menu entry does; RecompLauncher gets a "Crash reports"
+  folder button.
 - The game straight from the Killzone Trilogy disc, with no RPCS3 installed: `--disc FOLDER` (the copied disc, or
   its `PS3_EXTRA` package) on `Project Vekta.exe`, `./project-vekta` and the prepare scripts downloads the official
   RPCS3 at a pinned version (checked by SHA-256), which installs the package into the port's `work` folder with no
@@ -21,6 +33,11 @@ program and folder that build it. Until a release that calls itself playable
   ([docs/INSTALL.md](docs/INSTALL.md)).
 
 ### Changed
+- The game logs of the last sessions are kept: each earlier `work/play.log` moves to `work/logs/play-*.log` (the five
+  newest, and the three newest that ended in a crash, a hang or a lost GPU). After a session `play.log` has your home
+  folder written as `~` and each run of one repeated line folded into one line with `[repeated N times]`.
+- The bug report form asks for the support package first, the version instead of a commit, and how you installed
+  the port; it no longer asks you to edit your user name out of the log by hand.
 - A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by
   undecuple): the README banner, the social preview, the Windows setup's pictures and the program icons (now
   lettered KZ1) are drawn in steel blue with a V chevron by one script, `tools/release/installer_art.py`, with the
