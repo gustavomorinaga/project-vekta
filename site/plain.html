@@ -237,6 +237,8 @@
 <li><span class="kind">Fixed</span>The setup fits a 1280x800 screen at 150% display scale (Next and Cancel were under the taskbar), and its &quot;Your game&quot; page shows its three choices without a scroll bar at 125% and above (#135).</li>
 <li><span class="kind">Fixed</span>At 125% display scale the setup&#x27;s &quot;Your game&quot; page shows all four choices and the note under them without a scroll bar or a cut line, and the DLSS page shows its whole text and checkbox.</li>
 <li><span class="kind">Fixed</span>Uninstalling removes the install folder again: a file the game writes at start (<code>flashMP3.pic</code>) and the empty folders the build left in <code>work\vfs</code> kept it there. Saves and settings stay, as before (#132).</li>
+<li><span class="kind">Fixed</span>While the game loads, before its first frame, the window is now refreshed about 60 times a second instead of about 5,000, which kept a CPU core and the GPU busy for nothing.</li>
+<li><span class="kind">Fixed</span>On Linux, stopping the game (SIGTERM, Ctrl+C or the launcher) now works when the game is frozen: after 2 s it quits anyway, and a second Ctrl+C ends it at once. Before, only a forced kill did.</li>
 </ul>
 </article>
 <article class="rel">

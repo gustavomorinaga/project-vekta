@@ -112,6 +112,10 @@ program and folder that build it. Until a release that calls itself playable
   scroll bar or a cut line, and the DLSS page shows its whole text and checkbox.
 - Uninstalling removes the install folder again: a file the game writes at start (`flashMP3.pic`) and the empty
   folders the build left in `work\vfs` kept it there. Saves and settings stay, as before (#132).
+- While the game loads, before its first frame, the window is now refreshed about 60 times a second instead of
+  about 5,000, which kept a CPU core and the GPU busy for nothing.
+- On Linux, stopping the game (SIGTERM, Ctrl+C or the launcher) now works when the game is frozen: after 2 s it
+  quits anyway, and a second Ctrl+C ends it at once. Before, only a forced kill did.
 
 ## [0.6.0] - 2026-11-20 (pre-release)
 
