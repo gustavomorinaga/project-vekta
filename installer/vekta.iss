@@ -86,6 +86,9 @@ UninstallDisplayName={#AppName}
 ; Dark always, as the site and the game (Inno 6.7.3's help, WizardStyle: pages, message boxes and the title bar;
 ; a Windows high-contrast theme, or /NOSTYLE, still wins). After Project Pyrrhus's and Project Helghast's setups.
 WizardStyle=modern dark
+; Modern style draws the wizard at 120% of its base size by default; at 100% it still holds every page and fits a
+; 1280x800 screen at 150% display scale, where 120% put Next and Cancel under the taskbar (#135)
+WizardSizePercent=100
 ; the Welcome page carries the side image (Inno 6 hides it by default)
 DisableWelcomePage=no
 ; Inno picks the closest size for the screen's DPI (100/125/150/200 %); paths relative to this script
