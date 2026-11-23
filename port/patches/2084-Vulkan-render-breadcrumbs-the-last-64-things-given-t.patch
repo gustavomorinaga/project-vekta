@@ -1,0 +1,329 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 23 Nov 2026 07:20:35 +0000
+Subject: [PATCH] Vulkan: render breadcrumbs, the last 64 things given to the
+ GPU (rsx_vulkan_breadcrumbs)
+
+Why: when the GPU hangs or the device is lost (#129) nothing says what
+it was drawing. A ring of the last 64 entries the backend recorded for
+the GPU: each guest render pass, by the draw engine's pass name (patch
+2065's label: "pass 3: A 0x0C3A0000 640x360 RGBA8 | Z ...") with its
+draw count and the last draw's programs (their SPIR-V hashes, as the
+shader cache names them), each of the port's passes (MLAA, glow, motion
+blur, the temporal upscaler, FSR 1, the present) by its label, each
+submit and each window present, all with the frame number.
+
+Each entry carries the submission it went into (the serials the
+converted-vertex cache already keeps), so a reader marks it done (that
+submission's fence was waited on), submitted (queued, not known to be
+finished) or recording; presents have their own count.
+
+Writing costs a few stores and a bounded copy of the label, on the
+thread that records (no lock, no allocation); a draw adds three stores.
+The draw engine now names its passes whenever breadcrumbs are on, not
+only with debug labels: one snprintf when the target set changes.
+PS3RECOMP_VK_BREADCRUMBS=0 turns it all off (default on).
+
+int rsx_vulkan_breadcrumbs(char* buf, size_t n) gives the lines, oldest
+first, for a crash reporter (the port calls it through a weak symbol);
+any thread may call it, an entry being written at that moment can come
+out mixed but never unterminated. The ring and its formatting are
+rsx_vk_breadcrumbs.h, with no Vulkan headers, which the port's host test
+builds. Written here.
+---
+ libs/video/rsx_vk_breadcrumbs.h | 121 ++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c |  54 ++++++++++++--
+ libs/video/rsx_vulkan_backend.h |   7 ++
+ 3 files changed, 178 insertions(+), 4 deletions(-)
+ create mode 100644 libs/video/rsx_vk_breadcrumbs.h
+
+diff --git a/libs/video/rsx_vk_breadcrumbs.h b/libs/video/rsx_vk_breadcrumbs.h
+new file mode 100644
+index 0000000..fe07fb8
+--- /dev/null
++++ b/libs/video/rsx_vk_breadcrumbs.h
+@@ -0,0 +1,121 @@
++/*
++ * ps3recomp - render breadcrumbs (patch 2084): a ring of the last RSX_VK_CRUMBS things the Vulkan backend recorded
++ * for the GPU (guest passes, the port's own passes, submits, presents), so a lost device, a GPU wait that does not end
++ * or a crash can say what the GPU was last given. No Vulkan headers and no allocation: the host tests build it
++ * without a GPU (tools/tests/test_vk_breadcrumbs.c in the port).
++ *
++ * Writing is a few stores and a bounded copy of the label, on the thread that records (no lock: the backend records
++ * on one thread). Reading may happen on any thread (a crash or hang reporter) while that thread writes: an entry
++ * being overwritten can then come out mixed, never unterminated or out of bounds.
++ *
++ * Each entry carries the submission it went into (the backend's serials: s_ser), so the formatter can mark it
++ * "done" (that submission's fence was waited on), "submitted" (queued, not known to be finished) or "recording"
++ * (still in the command buffer being recorded). Presents have their own count.
++ */
++#ifndef PS3RECOMP_RSX_VK_BREADCRUMBS_H
++#define PS3RECOMP_RSX_VK_BREADCRUMBS_H
++
++#include <stddef.h>
++#include <stdint.h>
++#include <stdio.h>
++
++#define RSX_VK_CRUMBS     64u   /* a power of two */
++#define RSX_VK_CRUMB_TEXT 112u
++
++enum {
++    RSX_VK_CRUMB_PASS = 1,   /* a guest render pass: the draw engine's pass name (patch 2065) */
++    RSX_VK_CRUMB_PORT,       /* one of the port's passes (MLAA, glow, motion blur, upscalers) */
++    RSX_VK_CRUMB_SUBMIT,     /* a vkQueueSubmit of the recorded batch */
++    RSX_VK_CRUMB_PRESENT     /* the window's blit and present (its own command buffer and count) */
++};
++
++typedef struct {
++    uint64_t serial;         /* the submission it is recorded into, or the present's number */
++    uint64_t vs, ps;         /* PASS: the last draw's programs (their SPIR-V hashes), 0 = none */
++    uint32_t frame;          /* presented frames when it was recorded */
++    uint32_t kind;
++    uint32_t draws;          /* PASS: draws recorded into it */
++    char     text[RSX_VK_CRUMB_TEXT];
++} rsx_vk_crumb;
++
++typedef struct {
++    rsx_vk_crumb e[RSX_VK_CRUMBS];
++    volatile uint64_t n;     /* entries ever written; the newest is e[(n - 1) % RSX_VK_CRUMBS] */
++} rsx_vk_crumbs;
++
++/* A new entry (the oldest is overwritten); returns it for rsx_vk_crumb_draw. text may be NULL. */
++static inline rsx_vk_crumb* rsx_vk_crumb_add(rsx_vk_crumbs* r, uint32_t kind, uint32_t frame, uint64_t serial,
++                                             const char* text)
++{
++    const uint64_t n = r->n;
++    rsx_vk_crumb* c = &r->e[n % RSX_VK_CRUMBS];
++    c->kind = kind; c->frame = frame; c->serial = serial;
++    c->vs = c->ps = 0; c->draws = 0;
++    uint32_t k = 0;
++    if (text)
++        for (; k + 1 < RSX_VK_CRUMB_TEXT && text[k]; k++) c->text[k] = text[k];
++    c->text[k] = 0;
++    r->n = n + 1;
++    return c;
++}
++
++/* A draw into a PASS entry: its programs become the entry's last pipeline. */
++static inline void rsx_vk_crumb_draw(rsx_vk_crumb* c, uint64_t vs, uint64_t ps)
++{
++    if (!c) return;
++    c->vs = vs; c->ps = ps; c->draws++;
++}
++
++static inline const char* rsx_vk_crumb_state(uint64_t serial, uint64_t done, uint64_t next)
++{
++    return serial <= done ? "done" : serial < next ? "submitted" : "recording";
++}
++
++/* One line per entry, oldest first, each ending in '\n', into buf (always terminated when n > 0); a line that does
++ * not fit whole is left out, with the ones after it. done/next: the newest finished submission and the one being
++ * recorded; pdone/pnext the same for presents. Returns the length written (strlen(buf)). Lines look like:
++ *   frame 812 batch 4410 done: pass 3: A 0x0C3A0000 640x360 RGBA8 | Z 0x0C500000 640x360; 12 draws, last vs ... ps ...
++ *   frame 812 batch 4410 submitted: submit
++ *   frame 812 present 790 done: present */
++static inline size_t rsx_vk_crumbs_format(const rsx_vk_crumbs* r, uint64_t done, uint64_t next, uint64_t pdone,
++                                          uint64_t pnext, char* buf, size_t n)
++{
++    if (!buf || !n) return 0;
++    buf[0] = 0;
++    const uint64_t total = r->n;
++    const uint64_t first = total > RSX_VK_CRUMBS ? total - RSX_VK_CRUMBS : 0;
++    size_t len = 0;
++    for (uint64_t i = first; i < total; i++) {
++        const rsx_vk_crumb* c = &r->e[i % RSX_VK_CRUMBS];
++        char text[RSX_VK_CRUMB_TEXT];
++        uint32_t k = 0;
++        for (; k + 1 < RSX_VK_CRUMB_TEXT && c->text[k]; k++) text[k] = c->text[k] == '\n' ? ' ' : c->text[k];
++        text[k] = 0;
++        char line[RSX_VK_CRUMB_TEXT + 160];
++        int w;
++        if (c->kind == RSX_VK_CRUMB_PRESENT)
++            w = snprintf(line, sizeof line, "frame %u present %llu %s: %s\n", (unsigned)c->frame,
++                         (unsigned long long)c->serial, rsx_vk_crumb_state(c->serial, pdone, pnext),
++                         text[0] ? text : "present");
++        else if (c->kind == RSX_VK_CRUMB_PASS && c->draws)
++            w = snprintf(line, sizeof line, "frame %u batch %llu %s: %s; %u draw%s, last vs %016llx ps %016llx\n",
++                         (unsigned)c->frame, (unsigned long long)c->serial,
++                         rsx_vk_crumb_state(c->serial, done, next), text[0] ? text : "render pass",
++                         (unsigned)c->draws, c->draws == 1 ? "" : "s", (unsigned long long)c->vs,
++                         (unsigned long long)c->ps);
++        else
++            w = snprintf(line, sizeof line, "frame %u batch %llu %s: %s\n", (unsigned)c->frame,
++                         (unsigned long long)c->serial, rsx_vk_crumb_state(c->serial, done, next),
++                         text[0] ? text : c->kind == RSX_VK_CRUMB_SUBMIT ? "submit"
++                                        : c->kind == RSX_VK_CRUMB_PASS ? "render pass" : "port pass");
++        if (w <= 0) continue;
++        if ((size_t)w >= sizeof line) { w = (int)sizeof line - 1; line[w - 1] = '\n'; }
++        if (len + (size_t)w + 1 > n) break;
++        for (int j = 0; j < w; j++) buf[len + (size_t)j] = line[j];
++        len += (size_t)w;
++        buf[len] = 0;
++    }
++    return len;
++}
++
++#endif /* PS3RECOMP_RSX_VK_BREADCRUMBS_H */
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 13a01d6..aa1f4b4 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -70,6 +70,7 @@ static float vk_forced_aspect(void);   /* PS3RECOMP_VK_ASPECT, at vk_fit_scale *
+ #include "vulkan/rsx_vk_fsr1_rcas_comp.spv.h"
+ #include "rsx_swapchain_retry.h"   /* a swapchain not recreated: skip, try again */
+ #include "rsx_vk_driver.h"   /* the GPU and driver lines at start (2082) */
++#include "rsx_vk_breadcrumbs.h"   /* the last things given to the GPU (2084) */
+ /* FSR 1's constants, computed on the CPU (vulkan/ffx, MIT). */
+ #include <math.h>
+ #include <stdlib.h>
+@@ -434,13 +435,21 @@ static void vk_dbg_start(VkInstance inst)
+                                           : "VK_EXT_debug_utils has no label functions, off");
+ }
+ 
+-static void vk_dbg_push(VkCommandBuffer cmd, const char* text)
++static void vk_dbg_label(VkCommandBuffer cmd, const char* text)
+ {
+     if (!s_dbg.on) return;
+     VkDebugUtilsLabelEXT l = { .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, .pLabelName = text };
+     s_dbg.begin(cmd, &l);
+ }
+ 
++/* The port's own passes and the present: a region, and a breadcrumb under the same name (2084). */
++static void vk_crumb_port(VkCommandBuffer cmd, const char* text);
++static void vk_dbg_push(VkCommandBuffer cmd, const char* text)
++{
++    vk_crumb_port(cmd, text);
++    vk_dbg_label(cmd, text);
++}
++
+ static void vk_dbg_pop(VkCommandBuffer cmd)
+ {
+     if (s_dbg.on) s_dbg.end(cmd);
+@@ -1082,6 +1091,31 @@ static void vk_slot_wait_other(void);
+  * newest one known to have completed (a fence waited on). A block of the
+  * cache is written again only after the serial of its last reader is done. */
+ static struct { u64 next, done, slot[2]; } s_ser = { 1, 0, { 0, 0 } };
++/* Render breadcrumbs (patch 2084, rsx_vk_breadcrumbs.h): the last 64 guest render passes (by the draw engine's pass
++ * name, patch 2065's label, with the last draw's programs), port passes, submits and presents, each with the
++ * submission it went into, so they can be marked done, submitted or still recording. A lost device and a GPU wait
++ * that does not end (2085) write them to the log; rsx_vulkan_breadcrumbs() gives them to a crash reporter. On by
++ * default: the draw engine then names its passes (one snprintf when the target set changes) even without debug
++ * labels. PS3RECOMP_VK_BREADCRUMBS=0 turns them off (and the names, unless labels are on). */
++static rsx_vk_crumbs s_crumbs;
++static int s_crumb_on;                   /* PS3RECOMP_VK_BREADCRUMBS, read at init */
++static rsx_vk_crumb* s_crumb_rp;         /* the open guest render pass's entry */
++static u64 s_present_n, s_present_done;  /* window presents submitted, and known finished */
++
++static void vk_crumb_port(VkCommandBuffer cmd, const char* text)
++{
++    if (!s_crumb_on) return;
++    if (cmd && cmd == s_vk.pcmd) rsx_vk_crumb_add(&s_crumbs, RSX_VK_CRUMB_PRESENT, s_vk.presented, s_present_n + 1, text);
++    else rsx_vk_crumb_add(&s_crumbs, RSX_VK_CRUMB_PORT, s_vk.presented, s_ser.next, text);
++}
++
++int rsx_vulkan_breadcrumbs(char* buf, size_t n)
++{
++    if (!buf || !n) return 0;
++    buf[0] = 0;
++    if (!s_crumb_on) return 0;
++    return (int)rsx_vk_crumbs_format(&s_crumbs, s_ser.done, s_ser.next, s_present_done, s_present_n + 1, buf, n);
++}
+ /* The render pass the batch's last draw left open. Consecutive draws into the
+  * same framebuffer share it, with no barrier between them, unless a draw
+  * samples one of its attachments; anything else recorded into the batch
+@@ -1098,6 +1132,7 @@ static void vk_rp_close(void)
+     if (!s_rpo.open) return;
+     s_rpo.open = 0;
+     pvkCmdEndRenderPass(s_vk.cmd);
++    s_crumb_rp = NULL;
+     if (s_dbg.rp_open) { s_dbg.rp_open = 0; vk_dbg_pop(s_vk.cmd); }
+ }
+ 
+@@ -1140,6 +1175,7 @@ static int vk_submit_and_wait(void)
+     VK_CHECK(pvkResetFences(s_vk.device, 1, &s_vk.fence), "vkResetFences");
+     VK_CHECK(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.fence), "vkQueueSubmit");
+     const u64 serial = s_ser.next++;
++    if (s_crumb_on) rsx_vk_crumb_add(&s_crumbs, RSX_VK_CRUMB_SUBMIT, s_vk.presented, serial, "submit, waited for");
+     { PS3_TRACE_BEGIN(_tr);
+       VK_CHECK(pvkWaitForFences(s_vk.device, 1, &s_vk.fence, VK_TRUE, UINT64_MAX), "vkWaitForFences");
+       vk_slot_wait_other();
+@@ -1202,6 +1238,7 @@ static int vk_submit_async(void)
+     VK_CHECK(pvkResetFences(s_vk.device, 1, &s_vk.fence), "vkResetFences");
+     VK_CHECK(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.fence), "vkQueueSubmit");
+     s_ser.slot[s_cur] = s_ser.next++;
++    if (s_crumb_on) rsx_vk_crumb_add(&s_crumbs, RSX_VK_CRUMB_SUBMIT, s_vk.presented, s_ser.slot[s_cur], "submit");
+     if (!s_slot[s_cur].cmd) { s_slot[s_cur].cmd = s_vk.cmd; s_slot[s_cur].fence = s_vk.fence; }
+     if (s_slot[o].inflight) {   /* the slot recorded into next: its last frame done */
+         PS3_TRACE_BEGIN(_tr);
+@@ -2863,7 +2900,7 @@ static void vk_present_window_body(void)
+             VK_LOG("present command buffer: allocation failed\n"); return;
+         }
+     }
+-    pvkWaitForFences(s_vk.device, 1, &s_vk.pfence, VK_TRUE, UINT64_MAX);
++    if (pvkWaitForFences(s_vk.device, 1, &s_vk.pfence, VK_TRUE, UINT64_MAX) == VK_SUCCESS) s_present_done = s_present_n;
+     vk_flush();   /* whatever wrote the display image is submitted first */
+ 
+     if (s_vk.no_area) {   /* minimized: nothing to show until it is restored */
+@@ -2988,6 +3025,7 @@ static void vk_present_window_body(void)
+     if (pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.pfence) != VK_SUCCESS) {
+         VK_LOG("vkQueueSubmit (window) failed\n"); return;
+     }
++    s_present_n++;
+     if (pdumped) {
+         pvkWaitForFences(s_vk.device, 1, &s_vk.pfence, VK_TRUE, UINT64_MAX);
+         if (!s_present_dump.coherent) {
+@@ -7066,11 +7104,13 @@ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vert
+         VkRenderPassBeginInfo rbi = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                                       .renderPass = rp, .framebuffer = fb,
+                                       .renderArea = { { 0, 0 }, { w, h } } };
+-        if (s_dbg.on && s_dbg.pass[0]) { vk_dbg_push(s_vk.cmd, s_dbg.pass); s_dbg.rp_open = 1; }
++        if (s_dbg.on && s_dbg.pass[0]) { vk_dbg_label(s_vk.cmd, s_dbg.pass); s_dbg.rp_open = 1; }
+         pvkCmdBeginRenderPass(s_vk.cmd, &rbi, VK_SUBPASS_CONTENTS_INLINE);
+         s_rpo.open = 1; s_rpo.fb = fb; s_rpo.rp = rp;
++        if (s_crumb_on) s_crumb_rp = rsx_vk_crumb_add(&s_crumbs, RSX_VK_CRUMB_PASS, s_vk.presented, s_ser.next, s_dbg.pass);
+     }
+     pvkCmdBindPipeline(s_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
++    if (s_crumb_rp) rsx_vk_crumb_draw(s_crumb_rp, velv ? P->vsv_h : P->vs_h, velv ? P->psv_h : P->ps_h);
+     /* Viewport and scissor scale with the target drawn into: the internal
+      * scale, or another size of its own (a display target the temporal
+      * upscaler output went into, at the output size). */
+@@ -7162,7 +7202,8 @@ static u64 vk_eng_commit_serial(void* user, u64* completed)
+     return s_ser.next;
+ }
+ 
+-static int vk_eng_debug_enabled(void* user) { (void)user; return s_dbg.on; }
++/* debug labels, or breadcrumbs (2084): both want the engine's pass names */
++static int vk_eng_debug_enabled(void* user) { (void)user; return s_dbg.on || s_crumb_on; }
+ /* The next guest render pass's region name; NULL at a present: none. A
+  * region already open keeps its name until its render pass closes. */
+ static void vk_eng_debug_pass(void* user, const char* text)
+@@ -7244,6 +7285,11 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+ {
+     s_vk.width  = width  ? width  : 1280;
+     s_vk.height = height ? height : 720;
++    { const char* e = getenv("PS3RECOMP_VK_BREADCRUMBS");   /* 2084: default on */
++      const int f = rsx_vk_env_flag(e);
++      if (f < 0) VK_LOG("PS3RECOMP_VK_BREADCRUMBS=%s not understood (0 or 1), on\n", e);
++      s_crumb_on = f != 0 || !e;
++      s_crumbs.n = 0; s_crumb_rp = NULL; s_present_n = s_present_done = 0; }
+     /* The display image is the scaled frame too, so the window gets every
+      * rendered pixel (the engine itself keeps the guest's size). */
+     vk_read_scale();
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 7ee1f8e..848d0a8 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -107,6 +107,13 @@ void rsx_vulkan_validation_summary(void);
+  * when the game runs under RenderDoc, a RenderDoc capture of the next frame. */
+ void rsx_vulkan_capture_request(void);
+ int  rsx_vulkan_reflex_available(void);
++/* Render breadcrumbs (patch 2084): the last 64 guest render passes, port passes, submits and presents given to
++ * the GPU, oldest first, one line each ending in '\n' ("frame 812 batch 4410 done: pass 3: A 0x0C3A0000 640x360
++ * RGBA8; 12 draws, last vs ... ps ..."; done, submitted or recording), into buf, always terminated when n > 0;
++ * lines that do not fit are left out. Returns the length written, 0 when there are none
++ * (PS3RECOMP_VK_BREADCRUMBS=0, or before init). Any thread may call it, also from a crash handler: no lock, no
++ * allocation (snprintf only); an entry written at that moment can come out mixed. */
++int  rsx_vulkan_breadcrumbs(char* buf, size_t n);
+ /* The temporal upscalers this build has (PS3RECOMP_TEMPORAL): bit 0 FSR 3
+  * (PS3RECOMP_FFX_DIR), bit 1 DLSS (PS3RECOMP_DLSS_SDK; it also needs an
+  * NVIDIA GPU at run time). */
