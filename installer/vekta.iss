@@ -10,7 +10,7 @@
 ; %LOCALAPPDATA%\Programs\ProjectVekta by default (a folder without spaces: the compiler and CMake take any, but a
 ; short plain path keeps the tools' command lines readable). It asks where your own files are (docs/GETTING-FILES.md):
 ; the installed game folder (NPUA80856), the decrypted EBOOT.elf and (optionally) data_ps3.psarc; it checks their kind and size before copying anything, keeps the answers in work\paths.env
-; (firstrun.py --save-paths) and, with "Build now" (the default), builds the port in the wizard (about five minutes;
+; (firstrun.py --save-paths) and, with "Build now" (the default), builds the port in the wizard (5 to 30 minutes;
 ; the full SHA-256 check is the build's first step). Start-menu entries (the game, "Verify and rebuild", "Open saves
 ; folder", "Make a support package", the project page, the uninstaller) and an optional desktop shortcut, all on
 ; the launcher "Project Vekta.exe", which builds on its first start when the build did not run here. It downloads
@@ -105,7 +105,7 @@ ExtraDiskSpaceRequired=5800000000
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"
-Name: "buildnow"; Description: "&Build now, in this wizard (about five minutes; else the first start builds)"
+Name: "buildnow"; Description: "&Build now, in this wizard (5 to 30 minutes; else the first start builds)"
 Name: "portable"; Description: "&Portable: saves and settings in the install folder (else in %APPDATA%)"; Flags: unchecked
 
 [INI]
@@ -197,6 +197,19 @@ Type: files; Name: "{app}\work\vfs\PS3_GAME\PARAM.SFO"
 Type: filesandordirs; Name: "{app}\work\vfs\PS3_GAME\TROPDIR"
 Type: filesandordirs; Name: "{app}\work\vfs\PS3_GAME\USRDIR\Movies"
 Type: filesandordirs; Name: "{app}\work\vfs\PS3_GAME\USRDIR\Menu"
+; The firmware MP3 decoder's stand-in, which the game writes at start (port/kz1hd/stubs.cpp), then the folders
+; the build made in work\vfs, deepest first, only when empty: with the "portable" task they hold the saves (#132)
+Type: files; Name: "{app}\work\vfs\dev_flash\sys\external\flashMP3.pic"
+Type: dirifempty; Name: "{app}\work\vfs\dev_flash\sys\external"
+Type: dirifempty; Name: "{app}\work\vfs\dev_flash\sys"
+Type: dirifempty; Name: "{app}\work\vfs\dev_flash"
+Type: dirifempty; Name: "{app}\work\vfs\game\{#TitleId}\USRDIR"
+Type: dirifempty; Name: "{app}\work\vfs\game\{#TitleId}"
+Type: dirifempty; Name: "{app}\work\vfs\game"
+Type: dirifempty; Name: "{app}\work\vfs\PS3_GAME\USRDIR"
+Type: dirifempty; Name: "{app}\work\vfs\PS3_GAME"
+Type: dirifempty; Name: "{app}\work\vfs"
+Type: dirifempty; Name: "{app}\work"
 Type: filesandordirs; Name: "{app}\tools\__pycache__"
 Type: filesandordirs; Name: "{app}\tools\release\__pycache__"
 Type: filesandordirs; Name: "{app}\work\ps3recomp-patched\tools\__pycache__"
@@ -900,7 +913,7 @@ begin
     PathArgs + ' --dlss ' + DlssChoice + ' --status-file ' + Quote(Status) + ' --stop-file ' + Quote(StopFile);
   Log('firstrun: ' + Py + ' ' + Params);
   BuildRan := True;
-  Page := CreateOutputProgressPage('Building {#AppName}', 'From your own game files: about five minutes.');
+  Page := CreateOutputProgressPage('Building {#AppName}', 'From your own game files: 5 to 30 minutes, longer on a hard disk.');
   StopBtn := TNewButton.Create(Page);
   StopBtn.Parent := Page.Surface;
   StopBtn.Left := Page.ProgressBar.Left;

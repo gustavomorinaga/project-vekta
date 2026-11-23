@@ -21,7 +21,7 @@
   "prepare": {
     "program": ["scripts/prepare.cmd", "scripts/prepare.sh"],
     "args": ["--game={input:game}", "--eboot={input:eboot}"],
-    "label": "Checking your files and building the port on this PC (about five minutes; nothing of the game is downloaded)",
+    "label": "Checking your files and building the port on this PC (5 to 30 minutes; nothing of the game is downloaded)",
     "timeout": 7200,
     "version": "stamped by tools/release/recomplauncher.py: the release's VERSION",
     "done": ["{install}/work/build-stamp.json"],
