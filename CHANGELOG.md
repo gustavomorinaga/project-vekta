@@ -86,6 +86,7 @@ program and folder that build it. Until a release that calls itself playable
   data goes), [docs/FAQ.md](docs/FAQ.md), [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) and [docs/AI.md](docs/AI.md).
 
 ### Fixed
+- The setup's header image no longer touches the window's right edge (it sat flush at every display scale).
 - A candidate fix for AMD Radeon RX 5000 and 6000 cards on Windows closing the game a few seconds into level 1
   (#129), not yet confirmed on those cards: the GPU now reads zeros instead of undefined memory when a draw reads
   past the end of a buffer (Vulkan's `robustBufferAccess`, which NVIDIA's driver did not need). `play.log` says
