@@ -26,7 +26,9 @@ first run's questions, `scripts/run.sh` and `scripts\run.cmd`, offer the same ("
 ready", "Show me how", which lists these steps, or "My RPCS3 is somewhere else", which asks for its folder): your
 RPCS3 then decrypts a copy of `EBOOT.BIN` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The setup program offers the same on its "Your game" page ("Use my RPCS3
 install"), with a "Find RPCS3..." button for an RPCS3 it did not find by itself. Either way the folder can be where
-`rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`).
+`rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`). On a fresh
+Windows, RPCS3 itself needs Microsoft's Visual C++ 2015-2022 runtime (x64) before it starts; see
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 This project gives no decryption tools or instructions. The setup and the scripts only read your files; on the RPCS3
 route your own RPCS3 decrypts copies of them, and nothing is written into the game's or RPCS3's folders.

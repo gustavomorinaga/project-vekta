@@ -13,6 +13,10 @@ program and folder that build it. Until a release that calls itself playable
   lettered KZ1) are drawn in steel blue with a V chevron by one script, `tools/release/installer_art.py`, with the
   Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the
   keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.
+- The setup, the launcher's page and the docs now say the first build takes 5 to 30 minutes instead of about five:
+  on four cores and a hard disk it took close to half an hour (#134).
+- The install and troubleshooting pages say that RPCS3 needs Microsoft's Visual C++ runtime on a fresh Windows,
+  without which "Use my RPCS3 install" fails (#136).
 
 ### Fixed
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
@@ -24,8 +28,7 @@ program and folder that build it. Until a release that calls itself playable
 - The setup fits a 1280x800 screen at 150% display scale (Next and Cancel were under the taskbar), and its "Your
   game" page shows its three choices without a scroll bar at 125% and above (#135).
 - Uninstalling removes the install folder again: a file the game writes at start (`flashMP3.pic`) and the empty
-  folders the build left in `work\vfs` kept it there. Saves and settings stay, as before (#132).- The setup, the launcher's page and the docs now say the first build takes 5 to 30 minutes instead of about five:
-  on four cores and a hard disk it took close to half an hour (#134).
+  folders the build left in `work\vfs` kept it there. Saves and settings stay, as before (#132).
 
 ## [0.6.0] - 2026-11-20 (pre-release)
 
