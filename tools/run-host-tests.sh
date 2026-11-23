@@ -4,8 +4,9 @@
 #   -j N          N tests at the same time (default 1: one after the other). The tests in ALONE below still run one
 #                 at a time, after the others.
 #   --gh          wrap each test's output in a GitHub Actions log group (CI)
-#   --except T    leave the listed test T out; may be given more than once. CI's checks job leaves out
-#                 tools/tests/test_upstream_suite.sh, which has a job of its own (.github/workflows/ci.yml).
+#   --except T    leave the listed test T out; may be given more than once. On a pull request, CI's checks job leaves
+#                 out tools/tests/test_upstream_suite.sh when the Actions cache says it already passed for the same
+#                 ps3recomp commit, patches and tools (.github/workflows/ci.yml).
 # (After Project Helghast's tools/run-host-tests.sh, MIT.)
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
