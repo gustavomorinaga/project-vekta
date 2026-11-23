@@ -55,6 +55,8 @@ program and folder that build it. Until a release that calls itself playable
   seconds on the first start after the PC was switched on, with nothing on screen meanwhile (#133).
 - The setup fits a 1280x800 screen at 150% display scale (Next and Cancel were under the taskbar), and its "Your
   game" page shows its three choices without a scroll bar at 125% and above (#135).
+- At 125% display scale the setup's "Your game" page shows all four choices and the note under them without a
+  scroll bar or a cut line, and the DLSS page shows its whole text and checkbox.
 - Uninstalling removes the install folder again: a file the game writes at start (`flashMP3.pic`) and the empty
   folders the build left in `work\vfs` kept it there. Saves and settings stay, as before (#132).
 
