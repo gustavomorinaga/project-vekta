@@ -4,14 +4,15 @@
 # always built on the player's machine from their own game (docs/BUILDING.md).
 #
 # Triggers: a pushed tag vMAJOR.MINOR.PATCH (builds, then creates the draft) and workflow_dispatch (a dry run: builds
-# and uploads the workflow artifacts, never publishes). Nothing runs on a push to a branch or on a pull request.
+# and uploads the workflow artifacts, never publishes; with its "attest" box ticked it also tries the attest job).
+# Nothing runs on a push to a branch or on a pull request.
 # Release rules: the version is VERSION and the tag must say the same (tools/release/release_version.py); the release
 # is a pre-release while the major version is 0; its title is the tag; its notes are written from the tag's
 # CHANGELOG.md entry (tools/release/release_notes.py, which refuses a tag without a released entry); SHA256SUMS and a
 # .sha256 per file sit beside the files; an existing release is never touched, no tag is created, moved or deleted,
 # and no asset is overwritten. Make the release commit with tools/release/bump_version.py, tag it, push the tag.
 #
-# Jobs, each with a read-only token except publish:
+# Jobs, each with a read-only token except attest (it may only sign and store an attestation) and publish:
 #   source   (Linux) checks the tree and builds the source archive.
 #   payload  (Linux) builds the launcher with the pinned llvm-mingw, fetches the pinned Windows toolchain and
 #            assembles the Windows folder as a zip (tools/release/assemble_payload.py, the same bytes from the same
@@ -24,9 +25,12 @@
 #            the Linux folder as a tar.xz (assemble_payload.py --platform linux), then checks it unpacked in a Debian 11
 #            container with Python 3.10 and no compiler: its own toolchain builds ps3recomp's shader test and boot smoke,
 #            both run, and neither needs a glibc newer than 2.31 (tools/release/check_linux_folder.sh).
-#   publish  (tag pushes only) is the one job that may write: it creates the draft release from the other jobs'
-#            artifacts and runs no repository code.
-# Third-party: actions/checkout and actions/upload-artifact (GitHub, MIT), the gh CLI (MIT, on the images), the
+#   attest   (tag pushes; a dispatch only when asked) signs the four files' build provenance and checks each file
+#            against it; it runs no repository code.
+#   publish  (tag pushes only, after attest) is the one job that may write to the repository: it creates the draft
+#            release from the other jobs' artifacts and runs no repository code.
+# Third-party: actions/checkout, actions/upload-artifact and actions/attest (GitHub, MIT; attest signs through
+# Sigstore's public instance), the gh CLI (MIT, on the images), the
 # toolchain.json downloads (each checked against its SHA-256), Docker's python:3.10-slim-bullseye image (the linux
 # job's clean system; nothing from it is published).
 # Published files: project-vekta-<version>-source.tar.gz, project-vekta-<version>-setup.exe,
@@ -38,6 +42,11 @@ on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
   workflow_dispatch:   # dry run only: version = VERSION, publishing is skipped
+    inputs:
+      attest:
+        description: "Also sign the files' build provenance (public and permanent: only to try the attest job before a tag)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read    # default for every job; only the publish job below gets write
@@ -353,12 +362,73 @@ jobs:
           compression-level: 0
           retention-days: 14
 
+  # Build provenance for the four files: a statement that this workflow built them from this repository at this
+  # commit, signed through Sigstore with the run's own identity (no key is kept anywhere) and stored by GitHub.
+  # Anyone can check a downloaded file against it (docs/INSTALL.md):
+  #   gh attestation verify project-vekta-<version>-setup.exe --repo gustavomorinaga/project-vekta
+  # Tag pushes: before the draft is created, so no release goes without it. A dispatch signs only when its "attest"
+  # box is ticked, to try this job before a tag: a signature goes to Sigstore's public log and stays there, which a
+  # dry run should not do unasked. The last step checks each file against what GitHub stored, with the workflow and
+  # the ref it must name. No checkout: the job runs no repository code.
+  attest:
+    needs: [source, payload, setup, linux]
+    if: (github.event_name == 'push' && github.ref_type == 'tag') || inputs.attest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read         # gh run download: the other jobs' artifacts
+      id-token: write       # the run's OIDC token, for which Sigstore issues the signing certificate
+      attestations: write   # GitHub stores the attestation; the last step reads it back
+    steps:
+      - name: The four files and their sums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir assets && cd assets
+          for a in "" -windows -setup -linux; do
+            gh run download "$GITHUB_RUN_ID" --name "project-vekta-$VERSION$a" --dir .
+          done
+          files="project-vekta-$VERSION-source.tar.gz project-vekta-$VERSION-setup.exe"
+          files="$files project-vekta-$VERSION-windows.zip project-vekta-$VERSION-linux.tar.xz"
+          for f in $files; do
+            { test -s "$f" && test -s "$f.sha256" && sha256sum -c "$f.sha256"; } || {
+              echo "::error::$f or its .sha256 is missing or does not match"; exit 1; }
+          done
+          # shellcheck disable=SC2086  # $files is the four names above, without spaces
+          sha256sum $files > SHA256SUMS   # the same lines as the release's SHA256SUMS (the publish job)
+          cat SHA256SUMS
+
+      - uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d  # v4.2.1
+        with:
+          subject-checksums: assets/SHA256SUMS
+
+      - name: Each file verifies against the stored attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd assets
+          while read -r _ f <&3; do
+            ok=0
+            for try in 1 2 3; do   # the attestation may take a moment to be served
+              if gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" --source-ref "$GITHUB_REF" \
+                   --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"; then
+                ok=1; break
+              fi
+              echo "attempt $try for $f failed"; sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "::error::$f does not verify against its attestation"; exit 1; }
+          done 3< SHA256SUMS
+
   # Tag pushes only; a dispatch never publishes. A draft pre-release (major 0) titled with the tag, with the source
   # archive, the setup program and the Windows zip. If a release for the tag already exists the job fails: nothing is
   # edited, re-uploaded or clobbered, and no tag is touched (--verify-tag refuses to create one). No checkout: the job
   # runs no repository code.
   publish:
-    needs: [source, payload, setup, linux]
+    needs: [source, payload, setup, linux, attest]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 15

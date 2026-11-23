@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -254,6 +255,14 @@ with tempfile.TemporaryDirectory() as tmp:
     check(release_check.check_hashes(assets, v), "a wrong SHA256SUMS is reported")
     (tmp / "README.md").write_text("no link\n")
     check(release_check.check_links(tmp, f"v{v}"), "a README without the release link is reported")
+
+# release.yml's attest and publish jobs each list the release's files by name: both lists are the ones the release
+# check expects (a file renamed in one place only would stop the release at the tag, where nothing can be redone)
+wf = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+lists = re.findall(r'files="(project-vekta-\$VERSION-[^"]+)"\s+files="\$files ([^"]+)"', wf)
+want = [f.replace("9.9.9", "$VERSION") for f in release_check.files("9.9.9")]
+check(len(lists) == 2 and all(f"{a} {b}".split() == want for a, b in lists),
+      f"release.yml's attest and publish jobs name the files of the release check: {lists} / {want}")
 
 print("test_release:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)
