@@ -31,6 +31,9 @@
 /* The lifter's generated header, which declares ppu_context and the function
  * table. It comes first: everything below is written against that struct. */
 #include <signal.h>
+#ifndef _WIN32
+#include <unistd.h>   /* write, _exit: the second quit signal */
+#endif
 #include "ppu_recomp.h"
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
@@ -328,9 +331,38 @@ extern "C" void kz_quit(const char* why)
 }
 
 /* SIGTERM, SIGINT (Ctrl+C in the terminal) and SIGHUP quit as closing the
- * window does; the frame clock does the quitting, outside the handler. */
+ * window does; the frame clock does the quitting, outside the handler. A
+ * second signal ends the process at once (Ctrl+C twice), without the quit's
+ * flushes: only write and _exit are safe in a handler. */
 static volatile sig_atomic_t s_quit_signal;
-static void on_quit_signal(int) { s_quit_signal = 1; }
+static void on_quit_signal(int sig)
+{
+#ifndef _WIN32
+    if (s_quit_signal) {
+        static const char m[] = "[kz] quitting (second signal, at once)\n";
+        if (write(2, m, sizeof m - 1) < 0) {}
+        _exit(128 + sig);
+    }
+#endif
+    s_quit_signal = 1;
+}
+
+#ifndef _WIN32
+/* The frame clock reads s_quit_signal once a pass. A frame clock stuck in a
+ * present or a fence wait (a GPU that stopped answering) never gets there, and
+ * SIGTERM then did nothing: only SIGKILL ended the game, with no log flush and
+ * no wait for a save being written. This thread gives the frame clock 2 s (it
+ * normally takes the quit within one 0.1 ms pass), then quits from here. */
+static DWORD WINAPI quit_watch(LPVOID)
+{
+    ps3_thread_name("quit watch");
+    while (!s_quit_signal) Sleep(50);
+    Sleep(2000);
+    fprintf(stderr, "[kz] the frame loop did not take the quit signal in 2 s\n");
+    kz_quit("signal, frame loop stalled");
+    return 0;
+}
+#endif
 
 static DWORD WINAPI frame_clock(LPVOID)
 {
@@ -531,9 +563,11 @@ static DWORD WINAPI frame_clock(LPVOID)
 
             if (rsx_backend_pump() != 0) kz_quit("window closed");
             if (s_quit_signal) kz_quit("signal");
-            /* Before the first flip present freely, so the window is not
-             * blank during boot. */
-            if (cellGcm_flip_request_count() == 0) rsx_backend_present();
+            /* Before the first flip present once a vblank tick, so the window
+             * is not blank during boot. Presenting on every 0.1 ms pass made
+             * about 5,000 presents a second (the mailbox mode does not wait),
+             * a CPU core and the GPU busy for nothing while the game loads. */
+            if (fired && cellGcm_flip_request_count() == 0) rsx_backend_present();
         }
     }
     return 0;
@@ -818,6 +852,7 @@ int main(int argc, char** argv)
 #ifndef _WIN32
     { struct sigaction sa = {}; sa.sa_handler = on_quit_signal;
       sigaction(SIGTERM, &sa, NULL); sigaction(SIGINT, &sa, NULL); sigaction(SIGHUP, &sa, NULL); }
+    CreateThread(NULL, 256u * 1024, quit_watch, NULL, 0, NULL);
 #endif
     CreateThread(NULL, 4u * 1024 * 1024, frame_clock, NULL, 0, NULL);
 
