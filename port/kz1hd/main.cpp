@@ -49,6 +49,7 @@
 #include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
+#include "sys_info.h"     /* [kz-sys], the session header */
 #if __has_include("eboot_id.h")
 #include "eboot_id.h"    /* KZ_EBOOT_SHA256, KZ_EBOOT_SIZE: written into the lift's gen/ by tools/kzbuild.py */
 #endif
@@ -95,6 +96,7 @@ extern "C" int vm_inline_ok;
  * -----------------------------------------------------------------------*/
 extern "C" void cellGame_init_from_paramsfo(const char* sfo_path);   /* cellGame.c */
 extern "C" void kz_pc_settings_env(void);   /* pcoptions.cpp */
+extern "C" void kz_pc_settings_line(char* out, unsigned long cap);   /* pcoptions.cpp: [kz-sys] settings */
 extern "C" void kz_view_update(void);       /* pcoptions.cpp */
 extern "C" {
 uint32_t ppu_load_elf(const char* path);      /* ELF -> guest RAM, returns entry OPD */
@@ -155,6 +157,7 @@ extern "C" void rsx_vulkan_backend_present(void);
 extern "C" int  rsx_vulkan_backend_pump_messages(void);
 extern "C" void rsx_vulkan_capture_request(void);   /* F12's capture, and RenderDoc's under RenderDoc (patch 2066) */
 extern "C" void rsx_vulkan_validation_summary(void);   /* PS3RECOMP_VK_VALIDATION's counts (patch 2064) */
+extern "C" int  rsx_vulkan_temporal_built(void);       /* bit 1: DLSS built in (patch 2049) */
 #  define rsx_backend_init    rsx_vulkan_backend_init
 #  define rsx_backend_present rsx_vulkan_backend_present
 #  define rsx_backend_pump    rsx_vulkan_backend_pump_messages
@@ -341,6 +344,7 @@ static DWORD WINAPI frame_clock(LPVOID)
     int rsx_ok = (rsx_backend_init(WINDOW_WIDTH, WINDOW_HEIGHT, title) == 0);
     fprintf(stderr, "[rsx] %s backend init %s\n", RSX_BACKEND_NAME,
             rsx_ok ? "OK -- window open" : "FAILED");
+    if (rsx_ok) kz_sys_log_displays();   /* [kz-sys] display: the session header's monitors, now that SDL's video runs */
 #if defined(PS3RECOMP_RSX_VULKAN)
     /* No Vulkan while a window was asked for (PS3RECOMP_VK_WINDOW, launch.py sets it): the game would run on with
      * nothing on screen and the player would see nothing at all (#131). Say so and stop with KZ_EXIT_NO_VULKAN, whose
@@ -753,8 +757,15 @@ int main(int argc, char** argv)
     kz_log_setup();
 #endif
     fprintf(stderr, "[kz] %s\n", KZ_VERSION_LINE);   /* the first line of every log */
+    kz_sys_log();           /* [kz-sys] os, cpu, cores, memory, env (before kz1hd_pc.ini adds its variables), started-by */
     kz_win_dpi_aware();     /* win_dpi.h: real pixels at Windows' 125 %, 150 %... */
     kz_pc_settings_env();   /* pcoptions.cpp: kz1hd_pc.ini */
+    { char s[2048]; kz_pc_settings_line(s, sizeof s); kz_sys_log_line("settings", s); }
+#if defined(PS3RECOMP_RSX_VULKAN)
+    kz_sys_log_line("dlss", (rsx_vulkan_temporal_built() & 2) ? "yes" : "no");
+#else
+    kz_sys_log_line("dlss", "no");
+#endif
     /* The game steps its command buffer through 64 KB segments with its own
      * callback: the runtime's recycling of a title's ring would rewind it
      * mid-step (a frozen level load; cellGcmSys.c, GCM_RING_RECYCLE). */
