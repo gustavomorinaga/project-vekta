@@ -89,6 +89,8 @@ LINUX_FOLDER_060 = (
     "then plays (scripts/run.sh asks for your files step by step). The game needs glibc 2.31 or newer, a Vulkan "
     "driver and the system's SDL2. project-vekta-{version}-source.tar.gz holds this tag's tree with ps3recomp at its "
     "pinned commit, for building with your own compilers ([docs/BUILDING.md]({blob}/docs/BUILDING.md)). ")
+# From 0.7.0 the Linux folder is a .tar.xz (a third smaller than the .tar.gz; tar and the launchers unpack both).
+LINUX_FOLDER_070 = LINUX_FOLDER_060.replace("-linux.tar.gz", "-linux.tar.xz")
 FILES = (
     "Windows: project-vekta-{version}-setup.exe installs the port's sources and the pinned toolchain for your user "
     "(no admin rights). It asks where your files are and builds the port in the wizard (5 to 30 minutes; untick "
@@ -181,7 +183,8 @@ def notes(version, entry, first=False):
     else:
         lists = ([f"New in {version}:\n{bullets(new)}"] if new else []) + ([f"Fixed:\n{bullets(fixed)}"] if fixed else [])
     v = tuple(int(x) for x in version.split("."))
-    linux = LINUX_FOLDER_060 if v >= (0, 6, 0) else LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE
+    linux = (LINUX_FOLDER_070 if v >= (0, 7, 0) else LINUX_FOLDER_060 if v >= (0, 6, 0) else
+             LINUX_FOLDER if v > (0, 2, 0) else LINUX_SOURCE)
     files = (SOURCE_ONLY.format(version=version, blob=blob) if version == "0.1.0" else
              FILES.format(version=version, blob=blob, need=need_text(v), linux=linux.format(version=version, blob=blob)))
     if v >= (0, 6, 0):

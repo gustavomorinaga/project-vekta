@@ -208,14 +208,24 @@ with tempfile.TemporaryDirectory() as tmp:
           f"the Linux manifest and fetched.json hold the native entries and their sources: {sorted(ltc)}")
     check(ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--zip",
                    str(tmp / "l.zip")]) == 1, "the Linux folder refuses --zip")
-    r = ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar", str(tmp / "new" / "a.tgz")])
+    check(ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar",
+                   str(tmp / "a.tar.zst")]) == 1 and not (tmp / "lx").exists(),
+          "a --tar name that is neither .tar.xz nor .tar.gz is refused before anything is written")
+    r = ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar", str(tmp / "new" / "a.tar.xz")])
     ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--replace", "--tar",
-             str(tmp / "b.tgz")])
-    check(r == 0 and (tmp / "new" / "a.tgz").read_bytes() == (tmp / "b.tgz").read_bytes(),
+             str(tmp / "b.tar.xz")])
+    check(r == 0 and (tmp / "new" / "a.tar.xz").read_bytes() == (tmp / "b.tar.xz").read_bytes(),
           "the same sources give the same tar (its folder is made)")
     import tarfile
-    with tarfile.open(tmp / "new" / "a.tgz") as t:
+    with tarfile.open(tmp / "new" / "a.tar.xz", "r:xz") as t:
         mem = {i.name: i for i in t.getmembers()}
+    # the .tar.gz of the releases up to 0.6.0 is still written when the name asks for it, with the same members
+    ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--replace", "--tar",
+             str(tmp / "c.tgz")])
+    with tarfile.open(tmp / "c.tgz", "r:gz") as t:
+        gz_names = [i.name for i in t.getmembers()]
+    check(gz_names == list(mem) and (tmp / "new" / "a.tar.xz").read_bytes()[:6] == b"\xfd7zXZ\x00",
+          "a .tgz name packs the same members with gzip; the .tar.xz is an xz file")
     v = lman["version"]
     top = f"project-vekta-{v}-linux/"
     check(all(n.startswith(top) for n in mem), "the tar has one top folder")
