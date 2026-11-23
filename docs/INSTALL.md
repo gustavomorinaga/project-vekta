@@ -27,8 +27,9 @@ ready", "Show me how", which lists these steps, or "My RPCS3 is somewhere else",
 RPCS3 then decrypts a copy of `EBOOT.BIN` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The setup program offers the same on its "Your game" page ("Use my RPCS3
 install"), with a "Find RPCS3..." button for an RPCS3 it did not find by itself. Either way the folder can be where
 `rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`). On a fresh
-Windows, RPCS3 itself needs Microsoft's Visual C++ 2015-2022 runtime (x64) before it starts; see
-[TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+Windows, RPCS3 itself needs Microsoft's Visual C++ 2015-2022 runtime (x64) and your graphics card's driver
+(for `vulkan-1.dll`) before it starts, and on Windows 10 its `.7z` download needs [7-Zip](https://www.7-zip.org/) to
+unpack; see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 **No RPCS3? Straight from the disc.** With the Killzone Trilogy disc copied to your PC (its folder, with
 `PS3_EXTRA` in it, or just the package `PS3_EXTRA\...\DATA000.PKG`), `Project Vekta.exe --disc FOLDER`,
