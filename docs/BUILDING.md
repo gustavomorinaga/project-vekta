@@ -331,8 +331,8 @@ packages to install. Its compiler is [Zig](https://ziglang.org) 0.17.0 (`zig cc`
 `tools/release/toolchain.json` from its PyPI wheel) aimed at `x86_64-linux-gnu.2.31` (`port/cmake/zig-linux.cmake`,
 the wrappers in `tools/release/zig/`), so what it builds runs on any distribution with that glibc or newer; CMake,
 Ninja, SDL2 (built to link against, the system's `libSDL2-2.0.so.0` is used at run time), zlib, glslang, the Vulkan
-headers and FFmpeg 9's shared libraries (copied to `work/build/lib`, which `tools/play.sh` puts on the library path)
-come with it.
+headers and FFmpeg 9's shared libraries (placed in `work/build/lib`, as hard links where the file system makes them;
+`tools/play.sh` puts that folder on the library path) come with it.
 
 ```sh
 tools/release/fetch_toolchain.py --host native                          # Zig, CMake, Ninja, SDL2, FFmpeg

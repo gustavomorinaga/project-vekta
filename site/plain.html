@@ -213,6 +213,7 @@
 <li><span class="kind">Changed</span>The install and troubleshooting pages say that RPCS3 needs Microsoft&#x27;s Visual C++ runtime on a fresh Windows, without which &quot;Use my RPCS3 install&quot; fails (#136).</li>
 <li><span class="kind">Changed</span>The first run takes the movies out of the game&#x27;s archive faster and with less memory: each movie is written to its file as it is read, instead of being put together in memory first, which copied the whole movie so far at every block (<code>tools/psarc_ls.py</code>; on made-up data a 31 MB movie took 2.8 s of copying, now 0.01 s). An archive that is cut short is named in the error.</li>
 <li><span class="kind">Changed</span>The release folders no longer carry two sets of files that no build reads (glslang&#x27;s test shaders and the registry Vulkan&#x27;s headers are generated from): about 55 MB and 3,400 files less on disk after install, and about 5 MB less to download.</li>
+<li><span class="kind">Changed</span>The build no longer keeps a second and a third copy of FFmpeg&#x27;s libraries and a second copy of the Vulkan headers: what it stages for the compile and beside the program are hard links to the toolchain folder&#x27;s files where the file system makes them (NTFS, ext4, btrfs), and copies as before where it does not (exFAT). About 260 MB less disk on Windows and 280 MB less on Linux.</li>
 <li><span class="kind">Fixed</span>The build no longer stops at &quot;Preparing the game&#x27;s data&quot; when the install folder&#x27;s path has accented letters (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).</li>
 <li><span class="kind">Fixed</span>A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran on with no window and closed after about 45 seconds without a word (#131).</li>
 <li><span class="kind">Fixed</span>On a CPU too old for the port, <code>Project Vekta.exe</code> says so at once. Before, the message could take 30 to 90 seconds on the first start after the PC was switched on, with nothing on screen meanwhile (#133).</li>
@@ -261,9 +262,9 @@
 <li><time>next</time><span><b>Unreleased</b> The install and troubleshooting pages say that RPCS3 needs Microsoft&#x27;s Visual C++ runtime on a fresh Windows, without...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The first run takes the movies out of the game&#x27;s archive faster and with less memory: each movie is written to its...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The release folders no longer carry two sets of files that no build reads (glslang&#x27;s test shaders and the registry...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The build no longer keeps a second and a third copy of FFmpeg&#x27;s libraries and a second copy of the Vulkan headers...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The build no longer stops at &quot;Preparing the game&#x27;s data&quot; when the install folder&#x27;s path has accented letters (a letter...</span></li>
 <li><time>next</time><span><b>Unreleased</b> A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran on...</span></li>
-<li><time>next</time><span><b>Unreleased</b> On a CPU too old for the port, Project Vekta.exe says so at once. Before, the message could take 30 to 90 seconds on...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

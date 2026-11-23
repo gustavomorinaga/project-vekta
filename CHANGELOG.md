@@ -24,6 +24,10 @@ program and folder that build it. Until a release that calls itself playable
 - The release folders no longer carry two sets of files that no build reads (glslang's test shaders and the
   registry Vulkan's headers are generated from): about 55 MB and 3,400 files less on disk after install, and about
   5 MB less to download.
+- The build no longer keeps a second and a third copy of FFmpeg's libraries and a second copy of the Vulkan headers:
+  what it stages for the compile and beside the program are hard links to the toolchain folder's files where the
+  file system makes them (NTFS, ext4, btrfs), and copies as before where it does not (exFAT). About 260 MB less
+  disk on Windows and 280 MB less on Linux.
 
 ### Fixed
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
