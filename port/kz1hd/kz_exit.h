@@ -18,5 +18,6 @@
 #define KZ_EXIT_CPU           75  /* This CPU is too old: the build needs x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or AMD Excavator, 2013 and later). */
 #define KZ_EXIT_EBOOT         76  /* This build was made from another EBOOT.elf than the game folder's: run Verify and rebuild (Windows) or ./project-vekta --prepare (Linux). */
 #define KZ_EXIT_NO_VULKAN     77  /* No Vulkan driver was found: install or update your graphics card's driver. */
+#define KZ_EXIT_GPU_LOST      78  /* The graphics driver stopped responding (the GPU was lost): update the graphics driver, and attach the support package to a bug report. */
 #define KZ_EXIT_STOPPED       130 /* Stopped by the player or the time limit: start again, and the build resumes where it stopped. */
 #endif

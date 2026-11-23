@@ -255,6 +255,7 @@ The exit codes, one table for the exe and the launcher (`port/kz1hd/kz_exit.h`; 
 | 75 | `CPU` | This CPU is too old: the build needs x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or AMD Excavator, 2013 and later). |
 | 76 | `EBOOT` | This build was made from another EBOOT.elf than the game folder's: run Verify and rebuild (Windows) or ./project-vekta --prepare (Linux). |
 | 77 | `NO_VULKAN` | No Vulkan driver was found: install or update your graphics card's driver. |
+| 78 | `GPU_LOST` | The graphics driver stopped responding (the GPU was lost): update the graphics driver, and attach the support package to a bug report. |
 | 130 | `STOPPED` | Stopped by the player or the time limit: start again, and the build resumes where it stopped. |
 
 Any other code is the game's own (a crash shows as Windows' or the shell's code for it).

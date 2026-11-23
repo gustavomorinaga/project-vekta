@@ -14,7 +14,9 @@
  *   FSR Sharpness      RCAS's strength, only with Upscaling = AMD FSR 1
  *   Anti-aliasing      the game's MLAA; a temporal upscaler running (FSR 3.1,
  *                      DLSS) does the anti-aliasing instead and the MLAA is
- *                      not run (ps3recomp patch 2079: rsx_vulkan_temporal_active)
+ *                      not run (ps3recomp patch 2079: rsx_vulkan_temporal_active);
+ *                      also greyed where the driver does not get the MLAA
+ *                      pass (patch 2086, #129: AMD's Windows driver)
  *   NVIDIA Reflex      only where the driver has VK_NV_low_latency2
  *
  * The mask has one bit per row (1 << PC_DEP_*), set when the row is in use.
@@ -34,6 +36,7 @@ struct pc_deps_in {
     const char* upscaler;    /* linear | fsr */
     int temporal_running;    /* rsx_vulkan_temporal_active() */
     int reflex_available;    /* rsx_vulkan_reflex_available() */
+    int mlaa_unavailable;    /* !rsx_vulkan_mlaa_available() */
 };
 
 static inline unsigned pc_deps_mask(const struct pc_deps_in* in)
@@ -43,7 +46,7 @@ static inline unsigned pc_deps_mask(const struct pc_deps_in* in)
     if (!in->display || strcmp(in->display, "borderless") != 0) m |= 1u << PC_DEP_RESOLUTION;
     if (wide) m |= (1u << PC_DEP_ASPECT) | (1u << PC_DEP_HUD_POSITION);
     if (in->upscaler && !strcmp(in->upscaler, "fsr")) m |= 1u << PC_DEP_SHARPNESS;
-    if (!in->temporal_running) m |= 1u << PC_DEP_ANTIALIASING;
+    if (!in->temporal_running && !in->mlaa_unavailable) m |= 1u << PC_DEP_ANTIALIASING;
     if (in->reflex_available) m |= 1u << PC_DEP_REFLEX;
     return m;
 }

@@ -1,0 +1,207 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 23 Nov 2026 07:18:13 +0000
+Subject: [PATCH] Vulkan: the GPU, its driver version and VRAM in the log at
+ start
+
+Why: two reports of the game closing a few seconds into level 1 on AMD
+cards (RX 6600, RX 5700 XT, Windows, #129) had only "device N: <name>
+(type, api)" to go on: no driver version, so nobody could tell which
+driver to try. The same build works on NVIDIA.
+
+Two lines after "using device":
+
+  gpu: <name>, vendor 0x1002 (AMD), device 0x73FF, driver version
+       2.0.302, VRAM 8176 MiB
+  driver: <driverName> <driverInfo> (driver id N, conformance a.b.c.d)
+
+driverVersion is decoded the way the vendor packs it (NVIDIA 10.8.8.6
+bits, Intel's Windows driver 18.14, everyone else VK_MAKE_VERSION) in
+rsx_vk_driver.h, pure functions with no Vulkan headers that the port's
+host test builds. VRAM is the largest device-local heap. The driver line
+comes from VkPhysicalDeviceDriverProperties, only when the device is 1.2
+or has VK_KHR_driver_properties; it names the release AMD and Intel give
+in driverInfo (for example "24.10.1"), which their driverVersion does
+not.
+
+vkGetPhysicalDeviceProperties2 needs a 1.1 instance: the instance now
+asks for 1.1 when the loader reports 1.1 or later
+(vkEnumerateInstanceVersion), 1.2 with Reflex or a temporal upscaler as
+before; a 1.0 loader keeps 1.0 and gets the gpu line only. The entry
+points the backend uses stay 1.0's. Written from the Vulkan
+specification.
+---
+ libs/video/rsx_vk_driver.h      | 71 +++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c | 58 ++++++++++++++++++++++++++-
+ 2 files changed, 128 insertions(+), 1 deletion(-)
+ create mode 100644 libs/video/rsx_vk_driver.h
+
+diff --git a/libs/video/rsx_vk_driver.h b/libs/video/rsx_vk_driver.h
+new file mode 100644
+index 0000000..d645e54
+--- /dev/null
++++ b/libs/video/rsx_vk_driver.h
+@@ -0,0 +1,71 @@
++/*
++ * ps3recomp - what the Vulkan backend logs about the GPU and its driver at start (patch 2082): the vendor's name, the
++ * driver version decoded the way that vendor packs it, and the largest device-local memory heap. Pure functions, no
++ * Vulkan headers, so the host tests build them without a GPU (tools/tests/test_vk_driver.c in the port).
++ *
++ * VkPhysicalDeviceProperties.driverVersion is vendor-defined. Written from the Vulkan specification and the vendors'
++ * public notes on their packing:
++ *   - NVIDIA: 10 bits major, 8 bits minor, 8 bits secondary branch, 6 bits tertiary branch: 566.36 is
++ *     (566 << 22) | (36 << 14). Shown as major.minor (two digits, as NVIDIA writes it), plus the branches when set.
++ *   - Intel's Windows driver: 18 bits major, 14 bits minor: 101.6130 is (101 << 14) | 6130. Intel's Mesa driver on
++ *     Linux uses the standard packing.
++ *   - Everything else (AMD, Mesa, ARM, Qualcomm...): VK_MAKE_VERSION, 10 bits major, 10 minor, 12 patch.
++ */
++#ifndef PS3RECOMP_RSX_VK_DRIVER_H
++#define PS3RECOMP_RSX_VK_DRIVER_H
++
++#include <stddef.h>
++#include <stdint.h>
++#include <stdio.h>
++
++#define RSX_VK_VENDOR_AMD      0x1002u
++#define RSX_VK_VENDOR_NVIDIA   0x10DEu
++#define RSX_VK_VENDOR_INTEL    0x8086u
++#define RSX_VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS 5u   /* VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS */
++#define RSX_VK_HEAP_DEVICE_LOCAL 0x1u                   /* VK_MEMORY_HEAP_DEVICE_LOCAL_BIT */
++
++static inline const char* rsx_vk_vendor_name(uint32_t vendor)
++{
++    switch (vendor) {
++    case RSX_VK_VENDOR_AMD:    return "AMD";
++    case RSX_VK_VENDOR_NVIDIA: return "NVIDIA";
++    case RSX_VK_VENDOR_INTEL:  return "Intel";
++    case 0x13B5u:              return "ARM";
++    case 0x5143u:              return "Qualcomm";
++    case 0x1010u:              return "Imagination";
++    case 0x106Bu:              return "Apple";
++    case 0x10005u:             return "Mesa";   /* VK_VENDOR_ID_MESA: llvmpipe/lavapipe */
++    default:                   return "unknown vendor";
++    }
++}
++
++/* driverVersion as text into buf (always terminated). driver_id is VkPhysicalDeviceDriverProperties.driverID, 0 when
++ * not known; on_windows says which Intel driver it is when the id is not known. Returns buf. */
++static inline const char* rsx_vk_driver_version_text(char* buf, size_t n, uint32_t vendor, uint32_t driver_id,
++                                                     uint32_t v, int on_windows)
++{
++    if (!buf || !n) return buf;
++    if (vendor == RSX_VK_VENDOR_NVIDIA) {
++        const unsigned major = v >> 22, minor = (v >> 14) & 0xFFu, sec = (v >> 6) & 0xFFu, ter = v & 0x3Fu;
++        if (sec || ter) snprintf(buf, n, "%u.%02u.%u.%u", major, minor, sec, ter);
++        else snprintf(buf, n, "%u.%02u", major, minor);
++    } else if (vendor == RSX_VK_VENDOR_INTEL &&
++               (driver_id == RSX_VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS || (!driver_id && on_windows))) {
++        snprintf(buf, n, "%u.%u", v >> 14, v & 0x3FFFu);
++    } else {
++        snprintf(buf, n, "%u.%u.%u", v >> 22, (v >> 12) & 0x3FFu, v & 0xFFFu);
++    }
++    return buf;
++}
++
++/* The largest heap flagged device-local (VRAM on a discrete card; on an integrated one the share of system memory
++ * the driver offers), in bytes; 0 when there is none. */
++static inline uint64_t rsx_vk_device_local_bytes(const uint64_t* size, const uint32_t* flags, uint32_t count)
++{
++    uint64_t best = 0;
++    for (uint32_t i = 0; i < count; i++)
++        if ((flags[i] & RSX_VK_HEAP_DEVICE_LOCAL) && size[i] > best) best = size[i];
++    return best;
++}
++
++#endif /* PS3RECOMP_RSX_VK_DRIVER_H */
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 1d4f067..b0fbf61 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -69,6 +69,7 @@ static float vk_forced_aspect(void);   /* PS3RECOMP_VK_ASPECT, at vk_fit_scale *
+ #include "vulkan/rsx_vk_fsr1_easu_comp.spv.h"
+ #include "vulkan/rsx_vk_fsr1_rcas_comp.spv.h"
+ #include "rsx_swapchain_retry.h"   /* a swapchain not recreated: skip, try again */
++#include "rsx_vk_driver.h"   /* the GPU and driver lines at start (2082) */
+ /* FSR 1's constants, computed on the CPU (vulkan/ffx, MIT). */
+ #include <math.h>
+ #include <stdlib.h>
+@@ -820,6 +821,52 @@ void rsx_vulkan_latency_sleep(void)
+     vk_reflex_marker(s_reflex.frame, VK_LATENCY_MARKER_SIMULATION_START_NV);
+ }
+ 
++/* The GPU and its driver, for bug reports (patch 2082). One line always:
++ *   gpu: <name>, vendor 0x1002 (AMD), device 0x73FF, driver version 2.0.302, VRAM 8176 MiB
++ * (driverVersion decoded as the vendor packs it, rsx_vk_driver.h; VRAM is the largest device-local heap), and,
++ * when the device has VkPhysicalDeviceDriverProperties (Vulkan 1.2 or VK_KHR_driver_properties) and the instance
++ * is 1.1 or later (vkGetPhysicalDeviceProperties2):
++ *   driver: <driverName> <driverInfo> (driver id N, conformance a.b.c.d)
++ * which names AMD's and Intel's release (driverInfo, for example "24.10.1") where driverVersion does not. */
++static u32 s_inst_api = VK_API_VERSION_1_0;   /* the instance's apiVersion */
++static void vk_log_driver(const VkPhysicalDeviceProperties* p)
++{
++    u32 driver_id = 0;
++    char name[VK_MAX_DRIVER_NAME_SIZE + VK_MAX_DRIVER_INFO_SIZE + 2] = "";
++    VkConformanceVersion conf = { 0, 0, 0, 0 };
++    PFN_vkGetPhysicalDeviceProperties2 gp2 = s_inst_api >= VK_API_VERSION_1_1 && p->apiVersion >= VK_API_VERSION_1_1
++        ? (PFN_vkGetPhysicalDeviceProperties2)pvkGetInstanceProcAddr(s_vk.instance, "vkGetPhysicalDeviceProperties2")
++        : NULL;
++    if (gp2 && (p->apiVersion >= VK_API_VERSION_1_2 ||
++                vk_has_device_extension(s_vk.phys, VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))) {
++        VkPhysicalDeviceDriverProperties dp = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES };
++        VkPhysicalDeviceProperties2 p2 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &dp };
++        gp2(s_vk.phys, &p2);
++        dp.driverName[VK_MAX_DRIVER_NAME_SIZE - 1] = 0;
++        dp.driverInfo[VK_MAX_DRIVER_INFO_SIZE - 1] = 0;
++        driver_id = (u32)dp.driverID;
++        conf = dp.conformanceVersion;
++        snprintf(name, sizeof name, "%s%s%s", dp.driverName, dp.driverInfo[0] ? " " : "", dp.driverInfo);
++    }
++#ifdef _WIN32
++    const int on_windows = 1;
++#else
++    const int on_windows = 0;
++#endif
++    char ver[48];
++    rsx_vk_driver_version_text(ver, sizeof ver, p->vendorID, driver_id, p->driverVersion, on_windows);
++    uint64_t hs[VK_MAX_MEMORY_HEAPS]; uint32_t hf[VK_MAX_MEMORY_HEAPS];
++    const u32 nh = s_vk.memprops.memoryHeapCount < VK_MAX_MEMORY_HEAPS ? s_vk.memprops.memoryHeapCount
++                                                                        : VK_MAX_MEMORY_HEAPS;
++    for (u32 i = 0; i < nh; i++) { hs[i] = s_vk.memprops.memoryHeaps[i].size; hf[i] = s_vk.memprops.memoryHeaps[i].flags; }
++    const uint64_t vram = rsx_vk_device_local_bytes(hs, hf, nh);
++    VK_LOG("gpu: %s, vendor 0x%04X (%s), device 0x%04X, driver version %s, VRAM %llu MiB\n", p->deviceName,
++           p->vendorID, rsx_vk_vendor_name(p->vendorID), p->deviceID, ver, (unsigned long long)(vram >> 20));
++    if (name[0])
++        VK_LOG("driver: %s (driver id %u, conformance %u.%u.%u.%u)\n", name, driver_id, conf.major, conf.minor,
++               conf.subminor, conf.patch);
++}
++
+ static int vk_pick_device(void)
+ {
+     u32 n = 0;
+@@ -865,6 +912,7 @@ static int vk_pick_device(void)
+      * the device really has (a title's 4608-wide target on RADV). */
+     s_vk.max_dim = p.limits.maxImageDimension2D >= 4096u ? p.limits.maxImageDimension2D : 4096u;
+     VK_LOG("using device %d: %s\n", best, p.deviceName);
++    vk_log_driver(&p);
+     return 0;
+ }
+ 
+@@ -7245,9 +7293,17 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+             if (k == ni) iext[ni++] = ia[i];
+         }
+     }
++    /* Vulkan 1.1 when the loader has it (every loader since 2018), for vkGetPhysicalDeviceProperties2 and the
++     * driver line (2082); the entry points used stay 1.0's. A 1.0 loader keeps 1.0 and only the gpu line. */
++    s_inst_api = VK_API_VERSION_1_0;
++    { PFN_vkEnumerateInstanceVersion eiv = (PFN_vkEnumerateInstanceVersion)
++          pvkGetInstanceProcAddr(NULL, "vkEnumerateInstanceVersion");
++      u32 lv = VK_API_VERSION_1_0;
++      if (eiv && eiv(&lv) == VK_SUCCESS && lv >= VK_API_VERSION_1_1) s_inst_api = VK_API_VERSION_1_1; }
++    if (s_reflex.want || s_tm.want) s_inst_api = VK_API_VERSION_1_2;
+     VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+                               .pApplicationName = "ps3recomp", .pEngineName = "ps3recomp RSX",
+-                              .apiVersion = s_reflex.want || s_tm.want ? VK_API_VERSION_1_2 : VK_API_VERSION_1_0 };
++                              .apiVersion = s_inst_api };
+     VkInstanceCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                                 .pApplicationInfo = &app };
+     ci.enabledExtensionCount   = ni;
