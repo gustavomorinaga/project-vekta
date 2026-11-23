@@ -48,6 +48,12 @@ The European edition (NPEA00418, and the disc BCES-01743) is not supported: its 
 You can keep the files anywhere: set the variables in the third column to point at them, or link them into `Game/`.
 `Game/` and `work/` are ignored by git, so nothing you put there can be committed by accident.
 
+**From the disc, with no RPCS3 installed.** `--disc FOLDER` (the copied disc, or its `PS3_EXTRA` package) has the
+official RPCS3, downloaded at a pinned version, install the package into `work/prep/disc` and decrypt `EBOOT.BIN`
+into `work/prep` ([INSTALL.md](INSTALL.md); `tools/release/rpcs3_disc.py`). Only the disc's package is taken
+(3,182,645,568 bytes, SHA-256 `94e8db935dca69b5c8b46f21196a923da957fcaf123c895c51cdc6dde4f50179`); the installed files
+are checked against the table below.
+
 ## Checking them
 
 ```sh

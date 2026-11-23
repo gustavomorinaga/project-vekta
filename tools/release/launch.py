@@ -468,7 +468,8 @@ def firstrun_args(root, a, environ=None):
     nothing given or saved, --rpcs3: RPCS3 and the game in their usual places, so that a first start asks nothing.
     A game folder without a decrypted EBOOT (--game, no --eboot nor KZ_EBOOT) is the folder RPCS3 installed, with
     its encrypted EBOOT.BIN: it is also the hint of --rpcs3, so that the player's RPCS3 makes the decrypted copy (a
-    launcher such as RecompLauncher passes only the game folder)."""
+    launcher such as RecompLauncher passes only the game folder). --disc PATH (the disc with no RPCS3 installed,
+    rpcs3_disc.py) is passed on as it is and wins over the RPCS3 route."""
     environ = os.environ if environ is None else environ
     out = []
     for name, _ in INPUTS:
@@ -477,7 +478,9 @@ def firstrun_args(root, a, environ=None):
     given = bool(out)
     rpcs3 = getattr(a, "rpcs3", None)
     game = getattr(a, "game", None)
-    if rpcs3 is not None:
+    if getattr(a, "disc", None):
+        out += ["--disc", os.path.abspath(a.disc)]
+    elif rpcs3 is not None:
         out += ["--rpcs3"] + ([os.path.abspath(rpcs3)] if rpcs3 else [])
     elif game and not getattr(a, "eboot", None) and not environ.get("KZ_EBOOT"):
         out += ["--rpcs3", os.path.abspath(game)]
@@ -501,6 +504,7 @@ def firstrun_env(root):
 
 def classify(step, reasons, rc, timed_out=False):
     """The exit code (kz_exit.h) for a first run that did not finish: firstrun.py's failing step and REASON lines."""
+    import rpcs3_disc
     import rpcs3_import
     text = "\n".join(reasons)
     if timed_out or rc == 130 or step == "cancelled":
@@ -511,9 +515,10 @@ def classify(step, reasons, rc, timed_out=False):
         return EXIT_CPU
     if any(rpcs3_import.HELP[k][:40] in text for k in ("not_found", "not_rpcs3", "no_exe")):
         return NO_RPCS3
-    if "DIFFERENT" in text or rpcs3_import.HELP["wrong_file"][:40] in text:
+    if "DIFFERENT" in text or rpcs3_import.HELP["wrong_file"][:40] in text or \
+            any(rpcs3_disc.HELP[k][:40] in text for k in ("not_pkg", "psn_pkg", "bad_pkg")):
         return WRONG_EDITION
-    if step in ("check", "rpcs3"):
+    if step in ("check", "rpcs3", "disc"):
         return FILE_MISSING
     return BUILD_FAILED
 
@@ -527,6 +532,7 @@ def prepare(root, a, out=None, popen=subprocess.Popen, poll=1.0):
     out = out or sys.stdout
     labels = {st.name: st.label for st in firstrun.STEPS}
     labels["rpcs3"] = "Making the decrypted copies with your RPCS3"
+    labels["disc"] = "Installing the game from your disc with the official RPCS3"
     stop = os.path.join(root, "work", "logs", "prepare-stop")
     os.makedirs(os.path.dirname(stop), exist_ok=True)
     if os.path.exists(stop):
@@ -626,6 +632,9 @@ def parser():
                         help=f"your {name} ({var}; kept in work/paths.env)")
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
                     help="take the game from your RPCS3 (DIR, else its usual places)")
+    ap.add_argument("--disc", metavar="PATH",
+                    help="install the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) with "
+                         "the official RPCS3, downloaded for this (no RPCS3 of yours needed)")
     ap.add_argument("--dlss", choices=("accept", "decline"),
                     help="accept: you accept NVIDIA's DLSS SDK licence and the build downloads it (firstrun.py --dlss)")
     ap.add_argument("--repair", action="store_true", help='"Verify and rebuild": check the install, then rebuild')

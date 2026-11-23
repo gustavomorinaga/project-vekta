@@ -121,6 +121,10 @@ Python packages, and these, only when you choose them:
   (`raw.githubusercontent.com/NVIDIA/DLSS`, pinned to v310.9.16 and checked by SHA-256) into
   `work/toolchain-cache/dlss-sdk/`. The question first downloads the licence's text from there, for you to read.
   Declined, nothing is downloaded and the build has no DLSS.
+- **The official RPCS3, for a game straight from the disc**: only when you choose `--disc` (no RPCS3 of yours
+  installed), the build downloads RPCS3 0.0.43-20640 from RPCS3's own GitHub releases
+  (`github.com/RPCS3/rpcs3-binaries-linux` or `-win`, checked by SHA-256) into `work/toolchain-cache/rpcs3/`, to
+  install the disc's package and decrypt its EBOOT there. Nothing is downloaded from Sony.
 - **New-version check** (off by default): turned on with `KZ_VERSION_CHECK=1`, or with
   `tools/release/version_check.py --enable` in an install made by the setup program, the launcher asks GitHub's public
   API for this project's latest release (`api.github.com/repos/gustavomorinaga/project-vekta/releases`) at most

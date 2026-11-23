@@ -8,7 +8,15 @@
       "id": "game",
       "label": "Your installed Killzone HD folder (NPUA80856, version 01.00, from the Killzone Trilogy disc or the PlayStation Store): the folder with PARAM.SFO and USRDIR, as your PS3 or RPCS3 installed it.",
       "role": "game",
+      "optional": true,
       "formats": [{ "type": "folder" }]
+    },
+    {
+      "id": "disc",
+      "label": "Or, with no RPCS3: your Killzone Trilogy disc copied to this PC (its folder, with PS3_GAME and PS3_EXTRA, or the Killzone HD package DATA000.PKG). The official RPCS3 is downloaded from RPCS3's own GitHub releases to install the game into the install folder; on Windows 10, install 7-Zip first. Leave the game folder empty then.",
+      "role": "disc",
+      "optional": true,
+      "formats": [{ "type": "folder" }, { "type": "file", "extensions": ["pkg"] }]
     },
     {
       "id": "eboot",
@@ -20,8 +28,8 @@
   ],
   "prepare": {
     "program": ["scripts/prepare.cmd", "scripts/prepare.sh"],
-    "args": ["--game={input:game}", "--eboot={input:eboot}"],
-    "label": "Checking your files and building the port on this PC (5 to 30 minutes; nothing of the game is downloaded)",
+    "args": ["--game={input:game}", "--eboot={input:eboot}", "--disc={input:disc}"],
+    "label": "Checking your files and building the port on this PC (5 to 30 minutes; nothing of the game is downloaded, only the official RPCS3 when you give the disc)",
     "timeout": 7200,
     "version": "stamped by tools/release/recomplauncher.py: the release's VERSION",
     "done": ["{install}/work/build-stamp.json"],

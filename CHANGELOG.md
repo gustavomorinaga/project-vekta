@@ -8,6 +8,13 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- The game straight from the Killzone Trilogy disc, with no RPCS3 installed: `--disc FOLDER` (the copied disc, or
+  its `PS3_EXTRA` package) on `Project Vekta.exe`, `./project-vekta` and the prepare scripts downloads the official
+  RPCS3 at a pinned version (checked by SHA-256), which installs the package into the port's `work` folder with no
+  window and decrypts a copy of the EBOOT there; the disc is only read and an RPCS3 of yours is not touched
+  (docs/INSTALL.md). The setup's "Your game" page offers it as "From my Killzone Trilogy disc", and
+  recomplauncher.json as a disc field beside the game folder. On Windows 10, 7-Zip unpacks the RPCS3 download. The
+  PlayStation Store package still goes through "Use my RPCS3 install".
 - Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by
   GitHub, that the repository's release workflow built that very file from the tagged commit.
   `gh attestation verify <file> --repo gustavomorinaga/project-vekta` checks a download against it

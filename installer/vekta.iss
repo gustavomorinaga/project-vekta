@@ -14,12 +14,13 @@
 ; the full SHA-256 check is the build's first step). Start-menu entries (the game, "Verify and rebuild", "Open saves
 ; folder", "Make a support package", the project page, the uninstaller) and an optional desktop shortcut, all on
 ; the launcher "Project Vekta.exe", which builds on its first start when the build did not run here. It downloads
-; nothing, except NVIDIA DLSS when the player ticks its box (unticked by default): the box accepts NVIDIA's DLSS SDK
+; nothing, except the official RPCS3 when the player installs the game from the disc ("From my Killzone Trilogy disc":
+; firstrun.py --disc, tools/release/rpcs3_disc.py) and NVIDIA DLSS when the player ticks its box (unticked by default): the box accepts NVIDIA's DLSS SDK
 ; licence, and the build then fetches the SDK's files from NVIDIA's repository on this machine (firstrun.py --dlss
 ; accept; nvngx_dlss.dll goes beside KZ1HD.exe). The answer is kept in work\dlss-choice and offered again on an
 ; upgrade; running setup again (or scripts\run.cmd --dlss accept|decline) changes it.
 ; Silent install: setup /VERYSILENT /SUPPRESSMSGBOXES [/DIR=<folder>] [/GAME=<dir> /EBOOT=<file> /PSARC=<file>]
-; [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with the game and
+; [/DISC=<the copied disc's folder>] [/DLSS=accept] [/MERGETASKS="!buildnow"] /LOG=<file>. The pages are skipped; with the game and
 ; its files given it saves them and builds (the log says how it went), without them it builds nothing and the first start
 ; asks. /RPCS3=<dir> (or the folder picked with "Find RPCS3..." last time) is where the "Your game" page looks for
 ; RPCS3 first. The saves and settings go to %APPDATA%\Project Vekta, or with the "portable" task (/MERGETASKS="portable")
@@ -223,6 +224,7 @@ var
   RpcsLooked, RpcsOK: Boolean;
   RpcsHint, RpcsRoot, RpcsGame, RpcsProblems: String;
   GamePage: TInputDirWizardPage;
+  DiscPage: TInputDirWizardPage;
   FilesPage: TInputFileWizardPage;
   DlssPage: TWizardPage;
   DlssCheck: TNewCheckBox;
@@ -545,16 +547,20 @@ end;
 procedure InitializeWizard;
 begin
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
-    'From your RPCS3, or from files you pick.',
+    'From your RPCS3, your Killzone Trilogy disc, or files you pick.',
     'Setup looks for RPCS3 with Killzone HD ({#TitleId}) installed. With it, your RPCS3 ' +
     'decrypts a copy of the game''s EBOOT into the install folder during the build, and nothing needs preparing by ' +
-    'hand. Your game and RPCS3 folders are only read.', True, False);
+    'hand. Your game, disc and RPCS3 folders are only read.', True, False);
   SourcePage.Add('Use my RPCS3 install');
   SourcePage.Add('I will pick the game folder and the decrypted files myself');
+  SourcePage.Add('From my Killzone Trilogy disc, with no RPCS3 (the official RPCS3 is downloaded)');
   SourcePage.Add('Show me how');
   SourcePage.SelectedValueIndex := 1;
+  if (Pick('DISC', 'Disc') <> '') and ((ExpandConstant('{param:DISC|}') <> '') or
+     (GetPreviousData('Source', '') = 'disc')) then
+    SourcePage.SelectedValueIndex := 2;
   { The automatic search runs when the page is first shown; "Find RPCS3..." looks in the folder the player picks }
-  { Three items tall at any display scale: a fixed ScaleY height put the list in a scroll box at 125% (#135) }
+  { All its items tall at any display scale: a fixed ScaleY height put the list in a scroll box at 125% (#135) }
   SourcePage.CheckListBox.Height := OptionListHeight(SourcePage);
   RpcsBrowse := TNewButton.Create(SourcePage);
   RpcsBrowse.Parent := SourcePage.Surface;
@@ -574,7 +580,15 @@ begin
   RpcsNote.WordWrap := True;
   RpcsNote.Height := SourcePage.SurfaceHeight - RpcsNote.Top;
   RpcsNote.Caption := '';
-  GamePage := CreateInputDirPage(SourcePage.ID, 'Your game',
+  DiscPage := CreateInputDirPage(SourcePage.ID, 'Your game',
+    'Your Killzone Trilogy disc, copied to this PC.',
+    'Pick the copied disc''s folder: it holds PS3_GAME and PS3_EXTRA (a disc image, .iso, must be opened first: ' +
+    'double-click it and pick the drive it opens as). Setup only reads it. The build downloads the official RPCS3 ' +
+    '(about 37 MB, from RPCS3''s own GitHub releases), which installs the Killzone HD package into the install ' +
+    'folder with no window and decrypts a copy of its EBOOT there: about 4 GB more disk. On Windows 10, install ' +
+    '7-Zip first (https://www.7-zip.org) to unpack it.', False, '');
+  DiscPage.Add('Killzone Trilogy disc folder:');
+  GamePage := CreateInputDirPage(DiscPage.ID, 'Your game',
     'The installed Killzone HD ({#TitleId}), from your own Killzone Trilogy disc or PlayStation Store copy.',
     'Pick the installed game folder: it holds PARAM.SFO, TROPDIR and USRDIR (in RPCS3: dev_hdd0\game\{#TitleId}; ' +
     'picking the folder it is in also works). Setup only reads it.', False, '');
@@ -588,6 +602,7 @@ begin
   FilesPage.Add('data_ps3.psarc (optional: the data archive, decrypted; empty = the game''s own .edat):', 'PSARC files (*.psarc)|*.psarc|All files|*.*', '.psarc');
   CreateDlssPage(FilesPage.ID);
   GamePage.Values[0] := Pick('GAME', 'Game');
+  DiscPage.Values[0] := Pick('DISC', 'Disc');
   FilesPage.Values[0] := Pick('EBOOT', 'Eboot');
   FilesPage.Values[1] := Pick('PSARC', 'Psarc');
   { unticked unless the player accepted before (an upgrade) or passed /DLSS=accept }
@@ -598,8 +613,11 @@ procedure RegisterPreviousData(PreviousDataKey: Integer);
 begin
   if SourcePage.SelectedValueIndex = 0 then
     SetPreviousData(PreviousDataKey, 'Source', 'rpcs3')
+  else if SourcePage.SelectedValueIndex = 2 then
+    SetPreviousData(PreviousDataKey, 'Source', 'disc')
   else
     SetPreviousData(PreviousDataKey, 'Source', 'files');
+  SetPreviousData(PreviousDataKey, 'Disc', DiscPage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Game', GamePage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Eboot', FilesPage.Values[0]);
   SetPreviousData(PreviousDataKey, 'Psarc', FilesPage.Values[1]);
@@ -671,19 +689,21 @@ begin
   if RpcsOK then begin
     SourcePage.CheckListBox.ItemCaption[0] := 'Use my RPCS3 install (' + RpcsRoot + ')';
     SourcePage.CheckListBox.ItemEnabled[0] := True;
-    SourcePage.SelectedValueIndex := 0;
-    if (Hint = GetPreviousData('Rpcs3Dir', '')) and (GetPreviousData('Source', '') = 'files') then
-      SourcePage.SelectedValueIndex := 1;
+    if SourcePage.SelectedValueIndex <> 2 then begin   { the disc, when chosen, stays chosen }
+      SourcePage.SelectedValueIndex := 0;
+      if (Hint = GetPreviousData('Rpcs3Dir', '')) and (GetPreviousData('Source', '') = 'files') then
+        SourcePage.SelectedValueIndex := 1;
+    end;
     RpcsNote.Font.Color := clWindowText;
     RpcsNote.Caption := 'Found: Killzone HD in ' + RpcsGame + '.';
   end else begin
     SourcePage.CheckListBox.ItemCaption[0] := 'Use my RPCS3 install (not available: the reason is below)';
     SourcePage.CheckListBox.ItemEnabled[0] := False;
-    SourcePage.SelectedValueIndex := 1;
+    if SourcePage.SelectedValueIndex <> 2 then SourcePage.SelectedValueIndex := 1;
     RpcsNote.Font.Color := clRed;
     RpcsNote.Caption := 'Your RPCS3 cannot be used:' + #13#10 + RpcsProblems + #13#10 +
       'If your RPCS3 is elsewhere, press "Find RPCS3..." and pick its folder. Or fix that and run the setup ' +
-      'again, or pick your files yourself.';
+      'again, pick your files yourself, or install the game from your disc.';
   end;
 end;
 
@@ -691,6 +711,27 @@ end;
 function UseRpcs3: Boolean;
 begin
   Result := RpcsOK and (SourcePage.SelectedValueIndex = 0);
+end;
+
+{ The disc route (tools/release/rpcs3_disc.py, firstrun.py --disc): the disc folder instead of the file pages }
+function UseDisc: Boolean;
+begin
+  Result := SourcePage.SelectedValueIndex = 2;
+end;
+
+{ '' when Dir can be the disc's folder, else why not; firstrun.py --disc then finds and checks the package itself }
+function DiscProblem(Dir: String): String;
+begin
+  Result := '';
+  if Dir = '' then
+    Result := 'Pick the folder of your copied Killzone Trilogy disc (it holds PS3_GAME and PS3_EXTRA).'
+  else if not DirExists(Dir) then
+    Result := 'There is no folder ' + Dir + '. Pick the folder of your copied Killzone Trilogy disc (it holds ' +
+      'PS3_GAME and PS3_EXTRA); a disc image (.iso) must be opened first.'
+  else if not DirExists(AddBackslash(Dir) + 'PS3_EXTRA') and
+          (CompareText(ExtractFileName(RemoveBackslashUnlessRoot(Dir)), 'PS3_EXTRA') <> 0) then
+    Result := 'No PS3_EXTRA folder in ' + Dir + '. Pick the folder of your copied Killzone Trilogy disc (it holds ' +
+      'PS3_GAME and PS3_EXTRA, where the Killzone HD package is).';
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -783,17 +824,25 @@ begin
       MsgBox(Problem, mbError, MB_OK);
       Result := False;
     end;
-  end else if (CurPageID = SourcePage.ID) and (SourcePage.SelectedValueIndex = 2) then begin
+  end else if (CurPageID = SourcePage.ID) and (SourcePage.SelectedValueIndex = 3) then begin
     { "Show me how": the steps (the same as firstrun.py's SHOW_ME_HOW), then the page again }
     MsgBox('The easy way, through RPCS3:' + #13#10 +
       '1. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc, or your PlayStation Store ' +
       'copy with its licence.' + #13#10 +
       '2. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
       'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
+      'Or, with no RPCS3: copy your Killzone Trilogy disc to this PC and choose "From my Killzone Trilogy disc": ' +
+      'the official RPCS3 is downloaded and installs the game into the install folder.' + #13#10#13#10 +
       'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +
       'myself" and give the installed game folder and EBOOT.elf.' + #13#10#13#10 +
       'Every step: {#InstallDoc}' + #13#10 + 'What each file must be: {#FilesDoc}', mbInformation, MB_OK);
     Result := False;
+  end else if CurPageID = DiscPage.ID then begin
+    Problem := DiscProblem(DiscPage.Values[0]);
+    if Problem <> '' then begin
+      MsgBox(Problem, mbError, MB_OK);
+      Result := False;
+    end;
   end else if CurPageID = GamePage.ID then begin
     GamePage.Values[0] := ResolveGame(GamePage.Values[0]);
     Problem := GameProblem(GamePage.Values[0]);
@@ -813,9 +862,10 @@ end;
 { Silent installs never press Next: the pages are skipped, and the values are checked here instead }
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := WizardSilent and ((PageID = SourcePage.ID) or (PageID = GamePage.ID) or (PageID = FilesPage.ID) or
-    (PageID = DlssPage.ID));
-  if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID)) then Result := True;
+  Result := WizardSilent and ((PageID = SourcePage.ID) or (PageID = DiscPage.ID) or (PageID = GamePage.ID) or
+    (PageID = FilesPage.ID) or (PageID = DlssPage.ID));
+  if (UseRpcs3 or UseDisc) and ((PageID = GamePage.ID) or (PageID = FilesPage.ID)) then Result := True;
+  if (PageID = DiscPage.ID) and not UseDisc then Result := True;
 end;
 
 { The required files, checked; silent installs with any of them missing build nothing }
@@ -825,6 +875,12 @@ var
 begin
   if UseRpcs3 then begin
     Result := True;   { firstrun.py --rpcs3 checks them, after the decrypted copies are made }
+    Exit;
+  end;
+  if UseDisc then begin
+    P := DiscProblem(DiscPage.Values[0]);   { firstrun.py --disc checks the package itself }
+    Result := P = '';
+    if not Result then Log('disc: ' + P);
     Exit;
   end;
   P := '';
@@ -840,6 +896,10 @@ begin
   Result := '';
   if UseRpcs3 then begin
     Result := ' --rpcs3 ' + Quote(RpcsRoot);
+    Exit;
+  end;
+  if UseDisc then begin
+    Result := ' --disc ' + Quote(RemoveBackslashUnlessRoot(DiscPage.Values[0]));
     Exit;
   end;
   if GamePage.Values[0] <> '' then Result := Result + ' --game ' + Quote(ResolveGame(GamePage.Values[0]));
@@ -860,6 +920,7 @@ function StepLabel(Name: String): String;
 begin
   { The steps of tools/release/firstrun.py (tools/tests/test_setup.py checks the names) }
   if Name = 'rpcs3' then Result := 'Decrypting copies with your RPCS3'
+  else if Name = 'disc' then Result := 'Installing the game from your disc with the official RPCS3'
   else if Name = 'check' then Result := 'Checking your game files'
   else if Name = 'venv' then Result := 'Installing the build tools'
   else if Name = 'patch' then Result := 'Patching ps3recomp'
@@ -994,7 +1055,8 @@ procedure SavePaths;
 var
   RC: Integer;
 begin
-  if (PathArgs = '') or UseRpcs3 then Exit;   { the RPCS3 route saves its paths when it has made the copies }
+  { the RPCS3 and disc routes save their paths when they have made the copies }
+  if (PathArgs = '') or UseRpcs3 or UseDisc then Exit;
   if Exec(ExpandConstant('{app}\work\toolchain-cache\python\python.exe'),
           Quote(ExpandConstant('{app}\tools\release\firstrun.py')) + ' --root ' + Quote(ExpandConstant('{app}')) +
           ' --save-paths' + PathArgs, ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, RC) and (RC = 0) then
