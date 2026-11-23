@@ -211,6 +211,7 @@
 <li><span class="kind">Changed</span>A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the README banner, the social preview, the Windows setup&#x27;s pictures and the program icons (now lettered KZ1) are drawn in steel blue with a V chevron by one script, <code>tools/release/installer_art.py</code>, with the Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.</li>
 <li><span class="kind">Changed</span>The setup, the launcher&#x27;s page and the docs now say the first build takes 5 to 30 minutes instead of about five: on four cores and a hard disk it took close to half an hour (#134).</li>
 <li><span class="kind">Changed</span>The install and troubleshooting pages say that RPCS3 needs Microsoft&#x27;s Visual C++ runtime on a fresh Windows, without which &quot;Use my RPCS3 install&quot; fails (#136).</li>
+<li><span class="kind">Changed</span>The first run takes the movies out of the game&#x27;s archive faster and with less memory: each movie is written to its file as it is read, instead of being put together in memory first, which copied the whole movie so far at every block (<code>tools/psarc_ls.py</code>; on made-up data a 31 MB movie took 2.8 s of copying, now 0.01 s). An archive that is cut short is named in the error.</li>
 <li><span class="kind">Changed</span>The release folders no longer carry two sets of files that no build reads (glslang&#x27;s test shaders and the registry Vulkan&#x27;s headers are generated from): about 55 MB and 3,400 files less on disk after install, and about 5 MB less to download.</li>
 <li><span class="kind">Fixed</span>The build no longer stops at &quot;Preparing the game&#x27;s data&quot; when the install folder&#x27;s path has accented letters (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).</li>
 <li><span class="kind">Fixed</span>A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran on with no window and closed after about 45 seconds without a word (#131).</li>
@@ -258,11 +259,11 @@
 <li><time>next</time><span><b>Unreleased</b> A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The setup, the launcher&#x27;s page and the docs now say the first build takes 5 to 30 minutes instead of about five: on...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The install and troubleshooting pages say that RPCS3 needs Microsoft&#x27;s Visual C++ runtime on a fresh Windows, without...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The first run takes the movies out of the game&#x27;s archive faster and with less memory: each movie is written to its...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The release folders no longer carry two sets of files that no build reads (glslang&#x27;s test shaders and the registry...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The build no longer stops at &quot;Preparing the game&#x27;s data&quot; when the install folder&#x27;s path has accented letters (a letter...</span></li>
 <li><time>next</time><span><b>Unreleased</b> A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran on...</span></li>
 <li><time>next</time><span><b>Unreleased</b> On a CPU too old for the port, Project Vekta.exe says so at once. Before, the message could take 30 to 90 seconds on...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The setup fits a 1280x800 screen at 150% display scale (Next and Cancel were under the taskbar), and its &quot;Your game&quot;...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
