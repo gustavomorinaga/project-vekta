@@ -156,7 +156,8 @@ for scripted input (see `tools/run.sh` and `docs/dev/testing.md`).
 
 What CI runs on every push and pull request needs no game files and no GPU: `tools/ps3recomp-patched.sh`,
 `tools/check-tree.sh`, `tools/lint.sh` (shellcheck and ruff) and `tools/run-host-tests.sh` (the list is
-`tools/host-tests.txt`; bash, Python 3, a C compiler and bubblewrap). Write a new test in `tools/tests/` and add it to the list.
+`tools/host-tests.txt`; bash, Python 3, a C compiler and bubblewrap; `-j N` runs N tests at the same time, as CI
+does). Write a new test in `tools/tests/` and add it to the list.
 
 ## Windows x64 (cross-built on Linux)
 
