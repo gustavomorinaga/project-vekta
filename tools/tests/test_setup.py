@@ -64,8 +64,14 @@ sizes = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
 for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc")):
     m = re.search(r'#define %s "(\d+)"' % define, text)
     check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
-check("FlashPage" not in text and "#define Firmware" not in text and "dev_flash" not in text,
+# dev_flash may appear only in [UninstallDelete]: the stand-in the game writes there and its empty folders (#132)
+asked = re.sub(r"(?ms)^\[UninstallDelete\].*?(?=^\[)", "", text)
+check("FlashPage" not in text and "#define Firmware" not in text and "dev_flash" not in asked,
       "the setup asks for no firmware (no dev_flash page)")
+undel = re.search(r"(?ms)^\[UninstallDelete\](.*?)(?=^\[)", text).group(1)
+check(r'Type: files; Name: "{app}\work\vfs\dev_flash\sys\external\flashMP3.pic"' in undel and
+      r'Type: dirifempty; Name: "{app}\work\vfs"' in undel,
+      "uninstall removes the game's flashMP3.pic stand-in and the build's empty work\\vfs folders (#132)")
 check("'USRDIR\\data_ps3.psarc.edat'" in text, "the wizard takes the game's .edat when the archive is left empty")
 # The build in the wizard runs firstrun.py with options it has, and names its steps
 import firstrun  # noqa: E402
