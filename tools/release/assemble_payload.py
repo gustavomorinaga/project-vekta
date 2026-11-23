@@ -9,7 +9,8 @@ The payload keeps the repository's own layout, so tools/kzbuild.py and tools/rel
 run in a clone (the player's files, the lift and the build go to its work/ like in a clone):
 
   tools/          kzbuild.py, check-game-files.py, psarc_ls.py, extract_spu_modules.py and, in tools/release/,
-                  firstrun.py, launch.py, rpcs3_import.py, rpcs3_locate.py, rpcs3_disc.py, version_check.py, support.py, fetch_toolchain.py,
+                  firstrun.py, launch.py, rpcs3_import.py, rpcs3_locate.py, rpcs3_disc.py, version_check.py, support.py, sessions.py,
+                  symbols.py, fetch_toolchain.py,
                   build_win_deps.py, toolchain.json
   re/             function_seeds.txt (the lift's seeds)
   port/           port/kz1hd (its sources, no tests) and port/cmake/*.cmake
@@ -31,9 +32,10 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
   Project Vekta.exe   with --launcher EXE: the launcher tools/release/build_launcher.py builds, the one startable
                       file at the top (a launcher such as Quiver takes the one it finds there)
   scripts/        run.cmd (the first run with its questions), play.cmd (play in a console), prepare.cmd (check and
-                  build with no window or question, for a launcher: launch.py --prepare), from installer/
+                  build with no window or question, for a launcher: launch.py --prepare), support.cmd (the support
+                  package: launch.py --support-package), from installer/
   The Linux folder (--platform linux) has the same rule: project-vekta (installer/linux/project-vekta) is its one
-  startable file at the top, and scripts/ holds run.sh, play.sh and prepare.sh; layout_problems() checks both.
+  startable file at the top, and scripts/ holds run.sh, play.sh, prepare.sh and support.sh; layout_problems() checks both.
 
 Nothing else is copied. The scrub refuses the whole payload (nothing is written) on: game-data names and extensions
 (EBOOT.*, PARAM.SFO, .psarc .elf .self .sprx .prx .edat .sdat .pkg .rap .pup .trp .pic), PS3 or ELF magics at a
@@ -85,6 +87,8 @@ RULES = [
     ("tools/release/rpcs3_disc.py", "tools/release/rpcs3_disc.py", "file", {}),
     ("tools/release/version_check.py", "tools/release/version_check.py", "file", {}),
     ("tools/release/support.py", "tools/release/support.py", "file", {}),
+    ("tools/release/sessions.py", "tools/release/sessions.py", "file", {}),
+    ("tools/release/symbols.py", "tools/release/symbols.py", "file", {}),
     ("tools/release/fetch_toolchain.py", "tools/release/fetch_toolchain.py", "file", {}),
     ("tools/release/build_win_deps.py", "tools/release/build_win_deps.py", "file", {}),
     ("tools/release/toolchain.json", "tools/release/toolchain.json", "file", {}),
@@ -112,6 +116,7 @@ RULES_WINDOWS = [
     ("installer/run.cmd", "scripts/run.cmd", "file", {}),
     ("installer/play.cmd", "scripts/play.cmd", "file", {}),
     ("installer/prepare.cmd", "scripts/prepare.cmd", "file", {}),
+    ("installer/support.cmd", "scripts/support.cmd", "file", {}),
 ]
 RULES_LINUX = [
     ("tools/release/build_linux_deps.py", "tools/release/build_linux_deps.py", "file", {}),
@@ -122,6 +127,7 @@ RULES_LINUX = [
     ("installer/linux/run.sh", "scripts/run.sh", "file", {}),
     ("installer/linux/play.sh", "scripts/play.sh", "file", {}),
     ("installer/linux/prepare.sh", "scripts/prepare.sh", "file", {}),
+    ("installer/linux/support.sh", "scripts/support.sh", "file", {}),
     ("tools/ffx/ffx_linux_compat.h", "tools/ffx/ffx_linux_compat.h", "file", {}),
 ]
 GAME_NAMES = ["EBOOT.*", "PARAM.SFO", "*.psarc", "*.elf", "*.self", "*.sprx", "*.prx", "*.edat", "*.sdat", "*.pkg",

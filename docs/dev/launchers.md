@@ -37,6 +37,12 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
 - **`recomplauncher.json`** at the top of both folders (`tools/release/recomplauncher.py`, from
   `installer/recomplauncher.json`): the same contract in RecompLauncher's format 1. Its inputs are the game folder
   or the disc (role `disc`, `--disc={input:disc}`), both optional, and the decrypted EBOOT.
+- **How it was started:** the launcher tells the game `KZ_STARTED_BY` (the game's log has it as
+  `[kz-sys] started-by:`, and the support package and the bug form take it from there): `recomplauncher` when
+  `RECOMPLAUNCHER` or any `RECOMPLAUNCHER_*` variable is set (RecompLauncher sets `RECOMPLAUNCHER=1`,
+  `RECOMPLAUNCHER_VERSION`, `_MODE` and `_PAD` for every game it starts, its `docs/DEVELOPERS.md` read 2026-11-23),
+  `quiver` for any `QUIVER*` variable (what Quiver sets was not found: unconfirmed), then `setup`, `source` (a Git
+  checkout) or `zip`.
 - **Not yet:** the launchers' mode hints (`RECOMPLAUNCHER_MODE=bigpicture|desktop`, `RECOMPLAUNCHER_PAD=xbox|
   playstation`, Steam Deck Game Mode) are not read; planned for 0.7.0 (full screen in Big Picture mode, the button
   icons of the pad that is plugged in).
@@ -60,7 +66,11 @@ make.
 ## RecompLauncher
 
 `recomplauncher.json` (format 1) names the game folder input (role `game`), the optional `EBOOT.elf`, the prepare
-step with its DLSS tick and its `done` file (`work/build-stamp.json`, which the first run writes only after a good build, so the launcher knows the game is built), the program to start, the saves, the log folders and the exit codes. The format was read
+step with its DLSS tick and its `done` file (`work/build-stamp.json`, which the first run writes only after a good build, so the launcher knows the game is built), the program to start, the saves, the log folders, the crash reports' folder (`work/crash`, with a "Crash reports" button) and the exit codes. Format 1's
+`actions` only open or clear a folder: there is no way to run a program from one, so the support package cannot be a
+RecompLauncher button; the "Game log" button's help names `scripts/support.sh` and `scripts/support.cmd` instead.
+RecompLauncher shows the newest `.log` of the `logs` folder (`work`) with its crash report: that is `play.log`, which
+keeps its name (the earlier sessions' logs go to `work/logs`). The format was read
 from RecompLauncher's developer guide; `tools/release/recomplauncher.schema.json` is written here (RecompLauncher's
 own schema is GPL-3.0 and is not copied). Before a listing: a local "Add a build" test with a release dry run's
 folder.
