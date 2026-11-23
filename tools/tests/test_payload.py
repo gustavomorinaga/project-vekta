@@ -91,7 +91,7 @@ with tempfile.TemporaryDirectory() as tmp:
         check("nvngx_dlss.dll" in str(err) and "NVIDIA" in str(err), str(err))
     (cache / "sdl2" / "bin" / "nvngx_dlss.dll").unlink()
     for need in ("tools/kzbuild.py", "tools/release/firstrun.py", "tools/release/launch.py", "scripts/run.cmd", "scripts/play.cmd",
-                 "scripts/prepare.cmd",
+                 "scripts/prepare.cmd", "scripts/support.cmd", "tools/release/sessions.py", "tools/release/symbols.py",
                  "port/kz1hd/CMakeLists.txt", "port/cmake/llvm-mingw.cmake", "re/function_seeds.txt", "VERSION",
                  "work/ps3recomp-patched/.patchset", "work/ps3recomp-patched/tools/ppu_lifter.py",
                  "work/toolchain-cache/fetched.json", "work/toolchain-cache/llvm-mingw/bin/llvm-mingw.exe",
@@ -170,7 +170,8 @@ with tempfile.TemporaryDirectory() as tmp:
     (cache / "ffmpeg-linux" / "lib" / "libavutil.so").write_bytes(b"\x7fELF")
     lf, lg, lman = ap.plan(str(ROOT), str(cache), platform="linux")
     lp = set(lf) | set(lg)
-    for need in ("project-vekta", "scripts/run.sh", "scripts/play.sh", "scripts/prepare.sh", "tools/release/zig/cc", "tools/release/build_linux_deps.py", "tools/play.sh",
+    for need in ("project-vekta", "scripts/run.sh", "scripts/play.sh", "scripts/prepare.sh", "scripts/support.sh",
+                 "tools/release/sessions.py", "tools/release/symbols.py", "tools/release/zig/cc", "tools/release/build_linux_deps.py", "tools/play.sh",
                  "port/cmake/zig-linux.cmake", "work/toolchain-cache/zig/zig",
                  "work/toolchain-cache/zig/lib/libc/include/x86-linux-gnu/bits/a.h",
                  "work/toolchain-cache/zig/lib/libc/include/generic-glibc/b.h",
@@ -229,7 +230,8 @@ with tempfile.TemporaryDirectory() as tmp:
     v = lman["version"]
     top = f"project-vekta-{v}-linux/"
     check(all(n.startswith(top) for n in mem), "the tar has one top folder")
-    for x in ("project-vekta", "scripts/run.sh", "scripts/play.sh", "scripts/prepare.sh", "tools/release/zig/cc",
+    for x in ("project-vekta", "scripts/run.sh", "scripts/play.sh", "scripts/prepare.sh", "scripts/support.sh",
+              "tools/release/zig/cc",
               "work/toolchain-cache/zig/zig"):
         check(mem.get(top + x) is not None and mem[top + x].mode == 0o755, f"{x} keeps its execute bit in the tar")
     check(mem[top + "VERSION"].mode == 0o644 and mem[top + "VERSION"].uid == 0, "a plain file is 644, owner 0")
@@ -442,7 +444,17 @@ with tempfile.TemporaryDirectory() as tmp:
         runs, asked, rebuilt = [], [], []
         planned = launch.plan(str(root), env)
         launch.plan = lambda root, fullscreen=False: planned
-        launch.run = lambda *a, **kw: runs.append(1) or (launch.EXIT_EBOOT if len(runs) == 1 else 0)
+
+        def eboot_run(argv, cwd, e, log, **kw):
+            # the game writes its log while it runs: the last one has moved to work/logs (sessions.rotate)
+            runs.append(1)
+            if len(runs) == 1:
+                pathlib.Path(log).write_text("[kz] EBOOT check: built from 0123, this one is 4567\n"
+                                             f"[kz] EBOOT check: {eboot_line}\n")
+                return launch.EXIT_EBOOT
+            pathlib.Path(log).write_text("[kz] quitting (window closed)\n")
+            return 0
+        launch.run = eboot_run
         launch.stale_build = lambda root: None
         launch.update_build = lambda root, run=None: rebuilt.append(root) or True
         try:

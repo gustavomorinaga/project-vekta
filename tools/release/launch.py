@@ -37,11 +37,24 @@ exe's own exit codes (EXE_LINES, port/kz1hd/kz_exit.h: a CPU below the level the
 other than the one the build was lifted from) gets its own message instead; the EBOOT's comes with an offer to rebuild
 (as a stale build's), and the game starts once that build is done.
 
+Each session is recorded (tools/release/sessions.py): before it, the last work/play.log moves to
+work/logs/play-<start>.log (the five newest kept, and the three newest that ended in a crash, a hang or a lost GPU);
+after it, play.log is rewritten with the home folder as ~ and runs of one repeated line folded, and ends with
+`[launcher] session ended: exit <code> (<meaning>) after <N> s, <kind>`; work/logs/sessions.jsonl gets the session's
+line. The game is told KZ_CRASH_DIR (work/crash, where it writes its crash and hang reports) and KZ_STARTED_BY
+(started_by(): setup, recomplauncher, quiver, source or zip). A session that ends abnormally (a crash, a hang, a lost
+GPU, killed, or an error code: not a quit or a clean exit) gets a message with what the code means and the crash
+signature, and the offer of a support package; after it is made, the offer to open GitHub's bug form in the browser,
+filled in (issue_url(); only on a yes: nothing is sent, the player attaches the zip). On Linux the question is asked
+only in a terminal; elsewhere the text goes to stderr. A session that started and never ended (the PC lost power, the
+launcher was stopped) is named once at the next start, with the same offer.
+
 After Project Pyrrhus's and Project Helghast's tools/release/launch.py (undecuple, MIT), which decide the same
 things for their launchers. Exit: the game's own code, 1 = not built yet, 2 = usage. Standard library only.
 """
 import argparse
 import configparser
+import datetime
 import hashlib
 import json
 import os
@@ -54,6 +67,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import kzbuild  # noqa: E402
+import sessions  # noqa: E402
 import support  # noqa: E402
 
 # tools/play.sh's settings (docs there): the environment wins over each.
@@ -91,6 +105,8 @@ EXE_LINES = {EXIT_CPU: ("[kz] CPU check: ", "[kz] CPU check: "),
              EXIT_EBOOT: ("[kz] EBOOT check: This build", "[kz] EBOOT check: "),
              NO_VULKAN: ("[kz] Vulkan check: ", "[kz] Vulkan check: ")}
 EARLY_EXIT = 20                     # seconds: a game that ends sooner, its window not closed, did not start
+GPU_LOST = sessions.gpu_lost_code(EXIT)   # 78, KZ_EXIT_GPU_LOST (kz_exit.h, once the Vulkan diagnostics add it)
+ISSUE_FORM = "https://github.com/gustavomorinaga/project-vekta/issues/new"
 
 
 def install_settings(root):
@@ -166,6 +182,23 @@ def move_data(root, to, environ=None):
     return True, f"the saves and settings are now in {new}"
 
 
+def started_by(root, environ):
+    """How this copy was installed and started, for the game's log ([kz-sys] started-by): recomplauncher or quiver
+    when their variables are set (RecompLauncher sets RECOMPLAUNCHER=1 and RECOMPLAUNCHER_* for every game it starts,
+    its docs/DEVELOPERS.md; for Quiver any QUIVER* variable, not yet confirmed), setup when the setup program installed
+    it (vekta-install.ini), source in a Git clone, else zip (the Windows zip or the Linux folder)."""
+    names = [k.upper() for k in environ]
+    if any(k.startswith("RECOMPLAUNCHER") for k in names):
+        return "recomplauncher"
+    if any(k.startswith("QUIVER") for k in names):
+        return "quiver"
+    if os.path.isfile(os.path.join(root, INSTALL_INI)):
+        return "setup"
+    if os.path.exists(os.path.join(root, ".git")):
+        return "source"
+    return "zip"
+
+
 def plan(root, environ=None, fullscreen=False):
     """(argv, cwd, env, log path); ValueError names the missing step. cwd is data_dir's folder."""
     e = kzbuild.resolve(environ, root=root)
@@ -185,6 +218,8 @@ def plan(root, environ=None, fullscreen=False):
     if fullscreen or e.get("KZ_FULLSCREEN") == "1":
         e["PS3RECOMP_VK_DISPLAY"] = "borderless"
     log = os.path.join(w, "play.log")
+    e.setdefault("KZ_CRASH_DIR", os.path.join(w, "crash"))   # the game's crash and hang reports
+    e.setdefault("KZ_STARTED_BY", started_by(root, e))
     if kzbuild.WINDOWS:
         e.setdefault("KZ_LOG", log)   # the exe is a GUI program: it writes its own log there
     cwd = data_dir(root, e["KZ_VFS"], e)
@@ -381,7 +416,7 @@ def early_exit_text(rc, log):
     tail = log_tail(log)
     return (f"The game stopped right after it started (exit code {rc}).\n\n" +
             (f"The end of its log:\n{tail}\n\n" if tail else "It wrote no log.\n\n") +
-            f"The whole log: {log}\nFor a bug report: the Start menu's \"Make a support package\".")
+            f"The whole log: {log}")
 
 
 def repair(root, run=subprocess.run):
@@ -412,10 +447,19 @@ def saves_folder(root, environ=None):
 
 
 def open_folder(path, select=False):
+    """Explorer, with the file selected; on Linux the folder in the desktop's file manager (xdg-open) when there is a
+    desktop, and the path printed."""
     if kzbuild.WINDOWS:
         subprocess.Popen(["explorer.exe", f"/select,{path}"] if select else ["explorer.exe", path])
-    elif sys.stdout is not None:
+        return
+    if sys.stdout is not None:
         print(path)
+    if (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) and shutil.which("xdg-open"):
+        try:
+            subprocess.Popen(["xdg-open", os.path.dirname(path) if select else path], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
 
 
 def open_data(root):
@@ -437,14 +481,69 @@ def desktop(environ=None):
     return d if os.path.isdir(d) else home
 
 
-def support_package(root, out="", environ=None):
-    """--support-package: support.py's zip; says where it is."""
-    import datetime
+def can_ask():
+    """Whether a yes or no can be asked: a message box on Windows, a terminal on Linux (a launcher's pipe never
+    answers)."""
+    if kzbuild.WINDOWS:
+        return True
+    return sys.stdin is not None and sys.stdin.isatty() and sys.stdout is not None
+
+
+def ask_note():
+    """report.txt's text: a line typed in a terminal (Enter skips); nothing under a message box."""
+    if not can_ask() or sys.stdin is None or sys.stdout is None:
+        return ""
+    try:
+        return input("What were you doing when it happened? One line for report.txt in the package (Enter skips): ")
+    except EOFError:
+        return ""
+
+
+def install_kind(root, environ=None):
+    """The bug form's "How did you install it" answer."""
+    environ = os.environ if environ is None else environ
+    kind = environ.get("KZ_STARTED_BY") or started_by(root, environ)
+    return {"setup": "Setup program (Windows)", "recomplauncher": "RecompLauncher", "quiver": "Quiver Launcher",
+            "source": "From source (Git)"}.get(kind, "Windows zip" if kzbuild.WINDOWS else "Linux folder")
+
+
+def issue_url(root, environ=None):
+    """GitHub's bug form (.github/ISSUE_TEMPLATE/bug_report.yml), its fields filled from the package's facts."""
+    import urllib.parse
+    s = support.summary(root)
+    sess = s["session"]
+    system = "; ".join(x for x in (s["system"], s["gpu"] and f"GPU {s['gpu']}", s["driver"] and
+                                   f"driver {s['driver']}") if x)
+    log = []
+    if sess:
+        log.append(f"Last session: exit {sess.get('exit_text', sess.get('exit'))} ({sess.get('meaning', '')}) after "
+                   f"{sess.get('seconds', '?')} s, {sess.get('kind', '?')}")
+    if s["signature"]:
+        log.append(f"Crash signature: {s['signature']}")
+    log.append("The support package (project-vekta-support-*.zip) is attached above.")
+    import firstrun
+    red = firstrun.redactor()
+    fields = {"template": "bug_report.yml", "version": s["version"],
+              "platform": "Windows" if kzbuild.WINDOWS else "Linux", "install": install_kind(root, environ),
+              "system": system[:300], "logs": "\n".join(log)}
+    return ISSUE_FORM + "?" + urllib.parse.urlencode({k: red(v) for k, v in fields.items()})
+
+
+def make_package(root, out="", environ=None, note=""):
+    """support.py's zip: (path, [left out]); path "" when there was nothing to put in it. OSError when it cannot be
+    written."""
     import firstrun
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    return support.build(root, saves_folder(root, environ), out or desktop(environ), firstrun.redactor(), stamp,
+                         note=note)
+
+
+def support_package(root, out="", environ=None, note=None):
+    """--support-package: support.py's zip; says where it is, opens its folder, then offers GitHub's bug form."""
+    if note is None:
+        note = ask_note()
     try:
-        dest, skipped = support.build(root, saves_folder(root, environ), out or desktop(environ), firstrun.redactor(),
-                                      stamp)
+        dest, skipped = make_package(root, out, environ, note)
     except OSError as err:
         notify(f"the support package could not be written: {err}")
         return 1
@@ -452,11 +551,88 @@ def support_package(root, out="", environ=None):
         notify("Nothing to put in a support package yet: no logs and no settings. Start the game once, then try again.",
                error=False)
         return 1
-    note = f"\n\nLeft out: {', '.join(skipped)}" if skipped else ""
-    notify(f"The support package is ready:\n{dest}\n\nIt holds the logs and settings (your user folder is written as "
-           f"~), not your saves or game files. Attach it to your bug report.{note}", error=False)
+    left = f"\n\nLeft out: {', '.join(skipped)}" if skipped else ""
+    ready = (f"The support package is ready:\n{dest}\n\nIt holds the logs, the crash reports and the settings (your "
+             f"user folder is written as ~), not your saves or game files. Attach it to your bug report.{left}")
     open_folder(dest, select=True)
+    if can_ask():
+        if ask(ready + "\n\nOpen the bug report form on GitHub in your browser? The version, your system and the "
+                       "crash signature are filled in; you attach the zip there yourself, and nothing is sent until "
+                       "you submit it."):
+            import webbrowser
+            webbrowser.open(issue_url(root, environ))
+    else:
+        notify(ready + f"\n\nThe bug report form: {ISSUE_FORM}?template=bug_report.yml", error=False)
     return 0
+
+
+def unexpected_text(rec, log):
+    """The message for a session that ended abnormally: what the code means and the crash signature."""
+    lines = ["The game closed unexpectedly.", "",
+             f"Exit {rec['exit_text']}: {rec['meaning']} ({rec['kind']}, after {rec['seconds']} s)."]
+    if rec["kind"] == "gpu-lost" and GPU_LOST in EXIT_TEXT:
+        lines.append(EXIT_TEXT[GPU_LOST])
+    if rec.get("signature"):
+        lines.append(f"Signature: {rec['signature']}")
+    lines += ["", f"The log: {log}"]
+    return "\n".join(lines)
+
+
+def offer_report(root, text):
+    """text, then "Make a support package now?": yes makes it (support_package). Without a way to ask, the text and
+    how to make one later."""
+    if not can_ask():
+        notify(text + "\n\nFor a bug report, make a support package: " +
+               ("scripts\\support.cmd" if kzbuild.WINDOWS else "scripts/support.sh or ./project-vekta --support-package"))
+        return False
+    if not ask(text + "\n\nMake a support package now? It is a zip of the logs and crash reports for a bug report; "
+                      "nothing is sent anywhere."):
+        return False
+    support_package(root)
+    return True
+
+
+def check_unfinished(root, work, log):
+    """At start: the last session never ended (sessions.jsonl): said once, with the support package's offer."""
+    last = sessions.unfinished(work)
+    if not last:
+        return False
+    offer_report(root, f"The last session (started {last.get('start', '?')}) did not end normally: the PC lost "
+                       "power or restarted, or the game or the launcher was stopped from outside.")
+    sessions.mark_interrupted(work, log)
+    return True
+
+
+def play(root, argv, cwd, env, log):
+    """One session: the log history, the run, the session's line and record (sessions.py). (exit code, record)."""
+    import firstrun
+    work = env["KZ_WORK"]
+    try:
+        os.makedirs(env["KZ_CRASH_DIR"], exist_ok=True)
+        sessions.rotate(work, log)
+        sessions.prune(work)
+        version = (support.manifest(root).get("version") or (firstrun.read_stamp(work) or {}).get("version") or
+                   firstrun.read_version(root))
+        sess = sessions.begin(work, version, env.get("KZ_STARTED_BY", ""))
+    except OSError:
+        sess = None
+    before = sessions.report_files(work)
+    t0 = time.monotonic()
+    rc = run(argv, cwd, env, log)
+    seconds = time.monotonic() - t0
+    seen = sessions.scan(log)
+    reports = sessions.reports_since(work, before)
+    kind = sessions.classify(rc, seen, EXIT, reports)
+    line = sessions.end_line(rc, seconds, kind, EXIT)
+    rec = {"exit": rc, "exit_text": sessions.exit_text(rc), "meaning": sessions.meaning(rc, EXIT), "kind": kind,
+           "seconds": int(seconds), "reports": reports, "signature": seen["signature"]}
+    try:
+        sessions.tidy(log, firstrun.redactor(), line)
+        if sess is not None:
+            rec = sessions.finish(work, sess, rc, seconds, kind, reports, seen["signature"], EXIT)
+    except OSError:
+        pass
+    return rc, rec
 
 
 INPUTS = (("game", "KZ_GAME"), ("eboot", "KZ_EBOOT"), ("psarc", "KZ_PSARC"))
@@ -688,7 +864,7 @@ def main(argv=None):
         print("in:", cwd, "(saves and settings)")
         print("log:", log)
         for k, _ in SETTINGS + FIXED + [("PS3RECOMP_VK_DISPLAY", ""), ("KZ_LOG", ""),
-                                        ("PS3_VFS_ROOT", "")]:
+                                        ("PS3_VFS_ROOT", ""), ("KZ_CRASH_DIR", ""), ("KZ_STARTED_BY", "")]:
             if k in env:
                 print(f"{k}={env[k]}")
         return 0
@@ -707,18 +883,22 @@ def main(argv=None):
     if os.environ.get("KZ_VULKAN_CHECK", "1") != "0" and not vulkan_present():   # KZ_VULKAN_CHECK=0 skips it
         notify(EXIT_TEXT[NO_VULKAN])
         return NO_VULKAN
-    t0 = time.monotonic()
-    rc = run(argv_, cwd, env, log)
+    check_unfinished(root, env["KZ_WORK"], log)
+    rc, rec = play(root, argv_, cwd, env, log)
     own = exit_code_text(rc, log)
     if rc == EXIT_EBOOT and a.build_if_needed:
         # the build was lifted from another EBOOT than the game folder's: the same rebuild as a stale build's
         if ask(own + "\n\nRebuild now (as Verify and rebuild does)? This takes as long as the first build.") and \
                 update_build(root):
-            rc = run(argv_, cwd, env, log)
+            rc, rec = play(root, argv_, cwd, env, log)
+            if rec["kind"] in sessions.ABNORMAL:
+                offer_report(root, unexpected_text(rec, log))
     elif own:
         notify(own)
-    elif time.monotonic() - t0 < EARLY_EXIT and not window_closed(log):
-        notify(early_exit_text(rc, log))
+    elif rec["seconds"] < EARLY_EXIT and not window_closed(log) and rec["kind"] not in sessions.BAD:
+        offer_report(root, early_exit_text(rc, log))   # a genuine start failure
+    elif rec["kind"] in sessions.ABNORMAL:
+        offer_report(root, unexpected_text(rec, log))
     if sys.stdout is not None:
         print(f"log: {log}")
     return rc
