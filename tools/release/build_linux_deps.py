@@ -11,7 +11,10 @@ packages tools/release/fetch_toolchain.py --host native unpacked, with the pinne
   glslang         built from source, static, HLSL front end on, no optimizer, no tools (as for Windows)
   Vulkan headers  include/vulkan, include/vk_video (the Vulkan loader is opened at run time)
   FFmpeg          include/lib* (the movie loader's headers) and ffmpeg/lib*.so.<major> (loaded at run time:
-                  tools/kzbuild.py copies them to <build>/lib, which tools/play.sh puts on LD_LIBRARY_PATH)
+                  tools/kzbuild.py puts them in <build>/lib, which tools/play.sh puts on LD_LIBRARY_PATH)
+
+The Vulkan headers and FFmpeg's libraries are hard links to the cache's files where the file system makes them
+(fetch_toolchain.place), copies elsewhere: nothing writes to them after this.
 
 The prefix's stamp.json records the pins it was made from; a run with the same pins does nothing. CMake and Ninja:
 the pinned ones (cmake-linux, ninja-linux). Exit 0 = staged, 1 = a step failed. Standard library only.
@@ -36,7 +39,7 @@ FFMPEG_LIBS = ("libavcodec.", "libavformat.", "libavutil.", "libswscale.", "libs
 SONAME_RX = re.compile(r"(lib\w+\.so\.\d+)\.\d+\.\d+")
 
 
-def copytree(src, dst):
+def copytree(src, dst, put=shutil.copy2):
     for d, _, files in os.walk(src):
         rel = os.path.relpath(d, src)
         os.makedirs(os.path.join(dst, rel), exist_ok=True)
@@ -47,7 +50,7 @@ def copytree(src, dst):
                     os.remove(t)
                 os.symlink(os.readlink(s), t)
             else:
-                shutil.copy2(s, t)
+                put(s, t)
 
 
 def tool_env(cache):
@@ -134,8 +137,9 @@ def main(argv=None):
     env["KZ_WORK"] = work
     try:
         with open(log_path, "w", encoding="utf-8") as log:
-            for name in ("vk_video", "vulkan"):
-                copytree(c("vulkan-headers", "include", name), os.path.join(a.prefix, "include", name))
+            for name in ("vk_video", "vulkan"):   # 23 MB of headers, only read: links to the cache's files
+                copytree(c("vulkan-headers", "include", name), os.path.join(a.prefix, "include", name),
+                         fetch_toolchain.place)
             print("vulkan-headers: staged", flush=True)
             cmake_build("sdl2", c("sdl2-src"), os.path.join(tmp, "sdl2"), a.prefix, a.jobs, SDL2_OPTIONS, log, env)
             cmake_build("zlib", c("zlib"), os.path.join(tmp, "zlib"), a.prefix, a.jobs,
@@ -161,7 +165,7 @@ def main(argv=None):
             for f in sorted(os.listdir(c("ffmpeg-linux", "lib"))):
                 m = SONAME_RX.fullmatch(f)
                 if m and f.startswith(FFMPEG_LIBS) and not os.path.islink(c("ffmpeg-linux", "lib", f)):
-                    shutil.copy2(c("ffmpeg-linux", "lib", f), os.path.join(ff, m.group(1)))
+                    fetch_toolchain.place(c("ffmpeg-linux", "lib", f), os.path.join(ff, m.group(1)))
             print("ffmpeg: staged", flush=True)
     except (OSError, RuntimeError) as e:
         print(f"build_linux_deps: {e}\n(the whole log: {log_path})", file=sys.stderr)

@@ -107,10 +107,10 @@ Run `scripts\run.cmd` again after you move your files. A build that was stopped 
 
 ## Linux: the folder
 
-The file is `project-vekta-X.Y.Z-linux.tar.gz`. It has its own compiler and build tools.
+The file is `project-vekta-X.Y.Z-linux.tar.xz` (a `.tar.gz` up to 0.6.0). It has its own compiler and build tools.
 You need Python 3.10 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 
-1. **Unpack it:** `tar xzf project-vekta-X.Y.Z-linux.tar.gz`.
+1. **Unpack it:** `tar xf project-vekta-X.Y.Z-linux.tar.xz`.
 2. **Start `./project-vekta`.** With RPCS3 and the game in their usual places it builds without a question, then
    plays. Otherwise run `scripts/run.sh`: it asks the same questions as `scripts\run.cmd` above, builds, and at
    the end offers an applications-menu entry.
@@ -126,7 +126,7 @@ You need Python 3.10 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 A game launcher that installs downloaded packages can install the Windows zip or the Linux folder. Each folder has
 one program at its top for the launcher to start: `Project Vekta.exe` on Windows, `project-vekta` on Linux.
 
-1. **Add the package** to the launcher (the zip or the `.tar.gz` of a release).
+1. **Add the package** to the launcher (the zip or the `.tar.xz` of a release).
 2. **Give it your game folder** when it asks: the installed NPUA80856 folder, with `PARAM.SFO` and `USRDIR`. A
    decrypted `EBOOT.elf` is optional: leave it out when your RPCS3 has the game, and it makes the copy itself.
 3. **Tick NVIDIA DLSS** (Windows only) only if you accept NVIDIA's licence; without it the port builds with AMD

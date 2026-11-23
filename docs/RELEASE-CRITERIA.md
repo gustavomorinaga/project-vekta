@@ -40,7 +40,7 @@ the port from the player's own files ([BUILDING.md](BUILDING.md)).
 - `project-vekta-X.Y.Z-windows.zip`: the Windows folder (`tools/release/assemble_payload.py --zip`, also the same
   bytes from the same commit): the sources, the patched ps3recomp, the pinned toolchain and the launcher.
 - `project-vekta-X.Y.Z-setup.exe`: that folder in the setup program (`tools/release/build_setup.py`, Inno Setup).
-- `project-vekta-X.Y.Z-linux.tar.gz`: the Linux folder (`tools/release/assemble_payload.py --platform linux --tar`,
+- `project-vekta-X.Y.Z-linux.tar.xz` (a `.tar.gz` up to 0.6.0): the Linux folder (`tools/release/assemble_payload.py --platform linux --tar`,
   the same bytes from the same commit): the sources, the patched ps3recomp and the pinned Zig toolchain.
 
 1. With the gates above met, on an up-to-date `main`: `python3 tools/release/bump_version.py X.Y.Z`. It writes

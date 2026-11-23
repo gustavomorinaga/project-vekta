@@ -35,6 +35,11 @@ def check(cond, what):
         print("FAIL:", what)
 
 
+TC = "work/toolchain-cache/"
+UNUSED_KEPT = {TC + "glslang/glslang/CMakeLists.txt", TC + "vulkan-headers/include/vulkan/vulkan.h"}
+UNUSED_DROPPED = {TC + "glslang/Test/baseResults/100.frag.out", TC + "vulkan-headers/registry/vk.xml"}
+
+
 def fake_cache(cache, m):
     """Each Windows entry as a small tree, fetched.json holding the manifest's hashes, and a Linux entry too."""
     done = {}
@@ -50,6 +55,12 @@ def fake_cache(cache, m):
     (linux / "libclang_rt.asan-x86_64.so").write_bytes(b"\x7fELF")
     (cache / "zlib" / "amiga").mkdir()
     (cache / "zlib" / "amiga" / "Makefile.pup").write_text("all:\n")
+    # what neither build reads, beside what both read: glslang's CMake files and sources, the Vulkan headers
+    for keep, drop in (("glslang/glslang/CMakeLists.txt", "glslang/Test/baseResults/100.frag.out"),
+                       ("vulkan-headers/include/vulkan/vulkan.h", "vulkan-headers/registry/vk.xml")):
+        for f in (keep, drop):
+            (cache / f).parent.mkdir(parents=True, exist_ok=True)
+            (cache / f).write_text("x\n")
     (cache / "downloads").mkdir()
     (cache / "downloads" / "big.zip").write_bytes(b"x")
     (cache / "fetched.json").write_text(json.dumps(done))
@@ -92,6 +103,8 @@ with tempfile.TemporaryDirectory() as tmp:
     check(not any("/lib/linux/" in p or "/amiga/" in p for p in paths), "clang's Linux runtimes and zlib's Amiga "
           "files are left out")
     check(not any("__pycache__" in p or p.endswith(".pyc") for p in paths), "no Python caches")
+    check(UNUSED_KEPT <= paths and not UNUSED_DROPPED & paths, "glslang's test shaders and the Vulkan registry are "
+          f"left out, the sources and headers stay: {sorted((UNUSED_KEPT - paths) | (UNUSED_DROPPED & paths))}")
     tc = {e["name"] for e in ft.entries_for(m, "windows")}
     check(json.loads(gen["work/toolchain-cache/fetched.json"]) == {n: e["sha256"] for e in m["components"]
                                                                    for n in [e["name"]] if n in tc},
@@ -183,6 +196,8 @@ with tempfile.TemporaryDirectory() as tmp:
           "on Linux .sh, #!/ and ELF files count; .so and .txt never")
     check(not any(p.startswith(("work/toolchain-cache/llvm-mingw/", "work/toolchain-cache/python/"))
                   for p in lp), "the Linux folder has no Windows toolchain")
+    check(UNUSED_KEPT <= lp and not UNUSED_DROPPED & lp, "the Linux folder too leaves out glslang's test shaders and "
+          f"the Vulkan registry: {sorted((UNUSED_KEPT - lp) | (UNUSED_DROPPED & lp))}")
     check(not any(s in p for p in lp for s in ("aarch64-linux-gnu", "/musl/", "/mingw/", "zig/doc/", "zig/RECORD"))
           and "work/toolchain-cache/ffmpeg-linux/lib/libavutil.so" not in lp,
           "Zig's other targets, docs and wheel files and FFmpeg's link names are left out")
@@ -193,14 +208,24 @@ with tempfile.TemporaryDirectory() as tmp:
           f"the Linux manifest and fetched.json hold the native entries and their sources: {sorted(ltc)}")
     check(ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--zip",
                    str(tmp / "l.zip")]) == 1, "the Linux folder refuses --zip")
-    r = ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar", str(tmp / "new" / "a.tgz")])
+    check(ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar",
+                   str(tmp / "a.tar.zst")]) == 1 and not (tmp / "lx").exists(),
+          "a --tar name that is neither .tar.xz nor .tar.gz is refused before anything is written")
+    r = ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--tar", str(tmp / "new" / "a.tar.xz")])
     ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--replace", "--tar",
-             str(tmp / "b.tgz")])
-    check(r == 0 and (tmp / "new" / "a.tgz").read_bytes() == (tmp / "b.tgz").read_bytes(),
+             str(tmp / "b.tar.xz")])
+    check(r == 0 and (tmp / "new" / "a.tar.xz").read_bytes() == (tmp / "b.tar.xz").read_bytes(),
           "the same sources give the same tar (its folder is made)")
     import tarfile
-    with tarfile.open(tmp / "new" / "a.tgz") as t:
+    with tarfile.open(tmp / "new" / "a.tar.xz", "r:xz") as t:
         mem = {i.name: i for i in t.getmembers()}
+    # the .tar.gz of the releases up to 0.6.0 is still written when the name asks for it, with the same members
+    ap.main(["--out", str(tmp / "lx"), "--cache", str(cache), "--platform", "linux", "--replace", "--tar",
+             str(tmp / "c.tgz")])
+    with tarfile.open(tmp / "c.tgz", "r:gz") as t:
+        gz_names = [i.name for i in t.getmembers()]
+    check(gz_names == list(mem) and (tmp / "new" / "a.tar.xz").read_bytes()[:6] == b"\xfd7zXZ\x00",
+          "a .tgz name packs the same members with gzip; the .tar.xz is an xz file")
     v = lman["version"]
     top = f"project-vekta-{v}-linux/"
     check(all(n.startswith(top) for n in mem), "the tar has one top folder")
@@ -275,6 +300,51 @@ with tempfile.TemporaryDirectory() as tmp:
     t0 = time.time()
     launch.run(argv, cwd, e, log, poll=0.05)
     check(time.time() - t0 < 10, "a closed window stops the game")
+    # while the game runs, the watcher reads only what the log gained (it read the whole log every second before)
+    grow = tmp / "growing.log"
+    seen = [0, b""]
+    check(not launch.closed_since(str(grow), seen) and seen == [0, b""], "no log yet: not closed")
+    grow.write_bytes(b"[rsx] frame\n" * 4000)
+    reads = []
+    real_open = open
+
+    class Counted:
+        """The log's file, noting how many bytes each read returns."""
+        def __init__(self, f):
+            self.f, self.fileno, self.seek = f, f.fileno, f.seek
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.f.close()
+
+        def read(self):
+            data = self.f.read()
+            reads.append(len(data))
+            return data
+
+    def counting_open(path, *a, **k):
+        f = real_open(path, *a, **k)
+        return Counted(f) if str(path) == str(grow) else f
+    launch.open = counting_open
+    try:
+        check(not launch.closed_since(str(grow), seen) and reads == [48000] and seen[0] == 48000,
+              f"the first look reads what is there: {reads} {seen[0]}")
+        check(not launch.closed_since(str(grow), seen) and reads[-1] == 0, f"nothing new: nothing read: {reads}")
+        with real_open(grow, "ab") as f:
+            f.write(b"[rsx] frame\nwindow clo")
+        check(not launch.closed_since(str(grow), seen) and reads[-1] == 22, f"only the new bytes are read: {reads}")
+        with real_open(grow, "ab") as f:
+            f.write(b"sed\n")
+        check(launch.closed_since(str(grow), seen) and reads[-1] == 4,
+              f"a mark that lies across two reads is seen: {reads}")
+        # the exe empties its log when it starts: a log shorter than what was read is read from its start
+        grow.write_bytes(b"window disabled\n")
+        check(launch.closed_since(str(grow), seen) and reads[-1] == 16 and seen[0] == 16,
+              f"an emptied log is read from its start: {reads}")
+    finally:
+        del launch.open
     # On Windows the exe writes its own log (KZ_LOG), and only once it runs: the last session's "window closed" in
     # that file must not stop the next one before it has started (an install over an earlier version keeps the log)
     pathlib.Path(log).write_text("[kz] quitting (window closed)\n")

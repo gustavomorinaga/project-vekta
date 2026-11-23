@@ -22,7 +22,7 @@
 #            installed files against the payload's manifest.json (tools/release/check_install.py), runs the launcher's
 #            dry run and uninstalls it silently.
 #   linux    (Linux) fetches the pinned Linux toolchain (Zig, CMake, Ninja, SDL2's source, FFmpeg) and assembles
-#            the Linux folder as a tar.gz (assemble_payload.py --platform linux), then checks it unpacked in a Debian 11
+#            the Linux folder as a tar.xz (assemble_payload.py --platform linux), then checks it unpacked in a Debian 11
 #            container with Python 3.10 and no compiler: its own toolchain builds ps3recomp's shader test and boot smoke,
 #            both run, and neither needs a glibc newer than 2.31 (tools/release/check_linux_folder.sh).
 #   attest   (tag pushes; a dispatch only when asked) signs the four files' build provenance and checks each file
@@ -34,7 +34,7 @@
 # toolchain.json downloads (each checked against its SHA-256), Docker's python:3.10-slim-bullseye image (the linux
 # job's clean system; nothing from it is published).
 # Published files: project-vekta-<version>-source.tar.gz, project-vekta-<version>-setup.exe,
-# project-vekta-<version>-windows.zip, project-vekta-<version>-linux.tar.gz, a .sha256 for each, SHA256SUMS (tools/release/release_check.py checks them
+# project-vekta-<version>-windows.zip, project-vekta-<version>-linux.tar.xz, a .sha256 for each, SHA256SUMS (tools/release/release_check.py checks them
 # once the release is published).
 name: release
 
@@ -175,13 +175,13 @@ jobs:
           python3 tools/release/fetch_toolchain.py --host native
           python3 tools/release/fetch_toolchain.py --only zlib,glslang,vulkan-headers
 
-      - name: The Linux folder and its tar.gz (tools/release/assemble_payload.py --platform linux)
+      - name: The Linux folder and its tar.xz (tools/release/assemble_payload.py --platform linux)
         env:
           VERSION: ${{ needs.source.outputs.version }}
         run: |
-          tgz="project-vekta-$VERSION-linux.tar.gz"
-          python3 tools/release/assemble_payload.py --platform linux --out build/linux --tar "out/$tgz"
-          cd out && sha256sum "$tgz" > "$tgz.sha256" && cat "$tgz.sha256" && ls -l
+          txz="project-vekta-$VERSION-linux.tar.xz"
+          python3 tools/release/assemble_payload.py --platform linux --out build/linux --tar "out/$txz"
+          cd out && sha256sum "$txz" > "$txz.sha256" && cat "$txz.sha256" && ls -l
 
       # The folder as a player gets it, in Debian 11 (glibc 2.31, the oldest the build targets) with Python 3.10 and no
       # compiler: its own toolchain builds ps3recomp's shader test and boot smoke, and both run (the smoke, headless,
@@ -190,7 +190,7 @@ jobs:
         env:
           VERSION: ${{ needs.source.outputs.version }}
         run: |
-          mkdir -p build/unpacked && tar -xzf "out/project-vekta-$VERSION-linux.tar.gz" -C build/unpacked
+          mkdir -p build/unpacked && tar -xJf "out/project-vekta-$VERSION-linux.tar.xz" -C build/unpacked
           d="build/unpacked/project-vekta-$VERSION-linux"
           docker run --rm -v "$PWD/$d:/vekta" -v "$PWD/tools/release:/check:ro" python:3.10-slim-bullseye \
             sh -c 'for c in cc gcc clang; do ! command -v $c || exit 1; done && sh /check/check_linux_folder.sh /vekta'
@@ -205,10 +205,10 @@ jobs:
         with:
           name: project-vekta-${{ needs.source.outputs.version }}-linux
           path: |
-            out/project-vekta-${{ needs.source.outputs.version }}-linux.tar.gz
-            out/project-vekta-${{ needs.source.outputs.version }}-linux.tar.gz.sha256
+            out/project-vekta-${{ needs.source.outputs.version }}-linux.tar.xz
+            out/project-vekta-${{ needs.source.outputs.version }}-linux.tar.xz.sha256
           if-no-files-found: error
-          compression-level: 0   # already gzip
+          compression-level: 0   # already xz
           retention-days: 14
 
   setup:
@@ -449,7 +449,7 @@ jobs:
             gh run download "$GITHUB_RUN_ID" --name "project-vekta-$VERSION$a" --dir .
           done
           files="project-vekta-$VERSION-source.tar.gz project-vekta-$VERSION-setup.exe"
-          files="$files project-vekta-$VERSION-windows.zip project-vekta-$VERSION-linux.tar.gz"
+          files="$files project-vekta-$VERSION-windows.zip project-vekta-$VERSION-linux.tar.xz"
           for f in $files; do
             { test -s "$f" && test -s "$f.sha256" && sha256sum -c "$f.sha256"; } || {
               echo "::error::$f or its .sha256 is missing or does not match"; exit 1; }

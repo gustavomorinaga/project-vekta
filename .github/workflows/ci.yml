@@ -37,18 +37,55 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/lint"
           "$RUNNER_TEMP/lint/bin/pip" install --quiet --disable-pip-version-check ruff==0.16.9 shellcheck-py==0.11.0.1
           PATH="$RUNNER_TEMP/lint/bin:$PATH" RUFF_FORMAT=github bash tools/lint.sh
-      - name: bubblewrap for the sandbox test, SDL2 for ps3recomp's own tests, qemu-user for the CPU check's test
+      - name: bubblewrap for the sandbox test, SDL2 for ps3recomp's own tests and the pad test, qemu-user for the CPU check's test
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap libsdl2-dev qemu-user >/dev/null
           # Ubuntu's AppArmor blocks unprivileged user namespaces, which bwrap needs; this runner is thrown away after
           sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: The pinned Zig, which builds the CPU check's static baseline program for the emulated Nehalem
         run: python3 tools/release/fetch_toolchain.py --only zig --cache "$RUNNER_TEMP/toolchain-cache"
+      # ps3recomp's own tests (tools/tests/test_upstream_suite.sh, most of the host tests' time) read only the pinned
+      # ps3recomp, port/patches and the scripts that apply and run them. The key is made of exactly those, and a pass
+      # is kept in the Actions cache under it, so a pull request that changes none of them does not run the suite
+      # again. A push to main or a release branch always runs it, which also catches a new runner image. A pull
+      # request reads the passes saved by pushes to its base branch and its own; what it saves, only it can read.
+      - name: What ps3recomp's own tests depend on
+        id: suite
+        run: |
+          key=$( { git rev-parse HEAD:third_party/ps3recomp
+                   git ls-files -s -- port/patches tools/ps3recomp-patched.sh tools/kzbuild.py tools/env.sh \
+                     tools/tests/test_upstream_suite.sh .github/workflows/ci.yml; } | sha256sum | cut -c1-40 )
+          echo "key=upstream-suite-$key" >> "$GITHUB_OUTPUT"
+      - name: Did they pass on these before?
+        id: passed
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ runner.temp }}/upstream-suite.passed
+          key: ${{ steps.suite.outputs.key }}
+          lookup-only: true
       - name: Host tests (no game data; the list is tools/host-tests.txt)
         env:
           KZ_REQUIRE_QEMU: "1"   # tools/tests/test_cpu_check.sh: the run on an emulated Nehalem must happen here
           KZ_ZIG: ${{ runner.temp }}/toolchain-cache/zig/zig
-        run: bash tools/run-host-tests.sh --gh
+          SUITE_PASSED: ${{ github.event_name == 'pull_request' && steps.passed.outputs.cache-hit == 'true' }}
+          SUITE_KEY: ${{ steps.suite.outputs.key }}
+        run: |
+          skip=()
+          if [ "$SUITE_PASSED" = true ]; then
+            echo "::notice::ps3recomp's own tests were not run again: they passed on this ps3recomp, these patches and scripts ($SUITE_KEY)"
+            skip=(--except tools/tests/test_upstream_suite.sh)
+          fi
+          bash tools/run-host-tests.sh --gh -j "$(nproc)" "${skip[@]}"
+      - name: Remember that ps3recomp's own tests passed on these
+        if: steps.passed.outputs.cache-hit != 'true'
+        env:
+          SUITE_KEY: ${{ steps.suite.outputs.key }}
+        run: echo "$SUITE_KEY passed in run $GITHUB_RUN_ID" > "$RUNNER_TEMP/upstream-suite.passed"
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        if: steps.passed.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/upstream-suite.passed
+          key: ${{ steps.suite.outputs.key }}
 
   windows-host:
     # The host tests that also build for Windows, cross-built with the pinned llvm-mingw and run under Wine
