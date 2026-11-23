@@ -21,6 +21,8 @@ program and folder that build it. Until a release that calls itself playable
   on with no window and closed after about 45 seconds without a word (#131).
 - On a CPU too old for the port, `Project Vekta.exe` says so at once. Before, the message could take 30 to 90
   seconds on the first start after the PC was switched on, with nothing on screen meanwhile (#133).
+- The setup fits a 1280x800 screen at 150% display scale (Next and Cancel were under the taskbar), and its "Your
+  game" page shows its three choices without a scroll bar at 125% and above (#135).
 
 ## [0.6.0] - 2026-11-20 (pre-release)
 
