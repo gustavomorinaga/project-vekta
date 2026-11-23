@@ -37,6 +37,8 @@ bug report. The codes and their one-line texts are `port/kz1hd/kz_exit.h` (the s
 - `work/crash/`: the crash and hang reports the game writes (`crash-*.txt`, `hang-*.txt`; the launcher tells the game
   this folder with `KZ_CRASH_DIR`). RecompLauncher's "Crash reports" button opens it.
 - `work/logs/firstrun-*.log`: the check and the build, the five newest kept, with your home folder written as `~`.
+- `work/crash/`: when the game crashes or stops showing new frames, `crash-*.txt` or `hang-*.txt` with where it
+  happened (the same `[kz-crash]` or `[kz-hang]` lines are in `play.log`). Attach them with the log.
 - **The support package**: one zip for a bug report, on the Desktop. The launcher offers it when the game closes
   unexpectedly; to make it at any time: the Windows Start menu's "Make a support package", `scripts\support.cmd`
   in the Windows zip, `scripts/support.sh` or `./project-vekta --support-package` in the Linux folder

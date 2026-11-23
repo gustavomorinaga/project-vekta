@@ -80,3 +80,4 @@ tools/tests/test_sessions.py
 tools/tests/test_res_list.sh
 tools/tests/test_lfqueue.sh
 tools/tests/test_flashmp3.sh
+tools/tests/test_crash_report.sh

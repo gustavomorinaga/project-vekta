@@ -20,6 +20,17 @@ program and folder that build it. Until a release that calls itself playable
   and a line of your own when you make it in a terminal. `scripts/support.cmd` and `scripts/support.sh` make it in
   the Windows zip and the Linux folder, as the setup's Start menu entry does; RecompLauncher gets a "Crash reports"
   folder button.
+- When the game crashes, its log now says where: a `[kz-crash]` block with the exception, the faulting module and
+  offset, the thread, the uptime, the registers, up to 32 frames and a signature (`KZ-XXXX-XXXX`) that is the same
+  each time the same crash happens, and a copy in `work/crash/crash-*.txt`. Before, a crash like the ones a few
+  seconds into Level 1 on AMD GPUs (#129) left nothing in the log ([docs/dev/crash-reports.md](docs/dev/crash-reports.md)).
+- When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets
+  a `[kz-hang]` block with every thread's stack, and a copy in `work/crash/hang-*.txt`; the game is left running.
+  `KZ_HANG_WATCH=0` turns this off.
+- The log starts with the system it runs on: `[kz-sys]` lines for the system, CPU, cores, memory, monitors, the
+  settings in `kz1hd_pc.ini`, the `KZ_*` and `PS3*` variables set (your home folder written as `~`), what started
+  the game and whether the build has DLSS.
+- `KZ_CRASH_TEST=<kind>` makes the game crash or hang on purpose, to check the reports on a build.
 - The game straight from the Killzone Trilogy disc, with no RPCS3 installed: `--disc FOLDER` (the copied disc, or
   its `PS3_EXTRA` package) on `Project Vekta.exe`, `./project-vekta` and the prepare scripts downloads the official
   RPCS3 at a pinned version (checked by SHA-256), which installs the package into the port's `work` folder with no
