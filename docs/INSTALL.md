@@ -4,7 +4,8 @@ This page is for players. It describes version <!-- version -->0.6.0<!-- /versio
 and the Linux folder. Building from a Git clone is in [BUILDING.md](BUILDING.md).
 
 Every download builds the port on your own PC, from your own game. Nothing of the game is in them, and nothing of the
-game is downloaded. The first build takes about five minutes.
+game is downloaded. The first build takes 5 to 30 minutes: about five on a fast
+PC with an SSD, nearer half an hour with four cores and a hard disk.
 
 ## Before you start
 
@@ -25,7 +26,9 @@ first run's questions, `scripts/run.sh` and `scripts\run.cmd`, offer the same ("
 ready", "Show me how", which lists these steps, or "My RPCS3 is somewhere else", which asks for its folder): your
 RPCS3 then decrypts a copy of `EBOOT.BIN` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The setup program offers the same on its "Your game" page ("Use my RPCS3
 install"), with a "Find RPCS3..." button for an RPCS3 it did not find by itself. Either way the folder can be where
-`rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`).
+`rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`). On a fresh
+Windows, RPCS3 itself needs Microsoft's Visual C++ 2015-2022 runtime (x64) before it starts; see
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 This project gives no decryption tools or instructions. The setup and the scripts only read your files; on the RPCS3
 route your own RPCS3 decrypts copies of them, and nothing is written into the game's or RPCS3's folders.
@@ -93,7 +96,7 @@ without the setup.
    Enter to choose that file again, or `q` to quit.
 4. **Answer the DLSS question.** It shows NVIDIA's licence link. `y` accepts it and downloads DLSS; Enter or `n`
    builds without it.
-5. **Wait for the build.** A progress bar runs for about five minutes. At the end the window says "Built." and
+5. **Wait for the build.** A progress bar runs for 5 to 30 minutes. At the end the window says "Built." and
    names the command that plays. The log is in `work\logs\`.
 6. **Start `Project Vekta.exe` again** to play (`scripts\play.cmd` does the same in a console; add
    `--fullscreen` for full screen). The settings are in
@@ -129,7 +132,7 @@ one program at its top for the launcher to start: `Project Vekta.exe` on Windows
 3. **Tick NVIDIA DLSS** (Windows only) only if you accept NVIDIA's licence; without it the port builds with AMD
    FSR 3.1. The Linux folder always builds with FSR 3.1: NVIDIA's Linux library does not link with its bundled
    toolchain. For DLSS on Linux, build with your system's compilers (docs/BUILDING.md).
-4. **Let it prepare.** The launcher runs the check and the build (about five minutes) without a window, with a
+4. **Let it prepare.** The launcher runs the check and the build (5 to 30 minutes) without a window, with a
    progress bar. Nothing of the game is downloaded.
 5. **Play** from the launcher. The saves and settings stay in the folder (`work/vfs`), and the logs in `work`.
 
