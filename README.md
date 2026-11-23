@@ -62,7 +62,7 @@ SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
   **Project Vekta** in the Start menu.
 - **Windows, zip** (`project-vekta-X.Y.Z-windows.zip`): the same folder without the setup. `Project Vekta.exe` builds
   the first time (from your RPCS3, or `scripts\run.cmd` asks where your files are) and then plays.
-- **Linux folder** (`project-vekta-X.Y.Z-linux.tar.gz`): `./project-vekta` builds the first time (from your RPCS3,
+- **Linux folder** (`project-vekta-X.Y.Z-linux.tar.xz`): `./project-vekta` builds the first time (from your RPCS3,
   or `scripts/run.sh` asks where your files are) and then plays.
 - **A game launcher** can install the zip or the Linux folder too: each has one program at its top and a
   `recomplauncher.json` ([docs/INSTALL.md](docs/INSTALL.md#installing-through-a-launcher)). Problems:

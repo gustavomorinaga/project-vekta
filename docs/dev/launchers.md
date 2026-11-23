@@ -7,7 +7,7 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
 ## The contract
 
 - **One program at the top.** The Windows folder (`project-vekta-X.Y.Z-windows.zip`) has `Project Vekta.exe` and
-  the Linux folder (`project-vekta-X.Y.Z-linux.tar.gz`) has `project-vekta`, and no other startable file at the
+  the Linux folder (`project-vekta-X.Y.Z-linux.tar.xz`) has `project-vekta`, and no other startable file at the
   top: on Windows no other `.exe`, `.bat` or `.cmd`; on Linux no `.sh`, no file starting with `#!/` and no ELF file
   (`.txt`, `.dll`, `.so` and `.json` do not count). `tools/release/assemble_payload.py` refuses a folder that breaks
   this (`layout_problems()`), and `tools/tests/test_payload.py` checks both folders. The scripts are in `scripts/`.
@@ -24,6 +24,16 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
   SDK licence, never given for them.
 - **The exit codes:** one table, `port/kz1hd/kz_exit.h`, for the exe and the launcher; `launch.py` reads it, and
   [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) is built around it.
+- **The Linux archive is a `.tar.xz` from 0.7.0** (a `.tar.gz` before). RecompLauncher's developer guide
+  (`docs/DEVELOPERS.md` at `0f4540e`, Beta 67) names the kind: on Linux a `.tar.gz`, `.tar.xz` or `.tar.zst`, picked
+  by the system's name in the file's name, with `source` and `.sha256` files never taken. Its source takes the three
+  alike (`src-tauri/src/assets.rs`), and Quiver 3.5.1 and 4.0 unpack `.tar.xz`. The guide also says that a listing
+  which names the file falls back to reading the names after a rename. In the Beta 67 source that holds for a system
+  the listing does not name: where the listing's pattern for Linux matches no file of a release (a name ending in
+  `-linux.tar.gz`), the launcher installs the newest release that has a match, so Linux players would stay on 0.6.0
+  until the listing is updated. Neither catalog's entry for this port was read (RecompLauncher's `assets`, Quiver's
+  `releaseAssetFilter`, one filter for every system's files): after the first `.tar.xz` release, see that both
+  launchers offer it on Linux.
 - **`recomplauncher.json`** at the top of both folders (`tools/release/recomplauncher.py`, from
   `installer/recomplauncher.json`): the same contract in RecompLauncher's format 1.
 - **Not yet:** the launchers' mode hints (`RECOMPLAUNCHER_MODE=bigpicture|desktop`, `RECOMPLAUNCHER_PAD=xbox|

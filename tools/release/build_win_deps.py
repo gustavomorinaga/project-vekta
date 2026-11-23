@@ -12,6 +12,9 @@ and packages tools/release/fetch_toolchain.py unpacked, with the pinned llvm-min
   FFmpeg          include/lib* (the headers the movie loader compiles against) and bin/*.dll (loaded at run time),
                   when the ffmpeg entry has been fetched
 
+The Vulkan headers and FFmpeg's DLLs are hard links to the cache's files where the file system makes them
+(fetch_toolchain.place), copies elsewhere: nothing writes to them after this.
+
 The prefix's stamp.json records the pins it was made from; a run with the same pins and llvm-mingw does nothing.
 CMake and Ninja: the ones on PATH (work/venv on Linux). Exit 0 = staged, 1 = a step failed. Standard library only.
 """
@@ -31,12 +34,12 @@ TOOLCHAIN_FILE = os.path.join(ROOT, "port", "cmake", "llvm-mingw.cmake")
 PARTS = ("sdl2", "zlib", "glslang", "vulkan-headers", "ffmpeg")
 
 
-def copytree(src, dst):
+def copytree(src, dst, put=shutil.copy2):
     for d, _, files in os.walk(src):
         rel = os.path.relpath(d, src)
         os.makedirs(os.path.join(dst, rel), exist_ok=True)
         for f in files:
-            shutil.copy2(os.path.join(d, f), os.path.join(dst, rel, f))
+            put(os.path.join(d, f), os.path.join(dst, rel, f))
 
 
 def run(argv, log):
@@ -104,8 +107,9 @@ def main(argv=None):
             for f in ("libSDL2.a", "libSDL2.la", "libSDL2_test.a", "libSDL2_test.la"):
                 os.remove(os.path.join(a.prefix, "lib", f))
             print("sdl2: staged", flush=True)
-            for name in ("vk_video", "vulkan"):
-                copytree(c("vulkan-headers", "include", name), os.path.join(a.prefix, "include", name))
+            for name in ("vk_video", "vulkan"):   # 23 MB of headers, only read: links to the cache's files
+                copytree(c("vulkan-headers", "include", name), os.path.join(a.prefix, "include", name),
+                         fetch_toolchain.place)
             print("vulkan-headers: staged", flush=True)
             cmake_build("zlib", c("zlib"), os.path.join(tmp, "zlib"), a.prefix, llvm, a.jobs,
                         ["-DZLIB_BUILD_EXAMPLES=OFF"], log)
@@ -122,7 +126,7 @@ def main(argv=None):
                 os.makedirs(os.path.join(a.prefix, "bin"), exist_ok=True)
                 for f in os.listdir(c("ffmpeg", "bin")):
                     if f.endswith(".dll"):
-                        shutil.copy2(c("ffmpeg", "bin", f), os.path.join(a.prefix, "bin", f))
+                        fetch_toolchain.place(c("ffmpeg", "bin", f), os.path.join(a.prefix, "bin", f))
                 print("ffmpeg: staged", flush=True)
             else:
                 print("ffmpeg: not fetched: the exe builds with the host's headers and plays no movies", flush=True)

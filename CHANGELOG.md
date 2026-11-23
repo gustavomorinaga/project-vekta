@@ -13,6 +13,10 @@ program and folder that build it. Until a release that calls itself playable
   RPCS3 at a pinned version (checked by SHA-256), which installs the package into the port's `work` folder with no
   window and decrypts a copy of the EBOOT there; the disc is only read and an RPCS3 of yours is not touched
   (docs/INSTALL.md). The PlayStation Store package still goes through "Use my RPCS3 install".
+- Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by
+  GitHub, that the repository's release workflow built that very file from the tagged commit.
+  `gh attestation verify <file> --repo gustavomorinaga/project-vekta` checks a download against it
+  ([docs/INSTALL.md](docs/INSTALL.md)).
 
 ### Changed
 - A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by
@@ -24,6 +28,19 @@ program and folder that build it. Until a release that calls itself playable
   on four cores and a hard disk it took close to half an hour (#134).
 - The install and troubleshooting pages say that RPCS3 needs Microsoft's Visual C++ runtime on a fresh Windows,
   without which "Use my RPCS3 install" fails (#136).
+- The first run takes the movies out of the game's archive faster and with less memory: each movie is written to
+  its file as it is read, instead of being put together in memory first, which copied the whole movie so far at
+  every block (`tools/psarc_ls.py`; on made-up data a 31 MB movie took 2.8 s of copying, now 0.01 s). An archive
+  that is cut short is named in the error.
+- The release folders no longer carry two sets of files that no build reads (glslang's test shaders and the
+  registry Vulkan's headers are generated from): about 55 MB and 3,400 files less on disk after install, and about
+  5 MB less to download.
+- The build no longer keeps a second and a third copy of FFmpeg's libraries and a second copy of the Vulkan headers:
+  what it stages for the compile and beside the program are hard links to the toolchain folder's files where the
+  file system makes them (NTFS, ext4, btrfs), and copies as before where it does not (exFAT). About 260 MB less
+  disk on Windows and 280 MB less on Linux.
+- The Linux folder is now a `.tar.xz` (`project-vekta-X.Y.Z-linux.tar.xz`), about a third smaller to download than
+  the `.tar.gz` it replaces. `tar xf` unpacks it, and so do the launchers.
 
 ### Fixed
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
