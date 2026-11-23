@@ -84,8 +84,8 @@ ends the process. On Windows the process then ends with the exception code as it
 Error Reporting dialog (`KZ_CRASH_WER=1` hands it to Windows instead); on Linux it ends by its signal.
 
 Limits: `__fastfail` (Windows) runs no handler at all, so it has no report (the launcher still sees 0xC0000409). A
-stack overflow is reported on the main thread (it has a stack guarantee on Windows and an alternate signal stack on
-Linux) but on another thread only on Windows, and only when what is left of its stack is enough; on Linux the
+stack overflow is reported on the main thread (on Windows from a new thread with its own stack, on Linux from the
+alternate signal stack) and on another thread only on Windows; on Linux the
 runtime's threads have no alternate signal stack and die without a report. On Linux the unwinder may take the
 loader's lock: a crash inside `dlopen` can stop the report after the lines before the frames.
 
@@ -136,4 +136,6 @@ says `[kz] hang watch: frames again after N s`.
   ps3recomp's `ps3_stdio.c` and `win32_compat.c`, runs every kind in a child process and checks the blocks, the exit
   status, the signature on a second run, the copies, two threads crashing at once, the hang reports (and none with
   `KZ_HANG_WATCH=0` or the window minimized) and the session header; then `addr2line` on frame #0. The Windows build of
-  the same program runs under Wine in `tools/wine-host-tests.sh`.
+  the same program runs under Wine in `tools/wine-host-tests.sh`, without the `stack` kind (Wine hangs on the
+  overflow before any handler runs; `KZ_CRASH_TEST_SKIP=<kinds>` leaves kinds out). That kind is checked on Windows
+  itself: `test_crash_report.exe <empty folder>` from the same build, with `libwinpthread-1.dll` beside it.

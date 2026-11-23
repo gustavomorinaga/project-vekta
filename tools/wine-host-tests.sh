@@ -121,7 +121,10 @@ n=$((n + 1)); rm -rf "${O:?}/crash-report"
 if build test_crash_report -std=gnu17 -O2 -I "$KZ_ROOT/port/kz1hd" -I "$P/include" -I "$P/runtime/platform" \
      "$KZ_ROOT/tools/tests/test_crash_report.c" "$KZ_ROOT/port/kz1hd/crash_report.c" "$KZ_ROOT/port/kz1hd/sys_info.c" \
      "$P/runtime/platform/ps3_stdio.c" >"$O/test_crash_report.build.log" 2>&1; then
-  if (cd "$O/bin" && timeout 900 "$wine" ./test_crash_report.exe ../crash-report) >"$O/test_crash_report.log" 2>&1; then
+  # Wine hangs on the stack overflow before any handler runs (CI, 2026-11-23): that kind runs on Windows itself
+  # (test_crash_report.exe ../crash-report there, see docs/dev/crash-reports.md).
+  if (cd "$O/bin" && KZ_CRASH_TEST_SKIP=stack timeout 900 "$wine" ./test_crash_report.exe ../crash-report) \
+       >"$O/test_crash_report.log" 2>&1; then
     echo "ok   test_crash_report"
   else
     echo "FAIL test_crash_report"; grep FAIL "$O/test_crash_report.log" | head -10; failed+=(test_crash_report)

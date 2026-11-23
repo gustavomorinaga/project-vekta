@@ -684,7 +684,22 @@ int main(int argc, char** argv)
     };
 #endif
     const int nc = (int)(sizeof cases / sizeof *cases);
+    /* KZ_CRASH_TEST_SKIP: kinds left out, comma separated. tools/wine-host-tests.sh leaves out "stack": under Wine the
+     * child hangs on its stack overflow before any handler runs, so that kind is run on Windows itself. */
+    const char* skip = getenv("KZ_CRASH_TEST_SKIP");
     for (int i = 0; i < nc; i++) {
+        if (skip && *skip) {
+            const size_t kl = strlen(cases[i].kind);
+            int left_out = 0;
+            for (const char* q = skip; *q;) {
+                const char* e = strchr(q, ',');
+                const size_t n = e ? (size_t)(e - q) : strlen(q);
+                if (n == kl && strncmp(q, cases[i].kind, n) == 0) left_out = 1;
+                if (!e) break;
+                q = e + 1;
+            }
+            if (left_out) { printf("skip %s (KZ_CRASH_TEST_SKIP)\n", cases[i].kind); continue; }
+        }
         check_crash(&cases[i], 1, s_sigs[i]);
         if (cases[i].head && strcmp(cases[i].kind, "both") != 0) {
             char again[16] = "";
