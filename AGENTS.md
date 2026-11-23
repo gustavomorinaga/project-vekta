@@ -59,7 +59,7 @@ Overview: [README.md](README.md) and [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md
   changes gameplay is opt-in. Mark values not yet recovered from the binary `ASSUMPTION:` and never restate one as
   fact. Keep original function addresses in comments (`func_00291FA8`, `0x131E4DC`).
 - **Online is opt-in.** Nothing may contact the network unless the player chose it; a new connection must be named
-  in the README's "What goes online" list.
+  in the "What goes online" list of [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Licence and attribution
 

@@ -87,8 +87,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(seen == [(vc.URL, vc.AGENT, None, vc.TIMEOUT)] and urllib.parse.urlsplit(vc.URL).hostname == "api.github.com",
           f"one request to GitHub's API, no cookie, a plain User-Agent: {seen}")
     check(vc.fetch_latest(lambda req, timeout: Resp(b"not json")) is None, "a bad answer is a failed request")
-    check("version-check" in (ROOT / "README.md").read_text() or "New-version check" in
-          (ROOT / "README.md").read_text(), "README's What goes online names it")
+    check("New-version check" in (ROOT / "docs/PRIVACY.md").read_text(), "docs/PRIVACY.md's What goes online names it")
     os.environ.pop("KZ_VERSION_CHECK", None)
 
 print("test_version_check:", "FAIL" if fails else "ok")

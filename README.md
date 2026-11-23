@@ -1,224 +1,213 @@
 <p align="center">
-  <img src="assets/banner.png" width="1280"
+  <img src="assets/banner.png" srcset="assets/banner@2x.png 2x" width="1280"
        alt="Project Vekta. Killzone HD: unofficial PC port (static recompilation), built on your PC from your own game">
 </p>
 
-# Project Vekta (work in progress)
+<h1 align="center">Project Vekta</h1>
 
-**Killzone HD: unofficial PC port (static recompilation)**
+<p align="center"><b>Killzone HD (PS3) as a native Linux and Windows program, built on your PC from your own copy.</b><br>
+An unofficial fan port by static recompilation. Work in progress, playable from start to end.</p>
 
-![License: MIT](https://img.shields.io/badge/license-MIT-blue)
-![Status: playable, testing](https://img.shields.io/badge/status-playable%2C%20testing-orange)
-![Linux x64](https://img.shields.io/badge/platform-Linux%20x64-333)
-![Windows x64](https://img.shields.io/badge/platform-Windows%20x64%20(cross--built)-0078D6)
-![Vulkan](https://img.shields.io/badge/graphics-Vulkan-A41E22)
+<p align="center">
+  <a href="https://github.com/gustavomorinaga/project-vekta/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/gustavomorinaga/project-vekta/ci.yml?label=CI&style=flat-square&labelColor=0a0d10"></a>
+  <a href="https://github.com/gustavomorinaga/project-vekta/releases"><img alt="Latest pre-release" src="https://img.shields.io/github/v/release/gustavomorinaga/project-vekta?include_prereleases&label=pre-release&color=3f7fb5&style=flat-square&labelColor=0a0d10"></a>
+  <a href="https://github.com/gustavomorinaga/project-vekta/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/gustavomorinaga/project-vekta/total?style=flat-square&labelColor=0a0d10&color=3f7fb5"></a>
+  <a href="https://github.com/gustavomorinaga/project-vekta/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/gustavomorinaga/project-vekta?style=flat-square&color=3f7fb5&labelColor=0a0d10"></a>
+</p>
+<p align="center">
+  <a href="LICENSE"><img alt="Licence: MIT" src="https://img.shields.io/badge/licence-MIT-3f7fb5?style=flat-square&labelColor=0a0d10"></a>
+  <a href="https://github.com/gustavomorinaga/project-vekta/commits"><img alt="Last commit" src="https://img.shields.io/github/last-commit/gustavomorinaga/project-vekta?style=flat-square&color=3f7fb5&labelColor=0a0d10"></a>
+  <a href="https://github.com/gustavomorinaga/project-vekta/issues"><img alt="Issues" src="https://img.shields.io/github/issues/gustavomorinaga/project-vekta?style=flat-square&color=3f7fb5&labelColor=0a0d10"></a>
+</p>
+<p align="center">
+  <img alt="Platform: Linux x64" src="https://img.shields.io/badge/platform-Linux%20x64-3f7fb5?style=flat-square&labelColor=0a0d10">
+  <img alt="Platform: Windows x64" src="https://img.shields.io/badge/platform-Windows%20x64-3f7fb5?style=flat-square&labelColor=0a0d10">
+  <img alt="Renderer: Vulkan" src="https://img.shields.io/badge/renderer-Vulkan-3f7fb5?style=flat-square&labelColor=0a0d10">
+  <img alt="Status: playable, testing" src="https://img.shields.io/badge/status-playable%2C%20testing-3f7fb5?style=flat-square&labelColor=0a0d10">
+  <a href="https://deepwiki.com/gustavomorinaga/project-vekta"><img alt="Ask DeepWiki" src="https://img.shields.io/badge/DeepWiki-Ask-3f7fb5?style=flat-square&labelColor=0a0d10"></a>
+</p>
 
-**[Install](docs/INSTALL.md)** · **[Status](#status)** · **[Features](docs/FEATURES.md)** ·
-**[Screenshots](docs/SCREENSHOTS.md)** · **[Requirements](docs/requirements.md)** ·
-**[Getting your files](docs/GETTING-FILES.md)** · **[Building](docs/BUILDING.md)** · **[How it works](docs/HOW-IT-WORKS.md)** · **[Known issues](docs/KNOWN_ISSUES.md)** · **[Troubleshooting](docs/TROUBLESHOOTING.md)** ·
-**[Roadmap](docs/ROADMAP.md)** · **[Glossary](docs/GLOSSARY.md)** · **[AI use](#how-ai-was-used)** ·
-**[Contributing](.github/CONTRIBUTING.md)** · **[Forking](docs/FORKING.md)**
+<p align="center">
+  <b><a href="https://github.com/gustavomorinaga/project-vekta/releases">Download</a></b> ·
+  <b><a href="docs/INSTALL.md">Installing</a></b> ·
+  <b><a href="docs/FAQ.md">FAQ</a></b> ·
+  <b><a href="docs/STATUS.md">Status</a></b> ·
+  <b><a href="docs/SCREENSHOTS.md">Screenshots</a></b> ·
+  <b><a href="https://github.com/gustavomorinaga/project-vekta/issues/new/choose">Report an issue</a></b> ·
+  <b><a href="docs/BUILDING.md">Build from source</a></b>
+</p>
 
-*Vekta* is the ISA colony world where the first Killzone is fought. Project Vekta is a fan project, not official and
-not affiliated with or endorsed by Sony Interactive Entertainment or Guerrilla Games.
+<p align="center"><img src="assets/divider-frame.png" width="900" alt=""></p>
 
-**What this is:** a static recompilation of **Killzone HD**, the PS3 remaster of the first Killzone (title NPUA80856,
-the package on the Killzone Trilogy disc). The game's PowerPC (PPU) and Cell SPU code is translated to C++ ahead of
-time with [ps3recomp](https://github.com/sp00nznet/ps3recomp) (pinned at v0.19.0, plus this project's patches in
-`port/patches/`) and compiled into a native Linux or Windows x64 program. It is **not an emulator** (no CPU emulator
-runs at play time) and **not a rewrite** (the game's logic is the game's own code). Around that code, the PS3's
-system libraries and hardware behaviour are reimplemented on PC APIs, and the game's graphics commands are replayed
-on Vulkan.
+**Project Vekta** is an unofficial fan port of **Killzone HD**, the PS3 remaster of the first Killzone (title
+NPUA80856, from the Killzone Trilogy disc or the PlayStation Store), to Linux and Windows x64. The game's own PowerPC
+and SPU code is translated to C++ ahead of time with [ps3recomp](https://github.com/sp00nznet/ps3recomp) and compiled
+into a native program: it is **not an emulator** and **not a rewrite**. *Vekta* is the ISA colony world where the
+first Killzone is fought.
 
-**You need your own copy of the game.** This repository contains only the port: source code, patches to the
-recompiler, tools and documentation. It contains no game code, data, assets, keys or firmware, and it never will.
-Each player translates and builds the game's code on their own machine, from their own files.
+> **Bring your own game.** This repository holds no game code, data, assets, keys or firmware, and downloads none.
+> Each player translates and builds the game's code on their own machine, from their own files
+> ([what each file must be](docs/GETTING-FILES.md)).
 
-## What you need
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
-- **Your own game:** Killzone HD (NPUA80856, the US edition), installed from your own **Killzone Trilogy** disc or
-  bought on the PlayStation Store; no PS3 system software is needed. When it is installed in your RPCS3, the
-  installers use it and your RPCS3 makes a decrypted copy of the game's EBOOT;
-  otherwise you give that decrypted file yourself. The disc copy's data archive is read
-  as it is installed; the Store copy's is bound to your licence, so your RPCS3 opens a copy of it too. What each file must be, and how the
-  scripts check them: [docs/GETTING-FILES.md](docs/GETTING-FILES.md); every install step:
-  [docs/INSTALL.md](docs/INSTALL.md).
-- **A PC:** Windows x64 or Linux x64, a CPU with AVX2 (x86-64-v3), and a Vulkan graphics card and driver
-  ([docs/requirements.md](docs/requirements.md)).
-- **Disk space:** about 4 GB for the game files, plus, free, about 2.4 GB on Windows (5.6 GB where Windows cannot
-  make links) or 1.9 GB on Linux for the port and its build, and 3.1 GB more when the game's data archive is opened
-  from the installed game ([docs/requirements.md](docs/requirements.md)).
+## Status
 
-The release downloads bring their own build tools: nothing else to install on Windows, and on Linux only Python 3.10
-or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
+Latest release: <!-- release -->[v0.6.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0), a pre-release<!-- /release -->. The whole campaign, levels 1 to 11, has been played from start to end on Linux and on
+Windows. The levels are not yet each compared with reference footage of the PS3 game.
 
-## How to play
+| | | | |
+|---|---|---|---|
+| **11 of 11 levels** played from start to end, Linux and Windows (2026-11-16) · [proof](docs/STATUS.md) | **60 fps** steady by default, game logic at 60 Hz (PS3: 30) · [proof](docs/HOW-IT-WORKS.md#frame-rate-above-30) | **0 game files** in the repository or the downloads · [proof](AGENTS.md#rules-for-everyone) | **5 to 30 minutes** for the first build, once · [proof](docs/INSTALL.md) |
 
-Latest release: <!-- release -->[v0.6.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0), a pre-release<!-- /release -->.
-Every download builds the port on your PC from your own files, once, in 5 to 30 minutes (longer on a hard disk or an older CPU). Each download has its
-SHA-256 sum in `SHA256SUMS` and in a `.sha256` file beside it.
+One row per setup. *Verified* means the maintainer ran it there; *implemented* means the code is in but not run there.
+The full dated table is [docs/STATUS.md](docs/STATUS.md).
 
-- **Windows, setup program** (`project-vekta-X.Y.Z-setup.exe`): it asks where your files are, builds, and puts
-  **Project Vekta** in the Start menu.
-- **Windows, zip** (`project-vekta-X.Y.Z-windows.zip`): the same folder without the setup. `Project Vekta.exe` builds
-  the first time (from your RPCS3, or `scripts\run.cmd` asks where your files are) and then plays.
-- **Linux folder** (`project-vekta-X.Y.Z-linux.tar.xz`): `./project-vekta` builds the first time (from your RPCS3,
-  or `scripts/run.sh` asks where your files are) and then plays.
-- **A game launcher** can install the zip or the Linux folder too: each has one program at its top and a
-  `recomplauncher.json` ([docs/INSTALL.md](docs/INSTALL.md#installing-through-a-launcher)). Problems:
-  [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+| Platform | How it runs | Renderer | State | Tested on |
+|---|---|---|---|---|
+| Linux x64 | native program | Vulkan | verified: the whole campaign (2026-11-16), 60 fps steady, about 131 to 134 fps in the 144 Hz mode | NVIDIA RTX 3070 Ti, the maintainer's machine |
+| Windows x64 | native exe | Vulkan | verified: the whole campaign (2026-11-16) | the maintainer's Windows machine |
+| Linux, Windows exe | Wine or Proton | Vulkan | verified, slower (about 100 fps in Level 7) | GE-Proton 11 |
 
-<p>
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
+
+## Download and play
+
+**What you need:**
+
+- **Your own Killzone HD** (NPUA80856, the US edition), installed from your own **Killzone Trilogy** disc or bought on
+  the PlayStation Store. No PS3 system software is needed. The European edition is not supported yet
+  ([getting your files](docs/GETTING-FILES.md)).
+- **A PC:** Windows or Linux x64, a CPU with AVX2 (x86-64-v3), and a Vulkan graphics card and driver
+  ([requirements](docs/requirements.md)).
+- **Disk space:** about 4 GB for the game files, plus a few GB free for the port and its build
+  ([requirements](docs/requirements.md)).
+
+**Install:**
+
+1. Download from <!-- release -->[v0.6.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0), a pre-release<!-- /release --> on the [releases page](https://github.com/gustavomorinaga/project-vekta/releases): the **setup program**
+   (`project-vekta-X.Y.Z-setup.exe`) or the **zip** on Windows, the **folder** (`project-vekta-X.Y.Z-linux.tar.xz`)
+   on Linux. Check it against `SHA256SUMS`.
+2. Start it: the setup, `Project Vekta.exe` in the zip or `./project-vekta` in the Linux folder. When the game is in
+   your RPCS3 it is found and used. With no RPCS3, the copied Killzone Trilogy disc works too (the setup's "From my
+   Killzone Trilogy disc", or `--disc FOLDER`: the official RPCS3 is downloaded to install it). Otherwise it asks
+   where your files are. You should see your files checked, with anything wrong named.
+3. Let it build, once, in 5 to 30 minutes (longer on a hard disk or an older CPU). Nothing of the game is shipped or downloaded, and nothing is written
+   into your game files.
+4. Play: **Project Vekta** in the Start menu, or the same program again. You should see the intro movies, then the
+   menus.
+
+Or through a game launcher, which installs the same folders ([installing through a launcher](docs/INSTALL.md#installing-through-a-launcher)):
+
+<p align="center">
 <a href="https://recomplauncher.com/game/project-vekta"><img src="assets/press/recomplauncher/badge-dark.svg" width="313" height="56" alt="Get it on RecompLauncher"></a>
 <a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta"><img src="assets/press/quiver/badge@3x.png" width="203" height="56" alt="Get it on Quiver Launcher"></a>
 </p>
 
-Step by step, with what you see at each step: **[docs/INSTALL.md](docs/INSTALL.md)**. To build from a Git clone or
-the source archive instead: [For developers](#for-developers-building-from-source).
+Every step, with what you see at each: **[docs/INSTALL.md](docs/INSTALL.md)**.
 
-## Status
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
-As of 2026-11-16, on Linux x64 with an NVIDIA RTX 3070 Ti, the maintainer's machine:
+## What goes online and where your data goes
 
-| | |
-|---|---|
-| Code translation | the whole EBOOT is translated (about 23,400 PPU functions) plus the SPU programs and job modules; this repository's scripts rebuild it byte for byte from the player's files |
-| Boot, menus, movies | work: intro movies, front end, options, pause menu, saves and Continue |
-| Campaign | the whole campaign, levels 1 to 11, played from start to end on Linux and on Windows (2026-11-16); the levels are not yet each compared with reference footage |
-| Frame rate | a steady 60 frames per second by default (the game logic runs at 60 Hz instead of the PS3's 30); an optional 144 Hz mode reaches about 131 to 134 frames per second in Level 1 and Level 7 |
-| Sound | stereo, 5.1 and 7.1 output (the game's own mixer fills the extra channels); music decoded with minimp3 in place of the PS3 system software's MP3 decoder |
-| Windows | the Windows exe is cross-built on Linux and runs under Wine, Proton and on a real Windows; the whole campaign plays there from start to end (2026-11-16); speed under Wine and Proton is lower (about 100 frames per second in Level 7) |
-| Distribution | you build the port from your own files: on Windows the setup program or folder builds it on your PC (since 0.2.0); on Linux from source, or (since 0.3.0) a Linux folder with its own toolchain (no compiler or packages needed) |
+Nothing, unless you choose it: the port starts no connection of its own. The three you can choose, the NVIDIA DLSS
+download, the official RPCS3 for a game straight from the disc and the new-version check (off by default), and where
+saves, settings and logs are kept:
+[docs/PRIVACY.md](docs/PRIVACY.md).
 
-What works and what does not, item by item: [docs/FEATURES.md](docs/FEATURES.md). Open problems:
-[docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
 ## PC features
 
-All optional, set in a **PC** page inside the game's own Options and Pause menus and kept in `kz1hd_pc.ini`:
+All optional, on a **PC** page in the game's own Options and Pause menus:
 
-- display mode (window, borderless, fullscreen), output resolution, internal resolution scale, V-Sync (on, off,
-  adaptive), VRR, frame-rate limit (30, 60, 144), NVIDIA Reflex
-- AMD FSR 1 upscaling and RCAS sharpening, anisotropic filtering (the game's own or 2x to 16x)
-- temporal upscaling on Linux and Windows: AMD FSR 3.1 in every build, and NVIDIA DLSS (Super Resolution and DLAA)
-  when you choose to download it at install ([docs/dev/upscalers.md](docs/dev/upscalers.md))
-- any aspect ratio (Hor+ for 21:9, 32:9 and wider, the game's own 4:3 view for 4:3 and 16:10, a forced ratio if you
-  want one, with the menus and movies kept 16:9), field of view for the world and,
-  apart, the first-person weapon (70 to 120 degrees at 16:9), HUD size and position
-- presets: Original (PS3), Performance, Balanced, Quality
-- keyboard and mouse (direct mouse look, mouse in menus, remappable keys), Xbox, PlayStation, Nintendo and generic
-  controllers through SDL, with button prompts that follow the device in use
-- stereo, 5.1 or 7.1 sound; game language; skip the opening movie; local trophies from the game's own trophy set
+- window, borderless or fullscreen, any resolution and aspect ratio (Hor+ up to 32:9), V-Sync, VRR, 30/60/144 fps,
+  NVIDIA Reflex
+- AMD FSR 1, AMD FSR 3.1 and NVIDIA DLSS (downloaded only if you accept its licence), anisotropic filtering
+- field of view for the world and the weapon, HUD and crosshair size, motion blur, film grain and glow
+- keyboard and mouse with direct mouse look, any SDL controller, prompts that follow the device
+- stereo, 5.1 or 7.1 sound, game language, local trophies
 
-## What goes online
+The full list, with defaults and evidence: [docs/STATUS.md](docs/STATUS.md#pc-features) and
+[docs/FEATURES.md](docs/FEATURES.md). Controls and display: [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
 
-Nothing, unless you choose it. The port and its scripts make no network connection of their own. The downloads are
-the ones you start: cloning this repository with its ps3recomp submodule, your system's packages, the build tools'
-Python packages, and these, only when you choose them:
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
-- **NVIDIA DLSS**: only if you accept NVIDIA's DLSS SDK licence when `tools/install.sh` or `scripts\run.cmd` asks, or tick
-  the Windows setup's DLSS box (unticked by default), or pass `--dlss accept`, the build downloads the DLSS SDK's files from NVIDIA's repository on GitHub
-  (`raw.githubusercontent.com/NVIDIA/DLSS`, pinned to v310.9.16 and checked by SHA-256) into
-  `work/toolchain-cache/dlss-sdk/`. The question first downloads the licence's text from there, for you to read.
-  Declined, nothing is downloaded and the build has no DLSS.
-- **The official RPCS3, for a game straight from the disc**: only when you choose `--disc` (no RPCS3 of yours
-  installed), the build downloads RPCS3 0.0.43-20640 from RPCS3's own GitHub releases
-  (`github.com/RPCS3/rpcs3-binaries-linux` or `-win`, checked by SHA-256) into `work/toolchain-cache/rpcs3/`, to
-  install the disc's package and decrypt its EBOOT there. Nothing is downloaded from Sony.
-- **New-version check** (off by default): turned on with `KZ_VERSION_CHECK=1`, or with
-  `tools/release/version_check.py --enable` in an install made by the setup program, the launcher asks GitHub's public
-  API for this project's latest release (`api.github.com/repos/gustavomorinaga/project-vekta/releases`) at most
-  once a day, before the game starts, and names a newer one. The request carries no identifier; nothing is downloaded
-  or installed. `tools/release/version_check.py --disable` or `KZ_VERSION_CHECK=0` turns it off.
+## Known issues
 
-## Where your data goes
+The main ones: the 144 Hz mode is not steady and can shake or ghost the first-person weapon in busy places, and the
+levels are not yet each compared with the PS3 game. The full list: [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 
-Everything stays in the folder the game runs from, `work/vfs/` (made by `tools/setup-vfs.sh`): the PC settings in
-`kz1hd_pc.ini`, the key map in `kz1hd_keys.ini`, saves under `gamedata/dev_hdd0/home/00000001/savedata/`, and the
-local trophy log in `gamedata/trophies/`. The log of a run goes to `work/play.log`. Nothing is written outside the
-repository's `work/` folder, and nothing is written into your game files. The Windows setup program is the one
-exception: unless you pick its "Portable" option, the settings and saves go to `%APPDATA%\Project Vekta` instead.
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
-## How it works, briefly
+## Troubleshooting and reporting bugs
 
-- **PPU:** the game's PowerPC functions are lifted to C++ by ps3recomp's lifter and compiled with clang; a few hot
-  functions are reimplemented natively (`port/kz1hd/native_ppu/`).
-- **SPU:** the SPU programs and the WWS job modules are lifted the same way; SPURS runs on host threads; some SPU
-  jobs run as native C (`port/kz1hd/native/`).
-- **Graphics:** the game's RSX command stream is replayed on Vulkan, with PC options (scaling, FSR 1, widescreen)
-  applied around it.
-- **Data:** the game reads its own archive through its own file system code; movies are decoded with FFmpeg.
+Problems by what you see and by exit code, with the fix and the log to attach:
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). To report a bug,
+[open an issue](https://github.com/gustavomorinaga/project-vekta/issues/new/choose).
 
-More: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md). General fixes are offered to ps3recomp upstream.
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
-## How AI was used
+## Building
 
-This project is developed by one person with AI coding agents (Claude Code). The agents did most of the work of
-reading the game's binary and reference material, writing and testing patches, tools and documentation, and running
-the builds, with the maintainer setting the goals, playing and checking the game, reviewing what they produced and
-deciding what is published. Findings are dated; an `ASSUMPTION:` in the code or the docs is not fact. If you find a
-statement here that was not verified, please open an issue.
+From a clone or the release's source archive, `tools/install.sh` asks where your files are, checks them and builds;
+then `tools/play.sh` plays. Tools, every step and the Windows build: [docs/BUILDING.md](docs/BUILDING.md).
 
-## Related projects
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
-- [Project Helghast](https://github.com/undecuple/project-helghast) (Killzone 3) and
-  [Project Pyrrhus](https://github.com/undecuple/project-pyrrhus) (Killzone 2), by undecuple: the same approach for
-  the rest of the trilogy, and the model for this repository's layout. Credits: [NOTICE.md](NOTICE.md).
-- [ps3recomp](https://github.com/sp00nznet/ps3recomp), the recompiler this port is built on.
+## How it works
 
-## Official channels
+The game's PPU and SPU code is lifted to C++ and compiled with clang; the PS3's system libraries are reimplemented on
+PC APIs; the game's RSX command stream is replayed on Vulkan. Details: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
+General fixes are offered to ps3recomp upstream.
 
-Project Vekta is made by **Gustavo Morinaga**: GitHub [@gustavomorinaga](https://github.com/gustavomorinaga), and
-the project site <https://gustavomorinaga.github.io/project-vekta/>. Code and, when there are any, builds come only
-from this repository. We never ask anyone to paste a command they were sent into a terminal or PowerShell.
-Anyone else offering builds, "fixes" or donations in this project's name is not us.
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
+
+## Roadmap
+
+Next: each level compared with the PS3 game, the European edition, and the rest of the plan in
+[docs/ROADMAP.md](docs/ROADMAP.md).
+
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
 ## Contributing
 
 Tests on other hardware, reports with logs, and fixes are welcome: [CONTRIBUTING.md](.github/CONTRIBUTING.md). The
-rules for everyone, people and AI coding agents alike, are in [AGENTS.md](AGENTS.md). Security problems and rights
-holders' reports go privately through the Security tab ([SECURITY.md](.github/SECURITY.md)).
+rules for everyone, people and AI coding agents alike, are in [AGENTS.md](AGENTS.md). People who helped:
+[CONTRIBUTORS.md](CONTRIBUTORS.md).
 
-## For developers: building from source
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
-On Linux, from a clone or the release's source archive, you need clang, CMake, Ninja, Python 3, SDL2, zlib,
-glslang and the Vulkan headers; for the Windows exe, the MinGW-w64 sysroot as well. All of it is in
-[docs/BUILDING.md](docs/BUILDING.md).
+## How AI was used
 
-The short way, from a release's archive or a clone: one command asks where your files are, checks them, and builds
-with one progress bar; it remembers the paths, so afterwards `tools/play.sh` is all you need.
+This project is developed by one person with AI coding agents, with the maintainer reviewing and deciding what is
+published: [docs/AI.md](docs/AI.md).
 
-```sh
-tools/install.sh
-tools/play.sh
-```
+<p align="center"><img src="assets/divider-hazard.png" width="900" alt=""></p>
 
-Step by step (what `tools/install.sh` runs):
+## Licence and disclaimer
 
-```sh
-git clone --recurse-submodules https://github.com/gustavomorinaga/project-vekta
-cd project-vekta
-tools/ps3recomp-patched.sh   # ps3recomp v0.19.0 with port/patches applied, in work/
-tools/lift.sh                # translates your EBOOT and its SPU code, in work/lift
-tools/setup-vfs.sh           # the folder the game runs from, in work/vfs
-tools/build.sh               # work/build/KZ1HD
-tools/play.sh                # plays in a window
-```
+The port's own code, patches, tools and documentation are MIT ([LICENSE](LICENSE)). Third-party parts and credits:
+[NOTICE.md](NOTICE.md). The licence covers nothing of the game. Security problems and rights holders' reports go
+privately through the Security tab ([SECURITY.md](.github/SECURITY.md)).
 
-## Repository layout
+Project Vekta is a fan project, not official and not affiliated with or endorsed by Sony Interactive Entertainment or
+Guerrilla Games. Killzone and Killzone HD are (c) Sony Interactive Entertainment; nothing of the game is licensed or
+included here.
 
-| Path | What it holds |
-|---|---|
-| `port/kz1hd/` | the program: boot, game clock, window, HLE overrides, the PC menu, native SPU and PPU code |
-| `port/patches/` | numbered patches to ps3recomp and `series`, the order they apply in |
-| `third_party/ps3recomp/` | the recompiler, a pinned submodule (never edited in place) |
-| `tools/` | patch, lift, build, run and check scripts; data and profiling tools |
-| `re/` | tables the tools read; numbers only |
-| `docs/` | the public documentation; `docs/dev/` holds engineering notes |
-| `site/`, `assets/` | the project page and its images |
+<p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
 
-## Licence
+## Related projects and official channels
 
-The port is MIT ([LICENSE](LICENSE)): that licence covers the port only, its code, patches, tools and documentation.
-Third-party parts and credits are in [NOTICE.md](NOTICE.md). Killzone and Killzone HD are (c) Sony Interactive
-Entertainment; nothing of the game is licensed or included here.
+- [Project Helghast](https://github.com/undecuple/project-helghast) (Killzone 3) and
+  [Project Pyrrhus](https://github.com/undecuple/project-pyrrhus) (Killzone 2), by undecuple: the same approach for
+  the rest of the trilogy, and the model for this repository's layout, docs and look. Credits: [NOTICE.md](NOTICE.md).
+- [ps3recomp](https://github.com/sp00nznet/ps3recomp), the recompiler this port is built on.
+
+Project Vekta is made by **Gustavo Morinaga**: GitHub [@gustavomorinaga](https://github.com/gustavomorinaga), and
+the project site <https://gustavomorinaga.github.io/project-vekta/>. Code and builds come only from this
+repository's [releases](https://github.com/gustavomorinaga/project-vekta/releases). We never ask anyone to paste a command they were sent into a terminal or
+PowerShell. Anyone else offering builds, "fixes" or donations in this project's name is not us.
+
+More pages: [Features](docs/FEATURES.md) · [Requirements](docs/requirements.md) · [Glossary](docs/GLOSSARY.md) ·
+[Forking](docs/FORKING.md) · [Release criteria](docs/RELEASE-CRITERIA.md) · [Changelog](CHANGELOG.md)
