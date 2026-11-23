@@ -1,0 +1,125 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 23 Nov 2026 19:20:00 +0000
+Subject: [PATCH] MLAA: the log says "ran" only when the MLAA itself ran
+
+The backend's mlaa answered 1 whenever the title's post chain ran, with
+or without the MLAA in it, so "[NV0039] GPU MLAA on local ...: ran" was
+also printed when the MLAA was off, not built on the driver (patch 2086)
+or replaced by a temporal upscaler, and only the glow and motion blur
+ran. A log from AMD's Windows driver before patch 2087 read as if the
+MLAA had run there.
+
+The answer is now 0 when nothing ran, nonzero when the post chain ran,
+with RSX_ENG_MLAA_APPLIED set when the MLAA was in it. The NV0039 line
+says "ran" only then, and "not applied (...); the other post passes ran"
+otherwise, each case logged on its own first two times. Nothing else
+reads more than zero or nonzero, so the frame is drawn as before.
+---
+ libs/video/cellGcmSys.c         |  8 ++++++--
+ libs/video/rsx_draw_engine.h    |  7 ++++++-
+ libs/video/rsx_vulkan_backend.c | 13 +++++++------
+ 3 files changed, 19 insertions(+), 9 deletions(-)
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 9dd18c0..d321682 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -1564,9 +1564,13 @@ static void nv0039_copy(const u32* r)
+             if (!glow) { const char* e = getenv("PS3RECOMP_GLOW_GPU"); glow = e && *e ? (u32)strtoul(e, NULL, 0) : ~0u; if (!glow) glow = ~0u; }
+             rsx_draw_engine_glow_source(RSX_LOCATION_MAIN, glow);
+             const int ran = rsx_draw_engine_mlaa(loc_in, off_in, RSX_LOCATION_MAIN, mb);
+-            static int n, r; if (ran ? PS3_LOG_FIRST(r, 2) : PS3_LOG_FIRST(n, 2))
++            static int n, r, p;
++            const int aa = (ran & RSX_ENG_MLAA_APPLIED) != 0;
++            if (aa ? PS3_LOG_FIRST(r, 2) : ran ? PS3_LOG_FIRST(p, 2) : PS3_LOG_FIRST(n, 2))
+                 fprintf(stderr, "[NV0039] GPU MLAA on local 0x%08X: %s\n", off_in,
+-                        ran ? "ran" : "not run (no 1280x720 R8G8B8A8 display buffer at a size the pass holds, or the pass is still being built)");
++                        aa ? "ran" :
++                        ran ? "not applied (anti-aliasing off, not built on this driver, or a temporal upscaler in its place); the other post passes ran" :
++                              "not run (no 1280x720 R8G8B8A8 display buffer at a size the pass holds, or the pass is still being built)");
+         }
+         return;
+     }
+diff --git a/libs/video/rsx_draw_engine.h b/libs/video/rsx_draw_engine.h
+index b445c96..ce1fdb3 100644
+--- a/libs/video/rsx_draw_engine.h
++++ b/libs/video/rsx_draw_engine.h
+@@ -312,7 +312,9 @@ typedef struct rsx_draw_backend {
+                                      u32 x, u32 y, u32 w, u32 h);
+ 
+     /* Optional. Killzone HD's jm_post MLAA run in place on a colour target,
+-     * recorded in command order (vulkan/rsx_vk_mlaa.comp); 1 when it ran.
++     * recorded in command order (vulkan/rsx_vk_mlaa.comp); nonzero when the
++     * post chain ran, with RSX_ENG_MLAA_APPLIED set when the MLAA itself was
++     * in it (not when it is off, not built, or a temporal upscaler stands in).
+      * field: a 640x360 colour target holding the title's motion field, or 0;
+      * with one, its motion blur follows the MLAA (vulkan/rsx_vk_mb.comp). */
+     int  (*mlaa)(void* user, u32 surface, u32 field);
+@@ -422,6 +424,9 @@ u32 rsx_draw_engine_surface_pitch(u32 location, u32 offset);
+ /* The backend's MLAA on the colour surface based exactly at location:offset; 1 when it ran.
+  * field_offset (in field_location) != ~0u: the 640x360 surface there is the
+  * motion field, and the motion blur follows (when the surface exists). */
++/* The backend's mlaa answer, passed on: 0 not run, else the post chain ran,
++ * with RSX_ENG_MLAA_APPLIED when the MLAA was in it. */
++#define RSX_ENG_MLAA_APPLIED 2
+ int rsx_draw_engine_mlaa(u32 location, u32 offset, u32 field_location, u32 field_offset);
+ /* Killzone HD's glow source for the next rsx_draw_engine_mlaa: the 640x360
+  * colour surface at offset (in location), or none when offset is ~0u or no
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index eab9a32..993b11f 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -4991,6 +4991,7 @@ static int vk_eng_mlaa(void* user, u32 surface, u32 field)
+     vk_eng_obj* go = NULL;
+     const int glow = vk_glow_usable(&go);
+     const int aa = vk_mlaa_on();
++    const int ret = aa ? 1 | RSX_ENG_MLAA_APPLIED : 1;   /* the MLAA in the chain, or only the glow and motion blur */
+     const int ndump = scaled && aa && vk_mlaa_native_dump_armed(W, H);
+     if (ndump) { if (vk_batch_reserve(0)) return 0; o = vk_eng_get(surface, VK_ENG_COLOR); fo = field ? vk_eng_get(field, VK_ENG_COLOR) : NULL; }
+     VkBuffer texels = scaled ? s_mlaa.big.buf : s_mlaa.buf[0].buf;
+@@ -5030,7 +5031,7 @@ static int vk_eng_mlaa(void* user, u32 surface, u32 field)
+         }
+         pvkCmdCopyBufferToImage(s_vk.cmd, s_mlaa.buf[0].buf, o->im.img, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+         vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+-        return 1;
++        return ret;
+     }
+     if (aa) {
+         pvkCmdCopyBufferToImage(s_vk.cmd, texels, o->im.img, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+@@ -5038,10 +5039,10 @@ static int vk_eng_mlaa(void* user, u32 surface, u32 field)
+         if (ndump) {
+             vk_mlaa_native_dump_copy(o->im.img, 1, W, H);
+             vk_mlaa_native_dump_write(W, H);
+-            if (vk_batch_reserve(0)) return 1;
++            if (vk_batch_reserve(0)) return ret;
+             o = vk_eng_get(surface, VK_ENG_COLOR);
+             fo = field ? vk_eng_get(field, VK_ENG_COLOR) : NULL;
+-            if (!o) return 1;
++            if (!o) return ret;
+         }
+     }
+     if (glow || mb) {
+@@ -5064,16 +5065,16 @@ static int vk_eng_mlaa(void* user, u32 surface, u32 field)
+                 vk_dbg_pop(s_vk.cmd);
+             }
+         }
+-        if (vk_batch_reserve(0)) return 1;
++        if (vk_batch_reserve(0)) return ret;
+         o = vk_eng_get(surface, VK_ENG_COLOR);
+-        if (!o) return 1;
++        if (!o) return ret;
+         vk_barrier_image(s_mlaa.post.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+         vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+         pvkCmdCopyImage(s_vk.cmd, s_mlaa.post.img, VK_IMAGE_LAYOUT_GENERAL, o->im.img, VK_IMAGE_LAYOUT_GENERAL, 1, &ic);
+         vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+     }
+     { static int n; if (!n++) VK_LOG("MLAA: the title's post chain runs over the %ux%u display buffer (internal scale)\n", W, H); }
+-    return 1;
++    return ret;
+ }
+ 
+ /* Temporal upscaling (PS3RECOMP_TEMPORAL=dlss), at the end of the scene: the
+-- 
+2.43.0
+

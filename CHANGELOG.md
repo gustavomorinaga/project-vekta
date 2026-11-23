@@ -99,7 +99,8 @@ program and folder that build it. Until a release that calls itself playable
   compiling it, the next start leaves the MLAA out on that driver (the glow and motion blur still run, the PC screen
   greys the Anti-aliasing row) and a new driver tries again. The log names each post pass as it compiles
   (`building the MLAA pass`, `the MLAA pass: built in N ms`); `PS3RECOMP_MLAA_BUILD=1` builds it whatever happened
-  before (patches 2086-2087).
+  before (patches 2086-2087). The log line `GPU MLAA on local ...: ran` now appears only when the MLAA itself ran;
+  with it off or not built it says `not applied` and that the other post passes ran (patch 2088).
 - The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
   (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
 - A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran

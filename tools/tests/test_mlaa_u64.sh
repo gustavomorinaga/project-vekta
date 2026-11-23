@@ -3,7 +3,7 @@
 # no glslang). Checks: the (low, high) word form of the SPU float emulation agrees with the uint64_t form on random
 # inputs (test_mlaa_u64.c); rsx_vk_mlaa32's SPIR-V declares no Int64 capability; the backend picks that form for AMD's
 # Windows driver and devices without shaderInt64, writes the compile marker around the MLAA compile and no longer
-# leaves the MLAA out by driver id.
+# leaves the MLAA out by driver id; the NV0039 line says "ran" only when the MLAA itself ran (patch 2088).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 KZ_ROOT="$ROOT"; . "$ROOT/tools/env.sh"
@@ -37,6 +37,15 @@ if "form = s_vk.driver_id == 1u ? 32 : 64;" not in src or "if (want == 32 || !s_
     fails.append('vk_mlaa_spv does not give the 32-bit form to AMD (driver id 1) and devices without shaderInt64')
 if '.codeSize = spv_bytes, .pCode = spv' not in src: fails.append('the MLAA module is not made from vk_mlaa_spv')
 if '!s_vk.int64_ok) return -1' in src: fails.append('the MLAA still needs shaderInt64')
+i = src.index('static int vk_eng_mlaa(void* user, u32 surface, u32 field)')
+eng = src[i:src.index('\n}\n', i)]
+if 'const int ret = aa ? 1 | RSX_ENG_MLAA_APPLIED : 1;' not in eng or eng.split('const int aa = vk_mlaa_on();')[1].count('return 1;'):
+    fails.append('vk_eng_mlaa does not say whether the MLAA itself was in the post chain')
+gcm = open(os.path.join(video, 'cellGcmSys.c')).read()
+if 'const int aa = (ran & RSX_ENG_MLAA_APPLIED) != 0;' not in gcm or 'aa ? "ran" :' not in gcm:
+    fails.append('the NV0039 line says "ran" when only the glow and motion blur ran')
+if '#define RSX_ENG_MLAA_APPLIED 2' not in open(os.path.join(video, 'rsx_draw_engine.h')).read():
+    fails.append('rsx_draw_engine.h has no RSX_ENG_MLAA_APPLIED')
 for f in fails: print('FAIL:', f)
 print('test_mlaa_u64 (shader, backend):', 'FAIL' if fails else 'ok')
 sys.exit(1 if fails else 0)
