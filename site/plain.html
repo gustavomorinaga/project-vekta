@@ -208,6 +208,10 @@
 <h3>Unreleased</h3>
 <p class="meta">not released yet</p>
 <ul class="rlist">
+<li><span class="kind">Added</span>When the game crashes, its log now says where: a <code>[kz-crash]</code> block with the exception, the faulting module and offset, the thread, the uptime, the registers, up to 32 frames and a signature (<code>KZ-XXXX-XXXX</code>) that is the same each time the same crash happens, and a copy in <code>work/crash/crash-*.txt</code>. Before, a crash like the ones a few seconds into Level 1 on AMD GPUs (#129) left nothing in the log (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/crash-reports.md">docs/dev/crash-reports.md</a>).</li>
+<li><span class="kind">Added</span>When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets a <code>[kz-hang]</code> block with every thread&#x27;s stack, and a copy in <code>work/crash/hang-*.txt</code>; the game is left running. <code>KZ_HANG_WATCH=0</code> turns this off.</li>
+<li><span class="kind">Added</span>The log starts with the system it runs on: <code>[kz-sys]</code> lines for the system, CPU, cores, memory, monitors, the settings in <code>kz1hd_pc.ini</code>, the <code>KZ_*</code> and <code>PS3*</code> variables set (your home folder written as <code>~</code>), what started the game and whether the build has DLSS.</li>
+<li><span class="kind">Added</span><code>KZ_CRASH_TEST=&lt;kind&gt;</code> makes the game crash or hang on purpose, to check the reports on a build.</li>
 <li><span class="kind">Added</span>The game straight from the Killzone Trilogy disc, with no RPCS3 installed: <code>--disc FOLDER</code> (the copied disc, or its <code>PS3_EXTRA</code> package) on <code>Project Vekta.exe</code>, <code>./project-vekta</code> and the prepare scripts downloads the official RPCS3 at a pinned version (checked by SHA-256), which installs the package into the port&#x27;s <code>work</code> folder with no window and decrypts a copy of the EBOOT there; the disc is only read and an RPCS3 of yours is not touched (docs/INSTALL.md). The setup&#x27;s &quot;Your game&quot; page offers it as &quot;From my Killzone Trilogy disc&quot;, and recomplauncher.json as a disc field beside the game folder. On Windows 10, 7-Zip unpacks the RPCS3 download. The PlayStation Store package still goes through &quot;Use my RPCS3 install&quot;.</li>
 <li><span class="kind">Added</span>Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by GitHub, that the repository&#x27;s release workflow built that very file from the tagged commit. <code>gh attestation verify &lt;file&gt; --repo gustavomorinaga/project-vekta</code> checks a download against it (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md">docs/INSTALL.md</a>).</li>
 <li><span class="kind">Changed</span>A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the README banner, the social preview, the Windows setup&#x27;s pictures and the program icons (now lettered KZ1) are drawn in steel blue with a V chevron by one script, <code>tools/release/installer_art.py</code>, with the Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.</li>
@@ -263,14 +267,14 @@
 <section id="changelog" class="promo term">
 <h3>Changelog</h3>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> When the game crashes, its log now says where: a [kz-crash] block with the exception, the faulting module and offset...</span></li>
+<li><time>next</time><span><b>Unreleased</b> When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets a...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The log starts with the system it runs on: [kz-sys] lines for the system, CPU, cores, memory, monitors, the settings...</span></li>
+<li><time>next</time><span><b>Unreleased</b> KZ_CRASH_TEST=&lt;kind&gt; makes the game crash or hang on purpose, to check the reports on a build.</span></li>
 <li><time>next</time><span><b>Unreleased</b> The game straight from the Killzone Trilogy disc, with no RPCS3 installed: --disc FOLDER (the copied disc, or its...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by GitHub...</span></li>
 <li><time>next</time><span><b>Unreleased</b> A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The setup, the launcher&#x27;s page and the docs now say the first build takes 5 to 30 minutes instead of about five: on...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The install and troubleshooting pages say that RPCS3 needs Microsoft&#x27;s Visual C++ runtime on a fresh Windows, without...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The first run takes the movies out of the game&#x27;s archive faster and with less memory: each movie is written to its...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The release folders no longer carry two sets of files that no build reads (glslang&#x27;s test shaders and the registry...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The build no longer keeps a second and a third copy of FFmpeg&#x27;s libraries and a second copy of the Vulkan headers...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>

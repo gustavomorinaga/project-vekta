@@ -13,6 +13,13 @@ Keep test runs away from your own saves: copy `work/vfs` to `work/vfs-test` and 
 Delete the test save under `gamedata/dev_hdd0/home/00000001/savedata/NPUA80856` before a scripted run from the start:
 an existing profile changes the menu flow.
 
+## Crash and hang reports
+
+`KZ_CRASH_TEST=<kind>` (null-main, null-thread, abort, illegal, stack, fastfail, hang) makes the game crash or stop
+on purpose `KZ_CRASH_TEST_DELAY` seconds (default 5) after start, to see the `[kz-crash]` or `[kz-hang]` report and
+the copy in `KZ_CRASH_DIR`; `KZ_HANG_WATCH=<seconds>` (default 5, 0 = off) sets when a hang is reported. The formats,
+which kinds fire where, and the host test: [crash-reports.md](crash-reports.md).
+
 ## Scripted input
 
 - `PAD_SCRIPT="seconds:buttons,..."` presses pad buttons at given times (`0x0008` START, `0x4000` X). From a fresh

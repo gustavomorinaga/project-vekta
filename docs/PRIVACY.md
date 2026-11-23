@@ -41,6 +41,7 @@ Everything stays in the folder the game runs from, `work/vfs/` (made by `tools/s
 | Saves | `gamedata/dev_hdd0/home/00000001/savedata/` |
 | Local trophy log | `gamedata/trophies/` |
 | Log of the last run | `work/play.log` |
+| Crash and hang reports (where in the program it stopped, no game data) | `work/crash/` |
 
 Nothing is written outside the install's `work/` folder, and nothing is written into your game files or your RPCS3
 folders. The Windows setup program is the one exception: unless you pick its "Portable" option, the settings and

@@ -26,6 +26,8 @@ bug report. The codes and their one-line texts are `port/kz1hd/kz_exit.h` (the s
 - `work/play.log`: the last game session (on Windows the game writes it itself; started from Explorer without the
   launcher, `kz1hd.log` beside `KZ1HD.exe`).
 - `work/logs/firstrun-*.log`: the check and the build, the five newest kept, with your home folder written as `~`.
+- `work/crash/`: when the game crashes or stops showing new frames, `crash-*.txt` or `hang-*.txt` with where it
+  happened (the same `[kz-crash]` or `[kz-hang]` lines are in `play.log`). Attach them with the log.
 - The support package (Windows Start menu: "Make a support package"): one zip of the logs and settings, on the
   Desktop.
 
