@@ -210,6 +210,7 @@
 <ul class="rlist">
 <li><span class="kind">Changed</span>A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the README banner, the social preview, the Windows setup&#x27;s pictures and the program icons (now lettered KZ1) are drawn in steel blue with a V chevron by one script, <code>tools/release/installer_art.py</code>, with the Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.</li>
 <li><span class="kind">Changed</span>The release folders no longer carry two sets of files that no build reads (glslang&#x27;s test shaders and the registry Vulkan&#x27;s headers are generated from): about 55 MB and 3,400 files less on disk after install, and about 5 MB less to download.</li>
+<li><span class="kind">Fixed</span>The build no longer stops at &quot;Preparing the game&#x27;s data&quot; when the install folder&#x27;s path has accented letters (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).</li>
 </ul>
 </article>
 <article class="rel">
@@ -250,12 +251,12 @@
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The release folders no longer carry two sets of files that no build reads (glslang&#x27;s test shaders and the registry...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The build no longer stops at &quot;Preparing the game&#x27;s data&quot; when the install folder&#x27;s path has accented letters (a letter...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> &quot;Get it on&quot; badges for RecompLauncher and Quiver Launcher in the README, the install page and the project page...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> KZ1HD.exe carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and KZ1HD --version (Windows...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> KZ1HD.exe has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> One program to start in each release folder: Project Vekta.exe on Windows and the new project-vekta on Linux. With no...</span></li>
 <li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> recomplauncher.json at the top of the Windows and Linux folders, for launchers that read it (RecompLauncher): it names...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> docs/TROUBLESHOOTING.md: what you see, what to do and what to attach, for each exit code; docs/INSTALL.md has a...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
