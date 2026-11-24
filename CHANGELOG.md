@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- Closing the game's window now ends the game also when the game has stopped responding (it showed no new frames):
+  after 2 s the game quits as Quit Game does. On Windows such a game could not be closed at all, only from the Task
+  Manager (ps3recomp patch 2090: the window has a thread of its own).
+
 ### Changed
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
   every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`

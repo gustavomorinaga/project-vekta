@@ -1,0 +1,196 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 24 Nov 2026 17:38:59 +0000
+Subject: [PATCH] Vulkan window: its own thread, so closing it works while the
+ frame loop is stalled
+
+The window was made, and its events read, on the thread that drains the
+FIFO and presents. When that loop stalled (a hang in the game), nothing
+read the window's events: closing the window did nothing, and on Windows,
+where WM_CLOSE goes to the queue of the thread that made the window, the
+game could not be closed at all.
+
+The window is now made on a thread of its own ("rsx window"), which waits
+for events, handles them and makes the display changes asked for;
+rsx_vulkan_backend_pump_messages only reads the close request it found,
+and the input pump during long FIFO drains has nothing to do. A close
+request is still the frame loop's to act on; if the process has not ended
+PS3RECOMP_VK_QUIT_WAIT_MS later (default 2000), the window's thread calls
+the hook the port set with rsx_vulkan_set_quit_hook (rsx_vk_quit_due in
+rsx_vk_debug.h decides). PS3RECOMP_VK_WINDOW_THREAD=0 keeps the window on
+the caller's thread. Presenting stays on the frame loop's thread.
+---
+ libs/video/rsx_vk_debug.h       |   8 +++
+ libs/video/rsx_vulkan_backend.c | 112 +++++++++++++++++++++++++++++---
+ 2 files changed, 110 insertions(+), 10 deletions(-)
+
+diff --git a/libs/video/rsx_vk_debug.h b/libs/video/rsx_vk_debug.h
+index a4b23d7..27be1e7 100644
+--- a/libs/video/rsx_vk_debug.h
++++ b/libs/video/rsx_vk_debug.h
+@@ -43,6 +43,14 @@ static inline int rsx_vk_capture_key(const char* v)
+     return rsx_vk_env_flag(v) == 1;
+ }
+ 
++/* The window's thread (rsx_vulkan_backend.c): after a close request at
++ * quit_ms, the frame loop has wait_ms to end the process itself; past that,
++ * once, the window's thread quits it (the frame loop has stalled). */
++static inline int rsx_vk_quit_due(int quit, uint64_t quit_ms, uint64_t now_ms, unsigned wait_ms, int done)
++{
++    return quit && !done && now_ms >= quit_ms && now_ms - quit_ms >= wait_ms;
++}
++
+ #define RSX_VK_MSG_SLOTS 256   /* distinct keys counted; later new ones only add to "other" */
+ #define RSX_VK_MSG_FULL  3     /* occurrences of one key logged in full */
+ 
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 536d950..4867edc 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2497,9 +2497,9 @@ void rsx_vulkan_set_window_identity(const char* app_id, const uint32_t* rgba, in
+ }
+ 
+ static void vk_read_display_sizes(void);
+-static void vk_window_open(const char* title)
++static void vk_apply_display(void);
++static void vk_window_create(const char* title)
+ {
+-    if (!vk_env_on("PS3RECOMP_VK_WINDOW")) return;
+     if (s_win_app_id[0]) {   /* read when SDL's video starts; hint names an older SDL does not know are ignored */
+         SDL_SetHint("SDL_VIDEO_X11_WMCLASS", s_win_app_id);
+         SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", s_win_app_id);
+@@ -2564,6 +2564,87 @@ static void vk_window_open(const char* title)
+            SDL_GetCurrentVideoDriver(), n);
+ }
+ 
++/* ---- the window's own thread --------------------------------------------
++ *
++ * The window was created, and its events read, on the thread that drains the
++ * FIFO and presents (the port's frame clock). When that loop stalled (a hang
++ * in the game), nothing read the window's events any more: closing the window
++ * did nothing. On Windows the close (WM_CLOSE) goes to the queue of the thread
++ * that made the window, so the game could not be closed at all, and in
++ * fullscreen not even through Windows' "not responding" dialog.
++ *
++ * Now the window is made on a thread of its own, which does nothing else: it
++ * waits for events, handles them (vk_handle_event) and makes the display
++ * changes asked for (vk_apply_display). rsx_vulkan_backend_pump_messages only
++ * reads what it found. A close request (the window closed, or Esc) is still
++ * the frame loop's to act on; if the loop has not ended the process
++ * PS3RECOMP_VK_QUIT_WAIT_MS later (default 2000), the window thread calls the
++ * quit hook the port set (rsx_vulkan_set_quit_hook) itself.
++ * PS3RECOMP_VK_WINDOW_THREAD=0 keeps the window on the caller's thread, as
++ * before. Presenting stays on the frame loop's thread: Vulkan's surface and
++ * swapchain do not belong to the thread that made the window. */
++static struct {
++    int           on;        /* the window lives on its own thread */
++    volatile int  quit;      /* a close request was seen */
++    uint64_t      quit_ms;   /* when (SDL_GetTicks64) */
++    int           hooked;    /* the quit hook was called */
++    SDL_sem*      ready;
++    const char*   title;
++} s_win;
++static void (*s_quit_hook)(const char* why);
++
++void rsx_vulkan_set_quit_hook(void (*hook)(const char* why)) { s_quit_hook = hook; }
++
++static int vk_handle_event(const SDL_Event* e);
++
++static int vk_window_thread(void* arg)
++{
++    (void)arg;
++    vk_window_create(s_win.title);
++    const int ok = s_vk.windowed;
++    SDL_SemPost(s_win.ready);
++    if (!ok) return 0;
++    const char* w = getenv("PS3RECOMP_VK_QUIT_WAIT_MS");
++    const unsigned wait_ms = w && *w ? (unsigned)strtoul(w, NULL, 0) : 2000u;
++    while (s_vk.windowed) {
++        SDL_Event e;
++        if (SDL_WaitEventTimeout(&e, 10)) {
++            do {
++                if (vk_handle_event(&e) && !__atomic_exchange_n(&s_win.quit, 1, __ATOMIC_ACQ_REL))
++                    s_win.quit_ms = SDL_GetTicks64();
++            } while (SDL_PollEvent(&e));
++        }
++        vk_apply_display();
++        if (rsx_vk_quit_due(__atomic_load_n(&s_win.quit, __ATOMIC_ACQUIRE), s_win.quit_ms, SDL_GetTicks64(),
++                            wait_ms, s_win.hooked) && s_quit_hook) {
++            s_win.hooked = 1;
++            VK_LOG("window: closed, and the frame loop has not quit in %u ms; quitting from the window's thread\n",
++                   wait_ms);
++            s_quit_hook("window closed, frame loop stalled");
++        }
++    }
++    return 0;
++}
++
++static void vk_window_open(const char* title)
++{
++    if (!vk_env_on("PS3RECOMP_VK_WINDOW")) return;
++    const char* t = getenv("PS3RECOMP_VK_WINDOW_THREAD");
++    if (t && rsx_vk_env_flag(t) == 0) { vk_window_create(title); return; }
++    s_win.title = title;
++    s_win.ready = SDL_CreateSemaphore(0);
++    SDL_Thread* th = s_win.ready ? SDL_CreateThread(vk_window_thread, "rsx window", NULL) : NULL;
++    if (!th) {
++        VK_LOG("window: no thread of its own (%s); on this thread\n", SDL_GetError());
++        vk_window_create(title);
++        return;
++    }
++    SDL_DetachThread(th);
++    SDL_SemWait(s_win.ready);
++    s_win.on = s_vk.windowed;
++    if (s_win.on) VK_LOG("window: on its own thread\n");
++}
++
+ /* ---- display settings while running -------------------------------------
+  *
+  * rsx_vulkan_set_display / rsx_vulkan_set_present may be called from any
+@@ -7850,16 +7931,15 @@ void rsx_vulkan_backend_shutdown(void)
+ 
+ /* Called from inside long FIFO drains on the thread that owns the window
+  * (cellGcmSys.c): refreshes the keyboard state SDL hands the pad layer. */
+-static void vk_input_pump(void) { if (s_vk.windowed) SDL_PumpEvents(); }
++static void vk_input_pump(void) { if (s_vk.windowed && !s_win.on) SDL_PumpEvents(); }   /* else its thread does */
+ 
+-int rsx_vulkan_backend_pump_messages(void)
++/* One window event: 1 when it asks to quit (the window closed, or Esc). On the
++ * window's thread, or on the caller's with PS3RECOMP_VK_WINDOW_THREAD=0. */
++static int vk_handle_event(const SDL_Event* ev)
+ {
+-    { extern void (*g_rsx_input_pump)(void); g_rsx_input_pump = vk_input_pump; }
+-    if (!s_vk.windowed) return 0;
+-    vk_apply_display();
+     int quit = 0;
+-    SDL_Event e;
+-    while (SDL_PollEvent(&e)) {
++    {
++        const SDL_Event e = *ev;
+         if (e.type == SDL_QUIT) quit = 1;
+         else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT) && s_vk.window) {
+             const int is_fs = (SDL_GetWindowFlags(s_vk.window) & SDL_WINDOW_FULLSCREEN) != 0;
+@@ -7900,7 +7980,19 @@ int rsx_vulkan_backend_pump_messages(void)
+             if (esc < 0) { const char* v = getenv("PS3RECOMP_ESC_QUITS"); esc = !v || atoi(v); }
+             if (esc) quit = 1;
+         }
+-    }
++        }
++    return quit;
++}
++
++int rsx_vulkan_backend_pump_messages(void)
++{
++    { extern void (*g_rsx_input_pump)(void); g_rsx_input_pump = vk_input_pump; }
++    if (!s_vk.windowed) return 0;
++    if (s_win.on) return __atomic_load_n(&s_win.quit, __ATOMIC_ACQUIRE) ? -1 : 0;   /* its thread reads the events */
++    vk_apply_display();
++    int quit = 0;
++    SDL_Event e;
++    while (SDL_PollEvent(&e)) quit |= vk_handle_event(&e);
+     return quit ? -1 : 0;
+ }
+ 
+-- 
+2.43.0
+

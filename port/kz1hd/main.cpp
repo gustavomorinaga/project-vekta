@@ -343,6 +343,10 @@ extern "C" void kz_quit(const char* why) { kz_quit_code(why, 0); }
  * logs are flushed) but with KZ_EXIT_GPU_LOST, whose text tools/release/launch.py and recomplauncher.json give the
  * player. KZ_CRASH_TEST=gpu-lost (main) tries this path on a working GPU. */
 extern "C" void rsx_vulkan_set_device_lost_hook(void (*hook)(void));
+/* The window closed while the frame loop is stalled (a hang): ps3recomp's window has a thread of its own (patch
+ * 2090), which sees the close and, when the frame loop has not quit 2 s later, calls this. The game ends as a quit
+ * does. Before, only the stalled loop read the window's events, and on Windows the game could not be closed. */
+extern "C" void rsx_vulkan_set_quit_hook(void (*hook)(const char* why));
 static void kz_gpu_lost(void)
 {
     fprintf(stderr, "[kz] GPU lost: The graphics driver stopped responding (the GPU was lost): update the graphics "
@@ -906,6 +910,7 @@ int main(int argc, char** argv)
 #endif
 #if defined(PS3RECOMP_RSX_VULKAN)
     rsx_vulkan_set_device_lost_hook(kz_gpu_lost);
+    rsx_vulkan_set_quit_hook(kz_quit);
     /* KZ_CRASH_TEST=gpu-lost: the backend reports a lost device once, at its first fence wait after 300 presented
      * frames (about 5 s at 60 Hz; PS3RECOMP_VK_FAKE_DEVICE_LOST, patch 2085), while the GPU is fine, so the log
      * lines, the breadcrumbs and exit code 78 can be tried on any PC. */

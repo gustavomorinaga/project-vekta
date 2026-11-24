@@ -34,6 +34,17 @@ static void test_capture_key(void)
           "1, on and yes let F12 take a capture");
 }
 
+/* Patch 2090: after a close request the frame loop has wait_ms to quit; past that, once, the window's thread does. */
+static void test_quit_due(void)
+{
+    CHECK(!rsx_vk_quit_due(0, 0, 100000, 2000, 0), "no close request: nothing to do");
+    CHECK(!rsx_vk_quit_due(1, 1000, 2999, 2000, 0), "1999 ms after the close: the frame loop still has time");
+    CHECK(rsx_vk_quit_due(1, 1000, 3000, 2000, 0), "2000 ms after the close: the window's thread quits");
+    CHECK(!rsx_vk_quit_due(1, 1000, 9000, 2000, 1), "only once");
+    CHECK(!rsx_vk_quit_due(1, 5000, 4000, 2000, 0), "a clock before the request is not past it");
+    CHECK(rsx_vk_quit_due(1, 1000, 1000, 0, 0), "a wait of 0 quits at once");
+}
+
 static void test_repeats(void)
 {
     rsx_vk_msg_filter* f = calloc(1, sizeof *f);
@@ -108,6 +119,7 @@ int main(void)
 {
     test_flag();
     test_capture_key();
+    test_quit_due();
     test_repeats();
     test_full_table();
     test_summary();
