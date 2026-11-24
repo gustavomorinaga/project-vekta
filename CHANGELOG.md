@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
