@@ -547,6 +547,11 @@ end;
 
 procedure InitializeWizard;
 begin
+  { Modern style puts the header image flush with the window's right edge: move it 8 px in, and the page title and
+    description, which end where the image starts, with it }
+  WizardForm.WizardSmallBitmapImage.Left := WizardForm.WizardSmallBitmapImage.Left - ScaleX(8);
+  WizardForm.PageNameLabel.Width := WizardForm.PageNameLabel.Width - ScaleX(8);
+  WizardForm.PageDescriptionLabel.Width := WizardForm.PageDescriptionLabel.Width - ScaleX(8);
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
     'From your RPCS3, your Killzone Trilogy disc, or files you pick.',
     'Setup looks for RPCS3 with Killzone HD ({#TitleId}) installed. With it, your RPCS3 ' +
