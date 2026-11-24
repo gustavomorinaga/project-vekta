@@ -53,7 +53,7 @@ first Killzone is fought.
 
 ## Status
 
-Latest release: <!-- release -->[v0.6.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0), a pre-release<!-- /release -->. The whole campaign, levels 1 to 11, has been played from start to end on Linux and on
+Latest release: <!-- release -->[v0.7.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0), a pre-release<!-- /release -->. The whole campaign, levels 1 to 11, has been played from start to end on Linux and on
 Windows. The levels are not yet each compared with reference footage of the PS3 game.
 
 | | | | |
@@ -85,7 +85,7 @@ The full dated table is [docs/STATUS.md](docs/STATUS.md).
 
 **Install:**
 
-1. Download from <!-- release -->[v0.6.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0), a pre-release<!-- /release --> on the [releases page](https://github.com/gustavomorinaga/project-vekta/releases): the **setup program**
+1. Download from <!-- release -->[v0.7.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0), a pre-release<!-- /release --> on the [releases page](https://github.com/gustavomorinaga/project-vekta/releases): the **setup program**
    (`project-vekta-X.Y.Z-setup.exe`) or the **zip** on Windows, the **folder** (`project-vekta-X.Y.Z-linux.tar.xz`)
    on Linux. Check it against `SHA256SUMS`.
 2. Start it: the setup, `Project Vekta.exe` in the zip or `./project-vekta` in the Linux folder. When the game is in

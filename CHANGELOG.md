@@ -7,6 +7,8 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-23 (pre-release)
+
 ### Added
 - Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code;
   not when you quit), the launcher says what the exit code means and shows the crash signature, and offers to make
