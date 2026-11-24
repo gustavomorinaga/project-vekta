@@ -1,0 +1,49 @@
+# Guest addresses of Killzone HD's EBOOT.elf, US (NPUA80856, SHA-256 c81aa91e...03fc) to EU (NPEA00418, SHA-256
+# e4fc4f13...7f52). Numbers only. Same source and compiler: the EU link drops 0xE8 bytes of code in 11 changed
+# functions and 3 gaps between functions, so the code after them moves by a growing step, and the rodata after it
+# moves by 0x100 (one run of strings differs); data and bss keep their addresses (2026-11-24, Ghidra 12.1.4 and a
+# linear walk of .text). tools/edition_map.py writes port/kz1hd/edition.h from it and checks it against both EBOOTs.
+# End addresses are exclusive.
+#   range    us_start..us_end moves to eu_start..eu_end (same length): every word outside the changed rows is the
+#            same up to relocation
+#   changed  code (or data) that differs: a changed function's start maps to eu_start; nothing inside a changed row
+#            has an EU address unless a site row proves one; a walk row (bytes between functions, rodata) has none
+#   site     one address inside a changed function, matched in the EU EBOOT (the note gives the evidence)
+# source: ghidra,lift (both function lists call it changed), lift (only the lift's list,
+# work/lift/analysis/functions.json, delimits it), walk (the linear walk), ghidra (a headless Ghidra script).
+kind	us_start	us_end	eu_start	eu_end	source	note
+range	0x00010000	0x00086758	0x00010000	0x00086758	walk	ELF header, start stub, .text up to the first change
+range	0x00086758	0x0008689C	0x00086750	0x00086894	walk	.text
+range	0x0008689C	0x00221B1C	0x0008684C	0x00221ACC	walk	.text
+range	0x00221B1C	0x0022662C	0x00221AAC	0x002265BC	walk	.text
+range	0x0022662C	0x0022672C	0x002265A4	0x002266A4	walk	.text
+range	0x0022672C	0x00226B20	0x00226698	0x00226A8C	walk	.text
+range	0x00226B20	0x00278888	0x00226A90	0x002787F8	walk	.text (EU has 4 more bytes of padding at 0x226A8C)
+range	0x00278888	0x00278AD8	0x002787F0	0x00278A40	walk	.text
+range	0x00278AD8	0x004CC3E8	0x00278A38	0x004CC348	walk	.text
+range	0x004CCC88	0x0052FF40	0x004CCBA0	0x0052FE58	walk	.text to the end, import stubs, library tables (sections 2 to 11)
+range	0x0052FF80	0x005BC3E8	0x0052FE80	0x005BC2E8	walk	rodata to the end of the code segment (sections 12 to 16)
+range	0x005C0000	0x0137FE98	0x005C0000	0x0137FE98	walk	data segment and bss: same addresses; only pointers into code and rodata differ
+changed	0x000517B0	0x0005193C	0x000517B0	0x0005193C	ghidra,lift	2 instructions
+changed	0x00054FFC	0x000553D8	0x00054FFC	0x000553D8	ghidra,lift	2 instructions
+changed	0x00086750	0x00086758	0x00086750	0x00086750	walk	8 bytes between functions, not in EU
+changed	0x00086768	0x00086A28	0x00086760	0x000869D8	ghidra,lift	20 instructions out, 2 in
+changed	0x00221838	0x00221B20	0x002217E8	0x00221AB0	lift	EU start: Ghidra body ends at the mapped end (186 to 178 instructions)
+changed	0x002263F8	0x00226A4C	0x00226388	0x002269B8	lift	HUD overlay; EU start: Ghidra 85 instructions and call targets as US
+changed	0x00278858	0x00278888	0x002787C8	0x002787F0	walk	48 bytes between functions, 40 in EU
+changed	0x00278888	0x00279E9C	0x002787F0	0x00279DFC	ghidra,lift	Ghidra 1348 to 1346 instructions, the same 29 call targets
+changed	0x003D2E38	0x003D2FA8	0x003D2D98	0x003D2F08	ghidra,lift	2 instructions
+changed	0x003D3098	0x003D3134	0x003D2FF8	0x003D3094	ghidra,lift	2 instructions
+changed	0x003D3134	0x003D31A0	0x003D3094	0x003D3100	ghidra,lift	2 instructions
+changed	0x004C7A28	0x004C8980	0x004C7988	0x004C88E0	lift	tutorial banner; only 28 immediates differ (same instructions, 981 in Ghidra, the same 27 call targets and 54 calls)
+changed	0x004CB6BC	0x004CB6D0	0x004CB61C	0x004CB630	walk	20 bytes between functions
+changed	0x004CB798	0x004CEC70	0x004CB6F8	0x004CEB88	lift	HUD and crosshair; 269 calls in US, 266 in EU
+changed	0x00565538	0x0056580C	0x00565438	0x0056570C	walk	rodata strings: 181 words differ (a string of another length); the words before and after are equal
+changed	0x0057EFD0	0x0057EFE4	0x0057EED0	0x0057EEE4	walk	section 13: 5 words differ
+site	0x004CBBB4	0x004CBBB8	0x004CBB14	0x004CBB18	ghidra	crosshair: return of bl func_00227A1C, the 1st of its 25 calls here on both sides; 25 instructions around it equal
+site	0x004CD834	0x004CD838	0x004CD74C	0x004CD750	ghidra	HUD text: return of bl 0x4416C, the 1st of 3 on both sides; around it only stack and data offsets differ
+site	0x004CD90C	0x004CD910	0x004CD824	0x004CD828	ghidra	HUD text: return of bl 0x4416C, the 2nd of 3; only stack and data offsets differ
+site	0x004CD9D4	0x004CD9D8	0x004CD8EC	0x004CD8F0	ghidra	HUD text: return of bl 0x4416C, the 3rd of 3; only a data offset differs
+site	0x004CDC0C	0x004CDC10	0x004CDB24	0x004CDB28	ghidra	grenade row: return of bl func_00227A1C, the 19th of 25 on both sides; only stack offsets differ
+site	0x004CDCC0	0x004CDCC4	0x004CDBD8	0x004CDBDC	ghidra	grenade row: return of bl func_00227A1C, the 20th of 25; only stack and data offsets differ
+site	0x004CE4BC	0x004CE4C0	0x004CE3D4	0x004CE3D8	ghidra	HUD: return of bl 0x44708, the 2nd of 2 on both sides; only stack and string offsets differ
