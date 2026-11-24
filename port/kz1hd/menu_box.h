@@ -15,8 +15,9 @@
 #ifndef KZ_MENU_BOX_H
 #define KZ_MENU_BOX_H
 #include <stdint.h>
+#include "edition.h"   /* KZ_GA */
 
-#define MENU_LIST_BOX_VTABLE 0x00567340u
+#define MENU_LIST_BOX_VTABLE KZ_GA(0x00567340u)
 
 /* vtable: the object's +0x00; shown: +0x38 (a float); active: the byte at +0x41 */
 static inline int menu_box_drivable(uint32_t vtable, float shown, uint8_t active)

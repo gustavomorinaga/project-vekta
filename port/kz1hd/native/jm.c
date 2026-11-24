@@ -198,7 +198,7 @@ static volatile uint32_t s_jm_hdr, s_jm_spurs, s_gfx_hdr;
 static unsigned long s_gfx_waits, s_gfx_timeouts;
 #define JM_HDR s_jm_hdr
 static const struct { uint32_t code_ea; int module; } s_code[] = {
-    { 0x005AB500u, 201 }, { 0x005A8F00u, 204 },
+    { KZ_GA(0x005AB500u), 201 }, { KZ_GA(0x005A8F00u), 204 },
 };
 extern void spu_lockline_lock(void);
 extern void spu_lockline_unlock(void);
@@ -366,7 +366,7 @@ static int pm_run(int k, uint32_t cmd, uint32_t desc_ea)
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
     const uint32_t spurs = s_jm_spurs;   /* HiPrio, the instance of jm_post */
     for (int tries = 0; tries < 1000; tries++) {
-        spu_run_policy_module(entry, img, vm_base + 0x5B9180, 12160, H, 12 + k / 3, spurs, k % 3);
+        spu_run_policy_module(entry, img, vm_base + KZ_GA(0x5B9180), 12160, H, 12 + k / 3, spurs, k % 3);
         if (gr16(H + 0x72) >= 1 && gr16(H + 0x74) == 0xFFFF) return 1;
     }
     fprintf(stderr, "[kz-jm] private job manager %d did not finish job %08X (ticket %u slot %04X)\n",

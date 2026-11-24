@@ -52,6 +52,7 @@
 #include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
+#include "edition.h"     /* KZ_GA: guest addresses in this build's edition */
 #include "crash_report.h" /* [kz-crash], [kz-hang], KZ_CRASH_TEST */
 #include "sys_info.h"     /* [kz-sys], the session header */
 #if __has_include("eboot_id.h")
@@ -275,7 +276,7 @@ static void kz_tick_rate(void)
     static int applied = 30;         /* the rate the clock object holds */
     static uint32_t cap30;           /* the game's own tick cap */
     static double ms30 = -1;         /* the game's own ticks per ms */
-    if (ms30 < 0) { uint64_t u; memcpy(&u, vm_base + 0x21C0F0u, 8); u = __builtin_bswap64(u); memcpy(&ms30, &u, 8); }
+    if (ms30 < 0) { uint64_t u; memcpy(&u, vm_base + KZ_GA(0x21C0F0u), 8); u = __builtin_bswap64(u); memcpy(&ms30, &u, 8); }
     uint32_t p; memcpy(&p, vm_base + 0x828734u, 4); p = __builtin_bswap32(p);
     if (!p || p >= 0xF0000000u) return;
     uint32_t v; memcpy(&v, vm_base + p + 0x54, 4); v = __builtin_bswap32(v);
@@ -288,7 +289,7 @@ static void kz_tick_rate(void)
         if (hz == 30) return;
     } else if (applied == 30 || v != cur_bits || hz == applied) return;   /* not ours, or in force */
     { const double d = hz == 30 ? ms30 : hz / 1000.0; uint64_t u; memcpy(&u, &d, 8); u = __builtin_bswap64(u);
-      memcpy(vm_base + 0x21C0F0u, &u, 8); }
+      memcpy(vm_base + KZ_GA(0x21C0F0u), &u, 8); }
     const float f = 1.0f / (float)hz; memcpy(&v, &f, 4); v = __builtin_bswap32(v);
     memcpy(vm_base + p + 0x54, &v, 4);
     /* +0x74 caps the ticks one frame may advance: the same span of game time
