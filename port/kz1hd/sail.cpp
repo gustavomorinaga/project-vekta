@@ -663,3 +663,12 @@ extern "C" void kz_sail_register(void)
         else ps3_hle_register_ctx(e.nid, e.name, e.fn);
     }
 }
+
+/* The open movie's frame size, for the movie quad (native_ppu/movie_quad.cpp). */
+extern "C" int kz_sail_movie_size(int* w, int* h)
+{
+    const Movie* mv = g_player.movie;
+    if (!mv || mv->width <= 0 || mv->height <= 0) return 0;
+    *w = mv->width; *h = mv->height;
+    return 1;
+}

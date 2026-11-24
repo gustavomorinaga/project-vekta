@@ -165,3 +165,4 @@
 2086-Vulkan-no-GPU-MLAA-pass-on-AMD-s-Windows-driver-the-po.patch
 2087-Vulkan-a-32-bit-word-form-of-the-MLAA-shader-for-AMD-s-.patch
 2088-MLAA-log-says-ran-only-when-the-MLAA-itself-ran.patch
+2091-Vulkan-the-internal-resolution-scale-for-a-title-s-o.patch

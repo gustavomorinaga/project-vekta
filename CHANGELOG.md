@@ -11,6 +11,9 @@ program and folder that build it. Until a release that calls itself playable
 - Extras > Game Intro plays the whole opening movie again with "Opening Movie" off. The option skipped every
   showing of the movie, so Extras showed a black frame and went back to the menu; now it only skips the one at
   start-up.
+- No more red lines along the top and bottom of the movies with an internal resolution above 1x (a higher
+  resolution, DLSS or FSR; #158). The game draws each movie frame from a larger texture, and the scaled picture
+  reached the rows past the frame; at 1x nothing changes.
 
 ## [0.7.0] - 2026-11-23 (pre-release)
 
