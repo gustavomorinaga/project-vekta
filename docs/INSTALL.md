@@ -1,10 +1,11 @@
 # Installing Project Vekta
 
-This page is for players. It describes version <!-- version -->0.6.0<!-- /version -->: the Windows setup program, the Windows zip,
+This page is for players. It describes version <!-- version -->0.7.0<!-- /version -->: the Windows setup program, the Windows zip,
 and the Linux folder. Building from a Git clone is in [BUILDING.md](BUILDING.md).
 
 Every download builds the port on your own PC, from your own game. Nothing of the game is in them, and nothing of the
-game is downloaded. The first build takes about five minutes.
+game is downloaded. The first build takes 5 to 30 minutes: about five on a fast
+PC with an SSD, nearer half an hour with four cores and a hard disk.
 
 ## Before you start
 
@@ -25,7 +26,21 @@ first run's questions, `scripts/run.sh` and `scripts\run.cmd`, offer the same ("
 ready", "Show me how", which lists these steps, or "My RPCS3 is somewhere else", which asks for its folder): your
 RPCS3 then decrypts a copy of `EBOOT.BIN` into the port's own `work\prep` folder, the data archive is read as it is, and you pick no file. The setup program offers the same on its "Your game" page ("Use my RPCS3
 install"), with a "Find RPCS3..." button for an RPCS3 it did not find by itself. Either way the folder can be where
-`rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`).
+`rpcs3.exe` is, RPCS3's config folder, or the game folder RPCS3 installed (`dev_hdd0\game\NPUA80856`). On a fresh
+Windows, RPCS3 itself needs Microsoft's Visual C++ 2015-2022 runtime (x64) and your graphics card's driver
+(for `vulkan-1.dll`) before it starts, and on Windows 10 its `.7z` download needs [7-Zip](https://www.7-zip.org/) to
+unpack; see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+**No RPCS3? Straight from the disc.** With the Killzone Trilogy disc copied to your PC (its folder, with
+`PS3_EXTRA` in it, or just the package `PS3_EXTRA\...\DATA000.PKG`), `Project Vekta.exe --disc FOLDER`,
+`./project-vekta --disc FOLDER`, `scripts/prepare.sh --disc FOLDER`, the setup's "Your game" page ("From my Killzone
+Trilogy disc") and RecompLauncher's disc field download the official RPCS3 (version
+0.0.43-20640 from RPCS3's own GitHub releases, about 37 MB on Windows and 83 MB on Linux, checked by SHA-256) into
+the port's `work\toolchain-cache\rpcs3`. It installs the package into `work\prep\disc`, with no window and none of
+your settings, and decrypts a copy of `EBOOT.BIN` into `work\prep`. About 4 GB more disk is used; a minute or less
+on an SSD. The PlayStation Store package needs your licence, so it goes through "Use my RPCS3 install" instead. A
+disc image (`.iso`) must be opened first (double-click it on Windows, or mount it on Linux). Windows 11 unpacks the RPCS3 download by
+itself; on Windows 10, install [7-Zip](https://www.7-zip.org) first.
 
 This project gives no decryption tools or instructions. The setup and the scripts only read your files; on the RPCS3
 route your own RPCS3 decrypts copies of them, and nothing is written into the game's or RPCS3's folders.
@@ -35,7 +50,10 @@ Your PC: Windows x64 or Linux x64, a CPU with AVX2, and a Vulkan graphics card a
 more where Windows cannot make links, so the setup asks for 5.8 GB) or about 1.9 GB on Linux.
 
 Download from the [releases page](https://github.com/gustavomorinaga/project-vekta/releases). Each file has a
-`.sha256` beside it, and `SHA256SUMS` lists them all.
+`.sha256` beside it, and `SHA256SUMS` lists them all. From 0.7.0 on, each file also has a signed statement of where
+it was built (a build provenance attestation, kept by GitHub): with [GitHub's CLI](https://cli.github.com),
+`gh attestation verify project-vekta-X.Y.Z-setup.exe --repo gustavomorinaga/project-vekta` says whether this
+repository's release workflow built that very file.
 
 ## Windows: the setup program
 
@@ -70,8 +88,9 @@ The Start menu also has:
 
 - **Verify and rebuild**: checks the install and your files, then rebuilds what changed.
 - **Open saves folder**: opens the folder with your saves and settings.
-- **Make a support package**: puts one zip on the Desktop with the logs and settings, for a bug report. It holds no
-  saves and no game files, and your user folder is written as `~`.
+- **Make a support package**: puts one zip on the Desktop with the logs, the crash reports and the settings, for a
+  bug report. It holds no saves and no game files, and your user folder is written as `~`. The launcher also offers
+  it when the game closes unexpectedly.
 
 To install a newer version, run its setup over the old one. The build, your file paths, your saves and your choices
 stay. The uninstaller asks whether to delete your saves and settings too; the default is No.
@@ -90,7 +109,7 @@ without the setup.
    Enter to choose that file again, or `q` to quit.
 4. **Answer the DLSS question.** It shows NVIDIA's licence link. `y` accepts it and downloads DLSS; Enter or `n`
    builds without it.
-5. **Wait for the build.** A progress bar runs for about five minutes. At the end the window says "Built." and
+5. **Wait for the build.** A progress bar runs for 5 to 30 minutes. At the end the window says "Built." and
    names the command that plays. The log is in `work\logs\`.
 6. **Start `Project Vekta.exe` again** to play (`scripts\play.cmd` does the same in a console; add
    `--fullscreen` for full screen). The settings are in
@@ -101,10 +120,10 @@ Run `scripts\run.cmd` again after you move your files. A build that was stopped 
 
 ## Linux: the folder
 
-The file is `project-vekta-X.Y.Z-linux.tar.gz`. It has its own compiler and build tools.
+The file is `project-vekta-X.Y.Z-linux.tar.xz` (a `.tar.gz` up to 0.6.0). It has its own compiler and build tools.
 You need Python 3.10 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 
-1. **Unpack it:** `tar xzf project-vekta-X.Y.Z-linux.tar.gz`.
+1. **Unpack it:** `tar xf project-vekta-X.Y.Z-linux.tar.xz`.
 2. **Start `./project-vekta`.** With RPCS3 and the game in their usual places it builds without a question, then
    plays. Otherwise run `scripts/run.sh`: it asks the same questions as `scripts\run.cmd` above, builds, and at
    the end offers an applications-menu entry.
@@ -114,19 +133,19 @@ You need Python 3.10 or newer, glibc 2.31 or newer, SDL2 and a Vulkan driver.
 
 <p>
 <a href="https://recomplauncher.com/game/project-vekta"><img src="../assets/press/recomplauncher/badge-dark.svg" width="313" height="56" alt="Get it on RecompLauncher"></a>
-<a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta"><img src="../assets/press/quiver/badge@3x.png" width="206" height="56" alt="Get it on Quiver Launcher"></a>
+<a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta"><img src="../assets/press/quiver/badge@3x.png" width="203" height="56" alt="Get it on Quiver Launcher"></a>
 </p>
 
 A game launcher that installs downloaded packages can install the Windows zip or the Linux folder. Each folder has
 one program at its top for the launcher to start: `Project Vekta.exe` on Windows, `project-vekta` on Linux.
 
-1. **Add the package** to the launcher (the zip or the `.tar.gz` of a release).
+1. **Add the package** to the launcher (the zip or the `.tar.xz` of a release).
 2. **Give it your game folder** when it asks: the installed NPUA80856 folder, with `PARAM.SFO` and `USRDIR`. A
    decrypted `EBOOT.elf` is optional: leave it out when your RPCS3 has the game, and it makes the copy itself.
 3. **Tick NVIDIA DLSS** (Windows only) only if you accept NVIDIA's licence; without it the port builds with AMD
    FSR 3.1. The Linux folder always builds with FSR 3.1: NVIDIA's Linux library does not link with its bundled
    toolchain. For DLSS on Linux, build with your system's compilers (docs/BUILDING.md).
-4. **Let it prepare.** The launcher runs the check and the build (about five minutes) without a window, with a
+4. **Let it prepare.** The launcher runs the check and the build (5 to 30 minutes) without a window, with a
    progress bar. Nothing of the game is downloaded.
 5. **Play** from the launcher. The saves and settings stay in the folder (`work/vfs`), and the logs in `work`.
 
@@ -143,5 +162,8 @@ the RecompLauncher badge are their owners' (the badges: [assets/press/](../asset
 - An install over a version before 0.4.0 that failed at the link: delete `work\build-win` in the install folder
   (Linux: `work/build`) and run `scripts\run.cmd` (`scripts/run.sh`) again. Since 0.4.0 the build empties an old build folder
   itself.
-- Open an issue with the bug template and attach the support package or the log from `work\logs\`. Never attach
-  game files or saves.
+- Open an issue with the bug template and attach the support package. When the game closes unexpectedly, the
+  launcher offers to make it, then to open the bug form on GitHub filled in. To make it yourself: the Start menu's
+  "Make a support package" (setup), `scripts\support.cmd` (Windows zip), `scripts/support.sh` or
+  `./project-vekta --support-package` (Linux). [TROUBLESHOOTING.md](TROUBLESHOOTING.md#where-the-logs-are) says what
+  it holds. Never attach game files or saves.

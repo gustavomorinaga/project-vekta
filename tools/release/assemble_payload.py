@@ -9,7 +9,8 @@ The payload keeps the repository's own layout, so tools/kzbuild.py and tools/rel
 run in a clone (the player's files, the lift and the build go to its work/ like in a clone):
 
   tools/          kzbuild.py, check-game-files.py, psarc_ls.py, extract_spu_modules.py and, in tools/release/,
-                  firstrun.py, launch.py, rpcs3_import.py, rpcs3_locate.py, version_check.py, support.py, fetch_toolchain.py,
+                  firstrun.py, launch.py, rpcs3_import.py, rpcs3_locate.py, rpcs3_disc.py, version_check.py, support.py, sessions.py,
+                  symbols.py, fetch_toolchain.py,
                   build_win_deps.py, toolchain.json
   re/             function_seeds.txt (the lift's seeds)
   port/           port/kz1hd (its sources, no tests) and port/cmake/*.cmake
@@ -22,7 +23,8 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
   work/toolchain-cache/    the Windows entries of tools/release/toolchain.json (llvm-mingw, CMake, Ninja, the
                   embeddable Python, SDL2, zlib, glslang, the Vulkan headers, FFmpeg), unpacked by fetch_toolchain.py
                   --host windows, with a fetched.json for them only (the build fetches nothing), minus PRUNE
-                  (clang's Linux runtimes, zlib's Amiga files). The Python's ._pth
+                  (clang's Linux runtimes, zlib's Amiga files, glslang's test shaders, the XML Vulkan's headers
+                  are generated from). The Python's ._pth
                   also names tools/, tools/release/ and ps3recomp's tools/: the embeddable Python never puts a
                   script's own folder on sys.path, and the lifters import their neighbours.
   VERSION, LICENSE, NOTICE.md, README.md, licenses/, assets/icon.svg, docs/GETTING-FILES.md, docs/BUILDING.md
@@ -30,9 +32,10 @@ run in a clone (the player's files, the lift and the build go to its work/ like 
   Project Vekta.exe   with --launcher EXE: the launcher tools/release/build_launcher.py builds, the one startable
                       file at the top (a launcher such as Quiver takes the one it finds there)
   scripts/        run.cmd (the first run with its questions), play.cmd (play in a console), prepare.cmd (check and
-                  build with no window or question, for a launcher: launch.py --prepare), from installer/
+                  build with no window or question, for a launcher: launch.py --prepare), support.cmd (the support
+                  package: launch.py --support-package), from installer/
   The Linux folder (--platform linux) has the same rule: project-vekta (installer/linux/project-vekta) is its one
-  startable file at the top, and scripts/ holds run.sh, play.sh and prepare.sh; layout_problems() checks both.
+  startable file at the top, and scripts/ holds run.sh, play.sh, prepare.sh and support.sh; layout_problems() checks both.
 
 Nothing else is copied. The scrub refuses the whole payload (nothing is written) on: game-data names and extensions
 (EBOOT.*, PARAM.SFO, .psarc .elf .self .sprx .prx .edat .sdat .pkg .rap .pup .trp .pic), PS3 or ELF magics at a
@@ -50,6 +53,7 @@ only.
 import argparse
 import fnmatch
 import gzip
+import lzma
 import hashlib
 import json
 import os
@@ -80,8 +84,11 @@ RULES = [
     ("tools/release/launch.py", "tools/release/launch.py", "file", {}),
     ("tools/release/rpcs3_import.py", "tools/release/rpcs3_import.py", "file", {}),
     ("tools/release/rpcs3_locate.py", "tools/release/rpcs3_locate.py", "file", {}),
+    ("tools/release/rpcs3_disc.py", "tools/release/rpcs3_disc.py", "file", {}),
     ("tools/release/version_check.py", "tools/release/version_check.py", "file", {}),
     ("tools/release/support.py", "tools/release/support.py", "file", {}),
+    ("tools/release/sessions.py", "tools/release/sessions.py", "file", {}),
+    ("tools/release/symbols.py", "tools/release/symbols.py", "file", {}),
     ("tools/release/fetch_toolchain.py", "tools/release/fetch_toolchain.py", "file", {}),
     ("tools/release/build_win_deps.py", "tools/release/build_win_deps.py", "file", {}),
     ("tools/release/toolchain.json", "tools/release/toolchain.json", "file", {}),
@@ -109,6 +116,7 @@ RULES_WINDOWS = [
     ("installer/run.cmd", "scripts/run.cmd", "file", {}),
     ("installer/play.cmd", "scripts/play.cmd", "file", {}),
     ("installer/prepare.cmd", "scripts/prepare.cmd", "file", {}),
+    ("installer/support.cmd", "scripts/support.cmd", "file", {}),
 ]
 RULES_LINUX = [
     ("tools/release/build_linux_deps.py", "tools/release/build_linux_deps.py", "file", {}),
@@ -119,6 +127,7 @@ RULES_LINUX = [
     ("installer/linux/run.sh", "scripts/run.sh", "file", {}),
     ("installer/linux/play.sh", "scripts/play.sh", "file", {}),
     ("installer/linux/prepare.sh", "scripts/prepare.sh", "file", {}),
+    ("installer/linux/support.sh", "scripts/support.sh", "file", {}),
     ("tools/ffx/ffx_linux_compat.h", "tools/ffx/ffx_linux_compat.h", "file", {}),
 ]
 GAME_NAMES = ["EBOOT.*", "PARAM.SFO", "*.psarc", "*.elf", "*.self", "*.sprx", "*.prx", "*.edat", "*.sdat", "*.pkg",
@@ -136,6 +145,10 @@ MAX_FILE = 8 << 20
 # and SHA-256, tools/release/toolchain.json's file_sets) refuse the payload, whatever the file is called.
 NVIDIA_NAMES = ["nvngx*", "nvsdk_ngx*", "libnvidia-ngx*", "*nvngx_dlss*"]
 NVIDIA_DIRS = ["dlss-sdk"]
+# In the sources both platforms build: glslang's test shaders and their expected results (its CMake enters Test/ only
+# with GLSLANG_TESTS, which both deps scripts turn off) and the XML and scripts Vulkan's headers are generated from
+# (the deps scripts take include/ only). 37 MB and 19 MB unpacked, in each package.
+UNUSED_SOURCES = {"glslang": ["Test/*"], "vulkan-headers": ["registry/*"]}
 # Toolchain files the Windows build never uses, left out (paths inside the entry's tree): among them clang's Linux
 # runtimes in the Windows llvm-mingw (ELF files) and zlib's Amiga makefiles (Makefile.pup reads as a game-data name).
 # Project Pyrrhus's llvm-mingw list also drops the other targets (ARM, 32-bit), LLDB, its Python and make.
@@ -148,7 +161,7 @@ PRUNE = {"llvm-mingw": ["aarch64-w64-mingw32/*", "armv7-w64-mingw32/*", "i686-w6
          "zlib": ["amiga/*"],
          # the build takes FFmpeg's headers and DLLs only (build_win_deps.py), SDL2's x86_64 tree only
          "ffmpeg": ["bin/*.exe", "bin/avdevice-*.dll", "bin/avfilter-*.dll", "doc/*", "lib/*"], "sdl2": ["i686-w64-mingw32/*", "docs/*", "test/*"],
-         "cmake": ["doc/*", "man/*"]}
+         "cmake": ["doc/*", "man/*"], **UNUSED_SOURCES}
 # The Linux folder (--platform linux): Zig keeps only what the x86_64-linux-gnu target reads (its libc headers for
 # Linux and glibc, glibc's stubs, libc++ and the standard library it builds compiler_rt from); FFmpeg its libraries.
 ZIG_KEEP_INCLUDE = ("any-linux-any", "generic-glibc", "x86-linux-any", "x86-linux-gnu")
@@ -161,7 +174,7 @@ PRUNE_LINUX = {"zig": ["lib/libc/mingw/*", "lib/libc/musl/*", "lib/libc/wasi/*",
                "sdl2-src": ["test/*", "Xcode/*", "Xcode-iOS/*", "VisualC/*", "VisualC-GDK/*", "VisualC-WinRT/*",
                             "android-project/*", "android-project-ant/*", "docs/*"],
                "ffmpeg-linux": ["bin/*", "doc/*", "man/*", "share/*", "lib/pkgconfig/*", "lib/libavdevice*",
-                                "lib/libavfilter*", "lib/*.so"]}
+                                "lib/libavfilter*", "lib/*.so"], **UNUSED_SOURCES}
 # The ._pth of the embeddable Python: its own zip and folder, then the folders whose scripts import their neighbours
 # (relative to the ._pth, in work/toolchain-cache/python/).
 PTH_EXTRA = ["..\\..\\..\\tools", "..\\..\\..\\tools\\release", "..\\..\\ps3recomp-patched\\tools"]
@@ -470,15 +483,26 @@ def write_zip(path, out, top):
     os.replace(tmp, path)
 
 
+TAR_XZ, TAR_GZ = (".tar.xz", ".txz"), (".tar.gz", ".tgz")
+
+
 def write_tar(path, out, top):
-    """A tar.gz of the payload under top/, in name order, with fixed times and owners and the files' own execute
-    bits (the Linux folder's programs and scripts must run): the same payload gives the same bytes."""
+    """A tar of the payload under top/, in name order, with fixed times and owners and the files' own execute bits
+    (the Linux folder's programs and scripts must run): the same payload gives the same bytes. Its name says how it
+    is packed: .tar.xz (what a release carries from 0.7.0: xz -6, a third smaller than gzip for this folder and
+    unpacked by tar and by the launchers alike) or .tar.gz / .tgz (gzip -6, as up to 0.6.0)."""
     names = sorted(os.path.relpath(os.path.join(d, f), out).replace(os.sep, "/")
                    for d, _, fs in os.walk(out) for f in fs)
+    if path.lower().endswith(TAR_XZ):
+        def packed(raw):
+            return lzma.LZMAFile(raw, "wb", format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=6)
+    else:
+        def packed(raw):
+            return gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=6)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     tmp = path + ".tmp"
-    with open(tmp, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=6) as gz, \
-            tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as t:
+    with open(tmp, "wb") as raw, packed(raw) as z, \
+            tarfile.open(fileobj=z, mode="w", format=tarfile.PAX_FORMAT) as t:
         for rel in names:
             src = os.path.join(out, *rel.split("/"))
             info = tarfile.TarInfo(f"{top}/{rel}")
@@ -502,7 +526,8 @@ def main(argv=None):
     ap.add_argument("--zip", help="also write the portable zip (its top folder: project-vekta-<version>)")
     ap.add_argument("--platform", choices=("windows", "linux"), default="windows",
                     help="the Windows folder (default) or the Linux one (the pinned Zig toolchain, run.sh, play.sh)")
-    ap.add_argument("--tar", help="also write the folder as a .tar.gz with its execute bits (the Linux folder)")
+    ap.add_argument("--tar", help="also write the folder as a .tar.xz (or .tar.gz) with its execute bits (the Linux "
+                                  "folder)")
     ap.add_argument("--dry-run", action="store_true", help="check and list, write nothing")
     a = ap.parse_args(argv)
     if not a.out and not a.dry_run:
@@ -511,6 +536,8 @@ def main(argv=None):
     try:
         if a.platform == "linux" and (a.launcher or a.zip):
             raise Refused("--launcher and --zip are for the Windows folder (the Linux one ships as --tar)")
+        if a.tar and not a.tar.lower().endswith(TAR_XZ + TAR_GZ):
+            raise Refused(f"--tar {a.tar}: the name must end in .tar.xz or .tar.gz (it says how the tar is packed)")
         files, gen, manifest = plan(a.repo, cache, a.launcher, a.platform)
         if a.dry_run:
             print(f"payload ok: {manifest['count']} files, {manifest['bytes'] / 1e6:.1f} MB "

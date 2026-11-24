@@ -31,6 +31,9 @@
 /* The lifter's generated header, which declares ppu_context and the function
  * table. It comes first: everything below is written against that struct. */
 #include <signal.h>
+#ifndef _WIN32
+#include <unistd.h>   /* write, _exit: the second quit signal */
+#endif
 #include "ppu_recomp.h"
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
@@ -49,6 +52,8 @@
 #include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
+#include "crash_report.h" /* [kz-crash], [kz-hang], KZ_CRASH_TEST */
+#include "sys_info.h"     /* [kz-sys], the session header */
 #if __has_include("eboot_id.h")
 #include "eboot_id.h"    /* KZ_EBOOT_SHA256, KZ_EBOOT_SIZE: written into the lift's gen/ by tools/kzbuild.py */
 #endif
@@ -95,6 +100,7 @@ extern "C" int vm_inline_ok;
  * -----------------------------------------------------------------------*/
 extern "C" void cellGame_init_from_paramsfo(const char* sfo_path);   /* cellGame.c */
 extern "C" void kz_pc_settings_env(void);   /* pcoptions.cpp */
+extern "C" void kz_pc_settings_line(char* out, unsigned long cap);   /* pcoptions.cpp: [kz-sys] settings */
 extern "C" void kz_view_update(void);       /* pcoptions.cpp */
 extern "C" {
 uint32_t ppu_load_elf(const char* path);      /* ELF -> guest RAM, returns entry OPD */
@@ -155,6 +161,7 @@ extern "C" void rsx_vulkan_backend_present(void);
 extern "C" int  rsx_vulkan_backend_pump_messages(void);
 extern "C" void rsx_vulkan_capture_request(void);   /* F12's capture, and RenderDoc's under RenderDoc (patch 2066) */
 extern "C" void rsx_vulkan_validation_summary(void);   /* PS3RECOMP_VK_VALIDATION's counts (patch 2064) */
+extern "C" int  rsx_vulkan_temporal_built(void);       /* bit 1: DLSS built in (patch 2049) */
 #  define rsx_backend_init    rsx_vulkan_backend_init
 #  define rsx_backend_present rsx_vulkan_backend_present
 #  define rsx_backend_pump    rsx_vulkan_backend_pump_messages
@@ -307,7 +314,8 @@ extern "C" void kz_validation_summary(void)
     rsx_vulkan_validation_summary();
 #endif
 }
-extern "C" void kz_quit(const char* why)
+/* why goes to the log; code is the exit code: 0 for a quit, KZ_EXIT_GPU_LOST for a lost GPU (kz_gpu_lost). */
+static void kz_quit_code(const char* why, int code)
 {
     static volatile int once;
     if (__atomic_exchange_n(&once, 1, __ATOMIC_ACQ_REL)) return;
@@ -324,13 +332,71 @@ extern "C" void kz_quit(const char* why)
     /* an instrumented build (KZ_PGO_GEN): _exit skips the profile runtime's atexit writer (pgo_write.h) */
     if (kz_pgo_write()) fprintf(stderr, "[kz-pgo] profile written at quit\n");
     fflush(NULL);
-    _exit(0);
+    _exit(code);
 }
+extern "C" void kz_quit(const char* why) { kz_quit_code(why, 0); }
+
+#if defined(PS3RECOMP_RSX_VULKAN)
+/* The GPU was lost (#129: AMD cards on Windows, the game closing a few seconds into level 1). ps3recomp's Vulkan
+ * backend (patch 2085) has logged "device lost in <call>" and the render breadcrumbs, and calls this on the thread
+ * that found it: nothing more can be drawn, so the game ends as a quit does (the saves being written finish, the
+ * logs are flushed) but with KZ_EXIT_GPU_LOST, whose text tools/release/launch.py and recomplauncher.json give the
+ * player. KZ_CRASH_TEST=gpu-lost (main) tries this path on a working GPU. */
+extern "C" void rsx_vulkan_set_device_lost_hook(void (*hook)(void));
+static void kz_gpu_lost(void)
+{
+    fprintf(stderr, "[kz] GPU lost: The graphics driver stopped responding (the GPU was lost): update the graphics "
+                    "driver, and attach the support package to a bug report.\n");
+    kz_quit_code("the GPU was lost", KZ_EXIT_GPU_LOST);
+}
+#endif
 
 /* SIGTERM, SIGINT (Ctrl+C in the terminal) and SIGHUP quit as closing the
- * window does; the frame clock does the quitting, outside the handler. */
+ * window does; the frame clock does the quitting, outside the handler. A
+ * second signal ends the process at once (Ctrl+C twice), without the quit's
+ * flushes: only write and _exit are safe in a handler. */
 static volatile sig_atomic_t s_quit_signal;
-static void on_quit_signal(int) { s_quit_signal = 1; }
+static void on_quit_signal(int sig)
+{
+#ifndef _WIN32
+    if (s_quit_signal) {
+        static const char m[] = "[kz] quitting (second signal, at once)\n";
+        if (write(2, m, sizeof m - 1) < 0) {}
+        _exit(128 + sig);
+    }
+#endif
+    s_quit_signal = 1;
+}
+
+#ifndef _WIN32
+/* The frame clock reads s_quit_signal once a pass. A frame clock stuck in a
+ * present or a fence wait (a GPU that stopped answering) never gets there, and
+ * SIGTERM then did nothing: only SIGKILL ended the game, with no log flush and
+ * no wait for a save being written. This thread gives the frame clock 2 s (it
+ * normally takes the quit within one 0.1 ms pass), then quits from here. */
+static DWORD WINAPI quit_watch(LPVOID)
+{
+    ps3_thread_name("quit watch");
+    while (!s_quit_signal) Sleep(50);
+    Sleep(2000);
+    fprintf(stderr, "[kz] the frame loop did not take the quit signal in 2 s\n");
+    kz_quit("signal, frame loop stalled");
+    return 0;
+}
+#endif
+
+/* The window minimized (or hidden)? SDL2's flags of the backend's window, the first SDL window there is (SDL2 comes
+ * through ps3recomp; looked up at run time, sys_info.c). For the hang watchdog: a minimized window is not a hung
+ * game. Asked from this thread, which made the window and pumps its events. */
+static int kz_window_minimized(void)
+{
+    static void* (*from_id)(uint32_t) = (void* (*)(uint32_t))kz_sdl_fn("SDL_GetWindowFromID");
+    static uint32_t (*flags)(void*) = (uint32_t (*)(void*))kz_sdl_fn("SDL_GetWindowFlags");
+    if (!from_id || !flags) return 0;
+    void* w = nullptr;
+    for (uint32_t id = 1; id <= 8 && !w; id++) w = from_id(id);
+    return w && (flags(w) & (0x40u | 0x08u)) != 0;   /* SDL_WINDOW_MINIMIZED, SDL_WINDOW_HIDDEN */
+}
 
 static DWORD WINAPI frame_clock(LPVOID)
 {
@@ -341,6 +407,19 @@ static DWORD WINAPI frame_clock(LPVOID)
     int rsx_ok = (rsx_backend_init(WINDOW_WIDTH, WINDOW_HEIGHT, title) == 0);
     fprintf(stderr, "[rsx] %s backend init %s\n", RSX_BACKEND_NAME,
             rsx_ok ? "OK -- window open" : "FAILED");
+    if (rsx_ok) kz_sys_log_displays();   /* [kz-sys] display: the session header's monitors, now that SDL's video runs */
+#if defined(PS3RECOMP_RSX_VULKAN)
+    /* No Vulkan while a window was asked for (PS3RECOMP_VK_WINDOW, launch.py sets it): the game would run on with
+     * nothing on screen and the player would see nothing at all (#131). Say so and stop with KZ_EXIT_NO_VULKAN, whose
+     * line tools/release/launch.py shows. Headless runs (the build's data step) go on: they need no window. */
+    const char* want_window = getenv("PS3RECOMP_VK_WINDOW");
+    if (!rsx_ok && want_window && want_window[0] && want_window[0] != '0') {
+        fprintf(stderr, "[kz] Vulkan check: The game could not start Vulkan on this PC (see the lines above). Install "
+                        "or update your graphics card's driver.\n");
+        fflush(NULL);
+        _exit(KZ_EXIT_NO_VULKAN);
+    }
+#endif
 
     /* KZ_VBLANK_HZ: the emulated vblank rate (default 59.94, the PS3's: two
      * vblanks are then one tick of the game's 30 Hz clock, so a frame that fits
@@ -369,6 +448,10 @@ static DWORD WINAPI frame_clock(LPVOID)
         uint64_t now_t = now_us();
         ULONGLONG now = now_t / 1000;   /* ms, for the stats line */
         kz_tick_rate();
+        /* the hang watchdog (crash_report.c): this loop ran, and whether the window is minimized */
+        { static ULONGLONG next_tick_note;
+          if (now >= next_tick_note) { next_tick_note = now + 100; kz_hang_tick(kz_window_minimized()); } }
+        kz_crash_test_hang_point();   /* KZ_CRASH_TEST=hang: this loop stops here for good */
         if (g_kz_flip_hz != tick_hz && g_kz_flip_hz > 0) { tick_hz = g_kz_flip_hz; tick_us = (uint64_t)(1e6 / tick_hz); next_tick = now_t; }
 
         int fired = 0;
@@ -519,9 +602,11 @@ static DWORD WINAPI frame_clock(LPVOID)
 
             if (rsx_backend_pump() != 0) kz_quit("window closed");
             if (s_quit_signal) kz_quit("signal");
-            /* Before the first flip present freely, so the window is not
-             * blank during boot. */
-            if (cellGcm_flip_request_count() == 0) rsx_backend_present();
+            /* Before the first flip present once a vblank tick, so the window
+             * is not blank during boot. Presenting on every 0.1 ms pass made
+             * about 5,000 presents a second (the mailbox mode does not wait),
+             * a CPU core and the GPU busy for nothing while the game loads. */
+            if (fired && cellGcm_flip_request_count() == 0) rsx_backend_present();
         }
     }
     return 0;
@@ -741,8 +826,19 @@ int main(int argc, char** argv)
     kz_log_setup();
 #endif
     fprintf(stderr, "[kz] %s\n", KZ_VERSION_LINE);   /* the first line of every log */
+    /* The crash reports (crash_report.c): the unhandled-exception filter before ppu_run's ps3_stdio_init, whose own
+     * filter goes over this one and calls it between its flushes. */
+    kz_crash_install(KZ_VERSION_LINE);
+    kz_sys_log();           /* [kz-sys] os, cpu, cores, memory, env (before kz1hd_pc.ini adds its variables), started-by */
     kz_win_dpi_aware();     /* win_dpi.h: real pixels at Windows' 125 %, 150 %... */
     kz_pc_settings_env();   /* pcoptions.cpp: kz1hd_pc.ini */
+    { char s[2048]; kz_pc_settings_line(s, sizeof s); kz_sys_log_line("settings", s); }
+#if defined(PS3RECOMP_RSX_VULKAN)
+    kz_sys_log_line("dlss", (rsx_vulkan_temporal_built() & 2) ? "yes" : "no");
+#else
+    kz_sys_log_line("dlss", "no");
+#endif
+    kz_crash_test_start();  /* KZ_CRASH_TEST=<kind> */
     /* The game steps its command buffer through 64 KB segments with its own
      * callback: the runtime's recycling of a title's ring would rewind it
      * mid-step (a frozen level load; cellGcmSys.c, GCM_RING_RECYCLE). */
@@ -806,11 +902,23 @@ int main(int argc, char** argv)
 #ifndef _WIN32
     { struct sigaction sa = {}; sa.sa_handler = on_quit_signal;
       sigaction(SIGTERM, &sa, NULL); sigaction(SIGINT, &sa, NULL); sigaction(SIGHUP, &sa, NULL); }
+    CreateThread(NULL, 256u * 1024, quit_watch, NULL, 0, NULL);
+#endif
+#if defined(PS3RECOMP_RSX_VULKAN)
+    rsx_vulkan_set_device_lost_hook(kz_gpu_lost);
+    /* KZ_CRASH_TEST=gpu-lost: the backend reports a lost device once, at its first fence wait after 300 presented
+     * frames (about 5 s at 60 Hz; PS3RECOMP_VK_FAKE_DEVICE_LOST, patch 2085), while the GPU is fine, so the log
+     * lines, the breadcrumbs and exit code 78 can be tried on any PC. */
+    { const char* t = getenv("KZ_CRASH_TEST");
+      if (t && !strcmp(t, "gpu-lost")) setenv("PS3RECOMP_VK_FAKE_DEVICE_LOST", "300", 0); }
 #endif
     CreateThread(NULL, 4u * 1024 * 1024, frame_clock, NULL, 0, NULL);
 
     printf("\n[boot] dispatching entry OPD 0x%08X (stack top 0x%08X)\n\n",
            entry, STACK_TOP);
+
+    kz_hang_watch_start(cellGcm_flip_request_count);   /* KZ_HANG_WATCH: armed by the first guest flip */
+    kz_crash_test_main_point();   /* KZ_CRASH_TEST's main-thread kinds fire here, before the game's code */
 
     int rc = ppu_run(entry, STACK_TOP);
     printf("\n[boot] ppu_run returned %d (entry function unwound)\n", rc);

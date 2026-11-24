@@ -6,10 +6,10 @@ on:
   push:
     branches: [main]
     paths: ["docs/**", "site/**", "CHANGELOG.md", "VERSION", ".recomp.json", "port/patches/series", "tools/features.py",
-            "tools/website.py", ".github/workflows/docs.yml"]
+            "tools/website.py", "tools/release/check_site.py", ".github/workflows/docs.yml"]
   pull_request:
     paths: ["docs/**", "site/**", "CHANGELOG.md", "VERSION", ".recomp.json", "port/patches/series", "tools/features.py",
-            "tools/website.py", ".github/workflows/docs.yml"]
+            "tools/website.py", "tools/release/check_site.py", ".github/workflows/docs.yml"]
 permissions:
   contents: read
 concurrency:
@@ -23,7 +23,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: docs/FEATURES.md and site/index.html are current
+      - name: docs/FEATURES.md and the site's two pages are current
         run: |
           python3 tools/features.py --check
           python3 tools/website.py --check
+          python3 tools/release/check_site.py

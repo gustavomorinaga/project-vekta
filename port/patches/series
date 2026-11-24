@@ -158,3 +158,10 @@
 4016-EDAT-reader-the-cache-check-reads-the-size-with-64-b.patch
 2081-Vulkan-window-an-icon-and-an-application-id-the-port.patch
 1022-spurs-_cellSpursLFQueueInitialize-and-_cellSpursLFQu.patch
+2082-Vulkan-the-GPU-its-driver-version-and-VRAM-in-the-lo.patch
+2083-Vulkan-robustBufferAccess-when-the-device-has-it-PS3.patch
+2084-Vulkan-render-breadcrumbs-the-last-64-things-given-t.patch
+2085-Vulkan-a-lost-device-is-logged-with-the-breadcrumbs-.patch
+2086-Vulkan-no-GPU-MLAA-pass-on-AMD-s-Windows-driver-the-po.patch
+2087-Vulkan-a-32-bit-word-form-of-the-MLAA-shader-for-AMD-s-.patch
+2088-MLAA-log-says-ran-only-when-the-MLAA-itself-ran.patch

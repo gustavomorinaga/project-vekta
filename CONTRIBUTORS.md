@@ -5,7 +5,9 @@ Project Vekta is maintained by gustavomorinaga. Thanks to everyone who helped:
 - **Code:** undecuple (the Project Helghast and Project Pyrrhus ports, and their work taken in here, credited in
   [NOTICE.md](NOTICE.md) and in each patch's header).
 - **Testing and bug reports:** Strawman97 (Windows and AMD reports: issues #17, #18, #19, #94), MarkPremier
-  (#93), undecuple (#27).
+  (#93), undecuple (#27), Dizzee112 (issue #129, the Level 1 crash on AMD graphics cards on Windows: tested four
+  builds and sent the logs and crash reports that found the cause and confirmed the fix), FakeItalianFella (issue
+  #67: confirmed that 0.5.3 builds and runs from an RPCS3 install, and reported the stutter on a 144 Hz VRR screen).
 - **The recompiler:** ps3recomp by sp00nznet and its contributors, the base this port is built on
   ([third_party/ps3recomp](third_party/ps3recomp)).
 

@@ -14,8 +14,8 @@ it never edits a release, pushes or tags.
   3 assets are exactly the ones release.yml publishes: project-vekta-<version>-source.tar.gz (pack_source.py), the
     Windows setup program project-vekta-<version>-setup.exe (build_setup.py), the Windows folder as a zip,
     project-vekta-<version>-windows.zip (assemble_payload.py --zip), after 0.2.0 the Linux folder,
-    project-vekta-<version>-linux.tar.gz (assemble_payload.py --platform linux --tar), a .sha256 for each, and
-    SHA256SUMS
+    project-vekta-<version>-linux.tar.xz (assemble_payload.py --platform linux --tar; a .tar.gz up to 0.6.0), a
+    .sha256 for each, and SHA256SUMS
   4 (with --assets) each .sha256 matches its file and agrees with SHA256SUMS, and SHA256SUMS lists exactly those
     files
   5 (with --root) README.md and site/index.html link releases/tag/<tag>
@@ -38,10 +38,11 @@ SUMS = "SHA256SUMS"
 
 def files(version):
     """The release's files, each published with a .sha256 beside it and listed in SHA256SUMS. The Linux folder comes
-    with the releases after 0.2.0."""
+    with the releases after 0.2.0: a .tar.gz up to 0.6.0, a .tar.xz from 0.7.0 on."""
     out = [pack_source.name(version), f"project-vekta-{version}-setup.exe", f"project-vekta-{version}-windows.zip"]
-    if tuple(int(x) for x in version.split(".")) > (0, 2, 0):
-        out.append(f"project-vekta-{version}-linux.tar.gz")
+    v = tuple(int(x) for x in version.split("."))
+    if v > (0, 2, 0):
+        out.append(f"project-vekta-{version}-linux.tar.{'xz' if v >= (0, 7, 0) else 'gz'}")
     return out
 
 

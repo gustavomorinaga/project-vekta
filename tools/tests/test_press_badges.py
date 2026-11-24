@@ -67,6 +67,9 @@ for rel in ("README.md", "docs/INSTALL.md", "site/index.html"):
     check(press.RECOMPLAUNCHER_PAGE in text and "press/recomplauncher/badge-dark.svg" in text,
           f"{rel} links the RecompLauncher badge to the port's page")
     check(press.QUIVER_PAGE in text and "press/quiver/badge" in text, f"{rel} links the Quiver badge to the port's page")
+    width = png_header(press.PRESS / "quiver" / "badge.png")[0]
+    check(f'badge@3x.png" width="{width}" height="56"' in text or f'3x" width="{width}" height="56"' in text,
+          f"{rel} gives the Quiver badge its width, {width}")
 
 print("test_press_badges:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

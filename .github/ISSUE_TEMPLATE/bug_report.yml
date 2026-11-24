@@ -5,7 +5,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for testing. Please do **not** attach game files, decrypted binaries, saves or keys: only logs and screenshots. Check [docs/KNOWN_ISSUES.md](https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md) first.
+        Thanks for testing. Check [docs/KNOWN_ISSUES.md](https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md) first. Never attach game files, decrypted binaries, saves or keys: the support package below holds none of them.
+  - type: textarea
+    id: package
+    attributes:
+      label: Support package
+      description: "Drag the support package here (`project-vekta-support-*.zip`). The launcher offers to make it when the game closes unexpectedly; otherwise: the Windows Start menu's \"Make a support package\", `scripts\\support.cmd` (Windows zip), `scripts/support.sh` or `./project-vekta --support-package` (Linux). It holds the logs, the crash reports and the settings, with your user folder written as `~`, and nothing is sent until you submit this form. [What it contains](https://github.com/gustavomorinaga/project-vekta/blob/main/docs/TROUBLESHOOTING.md#where-the-logs-are)."
   - type: textarea
     id: what
     attributes:
@@ -21,14 +26,21 @@ body:
     id: version
     attributes:
       label: Port build
-      description: "The commit you built (`git rev-parse --short HEAD`), and whether `tools/check-game-files.py` said ok for every file."
+      description: "The version, for example 0.7.0: the first line of `work/play.log`, or \"Port version\" in the package's facts.txt. From source: the commit too (`git rev-parse --short HEAD`)."
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it
+      options: ["Setup program (Windows)", "Windows zip", "Linux folder", "RecompLauncher", "Quiver Launcher", "From source (Git)"]
     validations:
       required: true
   - type: dropdown
     id: platform
     attributes:
       label: Platform
-      options: ["Linux (native build)", "Windows (cross-built exe)", "Wine or Proton on Linux"]
+      options: ["Windows", "Linux", "Wine or Proton on Linux"]
     validations:
       required: true
   - type: input
@@ -52,4 +64,4 @@ body:
     id: logs
     attributes:
       label: Log
-      description: "Attach the log (`work/play.log`, or `kz1hd.log` beside the Windows exe). Before attaching, remove your user name, home folder paths and host name. Never attach game files, decrypted binaries, saves or keys."
+      description: "How the session ended and the crash signature (the launcher fills these in). Without a support package, attach `work/play.log`: the launcher writes your home folder as `~` in it. Never attach game files, decrypted binaries, saves or keys."

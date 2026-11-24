@@ -7,6 +7,120 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-23 (pre-release)
+
+### Added
+- Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code;
+  not when you quit), the launcher says what the exit code means and shows the crash signature, and offers to make
+  the support package; after it, to open the bug report form on GitHub with the version, system and signature
+  filled in (only on a yes; the zip is never uploaded). A session that never ended (power loss) is named at the next
+  start. `work/play.log` now ends with `[launcher] session ended: exit <code> (<meaning>) after <N> s, <kind>`, and
+  `work/logs/sessions.jsonl` keeps one line per session.
+- The support package also holds the earlier game logs, `sessions.jsonl`, the game's crash and hang reports with the
+  names of its functions (from your own build's symbol table), Windows' error reports for the game and its display
+  driver events of the last 24 hours (on Linux the kernel log's GPU lines), what the game's log says about the PC,
+  and a line of your own when you make it in a terminal. `scripts/support.cmd` and `scripts/support.sh` make it in
+  the Windows zip and the Linux folder, as the setup's Start menu entry does; RecompLauncher gets a "Crash reports"
+  folder button.
+- When the game crashes, its log now says where: a `[kz-crash]` block with the exception, the faulting module and
+  offset, the thread, the uptime, the registers, up to 32 frames and a signature (`KZ-XXXX-XXXX`) that is the same
+  each time the same crash happens, and a copy in `work/crash/crash-*.txt`. Before, a crash like the ones a few
+  seconds into Level 1 on AMD GPUs (#129) left nothing in the log ([docs/dev/crash-reports.md](docs/dev/crash-reports.md)).
+- When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets
+  a `[kz-hang]` block with every thread's stack, and a copy in `work/crash/hang-*.txt`; the game is left running.
+  `KZ_HANG_WATCH=0` turns this off.
+- The log starts with the system it runs on: `[kz-sys]` lines for the system, CPU, cores, memory, monitors, the
+  settings in `kz1hd_pc.ini`, the `KZ_*` and `PS3*` variables set (your home folder written as `~`), what started
+  the game and whether the build has DLSS.
+- `KZ_CRASH_TEST=<kind>` makes the game crash or hang on purpose, to check the reports on a build.
+- The game straight from the Killzone Trilogy disc, with no RPCS3 installed: `--disc FOLDER` (the copied disc, or
+  its `PS3_EXTRA` package) on `Project Vekta.exe`, `./project-vekta` and the prepare scripts downloads the official
+  RPCS3 at a pinned version (checked by SHA-256), which installs the package into the port's `work` folder with no
+  window and decrypts a copy of the EBOOT there; the disc is only read and an RPCS3 of yours is not touched
+  (docs/INSTALL.md). The setup's "Your game" page offers it as "From my Killzone Trilogy disc", and
+  recomplauncher.json as a disc field beside the game folder. On Windows 10, 7-Zip unpacks the RPCS3 download. The
+  PlayStation Store package still goes through "Use my RPCS3 install".
+- Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by
+  GitHub, that the repository's release workflow built that very file from the tagged commit.
+  `gh attestation verify <file> --repo gustavomorinaga/project-vekta` checks a download against it
+  ([docs/INSTALL.md](docs/INSTALL.md)).
+- When the graphics driver stops responding (the GPU is lost), the game now says so in `play.log` (`[RSX vulkan]
+  device lost in ...`, with the last passes the GPU was given) and ends with its own exit code, 78, whose text tells
+  you to update the driver and report it; before, it closed without a word. A GPU that takes longer than 2 s logs
+  `GPU has not finished for N s` each second. `KZ_CRASH_TEST=gpu-lost` tries this on a working GPU (ps3recomp
+  patches 2084, 2085).
+- `play.log` names the graphics card's driver and its version (for AMD and Intel also the release, such as
+  `24.10.1`) and the card's video memory, for bug reports (patch 2082).
+
+### Changed
+- The game logs of the last sessions are kept: each earlier `work/play.log` moves to `work/logs/play-*.log` (the five
+  newest, and the three newest that ended in a crash, a hang or a lost GPU). After a session `play.log` has your home
+  folder written as `~` and each run of one repeated line folded into one line with `[repeated N times]`.
+- The bug report form asks for the support package first, the version instead of a commit, and how you installed
+  the port; it no longer asks you to edit your user name out of the log by hand.
+- A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by
+  undecuple): the README banner, the social preview, the Windows setup's pictures and the program icons (now
+  lettered KZ1) are drawn in steel blue with a V chevron by one script, `tools/release/installer_art.py`, with the
+  Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the
+  keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.
+- The setup, the launcher's page and the docs now say the first build takes 5 to 30 minutes instead of about five:
+  on four cores and a hard disk it took close to half an hour (#134).
+- The install and troubleshooting pages say that RPCS3 needs Microsoft's Visual C++ runtime on a fresh Windows,
+  without which "Use my RPCS3 install" fails (#136).
+- The first run takes the movies out of the game's archive faster and with less memory: each movie is written to
+  its file as it is read, instead of being put together in memory first, which copied the whole movie so far at
+  every block (`tools/psarc_ls.py`; on made-up data a 31 MB movie took 2.8 s of copying, now 0.01 s). An archive
+  that is cut short is named in the error.
+- The release folders no longer carry two sets of files that no build reads (glslang's test shaders and the
+  registry Vulkan's headers are generated from): about 55 MB and 3,400 files less on disk after install, and about
+  5 MB less to download.
+- The build no longer keeps a second and a third copy of FFmpeg's libraries and a second copy of the Vulkan headers:
+  what it stages for the compile and beside the program are hard links to the toolchain folder's files where the
+  file system makes them (NTFS, ext4, btrfs), and copies as before where it does not (exFAT). About 260 MB less
+  disk on Windows and 280 MB less on Linux.
+- The Linux folder is now a `.tar.xz` (`project-vekta-X.Y.Z-linux.tar.xz`), about a third smaller to download than
+  the `.tar.gz` it replaces. `tar xf` unpacks it, and so do the launchers.
+- The install and troubleshooting pages also say that on Windows 10 RPCS3's `.7z` needs 7-Zip to unpack, and that
+  RPCS3 needs the graphics driver's `vulkan-1.dll`, which a Windows 10 without a driver lacks.
+- The README is shorter and in the same shape as the Killzone 2 and Killzone 3 ports: a centred header, the status
+  in key numbers and a table per platform, numbered install steps and the launcher badges. The detail moved to new
+  pages: [docs/STATUS.md](docs/STATUS.md), [docs/PRIVACY.md](docs/PRIVACY.md) (what goes online and where your
+  data goes), [docs/FAQ.md](docs/FAQ.md), [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) and [docs/AI.md](docs/AI.md).
+
+### Fixed
+- The setup's header image no longer touches the window's right edge (it sat flush at every display scale).
+- A candidate fix for AMD Radeon RX 5000 and 6000 cards on Windows closing the game a few seconds into level 1
+  (#129), not yet confirmed on those cards: the GPU now reads zeros instead of undefined memory when a draw reads
+  past the end of a buffer (Vulkan's `robustBufferAccess`, which NVIDIA's driver did not need). `play.log` says
+  `robustBufferAccess: on`; `PS3RECOMP_VK_ROBUST=0` turns it off for comparison (patch 2083).
+- A second candidate fix for #129, from a tester's crash reports on an RX 6600: AMD's Windows driver closes the game
+  while it compiles the MLAA pass (the game's anti-aliasing, redone as a GPU shader), every time, in the same place.
+  On that driver the MLAA now uses a second form of its shader that does its arithmetic without 64-bit integers, the
+  one thing it used that the glow and motion blur (which build there) do not: the picture is the same, byte for byte,
+  and the RX 6600 that closed the game plays level 1 with it (patch 2087). Other cards keep the faster first form;
+  cards without 64-bit integer support, which had no MLAA, now get it too. If a driver still closes the game while
+  compiling it, the next start leaves the MLAA out on that driver (the glow and motion blur still run, the PC screen
+  greys the Anti-aliasing row) and a new driver tries again. The log names each post pass as it compiles
+  (`building the MLAA pass`, `the MLAA pass: built in N ms`); `PS3RECOMP_MLAA_BUILD=1` builds it whatever happened
+  before (patches 2086-2087). The log line `GPU MLAA on local ...: ran` now appears only when the MLAA itself ran;
+  with it off or not built it says `not applied` and that the other post passes ran (patch 2088).
+- The build no longer stops at "Preparing the game's data" when the install folder's path has accented letters
+  (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).
+- A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran
+  on with no window and closed after about 45 seconds without a word (#131).
+- On a CPU too old for the port, `Project Vekta.exe` says so at once. Before, the message could take 30 to 90
+  seconds on the first start after the PC was switched on, with nothing on screen meanwhile (#133).
+- The setup fits a 1280x800 screen at 150% display scale (Next and Cancel were under the taskbar), and its "Your
+  game" page shows its three choices without a scroll bar at 125% and above (#135).
+- At 125% display scale the setup's "Your game" page shows all four choices and the note under them without a
+  scroll bar or a cut line, and the DLSS page shows its whole text and checkbox.
+- Uninstalling removes the install folder again: a file the game writes at start (`flashMP3.pic`) and the empty
+  folders the build left in `work\vfs` kept it there. Saves and settings stay, as before (#132).
+- While the game loads, before its first frame, the window is now refreshed about 60 times a second instead of
+  about 5,000, which kept a CPU core and the GPU busy for nothing.
+- On Linux, stopping the game (SIGTERM, Ctrl+C or the launcher) now works when the game is frozen: after 2 s it
+  quits anyway, and a second Ctrl+C ends it at once. Before, only a forced kill did.
+
 ## [0.6.0] - 2026-11-20 (pre-release)
 
 ### Added

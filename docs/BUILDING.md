@@ -156,7 +156,8 @@ for scripted input (see `tools/run.sh` and `docs/dev/testing.md`).
 
 What CI runs on every push and pull request needs no game files and no GPU: `tools/ps3recomp-patched.sh`,
 `tools/check-tree.sh`, `tools/lint.sh` (shellcheck and ruff) and `tools/run-host-tests.sh` (the list is
-`tools/host-tests.txt`; bash, Python 3, a C compiler and bubblewrap). Write a new test in `tools/tests/` and add it to the list.
+`tools/host-tests.txt`; bash, Python 3, a C compiler and bubblewrap; `-j N` runs N tests at the same time, as CI
+does). Write a new test in `tools/tests/` and add it to the list.
 
 ## Windows x64 (cross-built on Linux)
 
@@ -224,7 +225,7 @@ and `.json`). Started with no arguments from its folder, either one plays; befor
 files and builds first (`tools/release/launch.py --build-if-needed`), asking nothing when RPCS3 and the game are in
 their usual places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR`.
 
-- `--game DIR`, `--eboot FILE`, `--psarc FILE`, `--rpcs3 [DIR]`, or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC` in the
+- `--game DIR`, `--eboot FILE`, `--psarc FILE`, `--rpcs3 [DIR]`, `--disc PATH` (the copied disc or its package, with the official RPCS3 downloaded for it), or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC` in the
   environment: where the files are. They are kept in `work/paths.env` once the check passes. A game folder given
   without a decrypted EBOOT (`--game` alone, as a launcher passes it) is taken as the folder RPCS3 installed: your
   RPCS3 makes the decrypted copy from its `EBOOT.BIN` (`--rpcs3` with that folder).
@@ -254,6 +255,7 @@ The exit codes, one table for the exe and the launcher (`port/kz1hd/kz_exit.h`; 
 | 75 | `CPU` | This CPU is too old: the build needs x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or AMD Excavator, 2013 and later). |
 | 76 | `EBOOT` | This build was made from another EBOOT.elf than the game folder's: run Verify and rebuild (Windows) or ./project-vekta --prepare (Linux). |
 | 77 | `NO_VULKAN` | No Vulkan driver was found: install or update your graphics card's driver. |
+| 78 | `GPU_LOST` | The graphics driver stopped responding (the GPU was lost): update the graphics driver, and attach the support package to a bug report. |
 | 130 | `STOPPED` | Stopped by the player or the time limit: start again, and the build resumes where it stopped. |
 
 Any other code is the game's own (a crash shows as Windows' or the shell's code for it).
@@ -308,8 +310,8 @@ changed is rebuilt. The uninstaller asks whether to delete the saves and setting
 uninstall keeps them).
 
 The setup is dark, with its own side and header images at four DPI scales and its own setup and uninstall icons,
-all in `installer/art/` and made by `tools/release/installer_art.py` from the project's art in the site's palette
-(`--fetch-fonts` once for Fira Sans Condensed, then run it; `--check`, which the host tests run, says when an image
+all in `installer/art/` and made by `tools/release/installer_art.py` in the site's palette, the same script that draws
+the banner, the social preview and the README dividers in `assets/` (`--fetch-fonts` once for Rajdhani, then run it; `--check`, which the host tests run, says when an image
 no longer matches the script).
 
 The folder keeps this repository's layout: the port's sources, the patched ps3recomp in `work/ps3recomp-patched` (so
@@ -330,14 +332,14 @@ packages to install. Its compiler is [Zig](https://ziglang.org) 0.17.0 (`zig cc`
 `tools/release/toolchain.json` from its PyPI wheel) aimed at `x86_64-linux-gnu.2.31` (`port/cmake/zig-linux.cmake`,
 the wrappers in `tools/release/zig/`), so what it builds runs on any distribution with that glibc or newer; CMake,
 Ninja, SDL2 (built to link against, the system's `libSDL2-2.0.so.0` is used at run time), zlib, glslang, the Vulkan
-headers and FFmpeg 9's shared libraries (copied to `work/build/lib`, which `tools/play.sh` puts on the library path)
-come with it.
+headers and FFmpeg 9's shared libraries (placed in `work/build/lib`, as hard links where the file system makes them;
+`tools/play.sh` puts that folder on the library path) come with it.
 
 ```sh
 tools/release/fetch_toolchain.py --host native                          # Zig, CMake, Ninja, SDL2, FFmpeg
 tools/release/fetch_toolchain.py --only zlib,glslang,vulkan-headers     # the sources it also builds
 tools/release/assemble_payload.py --platform linux --out work/release/linux \
-    [--tar work/release/project-vekta-<version>-linux.tar.gz]
+    [--tar work/release/project-vekta-<version>-linux.tar.xz]
 ```
 
 There, `./project-vekta` (the one program at the folder's top) builds on the first start, from the player's RPCS3

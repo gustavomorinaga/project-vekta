@@ -273,6 +273,18 @@ with tempfile.TemporaryDirectory() as tmp:
           f"-DRECOMP_DIR={root / 'work' / 'lift' / 'gen'}" in log[0], f"cmake configures the port: {log[0]}")
     check(log[1] == f"ninja -C {root / 'work' / 'build'} -j 3", f"ninja builds with KZ_JOBS: {log[1]}")
 
+# data: the archive comes from edat_cache, whatever the game's ANSI-coded path line holds (#130)
+with tempfile.TemporaryDirectory() as td:
+    vfs = os.path.join(td, "A\u00e7\u00e3o e Aventura", "work", "vfs")
+    e = {"KZ_VFS": vfs}
+    want = os.path.join(td, "A\u00e7\u00e3o e Aventura", "work", "edat-cache", "5d50e98fb83bb881.dec")
+    garbled = "C:/Jogos/A\ufffd\ufffdo e Aventura/Vekta/work/vfs/../edat-cache/5d50e98fb83bb881.dec"
+    check(kzbuild.data_archive(e, garbled + "\r") == want, f"data_archive: {kzbuild.data_archive(e, garbled)}")
+    check(kzbuild.data_archive(e, "C:\\x\\edat-cache\\ab.dec") == os.path.join(os.path.dirname(want), "ab.dec"),
+          "data_archive takes a backslash path too")
+    check(kzbuild.data_archive(dict(e, PS3_EDAT_CACHE=td), garbled) == os.path.join(td, "5d50e98fb83bb881.dec"),
+          "data_archive follows PS3_EDAT_CACHE")
+
 # the wrappers run kzbuild.py
 for script, cmd in [("lift.sh", "lift"), ("setup-vfs.sh", "vfs"), ("build.sh", "build"),
                     ("ps3recomp-patched.sh", "patch"), ("build-win.sh", "build --win")]:

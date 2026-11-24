@@ -64,14 +64,20 @@ sizes = {label: size for label, _p, size, *_ in cgf.FILES + [cgf.PSARC_FILE]}
 for define, label in (("EbootSize", "EBOOT.elf"), ("PsarcSize", "data_ps3.psarc")):
     m = re.search(r'#define %s "(\d+)"' % define, text)
     check(m and int(m.group(1)) == sizes[label], f"vekta.iss {define} is check-game-files.py's size of {label}")
-check("FlashPage" not in text and "#define Firmware" not in text and "dev_flash" not in text,
+# dev_flash may appear only in [UninstallDelete]: the stand-in the game writes there and its empty folders (#132)
+asked = re.sub(r"(?ms)^\[UninstallDelete\].*?(?=^\[)", "", text)
+check("FlashPage" not in text and "#define Firmware" not in text and "dev_flash" not in asked,
       "the setup asks for no firmware (no dev_flash page)")
+undel = re.search(r"(?ms)^\[UninstallDelete\](.*?)(?=^\[)", text).group(1)
+check(r'Type: files; Name: "{app}\work\vfs\dev_flash\sys\external\flashMP3.pic"' in undel and
+      r'Type: dirifempty; Name: "{app}\work\vfs"' in undel,
+      "uninstall removes the game's flashMP3.pic stand-in and the build's empty work\\vfs folders (#132)")
 check("'USRDIR\\data_ps3.psarc.edat'" in text, "the wizard takes the game's .edat when the archive is left empty")
 # The build in the wizard runs firstrun.py with options it has, and names its steps
 import firstrun  # noqa: E402
 opts = set(re.findall(r"' --([a-z0-9-]+)", text))
 known = {n.replace("_", "-") for n, *_ in firstrun.INPUTS} | {"root", "status-file", "stop-file", "save-paths", "dlss",
-                                                              "rpcs3"}
+                                                              "rpcs3", "disc"}
 known |= {"resolve", "out"}   # the "Your game" page's call of rpcs3_import.py
 check(opts and opts <= known, f"vekta.iss passes only firstrun.py's and rpcs3_import.py's options: {sorted(opts - known)}")
 # "Your game": the RPCS3 route asks rpcs3_import.py --resolve with the bundled Python before installing, skips the
@@ -92,7 +98,7 @@ check("RpcsBrowse.OnClick := @RpcsBrowseClick;" in text and "CheckRpcs3(D);" in 
       and "SourcePage.CheckListBox.ItemEnabled[0] := True;" in text
       and "CheckRpcs3(Pick('RPCS3', 'Rpcs3Dir'))" in text and "'Rpcs3Dir', RpcsHint" in text,
       "the page searches by itself and has Find RPCS3... for a folder the player picks (kept for next time)")
-check("if UseRpcs3 and ((PageID = GamePage.ID) or (PageID = FilesPage.ID))" in text
+check("if (UseRpcs3 or UseDisc) and ((PageID = GamePage.ID) or (PageID = FilesPage.ID))" in text
       and "Result := ' --rpcs3 ' + Quote(RpcsRoot);" in text, "the RPCS3 route skips the file pages and builds with --rpcs3")
 check(all(f"'{k}'" in text for k in ("status", "root", "game")) and "Pos('problem=', Lines[I]) = 1" in text
       and set(rpcs3_import.lines({"status": "ok", "root": "r", "game": "g", "exe": ["x"],
@@ -103,10 +109,17 @@ for opt in ("root", "status-file", "stop-file", "save-paths"):
     check(f'"--{opt}"' in src, f"firstrun.py has --{opt}")
 labels = set(re.findall(r"Name = '([a-z-]+)' then Result", text))
 steps = {st.name for st in firstrun.STEPS}
-check(labels and labels <= steps and steps - labels <= {"stamp"}, f"StepLabel names firstrun.py's steps: {labels} {steps}")
+# "disc" (firstrun.py --disc, before the steps) is a PROGRESS name of its own, as rpcs3 is
+check(labels and labels <= steps | {"disc"} and steps - labels <= {"stamp"},
+      f"StepLabel names firstrun.py's steps: {labels} {steps}")
+check("if (UseRpcs3 or UseDisc) and ((PageID = GamePage.ID) or (PageID = FilesPage.ID))" in text
+      and "Result := ' --disc ' + Quote(RemoveBackslashUnlessRoot(DiscPage.Values[0]));" in text
+      and "if (PageID = DiscPage.ID) and not UseDisc then Result := True;" in text
+      and "SourcePage.Add('Show me how');" in text and "SourcePage.SelectedValueIndex = 3) then" in text,
+      "the disc route has its page, skips the file pages and builds with --disc; Show me how is the last choice")
 check("tools\\release\\firstrun.py" in text and "work\\toolchain-cache\\python\\python.exe" in text,
       "the wizard runs the payload's firstrun.py with its Python")
-for param in ("GAME", "EBOOT", "PSARC", "DLSS"):
+for param in ("GAME", "EBOOT", "PSARC", "DISC", "DLSS"):
     check(f"Pick('{param}'" in text, f"/{param}= is taken on the command line")
 check("LIBSRE" not in text and "libsre" not in text.lower(), "no libsre.prx is asked for (the runtime's own LFQueue)")
 # NVIDIA DLSS: an optional page whose box, unticked unless accepted before, accepts the licence firstrun.py shows;
@@ -121,7 +134,7 @@ check("' --dlss ' + DlssChoice" in text and "work\\dlss-choice'), DlssChoice" in
 check(not re.search(r"(?im)^Source:.*(nvngx|nvsdk|dlss)", text), "setup names no NVIDIA file to install")
 check('Name: "{app}\\work\\toolchain-cache\\dlss-sdk"' in text, "the uninstaller removes the DLSS download")
 
-for rel in ("installer/run.cmd", "installer/play.cmd", "installer/prepare.cmd"):
+for rel in ("installer/run.cmd", "installer/play.cmd", "installer/prepare.cmd", "installer/support.cmd"):
     data = (ROOT / rel).read_bytes()
     check(b"\n" not in data.replace(b"\r\n", b""), f"{rel} has CRLF line endings")
 
@@ -279,7 +292,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     def red(s):
         return s.replace("D:\\Profiles\\player", "~")
-    dest, skipped = support.build(str(root), str(data), str(out), red, "20261102-000000")
+    dest, skipped = support.build(str(root), str(data), str(out), red, "20261102-000000", system=lambda: ({}, []))
     import zipfile  # noqa: E402
     with zipfile.ZipFile(dest) as z:
         names = sorted(z.namelist())
@@ -296,7 +309,8 @@ with tempfile.TemporaryDirectory() as tmp:
     trimmed = support.trim(texts, 2000)
     check(trimmed == ["big.log"] and sum(len(v) for v in texts.values()) <= 2000 and
           texts["big.log"].startswith(support.MARKER), "the oldest lines of the largest log go first")
-    check(support.build(str(t / "none"), str(t / "none"), str(out), red, "x") == ("", []), "nothing to collect")
+    check(support.build(str(t / "none"), str(t / "none"), str(out), red, "x", system=lambda: ({}, [])) == ("", []),
+          "nothing to collect")
 
 # Stage 4: the uninstaller's saves folder is launch.py's; an install over an earlier one replaces only the payload's
 # own folders (never the build, the game folder, the logs or the player's choices)

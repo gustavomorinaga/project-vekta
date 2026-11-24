@@ -54,6 +54,7 @@
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
 #include "res_list.h"    /* the sizes the Resolution row offers */
+#include "sys_info.h"    /* kz_sys_pair: the session header's settings line */
 
 extern "C" {
 extern uint8_t* vm_base;
@@ -227,6 +228,7 @@ void rsx_vulkan_set_reflex(int mode);
 int  rsx_vulkan_reflex_available(void);
 int  rsx_vulkan_temporal_built(void);
 int  rsx_vulkan_temporal_active(void);   /* ps3recomp patch 2079 */
+int  rsx_vulkan_mlaa_available(void);    /* ps3recomp patch 2086 */
 void rsx_vulkan_set_motion_blur(int on);
 void rsx_vulkan_set_mlaa(int on);
 void rsx_vulkan_set_glow_strength(int strength256);
@@ -284,6 +286,14 @@ extern "C" void kz_view_update(void)
         kz_view.aspect = a;
         rsx_vulkan_set_stretch(a > 0.0f);
     }
+}
+
+/* The session header's settings line (main.cpp, "[kz-sys] settings: ..."): kz1hd_pc.ini as read at start, with the
+ * defaults kz_pc_settings_env filled in, as space-separated name=value pairs. */
+extern "C" void kz_pc_settings_line(char* out, unsigned long cap)
+{
+    if (cap) out[0] = 0;
+    for (auto& kv : s_ini) kz_sys_pair(out, cap, kv.first.c_str(), kv.second.c_str());
 }
 
 extern "C" void kz_pc_settings_env(void)
@@ -668,7 +678,7 @@ static const int kDepRow[PC_DEP_COUNT] = { 2, 4, 7, 17, 19, 12 };   /* Resolutio
 static unsigned deps_mask(void)
 {
     const pc_deps_in in = { s_ini["display"].c_str(), s_ini["widescreen"].c_str(), s_ini["upscaler"].c_str(),
-                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available() };
+                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available(), !rsx_vulkan_mlaa_available() };
     return pc_deps_mask(&in);
 }
 static void get_deps(ppu_context* c) { attr_log("get_deps", c); wrf((uint32_t)c->gpr[4], (float)deps_mask()); }

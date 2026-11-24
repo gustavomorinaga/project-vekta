@@ -8,7 +8,15 @@
       "id": "game",
       "label": "Your installed Killzone HD folder (NPUA80856, version 01.00, from the Killzone Trilogy disc or the PlayStation Store): the folder with PARAM.SFO and USRDIR, as your PS3 or RPCS3 installed it.",
       "role": "game",
+      "optional": true,
       "formats": [{ "type": "folder" }]
+    },
+    {
+      "id": "disc",
+      "label": "Or, with no RPCS3: your Killzone Trilogy disc copied to this PC (its folder, with PS3_GAME and PS3_EXTRA, or the Killzone HD package DATA000.PKG). The official RPCS3 is downloaded from RPCS3's own GitHub releases to install the game into the install folder; on Windows 10, install 7-Zip first. Leave the game folder empty then.",
+      "role": "disc",
+      "optional": true,
+      "formats": [{ "type": "folder" }, { "type": "file", "extensions": ["pkg"] }]
     },
     {
       "id": "eboot",
@@ -20,8 +28,8 @@
   ],
   "prepare": {
     "program": ["scripts/prepare.cmd", "scripts/prepare.sh"],
-    "args": ["--game={input:game}", "--eboot={input:eboot}"],
-    "label": "Checking your files and building the port on this PC (about five minutes; nothing of the game is downloaded)",
+    "args": ["--game={input:game}", "--eboot={input:eboot}", "--disc={input:disc}"],
+    "label": "Checking your files and building the port on this PC (5 to 30 minutes; nothing of the game is downloaded, only the official RPCS3 when you give the disc)",
     "timeout": 7200,
     "version": "stamped by tools/release/recomplauncher.py: the release's VERSION",
     "done": ["{install}/work/build-stamp.json"],
@@ -45,12 +53,14 @@
     "saves": [{ "path": "{install}/work/vfs/gamedata" }],
     "logs": [{ "path": "{install}/work" }],
     "build_logs": [{ "path": "{install}/work/logs" }],
+    "crash": [{ "path": "{install}/work/crash" }],
     "settings": [{ "path": "{install}/work/vfs" }]
   },
   "actions": [
     { "id": "saves", "label": "Saves", "help": "Your save data.", "open": "saves" },
-    { "id": "logs", "label": "Game log", "help": "play.log, the log of the last session: attach it to a bug report.", "open": "logs" },
-    { "id": "build_logs", "label": "Build logs", "help": "The logs of the check and the build (firstrun-*.log).", "open": "build_logs" },
+    { "id": "logs", "label": "Game log", "help": "play.log, the log of the last session. For a bug report, attach the support package instead: scripts/support.sh or scripts/support.cmd in the install folder makes it.", "open": "logs" },
+    { "id": "build_logs", "label": "Build logs", "help": "The logs of the check and the build (firstrun-*.log), the earlier game logs (play-*.log) and sessions.jsonl, how each session ended.", "open": "build_logs" },
+    { "id": "crash", "label": "Crash reports", "help": "The crash and hang reports the game wrote (crash-*.txt, hang-*.txt); the support package includes them.", "open": "crash" },
     { "id": "settings", "label": "Settings file", "help": "kz1hd_pc.ini, the PC settings the game's PC page writes.", "open": "settings" }
   ],
   "exit_codes": { "0": "filled in by tools/release/recomplauncher.py from port/kz1hd/kz_exit.h" }

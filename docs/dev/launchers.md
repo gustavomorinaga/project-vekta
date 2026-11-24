@@ -7,7 +7,7 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
 ## The contract
 
 - **One program at the top.** The Windows folder (`project-vekta-X.Y.Z-windows.zip`) has `Project Vekta.exe` and
-  the Linux folder (`project-vekta-X.Y.Z-linux.tar.gz`) has `project-vekta`, and no other startable file at the
+  the Linux folder (`project-vekta-X.Y.Z-linux.tar.xz`) has `project-vekta`, and no other startable file at the
   top: on Windows no other `.exe`, `.bat` or `.cmd`; on Linux no `.sh`, no file starting with `#!/` and no ELF file
   (`.txt`, `.dll`, `.so` and `.json` do not count). `tools/release/assemble_payload.py` refuses a folder that breaks
   this (`layout_problems()`), and `tools/tests/test_payload.py` checks both folders. The scripts are in `scripts/`.
@@ -16,7 +16,7 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
   places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR` (`project-vekta` changes to its own folder).
 - **The player's files:** `--game DIR` (the installed NPUA80856 folder, with `PARAM.SFO` and `USRDIR`), `--eboot FILE`
   (a decrypted `EBOOT.elf`, SHA-256 `c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc`), `--psarc
-  FILE`, `--rpcs3 [DIR]`, or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC`. They are kept in `work/paths.env` once the check
+  FILE`, `--rpcs3 [DIR]`, `--disc PATH` (the disc with no RPCS3 installed), or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC`. They are kept in `work/paths.env` once the check
   passes.
 - **The prepare step:** `scripts/prepare.cmd` and `scripts/prepare.sh` (`launch.py --prepare`). No window and no
   question; `progress <0..1> <text>` lines; on a failure one `reason <text>` line at the end; exit 0 when built.
@@ -24,8 +24,25 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
   SDK licence, never given for them.
 - **The exit codes:** one table, `port/kz1hd/kz_exit.h`, for the exe and the launcher; `launch.py` reads it, and
   [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) is built around it.
+- **The Linux archive is a `.tar.xz` from 0.7.0** (a `.tar.gz` before). RecompLauncher's developer guide
+  (`docs/DEVELOPERS.md` at `0f4540e`, Beta 67) names the kind: on Linux a `.tar.gz`, `.tar.xz` or `.tar.zst`, picked
+  by the system's name in the file's name, with `source` and `.sha256` files never taken. Its source takes the three
+  alike (`src-tauri/src/assets.rs`), and Quiver 3.5.1 and 4.0 unpack `.tar.xz`. The guide also says that a listing
+  which names the file falls back to reading the names after a rename. In the Beta 67 source that holds for a system
+  the listing does not name: where the listing's pattern for Linux matches no file of a release (a name ending in
+  `-linux.tar.gz`), the launcher installs the newest release that has a match, so Linux players would stay on 0.6.0
+  until the listing is updated. Neither catalog's entry for this port was read (RecompLauncher's `assets`, Quiver's
+  `releaseAssetFilter`, one filter for every system's files): after the first `.tar.xz` release, see that both
+  launchers offer it on Linux.
 - **`recomplauncher.json`** at the top of both folders (`tools/release/recomplauncher.py`, from
-  `installer/recomplauncher.json`): the same contract in RecompLauncher's format 1.
+  `installer/recomplauncher.json`): the same contract in RecompLauncher's format 1. Its inputs are the game folder
+  or the disc (role `disc`, `--disc={input:disc}`), both optional, and the decrypted EBOOT.
+- **How it was started:** the launcher tells the game `KZ_STARTED_BY` (the game's log has it as
+  `[kz-sys] started-by:`, and the support package and the bug form take it from there): `recomplauncher` when
+  `RECOMPLAUNCHER` or any `RECOMPLAUNCHER_*` variable is set (RecompLauncher sets `RECOMPLAUNCHER=1`,
+  `RECOMPLAUNCHER_VERSION`, `_MODE` and `_PAD` for every game it starts, its `docs/DEVELOPERS.md` read 2026-11-23),
+  `quiver` for any `QUIVER*` variable (what Quiver sets was not found: unconfirmed), then `setup`, `source` (a Git
+  checkout) or `zip`.
 - **Not yet:** the launchers' mode hints (`RECOMPLAUNCHER_MODE=bigpicture|desktop`, `RECOMPLAUNCHER_PAD=xbox|
   playstation`, Steam Deck Game Mode) are not read; planned for 0.7.0 (full screen in Big Picture mode, the button
   icons of the pad that is plugged in).
@@ -49,7 +66,11 @@ make.
 ## RecompLauncher
 
 `recomplauncher.json` (format 1) names the game folder input (role `game`), the optional `EBOOT.elf`, the prepare
-step with its DLSS tick and its `done` file (`work/build-stamp.json`, which the first run writes only after a good build, so the launcher knows the game is built), the program to start, the saves, the log folders and the exit codes. The format was read
+step with its DLSS tick and its `done` file (`work/build-stamp.json`, which the first run writes only after a good build, so the launcher knows the game is built), the program to start, the saves, the log folders, the crash reports' folder (`work/crash`, with a "Crash reports" button) and the exit codes. Format 1's
+`actions` only open or clear a folder: there is no way to run a program from one, so the support package cannot be a
+RecompLauncher button; the "Game log" button's help names `scripts/support.sh` and `scripts/support.cmd` instead.
+RecompLauncher shows the newest `.log` of the `logs` folder (`work`) with its crash report: that is `play.log`, which
+keeps its name (the earlier sessions' logs go to `work/logs`). The format was read
 from RecompLauncher's developer guide; `tools/release/recomplauncher.schema.json` is written here (RecompLauncher's
 own schema is GPL-3.0 and is not copied). Before a listing: a local "Add a build" test with a release dry run's
 folder.

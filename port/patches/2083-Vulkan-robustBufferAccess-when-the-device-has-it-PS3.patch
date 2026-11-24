@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 23 Nov 2026 07:18:40 +0000
+Subject: [PATCH] Vulkan: robustBufferAccess when the device has it
+ (PS3RECOMP_VK_ROBUST=0 off)
+
+Symptom (#129 and a second report, AMD RX 6600 and RX 5700 XT on
+Windows, v0.6.0): the game closes a few seconds into level 1 with no
+error line, after rendering stalls for 1 to 2 s; the same build works on
+NVIDIA. That fits a GPU hang ended by Windows' 2 s TDR. Not yet
+confirmed on those cards.
+
+Candidate fix: the device was made without robustBufferAccess, so a
+shader or vertex fetch reading past the end of a buffer (a guest index
+beyond its vertex data, a program reading constants past what was
+bound) is undefined behaviour, which NVIDIA's driver tolerates and
+AMD's may answer with a hang. With the feature such a read gives zeros
+or a value from inside the buffer. Every Vulkan device reports it; it is
+enabled whenever reported, and PS3RECOMP_VK_ROBUST=0 turns it off for
+A/B runs. The log says which: "robustBufferAccess: on", "off
+(PS3RECOMP_VK_ROBUST=0)" or "off (the device does not have it)".
+
+robustBufferAccess2 and robustImageAccess are not asked for: they need
+VK_EXT_robustness2 (or image robustness) and a feature chain on top of
+the ones Reflex, FSR 3 and DLSS already build, they cost more on AMD,
+and the guest's programs sample their images, which is already clamped
+or wrapped. Written from the Vulkan specification.
+---
+ libs/video/rsx_vulkan_backend.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index b0fbf61..13a01d6 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -7395,6 +7395,21 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+      * a run with an upscaler are built ahead by one without (2061) */
+     want.independentBlend = have.independentBlend;
+     s_vk.indep_blend_ok = have.independentBlend ? 1 : 0;
++    /* robustBufferAccess (2083): a shader or vertex fetch that reads past the end of a buffer gets zeros or a value
++     * from inside the buffer instead of whatever memory is there. Undefined behaviour without it: NVIDIA's driver
++     * has been seen to tolerate it where AMD's can hang the GPU, and a hang becomes a lost device after Windows' 2 s
++     * TDR, the candidate cause of #129 (AMD RX 5000/6000 closing a few seconds into level 1). Every Vulkan device
++     * has the feature; PS3RECOMP_VK_ROBUST=0 turns it off, for A/B runs (default on). robustBufferAccess2 and
++     * robustImageAccess (VK_EXT_robustness2, image robustness) are not asked for: they need an extension and a
++     * feature chain on top of the Reflex/FSR 3/DLSS ones and cost more on AMD, and the guest's programs sample
++     * images, which are already clamped or wrapped. */
++    { const char* e = getenv("PS3RECOMP_VK_ROBUST");
++      const int f = rsx_vk_env_flag(e);
++      if (f < 0) VK_LOG("PS3RECOMP_VK_ROBUST=%s not understood (0 or 1), on\n", e);
++      const int asked = !e || f != 0;
++      want.robustBufferAccess = asked ? have.robustBufferAccess : VK_FALSE;
++      VK_LOG("robustBufferAccess: %s\n", want.robustBufferAccess ? "on"
++                                         : !asked ? "off (PS3RECOMP_VK_ROBUST=0)" : "off (the device does not have it)"); }
+     if (!s_vk.indep_blend_ok && s_tm.want)
+         VK_LOG("temporal: no independentBlend on this device, camera motion only\n");
+     { VkPhysicalDeviceProperties dp; pvkGetPhysicalDeviceProperties(s_vk.phys, &dp);

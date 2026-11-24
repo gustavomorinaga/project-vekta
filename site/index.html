@@ -4,7 +4,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'">
+<meta name="color-scheme" content="dark light">
 <title>Project Vekta (work in progress)</title>
 <meta name="description" content="Project Vekta. Killzone HD: Unofficial PC Port (static recompilation): a fan-made native PC port of Killzone HD (PS3) for Linux and Windows, on Vulkan. Bring your own copy of the game.">
 <meta property="og:title" content="Project Vekta">
@@ -17,54 +18,91 @@
 <link rel="canonical" href="https://gustavomorinaga.github.io/project-vekta/site/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Sans+Condensed:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&amp;display=swap">
+<link rel="icon" href="../assets/icon.png" type="image/png">
 <link rel="stylesheet" href="style.css">
+<script src="site.js" defer></script>
 </head>
 <body>
-<header id="top" class="box">
-<div class="logo"><img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320" alt="Project Vekta: Killzone HD PC"><span class="sticker">Work in progress</span></div>
-<ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li></ul>
-<nav class="tabs"><a class="on" href="#top">Home</a><a href="#shots">Screens</a><a href="#status">Status</a><a href="#news">News</a><a href="#requirements">Requirements</a><a href="#install">Install</a><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a><a class="cta-box" href="#install"><b>v0.6.0</b>pre-release download</a></nav>
-<div class="intro">
-<h1>Project Vekta<span>Killzone HD: Unofficial PC Port (static recompilation)</span></h1>
+<a class="skip" href="#panel">Skip to the content</a>
+<div id="app">
+<header id="head">
+<div class="logo"><span class="emblem" aria-hidden="true"><svg viewBox="0 0 64 40" focusable="false"><polygon class="e1" points="0,0 14,0 32,22 50,0 64,0 32,40"/><polygon class="e2" points="22,0 42,0 32,12"/></svg></span><div class="wm"><p class="tag">Killzone HD PC Port</p><h1>Project<span>Vekta</span></h1></div><span class="sticker">Work in progress</span></div>
+<ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li><li><a class="plainlink" href="plain.html">Plain page</a></li></ul>
+<a class="cta-box" href="#install"><b>v0.7.0</b>pre-release download</a>
+</header>
+<div class="frontend">
+<nav id="menu" aria-label="Sections">
+<ol>
+<li><a href="#top" data-detail="Killzone HD: Unofficial PC Port (static recompilation)"><span class="mi-n">01</span><span class="mi-l">Home</span></a></li>
+<li><a href="#shots" data-detail="19 screenshots of the port running the developer&#x27;s own copy of the game."><span class="mi-n">02</span><span class="mi-l">Screens</span></a></li>
+<li><a href="#status" data-detail="Status: Playable. 19 game features and 26 PC features, from the project&#x27;s records."><span class="mi-n">03</span><span class="mi-l">Status</span></a></li>
+<li><a href="#news" data-detail="The newest release notes, newest first."><span class="mi-n">04</span><span class="mi-l">News</span></a></li>
+<li><a href="#progress" data-detail="The newest changelog items and the objectives still open. About 65 % of Killzone HD is done."><span class="mi-n">05</span><span class="mi-l">Progress</span></a></li>
+<li><a href="#install" data-detail="The setup program or the release folders: they check your own copy and build the port on your PC."><span class="mi-n">06</span><span class="mi-l">Install</span></a></li>
+<li><a href="#requirements" data-detail="What you need from your own copy, and the PC it was tested on."><span class="mi-n">07</span><span class="mi-l">Requirements</span></a></li>
+<li><a href="#about" data-detail="Built on ps3recomp v0.19.0: PPU and SPU code lifted to C++, the RSX command stream replayed on Vulkan."><span class="mi-n">08</span><span class="mi-l">About</span></a></li>
+<li><a href="#channels" data-detail="Source, releases, bug reports, the docs, and the projects this one works with."><span class="mi-n">09</span><span class="mi-l">Channels</span></a></li>
+<li><a href="#legal" data-detail="No game content is distributed. The port&#x27;s own code is MIT."><span class="mi-n">10</span><span class="mi-l">Legal</span></a></li>
+</ol>
+<div id="detail" class="detail" aria-live="polite"></div>
+</nav>
+<main id="panel" tabindex="-1">
+<section id="top" class="sec" aria-labelledby="h-top">
+<h2 id="h-top">Home</h2>
+<p class="lede">Killzone HD: Unofficial PC Port (static recompilation)</p>
+<img class="banner" src="../assets/banner.png" srcset="../assets/banner@2x.png 2x" width="1280" height="320" alt="Project Vekta: Killzone HD, unofficial PC port">
 <p class="lead">A native Linux and Windows x64 port of the 2011 PS3 remaster of the first Killzone, made by static recompilation: the game's PowerPC and SPU code is translated to C++ ahead of time and compiled into a PC program on your machine; graphics go through Vulkan. No emulator runs at play time.</p>
 <p class="headline">Status: <strong>Playable</strong></p>
 <p class="note">You need your own copy of the game. This project ships no game code, data, assets or keys.</p>
-<p class="btns"><a class="btn" href="#status">See the status</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta">Source on GitHub</a></p>
-</div>
-</header>
-<div class="page wrap">
-<section id="shots" class="gallery-pod">
-<h2>Screens</h2>
-<div class="gallery">
-<figure class="tile lead-tile"><div class="hudbar"><span class="rd">2026.10.30</span><span class="sl" aria-hidden="true">//</span><span class="lv">Level 1: the trenches under fire</span><span class="sticker new">Newest</span></div><a href="../docs/screenshots/20261030_level1-trench-artillery.png"><img src="../docs/screenshots/20261030_level1-trench-artillery.png" width="1280" height="720" alt="Level 1 in first person: a trench under artillery fire" loading="lazy"></a><figcaption>Level 1 in first person: a trench under artillery fire.</figcaption></figure>
-<figure class="tile"><div class="hudbar"><span class="rd">2026.10.30</span><span class="sl" aria-hidden="true">//</span><span class="lv">Level 1: the Helghast advance</span></div><a href="../docs/screenshots/20261030_level1-helghast-advance.png"><img src="../docs/screenshots/20261030_level1-helghast-advance.png" width="1280" height="720" alt="Level 1 in first person: a Helghast soldier advancing through smoke" loading="lazy"></a><figcaption>Level 1 in first person: a Helghast soldier advancing through smoke.</figcaption></figure>
-<figure class="tile"><div class="hudbar"><span class="rd">2026.10.30</span><span class="sl" aria-hidden="true">//</span><span class="lv">Main menu, with its background movie</span></div><a href="../docs/screenshots/20261030_main-menu.png"><img src="../docs/screenshots/20261030_main-menu.png" width="1280" height="720" alt="The main menu over its background movie" loading="lazy"></a><figcaption>The main menu over its background movie.</figcaption></figure>
-<figure class="tile"><div class="hudbar"><span class="rd">2026.10.30</span><span class="sl" aria-hidden="true">//</span><span class="lv">Campaign: character selection</span></div><a href="../docs/screenshots/20261030_select-character.png"><img src="../docs/screenshots/20261030_select-character.png" width="1280" height="720" alt="The campaign&#x27;s character selection" loading="lazy"></a><figcaption>The campaign&#x27;s character selection.</figcaption></figure>
+<p class="btns"><a class="btn" href="#install">Install</a><a class="btn alt" href="#status">See the status</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta">Source on GitHub</a></p>
+</section>
+<section id="shots" class="sec" aria-labelledby="h-shots">
+<h2 id="h-shots">Screens</h2>
+<p class="lede">19 screenshots of the port running the developer&#x27;s own copy of the game.</p>
+<div class="gallery" data-group="screens">
+<figure class="tile" id="shot-1"><a class="shot" href="../docs/screenshots/20261123_level1-trenches.png" data-title="Level 1: the trenches under fire" data-caption="Level 1 in first person at 1920x1080: artillery bursts over the trenches"><img src="../docs/screenshots/20261123_level1-trenches.png" width="1920" height="1080" alt="Level 1 in first person at 1920x1080: artillery bursts over the trenches" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Level 1: the trenches under fire</b><span class="sticker new">Newest</span> Level 1 in first person at 1920x1080: artillery bursts over the trenches.</figcaption></figure>
+<figure class="tile" id="shot-2"><a class="shot" href="../docs/screenshots/20261123_level4-luger.png" data-title="Level 4 as Luger" data-caption="Level 4 as Luger at 1920x1080: a lit doorway in a ruined building"><img src="../docs/screenshots/20261123_level4-luger.png" width="1920" height="1080" alt="Level 4 as Luger at 1920x1080: a lit doorway in a ruined building" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Level 4 as Luger</b> Level 4 as Luger at 1920x1080: a lit doorway in a ruined building.</figcaption></figure>
+<figure class="tile" id="shot-3"><a class="shot" href="../docs/screenshots/20261123_level5-rico.png" data-title="Level 5 as Rico" data-caption="Level 5 as Rico at 1920x1080: a squadmate in cover by a pipeline"><img src="../docs/screenshots/20261123_level5-rico.png" width="1920" height="1080" alt="Level 5 as Rico at 1920x1080: a squadmate in cover by a pipeline" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Level 5 as Rico</b> Level 5 as Rico at 1920x1080: a squadmate in cover by a pipeline.</figcaption></figure>
+<figure class="tile" id="shot-4"><a class="shot" href="../docs/screenshots/20261123_level7-hakha.png" data-title="Level 7 as Hakha" data-caption="Level 7 as Hakha at 1920x1080: the squad in the tall grass"><img src="../docs/screenshots/20261123_level7-hakha.png" width="1920" height="1080" alt="Level 7 as Hakha at 1920x1080: the squad in the tall grass" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Level 7 as Hakha</b> Level 7 as Hakha at 1920x1080: the squad in the tall grass.</figcaption></figure>
+<figure class="tile" id="shot-5"><a class="shot" href="../docs/screenshots/20261123_level8-tank-thermal.png" data-title="Level 8: the tank&#x27;s thermal sight" data-caption="Level 8 at 1920x1080: the tank gun&#x27;s red thermal sight over the jungle"><img src="../docs/screenshots/20261123_level8-tank-thermal.png" width="1920" height="1080" alt="Level 8 at 1920x1080: the tank gun&#x27;s red thermal sight over the jungle" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Level 8: the tank&#x27;s thermal sight</b> Level 8 at 1920x1080: the tank gun&#x27;s red thermal sight over the jungle.</figcaption></figure>
+<figure class="tile" id="shot-6"><a class="shot" href="../docs/screenshots/20261123_level10-snow.png" data-title="Level 10 as Rico, in the snow" data-caption="Level 10 as Rico at 1920x1080: snowy peaks"><img src="../docs/screenshots/20261123_level10-snow.png" width="1920" height="1080" alt="Level 10 as Rico at 1920x1080: snowy peaks" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Level 10 as Rico, in the snow</b> Level 10 as Rico at 1920x1080: snowy peaks.</figcaption></figure>
+<figure class="tile" id="shot-7"><a class="shot" href="../docs/screenshots/20261123_level11-station.png" data-title="Level 11: the final station" data-caption="Level 11 at 1920x1080: a soldier advances under the station dome"><img src="../docs/screenshots/20261123_level11-station.png" width="1920" height="1080" alt="Level 11 at 1920x1080: a soldier advances under the station dome" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Level 11: the final station</b> Level 11 at 1920x1080: a soldier advances under the station dome.</figcaption></figure>
+<figure class="tile" id="shot-8"><a class="shot" href="../docs/screenshots/20261123_level1-219-ultrawide.png" data-title="Level 1 at 21:9 (3440x1440)" data-caption="Level 1 at 21:9 (3440x1440): the view fills the wide screen, the HUD stays in the 16:9 middle"><img src="../docs/screenshots/20261123_level1-219-ultrawide.png" width="2580" height="1080" alt="Level 1 at 21:9 (3440x1440): the view fills the wide screen, the HUD stays in the 16:9 middle" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Level 1 at 21:9 (3440x1440)</b> Level 1 at 21:9 (3440x1440): the view fills the wide screen, the HUD stays in the 16:9 middle.</figcaption></figure>
+<figure class="tile" id="shot-9"><a class="shot" href="../docs/screenshots/20261123_main-menu.png" data-title="Main menu" data-caption="The main menu over its background movie at 1920x1080"><img src="../docs/screenshots/20261123_main-menu.png" width="1920" height="1080" alt="The main menu over its background movie at 1920x1080" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Main menu</b> The main menu over its background movie at 1920x1080.</figcaption></figure>
+<figure class="tile" id="shot-10"><a class="shot" href="../docs/screenshots/20261123_pause-menu.png" data-title="Pause menu" data-caption="The pause menu with its PC entry at 1920x1080"><img src="../docs/screenshots/20261123_pause-menu.png" width="1920" height="1080" alt="The pause menu with its PC entry at 1920x1080" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Pause menu</b> The pause menu with its PC entry at 1920x1080.</figcaption></figure>
+<figure class="tile" id="shot-11"><a class="shot" href="../docs/screenshots/20261123_pc-page-display.png" data-title="PC page: display and view" data-caption="The pause menu&#x27;s PC page: display mode, resolution, aspect ratio, field of view, HUD"><img src="../docs/screenshots/20261123_pc-page-display.png" width="1920" height="1080" alt="The pause menu&#x27;s PC page: display mode, resolution, aspect ratio, field of view, HUD" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>PC page: display and view</b> The pause menu&#x27;s PC page: display mode, resolution, aspect ratio, field of view, HUD.</figcaption></figure>
+<figure class="tile" id="shot-12"><a class="shot" href="../docs/screenshots/20261123_pc-page-graphics.png" data-title="PC page: graphics" data-caption="The PC page&#x27;s graphics rows: internal resolution, anisotropic filtering, upscalers, anti-aliasing, post effects"><img src="../docs/screenshots/20261123_pc-page-graphics.png" width="1920" height="1080" alt="The PC page&#x27;s graphics rows: internal resolution, anisotropic filtering, upscalers, anti-aliasing, post effects" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>PC page: graphics</b> The PC page&#x27;s graphics rows: internal resolution, anisotropic filtering, upscalers, anti-aliasing, post effects.</figcaption></figure>
+<figure class="tile" id="shot-13"><a class="shot" href="../docs/screenshots/20261123_compare-mlaa.png" data-title="Comparison: the game&#x27;s MLAA on and off" data-caption="The same view zoomed, the game&#x27;s MLAA on the left and no anti-aliasing on the right"><img src="../docs/screenshots/20261123_compare-mlaa.png" width="1932" height="900" alt="The same view zoomed, the game&#x27;s MLAA on the left and no anti-aliasing on the right" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Comparison: the game&#x27;s MLAA on and off</b> The same view zoomed, the game&#x27;s MLAA on the left and no anti-aliasing on the right.</figcaption></figure>
+<figure class="tile" id="shot-14"><a class="shot" href="../docs/screenshots/20261123_compare-720p-1080p.png" data-title="Comparison: 1280x720 and 1920x1080" data-caption="The same view zoomed, 1280x720 (the PS3 output) on the left and 1920x1080 on the right"><img src="../docs/screenshots/20261123_compare-720p-1080p.png" width="1932" height="900" alt="The same view zoomed, 1280x720 (the PS3 output) on the left and 1920x1080 on the right" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Comparison: 1280x720 and 1920x1080</b> The same view zoomed, 1280x720 (the PS3 output) on the left and 1920x1080 on the right.</figcaption></figure>
+<figure class="tile" id="shot-15"><a class="shot" href="../docs/screenshots/20261123_compare-fsr3.png" data-title="Comparison: native and FSR 3 Quality" data-caption="The same view zoomed, native 1920x1080 with MLAA on the left and FSR 3 Quality from 1280x720 on the right"><img src="../docs/screenshots/20261123_compare-fsr3.png" width="1932" height="900" alt="The same view zoomed, native 1920x1080 with MLAA on the left and FSR 3 Quality from 1280x720 on the right" loading="lazy"></a><figcaption><span class="rd">2026.11.23</span> <b>Comparison: native and FSR 3 Quality</b> The same view zoomed, native 1920x1080 with MLAA on the left and FSR 3 Quality from 1280x720 on the right.</figcaption></figure>
+<figure class="tile" id="shot-16"><a class="shot" href="../docs/screenshots/20261030_level1-trench-artillery.png" data-title="Level 1: the trenches under fire" data-caption="Level 1 in first person: a trench under artillery fire"><img src="../docs/screenshots/20261030_level1-trench-artillery.png" width="1280" height="720" alt="Level 1 in first person: a trench under artillery fire" loading="lazy"></a><figcaption><span class="rd">2026.10.30</span> <b>Level 1: the trenches under fire</b> Level 1 in first person: a trench under artillery fire.</figcaption></figure>
+<figure class="tile" id="shot-17"><a class="shot" href="../docs/screenshots/20261030_level1-helghast-advance.png" data-title="Level 1: the Helghast advance" data-caption="Level 1 in first person: a Helghast soldier advancing through smoke"><img src="../docs/screenshots/20261030_level1-helghast-advance.png" width="1280" height="720" alt="Level 1 in first person: a Helghast soldier advancing through smoke" loading="lazy"></a><figcaption><span class="rd">2026.10.30</span> <b>Level 1: the Helghast advance</b> Level 1 in first person: a Helghast soldier advancing through smoke.</figcaption></figure>
+<figure class="tile" id="shot-18"><a class="shot" href="../docs/screenshots/20261030_main-menu.png" data-title="Main menu, with its background movie" data-caption="The main menu over its background movie"><img src="../docs/screenshots/20261030_main-menu.png" width="1280" height="720" alt="The main menu over its background movie" loading="lazy"></a><figcaption><span class="rd">2026.10.30</span> <b>Main menu, with its background movie</b> The main menu over its background movie.</figcaption></figure>
+<figure class="tile" id="shot-19"><a class="shot" href="../docs/screenshots/20261030_select-character.png" data-title="Campaign: character selection" data-caption="The campaign&#x27;s character selection"><img src="../docs/screenshots/20261030_select-character.png" width="1280" height="720" alt="The campaign&#x27;s character selection" loading="lazy"></a><figcaption><span class="rd">2026.10.30</span> <b>Campaign: character selection</b> The campaign&#x27;s character selection.</figcaption></figure>
 </div>
 <p class="small">Screenshots of the port running the developer's own copy of the game, kept to document progress; the game content in them belongs to Sony Interactive Entertainment and Guerrilla Games. Every screenshot, by date: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/SCREENSHOTS.md">SCREENSHOTS.md</a>.</p>
 </section>
-<p class="divider" aria-hidden="true"><span>Field reports</span></p>
-<div class="cols">
-<main class="main">
-<article id="status" class="news">
-<h2>Status: Playable</h2>
+<section id="status" class="sec" aria-labelledby="h-status">
+<h2 id="h-status">Status</h2>
+<p class="lede">Status: Playable. 19 game features and 26 PC features, from the project&#x27;s records.</p>
+<h3>Status: Playable</h3>
 <p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 26 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Level 1</b><span class="blurb">played by hand from start to end</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Levels 2 to 11</b><span class="blurb">2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16)</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Movies</b><span class="blurb">30 movies; runs without FFmpeg skip them</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Saves</b><span class="blurb">Continue returns to the checkpoint</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Sound</b><span class="blurb">decoded by minimp3 in place of the firmware&#x27;s decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md)</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Trophies</b><span class="blurb">unlocked and logged locally with names, grades and platinum; no on-screen notice</span></div><span class="st st-part">Partial</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Linux build</b><span class="blurb">built and played on the maintainer&#x27;s machine; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a></span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the whole campaign played there</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Frame rate</b><span class="blurb">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</span></div><span class="st st-ok">Works</span></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>Project Vekta.exe</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</span></div><span class="st st-ok">Works</span></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Level 1</b><span class="blurb">played by hand from start to end</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Levels 2 to 11</b><span class="blurb">2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16)</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Movies</b><span class="blurb">30 movies; runs without FFmpeg skip them</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Saves</b><span class="blurb">Continue returns to the checkpoint</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Sound</b><span class="blurb">decoded by minimp3 in place of the firmware&#x27;s decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md)</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Trophies</b><span class="blurb">unlocked and logged locally with names, grades and platinum; no on-screen notice</span></div><div class="stats"><span class="st st-part">Partial</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Linux build</b><span class="blurb">built and played on the maintainer&#x27;s machine; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a></span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the whole campaign played there</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Frame rate</b><span class="blurb">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>Project Vekta.exe</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 </ul>
-<h3>The PS3 game, feature by feature</h3>
+<h4>The PS3 game, feature by feature</h4>
 <ul class="meters">
 <li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span><b>16</b></li>
 <li class="m-part"><span class="ml">Partial</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
@@ -75,270 +113,302 @@
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>Logos, opening movie, front end, options, pause menu</td><td>as shipped</td><td></td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Logos, opening movie, front end, options, pause menu</td><td data-label="On the PS3">as shipped</td><td data-label="In the port"></td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Campaign</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>Level 1</td><td>first level</td><td></td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Levels 2 to 11</td><td>the rest of the campaign</td><td>on Linux and on Windows</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Cutscene and level movies</td><td>AVI movies through <code>cellSail</code></td><td>(FFmpeg)</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Game logic timing</td><td>30 Hz</td><td>at 30 and 60 Hz; 144 Hz with one known problem (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>)</td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Level 1</td><td data-label="On the PS3">first level</td><td data-label="In the port"></td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Levels 2 to 11</td><td data-label="On the PS3">the rest of the campaign</td><td data-label="In the port">on Linux and on Windows</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Cutscene and level movies</td><td data-label="On the PS3">AVI movies through <code>cellSail</code></td><td data-label="In the port">(FFmpeg)</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Game logic timing</td><td data-label="On the PS3">30 Hz</td><td data-label="In the port">at 30 and 60 Hz; 144 Hz with one known problem (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>)</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Saves</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>Profile, checkpoints, Continue</td><td>one profile save</td><td>Continue returns to the checkpoint</td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Profile, checkpoints, Continue</td><td data-label="On the PS3">one profile save</td><td data-label="In the port">Continue returns to the checkpoint</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Controls</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>DualShock 3 layout</td><td>pad</td><td>with any SDL controller</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Rumble</td><td>pad vibration</td><td></td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Controller options (sensitivity, invert)</td><td>Pause &gt; Controls</td><td></td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">DualShock 3 layout</td><td data-label="On the PS3">pad</td><td data-label="In the port">with any SDL controller</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Rumble</td><td data-label="On the PS3">pad vibration</td><td data-label="In the port"></td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Controller options (sensitivity, invert)</td><td data-label="On the PS3">Pause &gt; Controls</td><td data-label="In the port"></td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Graphics</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>1280x720 picture</td><td>720p</td><td>at any window size</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Anti-aliasing (MLAA on the SPUs)</td><td><code>jm_post</code> job chain</td><td>the game&#x27;s own MLAA reimplemented as a GPU pass, equal to the SPU code except at about 0.6 % of edge pixels (<code>KZ_MLAA=gpu</code>, default; <code>spu</code> runs the original jobs, slowly; <code>off</code>). ENHANCEMENT since patch 2080: also at the size the port draws the frame (internal scale, fill to the window); before, only at 1280x720, and the glow and sprint motion blur dropped with it. Level 8 (user_1023 save), 2026-11-14: 8 frames each at 2560x1440 and 3440x1440, the GPU output equals <code>mlaa_ref_wh</code> on every pixel (<code>PS3RECOMP_MLAA_DUMP_NATIVE</code>); at 1280x720 the output still equals <code>mlaa_ref</code></td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Glow and motion blur (<code>jm_post</code>)</td><td>event-driven SPU jobs</td><td>on the GPU; the glow (emissive sprites, Level 11 docking bay measured) and the sprint blur equal the SPU chain on every pixel in the game</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>HUD, menus, fonts</td><td>as shipped</td><td></td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">1280x720 picture</td><td data-label="On the PS3">720p</td><td data-label="In the port">at any window size</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Anti-aliasing (MLAA on the SPUs)</td><td data-label="On the PS3"><code>jm_post</code> job chain</td><td data-label="In the port">the game&#x27;s own MLAA reimplemented as a GPU pass, equal to the SPU code except at about 0.6 % of edge pixels (<code>KZ_MLAA=gpu</code>, default; <code>spu</code> runs the original jobs, slowly; <code>off</code>). ENHANCEMENT since patch 2080: also at the size the port draws the frame (internal scale, fill to the window); before, only at 1280x720, and the glow and sprint motion blur dropped with it. Level 8 (user_1023 save), 2026-11-14: 8 frames each at 2560x1440 and 3440x1440, the GPU output equals <code>mlaa_ref_wh</code> on every pixel (<code>PS3RECOMP_MLAA_DUMP_NATIVE</code>); at 1280x720 the output still equals <code>mlaa_ref</code></td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Glow and motion blur (<code>jm_post</code>)</td><td data-label="On the PS3">event-driven SPU jobs</td><td data-label="In the port">on the GPU; the glow (emissive sprites, Level 11 docking bay measured) and the sprint blur equal the SPU chain on every pixel in the game</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">HUD, menus, fonts</td><td data-label="On the PS3">as shipped</td><td data-label="In the port"></td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Sound</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>Music, effects, dialogue</td><td>MultiStream on the SPUs, MP3 streams</td><td></td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Surround</td><td>the console&#x27;s output setting</td><td>stereo, 5.1, 7.1</td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Music, effects, dialogue</td><td data-label="On the PS3">MultiStream on the SPUs, MP3 streams</td><td data-label="In the port"></td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Surround</td><td data-label="On the PS3">the console&#x27;s output setting</td><td data-label="In the port">stereo, 5.1, 7.1</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Languages</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>Voice, subtitles, menus</td><td>English, French, Spanish (by console language)</td><td>chosen on the PC page</td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Voice, subtitles, menus</td><td data-label="On the PS3">English, French, Spanish (by console language)</td><td data-label="In the port">chosen on the PC page</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Trophies</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>Trophy unlocks</td><td>PSN trophies</td><td>unlocked and logged locally with names, grades and platinum; no on-screen notice</td><td><span class="st st-part">Partial</span></td></tr>
+<tr><td data-label="Feature">Trophy unlocks</td><td data-label="On the PS3">PSN trophies</td><td data-label="In the port">unlocked and logged locally with names, grades and platinum; no on-screen notice</td><td data-label="State"><span class="st st-part">Partial</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Multiplayer</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>&quot;One / Two Player&quot; in the menu</td><td>local</td><td>checked</td><td><span class="st st-no">Not yet</span></td></tr>
+<tr><td data-label="Feature">&quot;One / Two Player&quot; in the menu</td><td data-label="On the PS3">local</td><td data-label="In the port">checked</td><td data-label="State"><span class="st st-no">Not yet</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Online</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>On the PS3</th><th>In the port</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>PSN</td><td>sign-in, trophies sync</td><td></td><td><span class="st st-na">Not applicable</span></td></tr>
+<tr><td data-label="Feature">PSN</td><td data-label="On the PS3">sign-in, trophies sync</td><td data-label="In the port"></td><td data-label="State"><span class="st st-na">Not applicable</span></td></tr>
 </tbody></table></div>
 </details>
-<h3>What the port adds</h3>
+<h4>What the port adds</h4>
 <p>26 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
 <details><summary>All 26 PC features</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>Default</th><th>Where it is set</th></tr></thead>
 <tbody>
-<tr><td>Display mode: window, borderless, fullscreen; Alt+Enter</td><td>window</td><td><code>display</code>; <code>KZ_FULLSCREEN=1</code> in <code>tools/play.sh</code></td></tr>
-<tr><td>Output resolution and refresh rate</td><td>1280x720, the monitor&#x27;s rate</td><td><code>resolution</code>, <code>refresh</code>; resizable window, aspect kept; a new size is drawn at full detail from the next start</td></tr>
-<tr><td>Internal resolution scale, 50 % to 200 %</td><td>100 %</td><td><code>scale</code>; applies on the next start</td></tr>
-<tr><td>V-Sync on, off, adaptive; VRR</td><td>on</td><td><code>vsync</code></td></tr>
-<tr><td>NVIDIA Reflex: off, on, on + boost (<code>VK_NV_low_latency2</code>)</td><td>off</td><td><code>reflex</code>; &quot;not available&quot; without the extension; no measured fps or latency change in Level 7</td></tr>
-<tr><td>Frame-rate limit 30, 60, 144 (the game clock follows)</td><td>60</td><td><code>fps_limit</code>; 30 is the PS3&#x27;s</td></tr>
-<tr><td>AMD FSR 1 upscaling and RCAS sharpening</td><td>bilinear</td><td><code>upscaler</code>, <code>sharpness</code></td></tr>
-<tr><td>Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td>the game&#x27;s</td><td><code>anisotropic</code></td></tr>
-<tr><td>Post-processing: anti-aliasing (the game&#x27;s MLAA) on or off; motion blur, film grain and glow 0 to 100 % in steps of 10</td><td>the game&#x27;s</td><td><code>antialiasing</code>, <code>motion_blur</code>, <code>film_grain</code>, <code>glow</code>, applied at once; 100 % leaves the game&#x27;s value untouched. Level 8 (user_1023 save), 60 Hz, 2026-11-13, scripted sprint with <code>PS3RECOMP_MLAA_DUMP</code>: at 100 % the sprint field rises 12, 23 ... 94 over 8 frames and the output equals the C reference on every pixel; at 50 % the field is exactly half (6, 12 ... 47), output again equal to the reference; at 0 % the game&#x27;s factor (0.05) is drawn as 0 and no frame has field strength; anti-aliasing off: output = input on 8 frames. Film grain (alpha 0.12 in Level 8, always on): 0 % vs 100 % frames differ by grain only (high-frequency energy 2.35 vs 2.61, 4 luma darker with grain); glow (Level 8, lit sprite glow, 8 frames with 13-696 lit source pixels): at 100 % every output equals the C reference at the game&#x27;s strength 256 (the glow branch&#x27;s <code>check_dump.sh</code>), at 0 % every output equals the reference without glow, about 8000 pixels apart from the 100 % one. 2026-11-16, Linux, 2560x1440 (internal 2x), 14 phases of chapters 1 to 9 opened from the level select or a save: the MLAA, glow and motion-blur passes ran on every frame (a counter per 5 s); in <code>1.HQGrounds</code> the game itself fades its film grain from 0.15 to 0 in about 30 s, so the slider has nothing to scale (the same in RPCS3, checked by the maintainer); the glow source was unlit in all 14, as the game draws it only in some Level 11 spots. Windows, 3440x1440, 2026-11-16 (maintainer): MLAA and sprint blur on</td></tr>
-<tr><td>Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td>off</td><td><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer&#x27;s private build) DLSS Quality 135.7 fps</td></tr>
-<tr><td>Any aspect ratio: Hor+ for 21:9, 32:9 and wider, the game&#x27;s own 4:3 view for 4:3 and 16:10, menus and movies kept 16:9</td><td>on</td><td><code>widescreen</code>, <code>aspect</code> (auto or a forced 4:3, 16:10, 16:9, 21:9, 32:9, on restart); below 16:9 the world&#x27;s FOV is the game&#x27;s own 4:3 rule, 100 / aspect vertical (func_00211540: 75 vertical, 91.3 horizontal at 4:3); Level 1, 2026-11-12/13: 1440x1080 and 1920x1200 windows fill with the HUD in the corners, round crosshair, weapon as the game frames it; forced 4:3 in a 2560-wide window and forced 16:10 in a 3440-wide one show their box with side bars; pause menu 16:9 with bars; 21:9 unchanged. Windows, 2026-11-16 (maintainer, the 0.5.0 test setup): forced 4:3 and 16:10 show their box with bars, HUD in the box corners, menus and movies inside; auto fills a 21:9 screen</td></tr>
-<tr><td>Field of view, 70 to 120 degrees horizontal at 16:9 (the game&#x27;s is 87), for the world and, apart, the first-person weapon</td><td>the game&#x27;s</td><td><code>field_of_view</code>, <code>weapon_fov</code> (the weapon&#x27;s game value is 45 degrees vertical, 72 horizontal at 16:9); a scope&#x27;s zoom keeps its magnification; an older <code>fov</code> (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it; 3440x1440, F12 capture: weapon projection 45 degrees vertical as at 16:9 (was 30.7), weapon_fov 110 gives 63.8</td></tr>
-<tr><td>HUD size and position</td><td>the game&#x27;s</td><td><code>hud_size</code>, <code>hud_position</code></td></tr>
-<tr><td>Crosshair size (the weapon crosshair alone, apart from the HUD size)</td><td>the game&#x27;s</td><td><code>crosshair_size</code></td></tr>
-<tr><td>Presets: Original (PS3), Performance, Balanced, Quality</td><td>Custom when nothing matches</td><td></td></tr>
-<tr><td>Keyboard and mouse: direct mouse look with its own sensitivity and invert, mouse in menus and dialogs</td><td>on</td><td><code>mouse_yaw</code>, <code>mouse_pitch</code>, <code>mouse_invert</code>; keys in <code>kz1hd_keys.ini</code> (written on the first run; edit to remap); Windows, 2026-11-16 (maintainer): a real mouse in the PC page (click and hold, sliders), the menus, VICTORY and play</td></tr>
-<tr><td>Controllers through SDL, with keyboard and mouse at the same time</td><td>merged</td><td><code>controllers</code>; <code>PAD_MOUSE_STICK=1</code> puts the mouse on the right stick instead</td></tr>
-<tr><td>Button prompts and the Controls picture follow the device (keyboard and mouse, Xbox, PlayStation, Nintendo)</td><td>auto</td><td></td></tr>
-<tr><td>Sound output: stereo, 5.1, 7.1</td><td>stereo</td><td><code>speakers</code></td></tr>
-<tr><td>Language: system, English (US, UK), French, Spanish</td><td>system</td><td><code>language</code></td></tr>
-<tr><td>Skip the opening movie (the logos stay)</td><td>off</td><td><code>intro = off</code>, <code>KZ_SKIP_INTRO=1</code></td></tr>
-<tr><td>Statistics overlay (MangoHUD, Linux)</td><td>off</td><td><code>overlay = mangohud</code>, <code>KZ_MANGOHUD=1</code></td></tr>
-<tr><td>Quit Game in the Options sub-menu; closing the window waits for a save in progress</td><td>on</td><td></td></tr>
-<tr><td>The game&#x27;s own Debug Options in the pause menu (God Mode, Next Level, ...)</td><td>off</td><td><code>KZ_DEBUG_MENU=1</code></td></tr>
-<tr><td>All 11 levels selectable in the campaign menu</td><td>off</td><td><code>KZ_UNLOCK_LEVELS=1</code></td></tr>
-<tr><td>Local trophy log from the game&#x27;s own trophy set</td><td>on</td><td>needs <code>TROPDIR</code> in the run folder (<code>tools/setup-vfs.sh</code>)</td></tr>
+<tr><td data-label="Feature">Display mode: window, borderless, fullscreen; Alt+Enter</td><td data-label="Default">window</td><td data-label="Where it is set"><code>display</code>; <code>KZ_FULLSCREEN=1</code> in <code>tools/play.sh</code></td></tr>
+<tr><td data-label="Feature">Output resolution and refresh rate</td><td data-label="Default">1280x720, the monitor&#x27;s rate</td><td data-label="Where it is set"><code>resolution</code>, <code>refresh</code>; resizable window, aspect kept; a new size is drawn at full detail from the next start</td></tr>
+<tr><td data-label="Feature">Internal resolution scale, 50 % to 200 %</td><td data-label="Default">100 %</td><td data-label="Where it is set"><code>scale</code>; applies on the next start</td></tr>
+<tr><td data-label="Feature">V-Sync on, off, adaptive; VRR</td><td data-label="Default">on</td><td data-label="Where it is set"><code>vsync</code></td></tr>
+<tr><td data-label="Feature">NVIDIA Reflex: off, on, on + boost (<code>VK_NV_low_latency2</code>)</td><td data-label="Default">off</td><td data-label="Where it is set"><code>reflex</code>; &quot;not available&quot; without the extension; no measured fps or latency change in Level 7</td></tr>
+<tr><td data-label="Feature">Frame-rate limit 30, 60, 144 (the game clock follows)</td><td data-label="Default">60</td><td data-label="Where it is set"><code>fps_limit</code>; 30 is the PS3&#x27;s</td></tr>
+<tr><td data-label="Feature">AMD FSR 1 upscaling and RCAS sharpening</td><td data-label="Default">bilinear</td><td data-label="Where it is set"><code>upscaler</code>, <code>sharpness</code></td></tr>
+<tr><td data-label="Feature">Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</td><td data-label="Default">the game&#x27;s</td><td data-label="Where it is set"><code>anisotropic</code></td></tr>
+<tr><td data-label="Feature">Post-processing: anti-aliasing (the game&#x27;s MLAA) on or off; motion blur, film grain and glow 0 to 100 % in steps of 10</td><td data-label="Default">the game&#x27;s</td><td data-label="Where it is set"><code>antialiasing</code>, <code>motion_blur</code>, <code>film_grain</code>, <code>glow</code>, applied at once; 100 % leaves the game&#x27;s value untouched. Level 8 (user_1023 save), 60 Hz, 2026-11-13, scripted sprint with <code>PS3RECOMP_MLAA_DUMP</code>: at 100 % the sprint field rises 12, 23 ... 94 over 8 frames and the output equals the C reference on every pixel; at 50 % the field is exactly half (6, 12 ... 47), output again equal to the reference; at 0 % the game&#x27;s factor (0.05) is drawn as 0 and no frame has field strength; anti-aliasing off: output = input on 8 frames. Film grain (alpha 0.12 in Level 8, always on): 0 % vs 100 % frames differ by grain only (high-frequency energy 2.35 vs 2.61, 4 luma darker with grain); glow (Level 8, lit sprite glow, 8 frames with 13-696 lit source pixels): at 100 % every output equals the C reference at the game&#x27;s strength 256 (the glow branch&#x27;s <code>check_dump.sh</code>), at 0 % every output equals the reference without glow, about 8000 pixels apart from the 100 % one. 2026-11-16, Linux, 2560x1440 (internal 2x), 14 phases of chapters 1 to 9 opened from the level select or a save: the MLAA, glow and motion-blur passes ran on every frame (a counter per 5 s); in <code>1.HQGrounds</code> the game itself fades its film grain from 0.15 to 0 in about 30 s, so the slider has nothing to scale (the same in RPCS3, checked by the maintainer); the glow source was unlit in all 14, as the game draws it only in some Level 11 spots. Windows, 3440x1440, 2026-11-16 (maintainer): MLAA and sprint blur on</td></tr>
+<tr><td data-label="Feature">Temporal upscaling: AMD FSR 3.1, NVIDIA DLSS Super Resolution and DLAA</td><td data-label="Default">off</td><td data-label="Where it is set"><code>temporal</code> (on restart); DLSS only when downloaded at install with NVIDIA&#x27;s licence accepted, else &quot;(not built)&quot;; Level 7, 2560x1440 Quality, 2026-11-05: Linux DLSS 122.2 fps, FSR 3.1 123.7 fps; Windows exe under GE-Proton 11 DLSS 105.2, FSR 3.1 104.7 (native 108.6), under Wine FSR 3.1 105.8; real Windows (RTX 3070 Ti, maintainer&#x27;s private build) DLSS Quality 135.7 fps</td></tr>
+<tr><td data-label="Feature">Any aspect ratio: Hor+ for 21:9, 32:9 and wider, the game&#x27;s own 4:3 view for 4:3 and 16:10, menus and movies kept 16:9</td><td data-label="Default">on</td><td data-label="Where it is set"><code>widescreen</code>, <code>aspect</code> (auto or a forced 4:3, 16:10, 16:9, 21:9, 32:9, on restart); below 16:9 the world&#x27;s FOV is the game&#x27;s own 4:3 rule, 100 / aspect vertical (func_00211540: 75 vertical, 91.3 horizontal at 4:3); Level 1, 2026-11-12/13: 1440x1080 and 1920x1200 windows fill with the HUD in the corners, round crosshair, weapon as the game frames it; forced 4:3 in a 2560-wide window and forced 16:10 in a 3440-wide one show their box with side bars; pause menu 16:9 with bars; 21:9 unchanged. Windows, 2026-11-16 (maintainer, the 0.5.0 test setup): forced 4:3 and 16:10 show their box with bars, HUD in the box corners, menus and movies inside; auto fills a 21:9 screen</td></tr>
+<tr><td data-label="Feature">Field of view, 70 to 120 degrees horizontal at 16:9 (the game&#x27;s is 87), for the world and, apart, the first-person weapon</td><td data-label="Default">the game&#x27;s</td><td data-label="Where it is set"><code>field_of_view</code>, <code>weapon_fov</code> (the weapon&#x27;s game value is 45 degrees vertical, 72 horizontal at 16:9); a scope&#x27;s zoom keeps its magnification; an older <code>fov</code> (vertical) is carried over; Level 1 at 120, 2026-11-09: the world wider, sky with it, weapon as the game made it; 3440x1440, F12 capture: weapon projection 45 degrees vertical as at 16:9 (was 30.7), weapon_fov 110 gives 63.8</td></tr>
+<tr><td data-label="Feature">HUD size and position</td><td data-label="Default">the game&#x27;s</td><td data-label="Where it is set"><code>hud_size</code>, <code>hud_position</code></td></tr>
+<tr><td data-label="Feature">Crosshair size (the weapon crosshair alone, apart from the HUD size)</td><td data-label="Default">the game&#x27;s</td><td data-label="Where it is set"><code>crosshair_size</code></td></tr>
+<tr><td data-label="Feature">Presets: Original (PS3), Performance, Balanced, Quality</td><td data-label="Default">Custom when nothing matches</td><td data-label="Where it is set"></td></tr>
+<tr><td data-label="Feature">Keyboard and mouse: direct mouse look with its own sensitivity and invert, mouse in menus and dialogs</td><td data-label="Default">on</td><td data-label="Where it is set"><code>mouse_yaw</code>, <code>mouse_pitch</code>, <code>mouse_invert</code>; keys in <code>kz1hd_keys.ini</code> (written on the first run; edit to remap); Windows, 2026-11-16 (maintainer): a real mouse in the PC page (click and hold, sliders), the menus, VICTORY and play</td></tr>
+<tr><td data-label="Feature">Controllers through SDL, with keyboard and mouse at the same time</td><td data-label="Default">merged</td><td data-label="Where it is set"><code>controllers</code>; <code>PAD_MOUSE_STICK=1</code> puts the mouse on the right stick instead</td></tr>
+<tr><td data-label="Feature">Button prompts and the Controls picture follow the device (keyboard and mouse, Xbox, PlayStation, Nintendo)</td><td data-label="Default">auto</td><td data-label="Where it is set"></td></tr>
+<tr><td data-label="Feature">Sound output: stereo, 5.1, 7.1</td><td data-label="Default">stereo</td><td data-label="Where it is set"><code>speakers</code></td></tr>
+<tr><td data-label="Feature">Language: system, English (US, UK), French, Spanish</td><td data-label="Default">system</td><td data-label="Where it is set"><code>language</code></td></tr>
+<tr><td data-label="Feature">Skip the opening movie (the logos stay)</td><td data-label="Default">off</td><td data-label="Where it is set"><code>intro = off</code>, <code>KZ_SKIP_INTRO=1</code></td></tr>
+<tr><td data-label="Feature">Statistics overlay (MangoHUD, Linux)</td><td data-label="Default">off</td><td data-label="Where it is set"><code>overlay = mangohud</code>, <code>KZ_MANGOHUD=1</code></td></tr>
+<tr><td data-label="Feature">Quit Game in the Options sub-menu; closing the window waits for a save in progress</td><td data-label="Default">on</td><td data-label="Where it is set"></td></tr>
+<tr><td data-label="Feature">The game&#x27;s own Debug Options in the pause menu (God Mode, Next Level, ...)</td><td data-label="Default">off</td><td data-label="Where it is set"><code>KZ_DEBUG_MENU=1</code></td></tr>
+<tr><td data-label="Feature">All 11 levels selectable in the campaign menu</td><td data-label="Default">off</td><td data-label="Where it is set"><code>KZ_UNLOCK_LEVELS=1</code></td></tr>
+<tr><td data-label="Feature">Local trophy log from the game&#x27;s own trophy set</td><td data-label="Default">on</td><td data-label="Where it is set">needs <code>TROPDIR</code> in the run folder (<code>tools/setup-vfs.sh</code>)</td></tr>
 </tbody></table></div>
 </details>
 <details><summary>The port itself</summary>
 <div class="tw"><table>
 <thead><tr><th>Feature</th><th>Notes</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>Linux x64 build</td><td></td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Windows x64 exe (cross-built on Linux)</td><td>runs under Wine, Proton and on Windows; the whole campaign played there</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Frame rate</td><td>a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</td><td><span class="st st-ok">Works</span></td></tr>
-<tr><td>Installer that builds the port on the player&#x27;s PC</td><td><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>Project Vekta.exe</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</td><td><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Linux x64 build</td><td data-label="Notes"></td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Windows x64 exe (cross-built on Linux)</td><td data-label="Notes">runs under Wine, Proton and on Windows; the whole campaign played there</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Frame rate</td><td data-label="Notes">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr><td data-label="Feature">Installer that builds the port on the player&#x27;s PC</td><td data-label="Notes"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>Project Vekta.exe</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</td><td data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">Every feature, with evidence<span aria-hidden="true"> &gt;</span></a></p>
-</article>
-<div id="news">
-<article class="news rel">
-<h2>0.6.0</h2>
-<p class="meta">20 Nov 2026 · pre-release</p>
+</section>
+<section id="news" class="sec" aria-labelledby="h-news">
+<h2 id="h-news">News</h2>
+<p class="lede">The newest release notes, newest first.</p>
+<article class="rel">
+<h3>0.7.0</h3>
+<p class="meta">23 Nov 2026 · pre-release</p>
 <ul class="rlist">
-<li><span class="sec">Added</span>&quot;Get it on&quot; badges for RecompLauncher and Quiver Launcher in the README, the install page and the project page, linking to the port&#x27;s page on each. The RecompLauncher badge is the one from its press kit, unchanged; the Quiver badge is text only, since Quiver has no press kit and its logo is a mark. The project page&#x27;s install box also lost its outdated lines: it lists the setup program and the release folders, and what goes online.</li>
-<li><span class="sec">Added</span><code>KZ1HD.exe</code> carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and <code>KZ1HD --version</code> (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens every log, so a log says which build wrote it.</li>
-<li><span class="sec">Added</span><code>KZ1HD.exe</code> has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked for at run time.</li>
-<li><span class="sec">Added</span>One program to start in each release folder: <code>Project Vekta.exe</code> on Windows and the new <code>project-vekta</code> on Linux. With no arguments it plays, and before the first build it checks your files and builds first, asking nothing when RPCS3 and the game are in their usual places. It takes <code>--game</code>, <code>--eboot</code>, <code>--psarc</code>, <code>--rpcs3 [DIR]</code> (or <code>KZ_GAME</code>, <code>KZ_EBOOT</code>, <code>KZ_PSARC</code>), kept in <code>work/paths.env</code>, and <code>--prepare</code>, which checks and builds with no window or question and prints <code>progress</code> lines for a launcher. Each failure has its own exit code and fix text, one table for the game and the launcher (<code>port/kz1hd/kz_exit.h</code>, listed in docs/BUILDING.md). A missing Vulkan driver is named before the game starts.</li>
-<li><span class="sec">Added</span><code>recomplauncher.json</code> at the top of the Windows and Linux folders, for launchers that read it (RecompLauncher): it names the game folder to ask for, the optional decrypted <code>EBOOT.elf</code>, the build step with its NVIDIA DLSS tick, the program to start, the saves, the logs and the exit codes. It is made from one source with the version stamped (<code>tools/release/recomplauncher.py</code>) and checked against a schema in the repository.</li>
-<li><span class="sec">Added</span><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/TROUBLESHOOTING.md">docs/TROUBLESHOOTING.md</a>: what you see, what to do and what to attach, for each exit code; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md">docs/INSTALL.md</a> has a section on installing through a game launcher, and <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/launchers.md">docs/dev/launchers.md</a> the contract for launcher developers. CONTRIBUTORS.md lists who helped.</li>
-<li><span class="sec">Added</span>A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now the game says which level it needs and which one the CPU has (a message box on Windows, the launcher&#x27;s message, the log), and exits with code 75. The first run&#x27;s check and the Windows setup&#x27;s first page ask the same before the build: the first run stops there, and the setup asks whether to install anyway.</li>
-<li><span class="sec">Added</span>The game checks that its <code>EBOOT.elf</code> is the one the build was made from (by size and SHA-256, in tens of milliseconds) before it starts. With another one (another version of the game, a file replaced after the build), it says so instead of running code that does not match, opens no window and exits with code 76; the launcher offers to rebuild. <code>KZ_EBOOT_CHECK=0</code> skips it.</li>
-<li><span class="sec">Changed</span>No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself (minimp3, CC0) in place of the system software&#x27;s MP3 decoder, which ran translated from your <code>dev_flash</code>; compared with it in Levels 1 and 4: the same frames, the same silences, samples within 50 dB SNR. The <code>flashMP3.pic</code> the game still asks for is a stand-in the port writes, with no code in it. The installers no longer ask for <code>dev_flash</code> or check its version; the RPCS3 route works with no firmware installed in RPCS3.</li>
-<li><span class="sec">Changed</span>The release folders keep their scripts in <code>scripts/</code>: <code>run.cmd</code>, <code>play.cmd</code> and the new <code>prepare.cmd</code> on Windows, <code>run.sh</code>, <code>play.sh</code> and <code>prepare.sh</code> on Linux, so that the launcher is the one program at the top (a launcher such as Quiver starts the one it finds there). An install over an earlier version removes the old <code>run.cmd</code> and <code>play.cmd</code>.</li>
-<li><span class="sec">Changed</span>The firmware&#x27;s <code>libsre.prx</code> is no longer needed: the SPURS queue the game sends its compressed data requests through, which ran the firmware&#x27;s own libsre code, is now in the port&#x27;s runtime (ps3recomp patch 1022, checked against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it, and on the RPCS3 route your RPCS3 decrypts only the game&#x27;s EBOOT. The lift no longer makes <code>work/fw</code>, and removes the one an earlier version made.</li>
-<li><span class="sec">Fixed</span>The Linux folder builds the game again: <code>KZ1HD</code> called <code>mallinfo2</code>, which the folder&#x27;s own toolchain (glibc 2.31) does not have, so its link stopped with &quot;undefined symbol: mallinfo2&quot;. Builds with the system&#x27;s compilers were not affected.</li>
-<li><span class="sec">Fixed</span>NVIDIA DLSS is offered on Windows only in the release folders: NVIDIA&#x27;s Linux library is built for GCC&#x27;s C++ library and does not link with the Linux folder&#x27;s own toolchain, so a ticked DLSS stopped that build while compiling. The Linux folder now builds with AMD FSR 3.1 and says why; DLSS on Linux needs a build with the system&#x27;s compilers (<code>tools/install.sh</code>).</li>
-<li><span class="sec">Fixed</span>The number of build jobs can be capped for any way the build starts: <code>KZ_JOBS</code> in the environment (a launcher started with it included) and <code>--jobs N</code> on the prepare step (<code>scripts/prepare.sh</code>, <code>project-vekta --prepare</code>), which before took only the memory-based default. For a PC that gets too hot or switches off while compiling (docs/TROUBLESHOOTING.md).</li>
-<li><span class="sec">Fixed</span>The Linux folder&#x27;s first build no longer needs about 18 GB of memory: its bundled compiler took that much on one file of glslang (the shader compiler the build includes) at the usual optimisation. glslang is now built optimised for size, and the whole step peaks under 500 MB.</li>
+<li><span class="kind">Added</span>Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code; not when you quit), the launcher says what the exit code means and shows the crash signature, and offers to make the support package; after it, to open the bug report form on GitHub with the version, system and signature filled in (only on a yes; the zip is never uploaded). A session that never ended (power loss) is named at the next start. <code>work/play.log</code> now ends with <code>[launcher] session ended: exit &lt;code&gt; (&lt;meaning&gt;) after &lt;N&gt; s, &lt;kind&gt;</code>, and <code>work/logs/sessions.jsonl</code> keeps one line per session.</li>
+<li><span class="kind">Added</span>The support package also holds the earlier game logs, <code>sessions.jsonl</code>, the game&#x27;s crash and hang reports with the names of its functions (from your own build&#x27;s symbol table), Windows&#x27; error reports for the game and its display driver events of the last 24 hours (on Linux the kernel log&#x27;s GPU lines), what the game&#x27;s log says about the PC, and a line of your own when you make it in a terminal. <code>scripts/support.cmd</code> and <code>scripts/support.sh</code> make it in the Windows zip and the Linux folder, as the setup&#x27;s Start menu entry does; RecompLauncher gets a &quot;Crash reports&quot; folder button.</li>
+<li><span class="kind">Added</span>When the game crashes, its log now says where: a <code>[kz-crash]</code> block with the exception, the faulting module and offset, the thread, the uptime, the registers, up to 32 frames and a signature (<code>KZ-XXXX-XXXX</code>) that is the same each time the same crash happens, and a copy in <code>work/crash/crash-*.txt</code>. Before, a crash like the ones a few seconds into Level 1 on AMD GPUs (#129) left nothing in the log (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/crash-reports.md">docs/dev/crash-reports.md</a>).</li>
+<li><span class="kind">Added</span>When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets a <code>[kz-hang]</code> block with every thread&#x27;s stack, and a copy in <code>work/crash/hang-*.txt</code>; the game is left running. <code>KZ_HANG_WATCH=0</code> turns this off.</li>
+<li><span class="kind">Added</span>The log starts with the system it runs on: <code>[kz-sys]</code> lines for the system, CPU, cores, memory, monitors, the settings in <code>kz1hd_pc.ini</code>, the <code>KZ_*</code> and <code>PS3*</code> variables set (your home folder written as <code>~</code>), what started the game and whether the build has DLSS.</li>
+<li><span class="kind">Added</span><code>KZ_CRASH_TEST=&lt;kind&gt;</code> makes the game crash or hang on purpose, to check the reports on a build.</li>
+<li><span class="kind">Added</span>The game straight from the Killzone Trilogy disc, with no RPCS3 installed: <code>--disc FOLDER</code> (the copied disc, or its <code>PS3_EXTRA</code> package) on <code>Project Vekta.exe</code>, <code>./project-vekta</code> and the prepare scripts downloads the official RPCS3 at a pinned version (checked by SHA-256), which installs the package into the port&#x27;s <code>work</code> folder with no window and decrypts a copy of the EBOOT there; the disc is only read and an RPCS3 of yours is not touched (docs/INSTALL.md). The setup&#x27;s &quot;Your game&quot; page offers it as &quot;From my Killzone Trilogy disc&quot;, and recomplauncher.json as a disc field beside the game folder. On Windows 10, 7-Zip unpacks the RPCS3 download. The PlayStation Store package still goes through &quot;Use my RPCS3 install&quot;.</li>
+<li><span class="kind">Added</span>Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by GitHub, that the repository&#x27;s release workflow built that very file from the tagged commit. <code>gh attestation verify &lt;file&gt; --repo gustavomorinaga/project-vekta</code> checks a download against it (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md">docs/INSTALL.md</a>).</li>
+<li><span class="kind">Added</span>When the graphics driver stops responding (the GPU is lost), the game now says so in <code>play.log</code> (<code>[RSX vulkan] device lost in ...</code>, with the last passes the GPU was given) and ends with its own exit code, 78, whose text tells you to update the driver and report it; before, it closed without a word. A GPU that takes longer than 2 s logs <code>GPU has not finished for N s</code> each second. <code>KZ_CRASH_TEST=gpu-lost</code> tries this on a working GPU (ps3recomp patches 2084, 2085).</li>
+<li><span class="kind">Added</span><code>play.log</code> names the graphics card&#x27;s driver and its version (for AMD and Intel also the release, such as <code>24.10.1</code>) and the card&#x27;s video memory, for bug reports (patch 2082).</li>
+<li><span class="kind">Changed</span>The game logs of the last sessions are kept: each earlier <code>work/play.log</code> moves to <code>work/logs/play-*.log</code> (the five newest, and the three newest that ended in a crash, a hang or a lost GPU). After a session <code>play.log</code> has your home folder written as <code>~</code> and each run of one repeated line folded into one line with <code>[repeated N times]</code>.</li>
+<li><span class="kind">Changed</span>The bug report form asks for the support package first, the version instead of a commit, and how you installed the port; it no longer asks you to edit your user name out of the log by hand.</li>
+<li><span class="kind">Changed</span>A new look shared with the Killzone 2 and Killzone 3 ports (Project Pyrrhus and Project Helghast, by undecuple): the README banner, the social preview, the Windows setup&#x27;s pictures and the program icons (now lettered KZ1) are drawn in steel blue with a V chevron by one script, <code>tools/release/installer_art.py</code>, with the Rajdhani font. The project page is now a game-style menu that shows one section at a time and works with the keyboard and a game pad, with a screenshot viewer, a light theme and a plain page without script.</li>
+<li><span class="kind">Changed</span>The setup, the launcher&#x27;s page and the docs now say the first build takes 5 to 30 minutes instead of about five: on four cores and a hard disk it took close to half an hour (#134).</li>
+<li><span class="kind">Changed</span>The install and troubleshooting pages say that RPCS3 needs Microsoft&#x27;s Visual C++ runtime on a fresh Windows, without which &quot;Use my RPCS3 install&quot; fails (#136).</li>
+<li><span class="kind">Changed</span>The first run takes the movies out of the game&#x27;s archive faster and with less memory: each movie is written to its file as it is read, instead of being put together in memory first, which copied the whole movie so far at every block (<code>tools/psarc_ls.py</code>; on made-up data a 31 MB movie took 2.8 s of copying, now 0.01 s). An archive that is cut short is named in the error.</li>
+<li><span class="kind">Changed</span>The release folders no longer carry two sets of files that no build reads (glslang&#x27;s test shaders and the registry Vulkan&#x27;s headers are generated from): about 55 MB and 3,400 files less on disk after install, and about 5 MB less to download.</li>
+<li><span class="kind">Changed</span>The build no longer keeps a second and a third copy of FFmpeg&#x27;s libraries and a second copy of the Vulkan headers: what it stages for the compile and beside the program are hard links to the toolchain folder&#x27;s files where the file system makes them (NTFS, ext4, btrfs), and copies as before where it does not (exFAT). About 260 MB less disk on Windows and 280 MB less on Linux.</li>
+<li><span class="kind">Changed</span>The Linux folder is now a <code>.tar.xz</code> (<code>project-vekta-X.Y.Z-linux.tar.xz</code>), about a third smaller to download than the <code>.tar.gz</code> it replaces. <code>tar xf</code> unpacks it, and so do the launchers.</li>
+<li><span class="kind">Changed</span>The install and troubleshooting pages also say that on Windows 10 RPCS3&#x27;s <code>.7z</code> needs 7-Zip to unpack, and that RPCS3 needs the graphics driver&#x27;s <code>vulkan-1.dll</code>, which a Windows 10 without a driver lacks.</li>
+<li><span class="kind">Changed</span>The README is shorter and in the same shape as the Killzone 2 and Killzone 3 ports: a centred header, the status in key numbers and a table per platform, numbered install steps and the launcher badges. The detail moved to new pages: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/STATUS.md">docs/STATUS.md</a>, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md">docs/PRIVACY.md</a> (what goes online and where your data goes), <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FAQ.md">docs/FAQ.md</a>, <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ACCESSIBILITY.md">docs/ACCESSIBILITY.md</a> and <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/AI.md">docs/AI.md</a>.</li>
+<li><span class="kind">Fixed</span>The setup&#x27;s header image no longer touches the window&#x27;s right edge (it sat flush at every display scale).</li>
+<li><span class="kind">Fixed</span>A candidate fix for AMD Radeon RX 5000 and 6000 cards on Windows closing the game a few seconds into level 1 (#129), not yet confirmed on those cards: the GPU now reads zeros instead of undefined memory when a draw reads past the end of a buffer (Vulkan&#x27;s <code>robustBufferAccess</code>, which NVIDIA&#x27;s driver did not need). <code>play.log</code> says <code>robustBufferAccess: on</code>; <code>PS3RECOMP_VK_ROBUST=0</code> turns it off for comparison (patch 2083).</li>
+<li><span class="kind">Fixed</span>A second candidate fix for #129, from a tester&#x27;s crash reports on an RX 6600: AMD&#x27;s Windows driver closes the game while it compiles the MLAA pass (the game&#x27;s anti-aliasing, redone as a GPU shader), every time, in the same place. On that driver the MLAA now uses a second form of its shader that does its arithmetic without 64-bit integers, the one thing it used that the glow and motion blur (which build there) do not: the picture is the same, byte for byte, and the RX 6600 that closed the game plays level 1 with it (patch 2087). Other cards keep the faster first form; cards without 64-bit integer support, which had no MLAA, now get it too. If a driver still closes the game while compiling it, the next start leaves the MLAA out on that driver (the glow and motion blur still run, the PC screen greys the Anti-aliasing row) and a new driver tries again. The log names each post pass as it compiles (<code>building the MLAA pass</code>, <code>the MLAA pass: built in N ms</code>); <code>PS3RECOMP_MLAA_BUILD=1</code> builds it whatever happened before (patches 2086-2087). The log line <code>GPU MLAA on local ...: ran</code> now appears only when the MLAA itself ran; with it off or not built it says <code>not applied</code> and that the other post passes ran (patch 2088).</li>
+<li><span class="kind">Fixed</span>The build no longer stops at &quot;Preparing the game&#x27;s data&quot; when the install folder&#x27;s path has accented letters (a letter with an accent or a cedilla in a folder name): it said the game was not the tested version (#130).</li>
+<li><span class="kind">Fixed</span>A PC without a working Vulkan driver now gets a message that says so when the game starts. Before, the game ran on with no window and closed after about 45 seconds without a word (#131).</li>
+<li><span class="kind">Fixed</span>On a CPU too old for the port, <code>Project Vekta.exe</code> says so at once. Before, the message could take 30 to 90 seconds on the first start after the PC was switched on, with nothing on screen meanwhile (#133).</li>
+<li><span class="kind">Fixed</span>The setup fits a 1280x800 screen at 150% display scale (Next and Cancel were under the taskbar), and its &quot;Your game&quot; page shows its three choices without a scroll bar at 125% and above (#135).</li>
+<li><span class="kind">Fixed</span>At 125% display scale the setup&#x27;s &quot;Your game&quot; page shows all four choices and the note under them without a scroll bar or a cut line, and the DLSS page shows its whole text and checkbox.</li>
+<li><span class="kind">Fixed</span>Uninstalling removes the install folder again: a file the game writes at start (<code>flashMP3.pic</code>) and the empty folders the build left in <code>work\vfs</code> kept it there. Saves and settings stay, as before (#132).</li>
+<li><span class="kind">Fixed</span>While the game loads, before its first frame, the window is now refreshed about 60 times a second instead of about 5,000, which kept a CPU core and the GPU busy for nothing.</li>
+<li><span class="kind">Fixed</span>On Linux, stopping the game (SIGTERM, Ctrl+C or the launcher) now works when the game is frozen: after 2 s it quits anyway, and a second Ctrl+C ends it at once. Before, only a forced kill did.</li>
 </ul>
 </article>
-<article class="news rel">
-<h2>0.5.4</h2>
+<article class="rel">
+<h3>0.6.0</h3>
 <p class="meta">20 Nov 2026 · pre-release</p>
 <ul class="rlist">
-<li><span class="sec">Fixed</span>&quot;Use my RPCS3 install&quot; on Windows: the RPCS3 the setup starts to decrypt the game gets only the Windows folders on its PATH. A PATH passed on by the program that opened the setup (a download manager in the report) could make RPCS3 load that program&#x27;s copy of <code>msvcp140.dll</code>, stop at its start-up check with a &quot;Fatal Error&quot; window and exit with 0 without decrypting anything (#94). When RPCS3 stops at that check all the same, the setup now says so and names the DLL, instead of &quot;RPCS3 did not make the file&quot;.</li>
+<li><span class="kind">Added</span>&quot;Get it on&quot; badges for RecompLauncher and Quiver Launcher in the README, the install page and the project page, linking to the port&#x27;s page on each. The RecompLauncher badge is the one from its press kit, unchanged; the Quiver badge is text only, since Quiver has no press kit and its logo is a mark. The project page&#x27;s install box also lost its outdated lines: it lists the setup program and the release folders, and what goes online.</li>
+<li><span class="kind">Added</span><code>KZ1HD.exe</code> carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and <code>KZ1HD --version</code> (Windows and Linux) prints it with the patch set and the ps3recomp commit it was built from. The same line opens every log, so a log says which build wrote it.</li>
+<li><span class="kind">Added</span><code>KZ1HD.exe</code> has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked for at run time.</li>
+<li><span class="kind">Added</span>One program to start in each release folder: <code>Project Vekta.exe</code> on Windows and the new <code>project-vekta</code> on Linux. With no arguments it plays, and before the first build it checks your files and builds first, asking nothing when RPCS3 and the game are in their usual places. It takes <code>--game</code>, <code>--eboot</code>, <code>--psarc</code>, <code>--rpcs3 [DIR]</code> (or <code>KZ_GAME</code>, <code>KZ_EBOOT</code>, <code>KZ_PSARC</code>), kept in <code>work/paths.env</code>, and <code>--prepare</code>, which checks and builds with no window or question and prints <code>progress</code> lines for a launcher. Each failure has its own exit code and fix text, one table for the game and the launcher (<code>port/kz1hd/kz_exit.h</code>, listed in docs/BUILDING.md). A missing Vulkan driver is named before the game starts.</li>
+<li><span class="kind">Added</span><code>recomplauncher.json</code> at the top of the Windows and Linux folders, for launchers that read it (RecompLauncher): it names the game folder to ask for, the optional decrypted <code>EBOOT.elf</code>, the build step with its NVIDIA DLSS tick, the program to start, the saves, the logs and the exit codes. It is made from one source with the version stamped (<code>tools/release/recomplauncher.py</code>) and checked against a schema in the repository.</li>
+<li><span class="kind">Added</span><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/TROUBLESHOOTING.md">docs/TROUBLESHOOTING.md</a>: what you see, what to do and what to attach, for each exit code; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md">docs/INSTALL.md</a> has a section on installing through a game launcher, and <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/launchers.md">docs/dev/launchers.md</a> the contract for launcher developers. CONTRIBUTORS.md lists who helped.</li>
+<li><span class="kind">Added</span>A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or AMD Excavator and later). On an older CPU it used to stop at once with an illegal-instruction crash. Now the game says which level it needs and which one the CPU has (a message box on Windows, the launcher&#x27;s message, the log), and exits with code 75. The first run&#x27;s check and the Windows setup&#x27;s first page ask the same before the build: the first run stops there, and the setup asks whether to install anyway.</li>
+<li><span class="kind">Added</span>The game checks that its <code>EBOOT.elf</code> is the one the build was made from (by size and SHA-256, in tens of milliseconds) before it starts. With another one (another version of the game, a file replaced after the build), it says so instead of running code that does not match, opens no window and exits with code 76; the launcher offers to rebuild. <code>KZ_EBOOT_CHECK=0</code> skips it.</li>
+<li><span class="kind">Changed</span>No PS3 system software is needed any more. The music and the other MP3 streams are decoded by the port itself (minimp3, CC0) in place of the system software&#x27;s MP3 decoder, which ran translated from your <code>dev_flash</code>; compared with it in Levels 1 and 4: the same frames, the same silences, samples within 50 dB SNR. The <code>flashMP3.pic</code> the game still asks for is a stand-in the port writes, with no code in it. The installers no longer ask for <code>dev_flash</code> or check its version; the RPCS3 route works with no firmware installed in RPCS3.</li>
+<li><span class="kind">Changed</span>The release folders keep their scripts in <code>scripts/</code>: <code>run.cmd</code>, <code>play.cmd</code> and the new <code>prepare.cmd</code> on Windows, <code>run.sh</code>, <code>play.sh</code> and <code>prepare.sh</code> on Linux, so that the launcher is the one program at the top (a launcher such as Quiver starts the one it finds there). An install over an earlier version removes the old <code>run.cmd</code> and <code>play.cmd</code>.</li>
+<li><span class="kind">Changed</span>The firmware&#x27;s <code>libsre.prx</code> is no longer needed: the SPURS queue the game sends its compressed data requests through, which ran the firmware&#x27;s own libsre code, is now in the port&#x27;s runtime (ps3recomp patch 1022, checked against libsre on 46,000 random cases; after Project Pyrrhus patch 6003, MIT). The installers stop asking for it, and on the RPCS3 route your RPCS3 decrypts only the game&#x27;s EBOOT. The lift no longer makes <code>work/fw</code>, and removes the one an earlier version made.</li>
+<li><span class="kind">Fixed</span>The Linux folder builds the game again: <code>KZ1HD</code> called <code>mallinfo2</code>, which the folder&#x27;s own toolchain (glibc 2.31) does not have, so its link stopped with &quot;undefined symbol: mallinfo2&quot;. Builds with the system&#x27;s compilers were not affected.</li>
+<li><span class="kind">Fixed</span>NVIDIA DLSS is offered on Windows only in the release folders: NVIDIA&#x27;s Linux library is built for GCC&#x27;s C++ library and does not link with the Linux folder&#x27;s own toolchain, so a ticked DLSS stopped that build while compiling. The Linux folder now builds with AMD FSR 3.1 and says why; DLSS on Linux needs a build with the system&#x27;s compilers (<code>tools/install.sh</code>).</li>
+<li><span class="kind">Fixed</span>The number of build jobs can be capped for any way the build starts: <code>KZ_JOBS</code> in the environment (a launcher started with it included) and <code>--jobs N</code> on the prepare step (<code>scripts/prepare.sh</code>, <code>project-vekta --prepare</code>), which before took only the memory-based default. For a PC that gets too hot or switches off while compiling (docs/TROUBLESHOOTING.md).</li>
+<li><span class="kind">Fixed</span>The Linux folder&#x27;s first build no longer needs about 18 GB of memory: its bundled compiler took that much on one file of glslang (the shader compiler the build includes) at the usual optimisation. glslang is now built optimised for size, and the whole step peaks under 500 MB.</li>
 </ul>
 </article>
-<article class="news rel">
-<h2>0.5.3</h2>
-<p class="meta">19 Nov 2026 · pre-release</p>
+<article class="rel">
+<h3>0.5.4</h3>
+<p class="meta">20 Nov 2026 · pre-release</p>
 <ul class="rlist">
-<li><span class="sec">Fixed</span>The PlayStation Store copy of Killzone HD (NPUA80856) installs. Its <code>data_ps3.psarc.edat</code> is bound to the buyer&#x27;s licence, which the port cannot open, so the first-run check stopped on it with &quot;DIFFERENT&quot; (#67). &quot;Use my RPCS3 install&quot; now has your RPCS3 decrypt a copy of it too, with the licence (<code>.rap</code>) it already uses for the game, into <code>work/prep/data_ps3.psarc</code>: the same archive as the disc copy&#x27;s, checked by its SHA-256. Without RPCS3, the check names the Store copy and says to use that route.</li>
-<li><span class="sec">Fixed</span>Choosing Quit Game in the first seconds (as from the main menu right after the start) no longer shows &quot;The game stopped right after it started&quot;: the launcher now takes the game&#x27;s own quit line as the player&#x27;s choice.</li>
-<li><span class="sec">Changed</span>&quot;Use my RPCS3 install&quot; names, on the setup&#x27;s build page, each file your RPCS3 is decrypting, and links instead of copying the game&#x27;s files it decrypts when they are on the same drive as the port (no second 3 GB copy).</li>
+<li><span class="kind">Fixed</span>&quot;Use my RPCS3 install&quot; on Windows: the RPCS3 the setup starts to decrypt the game gets only the Windows folders on its PATH. A PATH passed on by the program that opened the setup (a download manager in the report) could make RPCS3 load that program&#x27;s copy of <code>msvcp140.dll</code>, stop at its start-up check with a &quot;Fatal Error&quot; window and exit with 0 without decrypting anything (#94). When RPCS3 stops at that check all the same, the setup now says so and names the DLL, instead of &quot;RPCS3 did not make the file&quot;.</li>
 </ul>
 </article>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">The whole changelog<span aria-hidden="true"> &gt;</span></a></p>
-</div>
-<article id="about" class="news">
-<h2>About the port</h2>
-<p class="meta">how it works · ps3recomp v0.19.0 · 156 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 156 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
-<p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
-<p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
-</article>
-<p class="divider" aria-hidden="true"><span>Progress</span></p>
-<div class="notes2">
+</section>
+<section id="progress" class="sec" aria-labelledby="h-progress">
+<h2 id="h-progress">Progress</h2>
+<p class="lede">The newest changelog items and the objectives still open. About 65 % of Killzone HD is done.</p>
 <section id="changelog" class="promo term">
-<h2>Changelog</h2>
+<h3>Changelog</h3>
 <ul class="clog">
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> &quot;Get it on&quot; badges for RecompLauncher and Quiver Launcher in the README, the install page and the project page...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> KZ1HD.exe carries a version: Explorer&#x27;s Details tab shows Project Vekta and the release, and KZ1HD --version (Windows...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> KZ1HD.exe has a Windows manifest: it declares Windows 10/11 and the per-monitor DPI awareness the game already asked...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> One program to start in each release folder: Project Vekta.exe on Windows and the new project-vekta on Linux. With no...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> recomplauncher.json at the top of the Windows and Linux folders, for launchers that read it (RecompLauncher): it names...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> docs/TROUBLESHOOTING.md: what you see, what to do and what to attach, for each exit code; docs/INSTALL.md has a...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> A CPU that is too old is named instead of crashing. The game is built for x86-64-v3 (AVX2, FMA, BMI2: Intel Haswell or...</span></li>
-<li><time datetime="2026-11-20">11-20</time><span><b>0.6.0</b> The game checks that its EBOOT.elf is the one the build was made from (by size and SHA-256, in tens of milliseconds)...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code; not...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The support package also holds the earlier game logs, sessions.jsonl, the game&#x27;s crash and hang reports with the names...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> When the game crashes, its log now says where: a [kz-crash] block with the exception, the faulting module and offset...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets a...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The log starts with the system it runs on: [kz-sys] lines for the system, CPU, cores, memory, monitors, the settings...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> KZ_CRASH_TEST=&lt;kind&gt; makes the game crash or hang on purpose, to check the reports on a build.</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The game straight from the Killzone Trilogy disc, with no RPCS3 installed: --disc FOLDER (the copied disc, or its...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by GitHub...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
 <section id="todo" class="promo obj">
-<h2>Objectives</h2>
+<h3>Objectives</h3>
 <ul class="todo">
 <li class="o-no"><span class="box" aria-hidden="true"></span>&quot;One / Two Player&quot; in the menu <em>(not yet)</em></li>
 <li class="o-part"><span class="box" aria-hidden="true"></span>Trophy unlocks <em>(partial)</em></li>
 </ul>
 <p class="small">The next features still open; all of them: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, and the plan: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">ROADMAP.md</a>.</p>
 </section>
-</div>
-</main>
-<aside class="side">
-<a class="promo pic" href="#install"><img src="../docs/screenshots/20261030_level1-helghast-advance.png" alt="" loading="lazy"><span class="pt">Your own copy</span><span class="pb">How to build it</span></a>
-<section class="promo">
-<h2>At a glance</h2>
-<p class="headline">Status: <strong>Playable</strong></p>
-<ul class="glance">
-<li><span class="st st-ok">Works</span> <b>16</b></li>
-<li><span class="st st-part">Partial</span> <b>1</b></li>
-<li><span class="st st-no">Not yet</span> <b>1</b></li>
-<li><span class="st st-na">Not applicable</span> <b>1</b></li>
-</ul>
-<p class="small"><a href="#status">Full status</a></p>
 </section>
-<section id="install" class="promo">
-<h2>Install</h2>
+<section id="install" class="sec" aria-labelledby="h-install">
+<h2 id="h-install">Install</h2>
+<p class="lede">The setup program or the release folders: they check your own copy and build the port on your PC.</p>
 <div class="dl">
-<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0">v0.6.0</a> <span>pre-release</span></p>
-<p class="small">20 Nov 2026 · playable · Windows x64 and Linux x64</p>
-<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0">Download v0.6.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
-<p>The release page has the Windows setup program (project-vekta-0.6.0-setup.exe, the easiest way on Windows), the Windows folder as a zip, the Linux folder and the source archive, each with a .sha256 file, and SHA256SUMS: check your download against them.</p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0">v0.7.0</a> <span>pre-release</span></p>
+<p class="small">23 Nov 2026 · playable · Windows x64 and Linux x64</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0">Download v0.7.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has the Windows setup program (project-vekta-0.7.0-setup.exe, the easiest way on Windows), the Windows folder as a zip, the Linux folder and the source archive, each with a .sha256 file, and SHA256SUMS: check your download against them.</p>
 </div>
 <p>The Windows setup program, <code>Project Vekta.exe</code> in the Windows zip and <code>./project-vekta</code> in the Linux folder check your own Killzone HD files (a disc or PlayStation Store copy, or the one your RPCS3 already installed), translate the game's code and build it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
-<h3>Through a launcher</h3>
-<p class="badges"><a href="https://recomplauncher.com/game/project-vekta"><img src="../assets/press/recomplauncher/badge-dark.svg" width="313" height="56" alt="Get it on RecompLauncher"></a><a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta"><img src="../assets/press/quiver/badge.png" srcset="../assets/press/quiver/badge@3x.png 3x" width="206" height="56" alt="Get it on Quiver Launcher"></a></p>
+<h4>Through a launcher</h4>
+<p class="badges"><a href="https://recomplauncher.com/game/project-vekta"><img src="../assets/press/recomplauncher/badge-dark.svg" width="313" height="56" alt="Get it on RecompLauncher"></a><a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta"><img src="../assets/press/quiver/badge.png" srcset="../assets/press/quiver/badge@3x.png 3x" width="203" height="56" alt="Get it on Quiver Launcher"></a></p>
 <p class="small">The launchers install the Windows zip or the Linux folder and build the same way: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md#installing-through-a-launcher">installing through a launcher</a>. They are third-party projects; their names are their owners' marks.</p>
-<h3>Or build from source</h3>
+<h4>Or build from source</h4>
 <pre>git clone --recurse-submodules \
   https://github.com/gustavomorinaga/project-vekta
 cd project-vekta
 tools/install.sh</pre>
 <p>Every step, and the Windows build: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">building</a>.</p>
-<h3>What goes online</h3>
-<p>Nothing unless you choose it. The port, the setup and the build make no network connection of their own. The downloads are the ones you start (the release, or this repository and its ps3recomp submodule, the build tools) and two you opt into: NVIDIA DLSS, fetched from NVIDIA only if you accept its licence, and the new-version check, off by default. The whole list: <a href="https://github.com/gustavomorinaga/project-vekta#what-goes-online">What goes online</a>; where saves and settings go: <a href="https://github.com/gustavomorinaga/project-vekta#where-your-data-goes">Where your data goes</a>.</p>
-<p class="small">Viewing this website loads the Fira Sans Condensed font from Google Fonts, which sees your visit; the repository, the build and the game do not.</p>
+<h4>What goes online</h4>
+<p>Nothing unless you choose it. The port, the setup and the build make no network connection of their own. The downloads are the ones you start (the release, or this repository and its ps3recomp submodule, the build tools) and two you opt into: NVIDIA DLSS, fetched from NVIDIA only if you accept its licence, and the new-version check, off by default. The whole list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md#what-goes-online">What goes online</a>; where saves and settings go: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md#where-your-data-goes">Where your data goes</a>.</p>
+<p class="small">Viewing the main page loads the Rajdhani font from Google Fonts, which sees your visit; the repository, the setup and the game do not. The plain page loads no fonts.</p>
 </section>
-<section id="requirements" class="promo">
-<h2>Requirements</h2>
-<h3>What you need</h3>
+<section id="requirements" class="sec" aria-labelledby="h-requirements">
+<h2 id="h-requirements">Requirements</h2>
+<p class="lede">What you need from your own copy, and the PC it was tested on.</p>
+<h4>What you need</h4>
 <p>Your own Killzone HD (NPUA80856) from the Killzone Trilogy disc, installed, with its decrypted EBOOT (no PS3 system software is needed): <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>. No PlayStation Network account is used.</p>
-<h3>Hardware to play</h3>
+<h4>Hardware to play</h4>
 <div class="tw"><table>
 <thead><tr><th></th><th>Minimum</th><th>Tested</th></tr></thead>
 <tbody>
-<tr><td>Operating system</td><td>Linux x64; Windows x64 (other Windows versions and machines not tried)</td><td>CachyOS (Linux x64); the maintainer&#x27;s Windows install for the cross-built exe; Wine and Proton (GE-Proton 11, proton-cachyos)</td></tr>
-<tr><td>CPU</td><td>x86-64 with AVX2 (<code>x86-64-v3</code>, Intel Haswell or AMD Zen and newer), the default build target; <code>KZ_MARCH=&quot;&quot;</code> builds for any x86-64, untested</td><td>the maintainer&#x27;s desktop CPU with AVX-512 (<code>KZ_MARCH=x86-64-v4</code>)</td></tr>
-<tr><td>GPU</td><td>a Vulkan GPU and driver; NVIDIA DLSS needs an NVIDIA RTX GPU, AMD FSR 3.1 runs on any; a tester&#x27;s AMD Radeon 8060S on Windows runs it with open problems (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>, issues #17 and #18), other GPUs not tried yet</td><td>NVIDIA GeForce RTX 3070 Ti, driver 615</td></tr>
-<tr><td>Memory</td><td>building: several GB for the lifted code (use fewer jobs on small machines); playing: not measured</td><td></td></tr>
-<tr><td>Disk</td><td>about 4 GB for your game files, plus, free: Windows about 2.4 GB (the release folder 0.75 GB, then the build: lifted code 0.13 GB, <code>work\build-win</code> 0.38 GB, <code>work\win-deps</code> 0.20 GB, the game folder <code>work\vfs</code> with the movies taken out of the archive 0.92 GB), and about 3.2 GB more where Windows cannot make links, for copies of the EBOOT and the archive (the setup program reserves 5.8 GB); Linux about 1.9 GB (the folder 0.57 GB, lifted code 0.13 GB, <code>work/build</code> 0.26 GB, <code>work/vfs</code> 0.92 GB; the EBOOT and the archive are linked)</td><td>measured 2026-11-14 on the maintainer&#x27;s machine (main at 698c28c), and the v0.4.0 downloads unpacked</td></tr>
+<tr><td data-label="">Operating system</td><td data-label="Minimum">Linux x64; Windows x64 (other Windows versions and machines not tried)</td><td data-label="Tested">CachyOS (Linux x64); the maintainer&#x27;s Windows install for the cross-built exe; Wine and Proton (GE-Proton 11, proton-cachyos)</td></tr>
+<tr><td data-label="">CPU</td><td data-label="Minimum">x86-64 with AVX2 (<code>x86-64-v3</code>, Intel Haswell or AMD Zen and newer), the default build target; <code>KZ_MARCH=&quot;&quot;</code> builds for any x86-64, untested</td><td data-label="Tested">the maintainer&#x27;s desktop CPU with AVX-512 (<code>KZ_MARCH=x86-64-v4</code>)</td></tr>
+<tr><td data-label="">GPU</td><td data-label="Minimum">a Vulkan GPU and driver; NVIDIA DLSS needs an NVIDIA RTX GPU, AMD FSR 3.1 runs on any; a tester&#x27;s AMD Radeon 8060S on Windows runs it with open problems (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>, issues #17 and #18), other GPUs not tried yet</td><td data-label="Tested">NVIDIA GeForce RTX 3070 Ti, driver 615</td></tr>
+<tr><td data-label="">Memory</td><td data-label="Minimum">building: several GB for the lifted code (use fewer jobs on small machines); playing: not measured</td><td data-label="Tested"></td></tr>
+<tr><td data-label="">Disk</td><td data-label="Minimum">about 4 GB for your game files, plus, free: Windows about 2.4 GB (the release folder 0.75 GB, then the build: lifted code 0.13 GB, <code>work\build-win</code> 0.38 GB, <code>work\win-deps</code> 0.20 GB, the game folder <code>work\vfs</code> with the movies taken out of the archive 0.92 GB), and about 3.2 GB more where Windows cannot make links, for copies of the EBOOT and the archive (the setup program reserves 5.8 GB); Linux about 1.9 GB (the folder 0.57 GB, lifted code 0.13 GB, <code>work/build</code> 0.26 GB, <code>work/vfs</code> 0.92 GB; the EBOOT and the archive are linked)</td><td data-label="Tested">measured 2026-11-14 on the maintainer&#x27;s machine (main at 698c28c), and the v0.4.0 downloads unpacked</td></tr>
 </tbody></table></div>
 <p class="small">Details: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/requirements.md">requirements.md</a>. The tested column is the maintainer's machine; reports from other hardware are welcome.</p>
 </section>
-<section id="channels" class="promo">
-<h2>Official channels</h2>
-<ul class="links">
-<li><a href="https://github.com/gustavomorinaga/project-vekta">Source on GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Report a problem</a></li><li><a href="https://github.com/undecuple/project-helghast">Project Helghast</a> (the Killzone 3 port)</li><li><a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a> (the Killzone 2 port)</li>
-</ul>
+<section id="about" class="sec" aria-labelledby="h-about">
+<h2 id="h-about">About</h2>
+<p class="lede">Built on ps3recomp v0.19.0: PPU and SPU code lifted to C++, the RSX command stream replayed on Vulkan.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 163 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 163 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
+<p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </section>
-</aside>
-</div>
-</div>
-<footer><div class="wrap"><div class="fcols">
-<div><h4>Project</h4><a href="https://github.com/gustavomorinaga/project-vekta">Repository</a><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></div>
-<div><h4>Docs</h4><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">Features</a><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">Known issues</a><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">Roadmap</a><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">How it works</a><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">Building</a></div>
-<div><h4>Play</h4><a href="#install">Install</a><a href="#requirements">Requirements</a><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/SCREENSHOTS.md">Screenshots</a></div>
-<div><h4>About</h4><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/NOTICE.md">Notice and credits</a><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/LICENSE">Licence (MIT)</a><a href="https://github.com/undecuple/project-helghast">Project Helghast</a><a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a></div>
-</div>
-<div id="legal" class="legal">
+<section id="channels" class="sec" aria-labelledby="h-channels">
+<h2 id="h-channels">Channels</h2>
+<p class="lede">Source, releases, bug reports, the docs, and the projects this one works with.</p>
+<ul class="links">
+<li><a href="https://github.com/gustavomorinaga/project-vekta">Source on GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Report a problem</a></li>
+</ul>
+<h4>Docs</h4>
+<ul class="links">
+<li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">Features</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">Known issues</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">Roadmap</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">How it works</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">Building</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/SCREENSHOTS.md">Screenshots</a></li>
+</ul>
+<h4>Links and friends</h4>
+<ul class="links">
+<li><a href="https://github.com/undecuple/project-helghast">Project Helghast</a> (the Killzone 3 port, by undecuple)</li><li><a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a> (the Killzone 2 port, by undecuple)</li><li><a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (the recompiler)</li><li><a href="https://recomplauncher.com/game/project-vekta">RecompLauncher</a> (lists this port)</li><li><a href="https://quiverlauncher.com/apps/killzone-hd-project-vekta">Quiver Launcher</a> (lists this port)</li>
+</ul>
+<p class="small">The launchers are third-party projects; their names are their owners' marks.</p>
+</section>
+<section id="legal" class="sec" aria-labelledby="h-legal">
+<h2 id="h-legal">Legal</h2>
+<p class="lede">No game content is distributed. The port&#x27;s own code is MIT.</p>
 <p>Killzone and Killzone HD are trademarks of Sony Interactive Entertainment. This project is not affiliated with or endorsed by Sony Interactive Entertainment or Guerrilla Games; the names are used only to say which game the port runs. "Vekta" is the name of the game's own colony world. No game content is distributed: no disc or PSN files, no decrypted or translated game code, no assets, no firmware and no keys. Players supply their own copy of the game; the game's code is translated and compiled on the player's own machine from their own files.</p>
 <p>The port's own code, tools and documentation are <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/LICENSE">MIT</a>. Third-party components and credits: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/NOTICE.md">NOTICE.md</a>. Temporal upscaling: AMD FidelityFX FSR 3.1 (MIT, built in) and NVIDIA DLSS (NVIDIA's, under its own licence; downloaded from NVIDIA on the player's machine only when they accept it, and never distributed here). AMD, FidelityFX, NVIDIA and DLSS are trademarks of their owners.</p>
 <ul class="marks" aria-label="Platform"><li><b>Linux</b>x64 native</li><li><b>Windows</b>x64</li><li><b>Vulkan</b>renderer</li><li><b>Proton</b>tested</li><li><b>MIT</b>licence</li><li><b>No game</b>files shipped</li></ul>
-<p class="credit">Project Vekta by gustavomorinaga</p></div></div></footer>
+<p class="credit">Project Vekta by gustavomorinaga</p>
+</section>
+</main>
+</div>
+<footer id="foot">
+<p class="legend" aria-hidden="true"><span><kbd>&uarr;</kbd><kbd>&darr;</kbd> select</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> back</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd> in the viewer</span></p>
+<p class="fl"><a href="#legal">Legal</a> <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/NOTICE.md">Notice and credits</a> <a href="plain.html">Plain page</a></p>
+</footer>
+</div>
 </body>
 </html>

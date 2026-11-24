@@ -223,14 +223,17 @@ code = "\n".join(ln for ln in entry.splitlines() if not ln.startswith("#"))
 check(entry.startswith("#!/bin/sh\n") and not re.search(r"\$\{?(HOME|USER|XDG_RUNTIME_DIR)\b", code) and
       'cd "$here"' in code and "--build-if-needed" in code and os.access(ROOT / "installer/linux/project-vekta", os.X_OK),
       "project-vekta: executable, uses no HOME, USER or XDG_RUNTIME_DIR, runs from its folder, builds when needed")
-for f in ("run.sh", "play.sh", "prepare.sh"):
+for f in ("run.sh", "play.sh", "prepare.sh", "support.sh"):
     t = (ROOT / "installer" / "linux" / f).read_text()
     check('readlink -f "$0")")/.." && pwd)' in t, f"scripts/{f} finds the folder above it")
-for f in ("run.cmd", "play.cmd", "prepare.cmd"):
+for f in ("run.cmd", "play.cmd", "prepare.cmd", "support.cmd"):
     t = (ROOT / "installer" / f).read_text()
     check('cd /d "%~dp0.."' in t and "%~dp0..\\tools\\release\\" in t, f"scripts\\{f} finds the folder above it")
 check("--prepare" in (ROOT / "installer" / "prepare.cmd").read_text() and
       "--prepare" in (ROOT / "installer" / "linux" / "prepare.sh").read_text(), "the prepare wrappers run --prepare")
+check("--support-package" in (ROOT / "installer" / "support.cmd").read_text() and
+      "--support-package" in (ROOT / "installer" / "linux" / "support.sh").read_text() and
+      os.access(ROOT / "installer" / "linux" / "support.sh", os.X_OK), "the support wrappers run --support-package")
 with tempfile.TemporaryDirectory() as tmp:
     d = pathlib.Path(tmp) / "a folder"
     (d / "tools" / "release").mkdir(parents=True)

@@ -26,18 +26,6 @@
 #define KZ_CPU_REQUIRED 0
 #endif
 
-/* The message, the same words tools/release/launch.py shows for KZ_EXIT_CPU. */
-static void kz_cpu_message(char* out, size_t n, int have, int need)
-{
-    snprintf(out, n,
-             "This build of Project Vekta needs a CPU with x86-64-v%d (%s), and this one has x86-64-v%d. "
-             "The game cannot run on it.",
-             need, need >= 4 ? "AVX-512: Intel Skylake-X, Ice Lake or later, AMD Zen 4 or later"
-                             : need == 3 ? "AVX2, FMA, BMI2: Intel Haswell (2013) or AMD Excavator (2015) and later"
-                                         : "SSE4.2, POPCNT: Intel Nehalem (2008) or AMD Bulldozer (2011) and later",
-             have);
-}
-
 #ifdef _WIN32
 static int kz_no_stderr(void)
 {

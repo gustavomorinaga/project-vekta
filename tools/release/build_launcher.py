@@ -4,7 +4,7 @@ llvm-mingw (tools/release/toolchain.json; fetched into work/toolchain-cache when
 
     tools/release/build_launcher.py [--out DIR] [--cache DIR]      (default work/release/launcher)
 
-launcher.rc gives it the icon (installer/art/vekta.ico, from assets/icon.svg by tools/site-art.sh) and the version
+launcher.rc gives it the icon (installer/art/vekta.ico, drawn by tools/release/installer_art.py) and the version
 block, written from VERSION into launcher_version.h. Plain Win32, GUI subsystem, Unicode entry, -Os and stripped, no
 PE timestamp: the same sources and compiler give the same bytes. Runs on Linux (the cross llvm-mingw) and on
 Windows (the Windows-hosted one). After Project Pyrrhus's and Project Helghast's tools/release/build_launcher.sh

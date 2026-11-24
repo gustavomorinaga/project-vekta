@@ -67,6 +67,12 @@ are linked.
 
 ## Windows
 
+- **Windows, AMD RX 5000/6000: the game closed a few seconds into level 1 in 0.6.0 (#129).** AMD's Vulkan driver
+  (26.10.1, RX 6600) closed the game while compiling the MLAA pass (the game's anti-aliasing as a GPU shader). A test
+  build with a second form of that shader, without the 64-bit integers the driver choked on, played level 1 through
+  on the same card with the MLAA on; the next release uses that form on AMD's Windows driver. If a driver still
+  closes the game in that compile, the next start leaves the MLAA out on it (the glow and motion blur stay). If it
+  still happens to you, attach the support package to #129.
 - **The game's `.edat` on another drive is copied** (not tried on Windows yet, 2026-11-15): without a decrypted
   `data_ps3.psarc` the run folder links the game's `data_ps3.psarc.edat`; where Windows can make neither a symbolic
   nor a hard link (the game on another drive than the port, without Developer Mode) it copies the 3.15 GB file into
@@ -98,8 +104,8 @@ are linked.
 - **The setup program was tried on one real Windows** (the maintainer's, 2026-10-31: the first build took about four
   minutes, then the game held 60 fps; 0.3.0's installed over 0.2.0 there on 2026-11-06 and played; 0.5.0's test
   setup on 2026-11-16, and the whole campaign played there), not yet on a clean Windows machine.
-- **The port is built on the player's PC**, by the setup program or on the first start (about four to five minutes,
-  and about 1.6 GB more on disk): the game is not shipped, so it cannot be prebuilt.
+- **The port is built on the player's PC**, by the setup program or on the first start (5 to 30 minutes, longer
+  on a hard disk, and about 1.6 GB more on disk): the game is not shipped, so it cannot be prebuilt.
 
 ## Building
 

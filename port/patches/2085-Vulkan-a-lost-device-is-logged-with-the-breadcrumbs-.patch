@@ -1,0 +1,311 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Mon, 23 Nov 2026 07:22:19 +0000
+Subject: [PATCH] Vulkan: a lost device is logged with the breadcrumbs and
+ calls the host's hook; GPU waits say when they take long
+
+Symptom (#129): on AMD cards under Windows the game closed a few seconds
+into level 1 with no error line, after rendering stalled for 1 to 2 s.
+A lost device only showed, if at all, as "vkQueueSubmit failed
+(VkResult -4)", and a GPU hang as a frozen game with nothing in the log.
+
+Lost device: VK_ERROR_DEVICE_LOST from a submit (the batch, the slot,
+the window's), a fence wait, the window's acquire or its present goes
+through one small helper, vk_lost(), instead of a change to every
+VK_CHECK. The first one logs "device lost in <call>" once, then the
+render breadcrumbs (2084) as "render: <line>" lines, then calls the
+hook the host set with rsx_vulkan_set_device_lost_hook(void (*)(void)),
+where a game can end the process with its own exit code. Without a hook
+nothing else changes: the call fails as any other error does.
+
+GPU waits: the five fence waits with no timeout (the batch, the
+previous batch, the batch slot, the previous present, the present dump)
+now wait 2 s, then 1 s at a time (rsx_vk_wait_bounded,
+rsx_vk_gpu_wait.h), logging "GPU has not finished for N s (<where>)"
+after each step, and the breadcrumbs once a run, and keep waiting: the
+same result as before, never a failure of their own. A lost device ends
+the wait and goes to the path above. On Windows a GPU busy for 2 s is a
+TDR, so the line comes just before the lost device.
+
+PS3RECOMP_VK_FAKE_DEVICE_LOST=<frames> (default off) makes the first
+fence wait after that many presented frames report a lost device once
+while the GPU is fine, to try the whole path (the log, the breadcrumbs,
+the hook) on any machine. Written from the Vulkan specification.
+---
+ libs/video/rsx_vk_gpu_wait.h    |  36 ++++++++++
+ libs/video/rsx_vulkan_backend.c | 112 ++++++++++++++++++++++++++++----
+ libs/video/rsx_vulkan_backend.h |  13 ++++
+ 3 files changed, 150 insertions(+), 11 deletions(-)
+ create mode 100644 libs/video/rsx_vk_gpu_wait.h
+
+diff --git a/libs/video/rsx_vk_gpu_wait.h b/libs/video/rsx_vk_gpu_wait.h
+new file mode 100644
+index 0000000..cfc36f8
+--- /dev/null
++++ b/libs/video/rsx_vk_gpu_wait.h
+@@ -0,0 +1,36 @@
++/*
++ * ps3recomp - a GPU wait that says when it takes long (patch 2085). The Vulkan backend's fence waits used to be one
++ * vkWaitForFences with no timeout: a GPU that hung kept the game frozen without a word until Windows' TDR (2 s) or
++ * the kernel driver ended it. rsx_vk_wait_bounded waits the same (until the fence is signalled, never failing on its
++ * own), but in steps: the first of 2 s, then 1 s each, calling `slow` after each step that timed out with the seconds
++ * waited so far (2, 3, 4...). Any result other than a timeout ends it and is returned: success, or an error such as
++ * VK_ERROR_DEVICE_LOST, which the caller handles. No Vulkan headers: the results are VkResult's numbers, and the
++ * host tests build it with a made-up waiter (tools/tests/test_vk_breadcrumbs.c in the port).
++ */
++#ifndef PS3RECOMP_RSX_VK_GPU_WAIT_H
++#define PS3RECOMP_RSX_VK_GPU_WAIT_H
++
++#include <stdint.h>
++
++#define RSX_VK_WAIT_SUCCESS      0    /* VK_SUCCESS */
++#define RSX_VK_WAIT_TIMEOUT      2    /* VK_TIMEOUT */
++#define RSX_VK_WAIT_DEVICE_LOST  (-4) /* VK_ERROR_DEVICE_LOST */
++#define RSX_VK_WAIT_FIRST_NS     2000000000ull
++#define RSX_VK_WAIT_STEP_NS      1000000000ull
++
++typedef int (*rsx_vk_wait_fn)(void* ctx, uint64_t timeout_ns);
++typedef void (*rsx_vk_slow_fn)(void* ctx, unsigned seconds);
++
++static inline int rsx_vk_wait_bounded(rsx_vk_wait_fn wait, rsx_vk_slow_fn slow, void* ctx)
++{
++    int r = wait(ctx, RSX_VK_WAIT_FIRST_NS);
++    unsigned s = (unsigned)(RSX_VK_WAIT_FIRST_NS / 1000000000ull);
++    while (r == RSX_VK_WAIT_TIMEOUT) {
++        if (slow) slow(ctx, s);
++        r = wait(ctx, RSX_VK_WAIT_STEP_NS);
++        s += (unsigned)(RSX_VK_WAIT_STEP_NS / 1000000000ull);
++    }
++    return r;
++}
++
++#endif /* PS3RECOMP_RSX_VK_GPU_WAIT_H */
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index aa1f4b4..35403b5 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -71,6 +71,7 @@ static float vk_forced_aspect(void);   /* PS3RECOMP_VK_ASPECT, at vk_fit_scale *
+ #include "rsx_swapchain_retry.h"   /* a swapchain not recreated: skip, try again */
+ #include "rsx_vk_driver.h"   /* the GPU and driver lines at start (2082) */
+ #include "rsx_vk_breadcrumbs.h"   /* the last things given to the GPU (2084) */
++#include "rsx_vk_gpu_wait.h"   /* fence waits in steps that say when they take long (2085) */
+ /* FSR 1's constants, computed on the CPU (vulkan/ffx, MIT). */
+ #include <math.h>
+ #include <stdlib.h>
+@@ -1116,6 +1117,90 @@ int rsx_vulkan_breadcrumbs(char* buf, size_t n)
+     if (!s_crumb_on) return 0;
+     return (int)rsx_vk_crumbs_format(&s_crumbs, s_ser.done, s_ser.next, s_present_done, s_present_n + 1, buf, n);
+ }
++
++/* The breadcrumbs into the log, one "[RSX vulkan] render: <line>" each. */
++static void vk_crumbs_log(void)
++{
++    char buf[RSX_VK_CRUMBS * (RSX_VK_CRUMB_TEXT + 160)];
++    if (!rsx_vulkan_breadcrumbs(buf, sizeof buf)) return;
++    VK_LOG("the last work given to the GPU, oldest first (done, submitted = not known to be finished, recording):\n");
++    for (char* l = buf; *l;) {
++        char* e = strchr(l, '\n');
++        if (e) *e = 0;
++        VK_LOG("render: %s\n", l);
++        if (!e) break;
++        l = e + 1;
++    }
++    fflush(stderr);
++}
++
++/* ---------------------------------------------------------------------------
++ * A lost device and long GPU waits (patch 2085).
++ *
++ * VK_ERROR_DEVICE_LOST from a submit, a fence wait, the window's acquire or its present is logged once as
++ * "device lost in <call>", with the breadcrumbs, and then the host's hook runs
++ * (rsx_vulkan_set_device_lost_hook): a game ends there with its own exit code. Without a hook the run goes on as
++ * before (the call fails as any other error does).
++ *
++ * The fence waits no longer wait without a limit in one call: rsx_vk_wait_bounded waits 2 s, then 1 s at a time,
++ * logging "GPU has not finished for N s (<where>)" after each step (and the breadcrumbs once a run), and keeps
++ * waiting; it stops on a lost device. On Windows a hang of 2 s is a TDR, which then shows as a lost device.
++ *
++ * PS3RECOMP_VK_FAKE_DEVICE_LOST=<frames> (test, default off): the first fence wait after that many presented
++ * frames reports a lost device although the GPU is fine, once, so the whole path (log, breadcrumbs, hook) can be
++ * tried on any machine. Written here.
++ * -------------------------------------------------------------------------*/
++static void (*s_lost_hook)(void);
++static int s_lost;                 /* logged already */
++static u32 s_fake_lost;            /* PS3RECOMP_VK_FAKE_DEVICE_LOST, 0 = off */
++
++void rsx_vulkan_set_device_lost_hook(void (*hook)(void)) { s_lost_hook = hook; }
++
++static void vk_device_lost(const char* call)
++{
++    if (__atomic_exchange_n(&s_lost, 1, __ATOMIC_ACQ_REL)) return;
++    VK_LOG("device lost in %s\n", call);
++    vk_crumbs_log();
++    fflush(stderr);
++    if (s_lost_hook) s_lost_hook();
++}
++
++static VkResult vk_lost(VkResult r, const char* call)
++{
++    if (r == VK_ERROR_DEVICE_LOST) vk_device_lost(call);
++    return r;
++}
++
++typedef struct { VkFence fence; const char* where; } vk_wait_ctx;
++static int vk_wait_step(void* ctx, uint64_t ns)
++{
++    return (int)pvkWaitForFences(s_vk.device, 1, &((vk_wait_ctx*)ctx)->fence, VK_TRUE, ns);
++}
++static void vk_wait_slow(void* ctx, unsigned seconds)
++{
++    static int dumped;
++    VK_LOG("GPU has not finished for %u s (%s)\n", seconds, ((vk_wait_ctx*)ctx)->where);
++    if (!__atomic_exchange_n(&dumped, 1, __ATOMIC_ACQ_REL)) vk_crumbs_log();
++}
++
++/* Waits for one fence until it is signalled, as vkWaitForFences(..., UINT64_MAX) did; where names the wait in the
++ * log ("batch", "previous present"...). */
++static VkResult vk_wait_fence(VkFence fence, const char* where)
++{
++    vk_wait_ctx c = { fence, where };
++    VkResult r = (VkResult)rsx_vk_wait_bounded(vk_wait_step, vk_wait_slow, &c);
++    if (r == VK_SUCCESS && s_fake_lost && s_vk.presented >= s_fake_lost) {
++        s_fake_lost = 0;
++        VK_LOG("PS3RECOMP_VK_FAKE_DEVICE_LOST: this wait reports a lost device (a test; the GPU is fine)\n");
++        r = VK_ERROR_DEVICE_LOST;
++    }
++    if (r == VK_ERROR_DEVICE_LOST) {
++        char call[96];
++        snprintf(call, sizeof call, "vkWaitForFences (%s)", where);
++        vk_device_lost(call);
++    }
++    return r;
++}
+ /* The render pass the batch's last draw left open. Consecutive draws into the
+  * same framebuffer share it, with no barrier between them, unless a draw
+  * samples one of its attachments; anything else recorded into the batch
+@@ -1173,11 +1258,11 @@ static int vk_submit_and_wait(void)
+     VkSubmitInfo si = { .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                         .commandBufferCount = 1, .pCommandBuffers = &s_vk.cmd };
+     VK_CHECK(pvkResetFences(s_vk.device, 1, &s_vk.fence), "vkResetFences");
+-    VK_CHECK(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.fence), "vkQueueSubmit");
++    VK_CHECK(vk_lost(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.fence), "vkQueueSubmit"), "vkQueueSubmit");
+     const u64 serial = s_ser.next++;
+     if (s_crumb_on) rsx_vk_crumb_add(&s_crumbs, RSX_VK_CRUMB_SUBMIT, s_vk.presented, serial, "submit, waited for");
+     { PS3_TRACE_BEGIN(_tr);
+-      VK_CHECK(pvkWaitForFences(s_vk.device, 1, &s_vk.fence, VK_TRUE, UINT64_MAX), "vkWaitForFences");
++      VK_CHECK(vk_wait_fence(s_vk.fence, "batch"), "vkWaitForFences");
+       vk_slot_wait_other();
+       PS3_TRACE_END(_tr, "gpu_wait", 0); }
+     /* Everything submitted so far is done: this one and the slot in flight. */
+@@ -1204,7 +1289,7 @@ static void vk_slot_wait_other(void)
+ {
+     const int o = s_cur ^ 1;
+     if (!s_slot[o].inflight) return;
+-    pvkWaitForFences(s_vk.device, 1, &s_slot[o].fence, VK_TRUE, UINT64_MAX);
++    vk_wait_fence(s_slot[o].fence, "previous batch");
+     s_slot[o].inflight = 0;
+     if (s_ser.slot[o] > s_ser.done) s_ser.done = s_ser.slot[o];
+ }
+@@ -1236,13 +1321,13 @@ static int vk_submit_async(void)
+     VkSubmitInfo si = { .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                         .commandBufferCount = 1, .pCommandBuffers = &s_vk.cmd };
+     VK_CHECK(pvkResetFences(s_vk.device, 1, &s_vk.fence), "vkResetFences");
+-    VK_CHECK(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.fence), "vkQueueSubmit");
++    VK_CHECK(vk_lost(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.fence), "vkQueueSubmit"), "vkQueueSubmit");
+     s_ser.slot[s_cur] = s_ser.next++;
+     if (s_crumb_on) rsx_vk_crumb_add(&s_crumbs, RSX_VK_CRUMB_SUBMIT, s_vk.presented, s_ser.slot[s_cur], "submit");
+     if (!s_slot[s_cur].cmd) { s_slot[s_cur].cmd = s_vk.cmd; s_slot[s_cur].fence = s_vk.fence; }
+     if (s_slot[o].inflight) {   /* the slot recorded into next: its last frame done */
+         PS3_TRACE_BEGIN(_tr);
+-        pvkWaitForFences(s_vk.device, 1, &s_slot[o].fence, VK_TRUE, UINT64_MAX);
++        vk_wait_fence(s_slot[o].fence, "batch slot");
+         s_slot[o].inflight = 0;
+         if (s_ser.slot[o] > s_ser.done) s_ser.done = s_ser.slot[o];
+         PS3_TRACE_END(_tr, "gpu_wait", 0);
+@@ -2900,7 +2985,7 @@ static void vk_present_window_body(void)
+             VK_LOG("present command buffer: allocation failed\n"); return;
+         }
+     }
+-    if (pvkWaitForFences(s_vk.device, 1, &s_vk.pfence, VK_TRUE, UINT64_MAX) == VK_SUCCESS) s_present_done = s_present_n;
++    if (vk_wait_fence(s_vk.pfence, "previous present") == VK_SUCCESS) s_present_done = s_present_n;
+     vk_flush();   /* whatever wrote the display image is submitted first */
+ 
+     if (s_vk.no_area) {   /* minimized: nothing to show until it is restored */
+@@ -2915,8 +3000,8 @@ static void vk_present_window_body(void)
+     }
+     if (s_vk.resized) { s_vk.resized = 0; vk_swapchain_lost(); if (!s_vk.swapchain || s_vk.no_area) return; }
+     u32 idx = 0;
+-    VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
+-                                        s_vk.sem_acquire, VK_NULL_HANDLE, &idx);
++    VkResult r = vk_lost(pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
++                                                s_vk.sem_acquire, VK_NULL_HANDLE, &idx), "vkAcquireNextImageKHR");
+     if (r == VK_ERROR_OUT_OF_DATE_KHR) { vk_swapchain_lost(); return; }
+     if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) {
+         VK_LOG("vkAcquireNextImageKHR failed (VkResult %d)\n", (int)r); return;
+@@ -3022,12 +3107,12 @@ static void vk_present_window_body(void)
+         .signalSemaphoreCount = 1, .pSignalSemaphores = &s_vk.sc_done[idx],
+     };
+     pvkResetFences(s_vk.device, 1, &s_vk.pfence);
+-    if (pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.pfence) != VK_SUCCESS) {
++    if (vk_lost(pvkQueueSubmit(s_vk.queue, 1, &si, s_vk.pfence), "vkQueueSubmit (window)") != VK_SUCCESS) {
+         VK_LOG("vkQueueSubmit (window) failed\n"); return;
+     }
+     s_present_n++;
+     if (pdumped) {
+-        pvkWaitForFences(s_vk.device, 1, &s_vk.pfence, VK_TRUE, UINT64_MAX);
++        if (vk_wait_fence(s_vk.pfence, "present dump") == VK_SUCCESS) s_present_done = s_present_n;
+         if (!s_present_dump.coherent) {
+             VkMappedMemoryRange mr = { .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                                        .memory = s_present_dump.mem, .size = VK_WHOLE_SIZE };
+@@ -3057,7 +3142,7 @@ static void vk_present_window_body(void)
+     VkPresentIdKHR pid = { .sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR, .swapchainCount = 1, .pPresentIds = &frame_id };
+     if (s_reflex.ok && s_reflex.present_id && frame_id > s_reflex.last_presented) pi.pNext = &pid;
+     vk_reflex_marker(frame_id, VK_LATENCY_MARKER_PRESENT_START_NV);
+-    r = pvkQueuePresentKHR(s_vk.queue, &pi);
++    r = vk_lost(pvkQueuePresentKHR(s_vk.queue, &pi), "vkQueuePresentKHR");
+     vk_reflex_marker(frame_id, VK_LATENCY_MARKER_PRESENT_END_NV);
+     if (frame_id) s_reflex.last_presented = frame_id;
+     vk_reflex_report();
+@@ -7290,6 +7375,11 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+       if (f < 0) VK_LOG("PS3RECOMP_VK_BREADCRUMBS=%s not understood (0 or 1), on\n", e);
+       s_crumb_on = f != 0 || !e;
+       s_crumbs.n = 0; s_crumb_rp = NULL; s_present_n = s_present_done = 0; }
++    { const char* e = getenv("PS3RECOMP_VK_FAKE_DEVICE_LOST");   /* 2085: a test of the lost-device path */
++      s_fake_lost = e && atoi(e) > 0 ? (u32)atoi(e) : 0;
++      s_lost = 0;
++      if (s_fake_lost) VK_LOG("PS3RECOMP_VK_FAKE_DEVICE_LOST=%u: a fence wait after frame %u will report a lost "
++                              "device (a test)\n", s_fake_lost, s_fake_lost); }
+     /* The display image is the scaled frame too, so the window gets every
+      * rendered pixel (the engine itself keeps the guest's size). */
+     vk_read_scale();
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 848d0a8..b4142da 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -49,6 +49,13 @@
+  *   PS3RECOMP_RSX_ENGINE=dispatch|vtable
+  *                             pick the path explicitly (the engine's own
+  *                             switch, shared with the Metal backend).
++ *   PS3RECOMP_VK_ROBUST=0     robustBufferAccess off (default on when the
++ *                             device has it: patch 2083).
++ *   PS3RECOMP_VK_BREADCRUMBS=0
++ *                             no render breadcrumbs (default on: 2084).
++ *   PS3RECOMP_VK_FAKE_DEVICE_LOST=<frames>
++ *                             test: report a lost device once after that
++ *                             many frames (default off: 2085).
+  */
+ 
+ #ifndef PS3RECOMP_RSX_VULKAN_BACKEND_H
+@@ -114,6 +121,12 @@ int  rsx_vulkan_reflex_available(void);
+  * (PS3RECOMP_VK_BREADCRUMBS=0, or before init). Any thread may call it, also from a crash handler: no lock, no
+  * allocation (snprintf only); an entry written at that moment can come out mixed. */
+ int  rsx_vulkan_breadcrumbs(char* buf, size_t n);
++/* Called once when the device is lost (VK_ERROR_DEVICE_LOST from a submit, a fence wait, the window's acquire or
++ * its present: patch 2085), after "device lost in <call>" and the breadcrumbs are logged, on the thread that found
++ * it; a game ends the process there with its own exit code. NULL (the default): the run goes on as before. Also
++ * PS3RECOMP_VK_FAKE_DEVICE_LOST=<frames>: the first fence wait after that many presented frames reports a lost
++ * device once (a test of this path; the GPU is fine). */
++void rsx_vulkan_set_device_lost_hook(void (*hook)(void));
+ /* The temporal upscalers this build has (PS3RECOMP_TEMPORAL): bit 0 FSR 3
+  * (PS3RECOMP_FFX_DIR), bit 1 DLSS (PS3RECOMP_DLSS_SDK; it also needs an
+  * NVIDIA GPU at run time). */
