@@ -58,8 +58,8 @@ def check(value, schema, root=None, where="$"):
         return check(value, node, root, where)
     out = []
     t = schema.get("type")
-    types = {"object": dict, "array": list, "string": str, "integer": int, "boolean": bool}
-    if t and not (isinstance(value, types[t]) and not (t == "integer" and isinstance(value, bool))):
+    types = {"object": dict, "array": list, "string": str, "integer": int, "number": (int, float), "boolean": bool}
+    if t and not (isinstance(value, types[t]) and not (t in ("integer", "number") and isinstance(value, bool))):
         return [f"{where}: not a {t}"]
     if "const" in schema and value != schema["const"]:
         out.append(f"{where}: must be {schema['const']!r}")
@@ -108,6 +108,46 @@ def problems(root=ROOT):
     out += [f"{{input:{u}}} names no input" for u in sorted(used - ids)]
     out += [f"optional input {i['id']} is not passed as one argument (--x={{input:{i['id']}}})" for i in doc["inputs"]
             if i.get("optional") and not any(a.endswith(f"={{input:{i['id']}}}") for a in doc["prepare"]["args"])]
+    out += [f"input {i['id']}: dumps, but no file format (the launcher reads only a file whole)" for i in doc["inputs"]
+            if i.get("dumps") and not any(f["type"] == "file" for f in i["formats"])]
+    out += settings_problems(doc)
+    return out
+
+
+def setting_keys(s):
+    """The settings-file keys a setting writes: its slider's key, or its choices' set keys."""
+    return {s["slider"]["key"]} if "slider" in s else {k for c in s.get("choices", []) for k in c["set"]}
+
+
+def settings_problems(doc):
+    """[problem] for settings that refer to what is not there: each has choices or a slider (not both), its defaults
+    are the keys it writes, every choice writes the same keys, and a when names a key some setting writes with a
+    value one of its choices has."""
+    out, settings = [], doc.get("settings", [])
+    if settings and not doc.get("config"):
+        out.append("settings without config: no file to write them in")
+    values = {}
+    for s in settings:
+        if ("choices" in s) == ("slider" in s):
+            out.append(f"settings: {s['id']} needs choices or a slider, one of them")
+            continue
+        keys = setting_keys(s)
+        if set(s["defaults"]) != keys:
+            out.append(f"settings: {s['id']}'s defaults {sorted(s['defaults'])} are not the keys it writes {sorted(keys)}")
+        if "choices" in s:
+            if any(set(c["set"]) != keys for c in s["choices"]):
+                out.append(f"settings: {s['id']}'s choices do not all write the same keys")
+            for c in s["choices"]:
+                for k, v in c["set"].items():
+                    values.setdefault(k, set()).add(v)
+    for s in settings:
+        for k, v in s.get("when", {}).items():
+            if k not in values:
+                out.append(f"settings: {s['id']} is greyed by {k}, which no setting with choices writes")
+            elif v not in values[k]:
+                out.append(f"settings: {s['id']} is greyed unless {k}={v}, which no choice writes")
+    ids = [s["id"] for s in settings]
+    out += [f"settings: id {i} used twice" for i in sorted({i for i in ids if ids.count(i) > 1})]
     return out
 
 

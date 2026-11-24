@@ -78,6 +78,69 @@ check(doc["prepare"]["done"] == ["{install}/work/build-stamp.json"] and firstrun
 check(doc["start"]["program"] == [launch_name for launch_name in ("Project Vekta.exe", "project-vekta")] and
       "args" not in doc["start"], "start: the folders' one program each, with no arguments (it plays)")
 
+# dumps: the launcher reads a file input whole only when it has dumps, to show "matches the verified copy"; the
+# EBOOT's is the one docs/GETTING-FILES.md names (size here; its SHA-256 is checked above), the package's the US
+# PlayStation Store one (measured from the maintainer's own copy, 2026-11-24). The game folder has none: a folder is
+# never read whole.
+dumps = {i["id"]: i.get("dumps") for i in doc["inputs"]}
+check(dumps["game"] is None and dumps["eboot"][0]["size"] == int(row.group(1).replace(",", "")) and
+      dumps["disc"][0]["size"] > 10**9,
+      f"dumps: the EBOOT's size is GETTING-FILES.md's, the disc input's is the package's, none on the folder: {dumps}")
+
+# config and settings: the PC page's file (kz1hd_pc.ini, key=value lines with no sections, in the run folder) and
+# rows that write what the game reads: each key is one the game keeps (kVideo or the mouse rows), each default is the
+# game's own, each choice a value the game's own tables have, so the launcher and the PC page agree.
+pc = (ROOT / "port" / "kz1hd" / "pcoptions.cpp").read_text()
+aspects = (ROOT / "port" / "kz1hd" / "view_aspect.h").read_text()
+kvideo = dict(re.findall(r'\{ "(\w+)", "([^"]*)" \}', pc.split("kVideo[] = {", 1)[1].split("};", 1)[0]))
+game_defaults = {**kvideo, "mouse_yaw": "0.5000", "mouse_pitch": "0.5000", "mouse_invert": "0"}
+
+
+def table(name, text=pc):
+    m = re.search(r"\b" + name + r"\[[A-Z_]*\]\s*=\s*\{([^}]*)\}", text)
+    return re.findall(r'"([^"]*)"', m.group(1)) if m else []
+
+
+tables = {"display": table("kDisplays"), "vsync": table("kVsyncs"), "anisotropic": table("kAniso"),
+          "temporal": table("kTemporal"), "speakers": table("kSpeakers"), "language": table("kLanguages"),
+          "reflex": table("kReflex"), "aspect": table("kViewAspect", aspects),
+          "scale": re.findall(r"\d+", re.search(r"kScales\[\] = \{([^}]*)\}", pc).group(1)),
+          "fps_limit": re.findall(r"\d+", re.search(r"kFps\[\] = \{([^}]*)\}", pc).group(1)),
+          "widescreen": ["on", "off"], "intro": ["on", "off"], "upscaler": ["linear", "fsr"],
+          "antialiasing": ["mlaa", "off"], "controllers": ["merged", "separate"], "overlay": ["off", "mangohud"],
+          "mouse_invert": ["0", "1"]}
+check(all(len(v) >= 2 for v in tables.values()), f"the game's tables were found in pcoptions.cpp: {tables}")
+check(doc["config"] == [{"id": "main", "format": "ini", "file": [{"path": "{install}/work/vfs/kz1hd_pc.ini"}]}] and
+      "{install}/work/vfs/kz1hd_pc.ini" in doc["saves"] and 'kIni = "kz1hd_pc.ini"' in pc,
+      "config: kz1hd_pc.ini in the run folder, as INI (the launcher edits it line by line)")
+written = {k for s in doc["settings"] for k in rl.setting_keys(s)}
+check(written <= set(game_defaults), f"every key is one the game keeps: {sorted(written - set(game_defaults))}")
+check(set(kvideo) - written <= {"refresh"},
+      f"every PC page setting is offered but refresh (the fullscreen mode's Hz): {sorted(set(kvideo) - written)}")
+for s in doc["settings"]:
+    for k, v in s["defaults"].items():
+        same = v == game_defaults[k] or (k.startswith("mouse_") and float(v) == float(game_defaults[k]))
+        check(same, f"{s['id']}: the default {k}={v} is the game's ({game_defaults[k]})")
+    for c in s.get("choices", []):
+        for k, v in c["set"].items():
+            if k in tables:
+                check(v in tables[k], f"{s['id']}: {c['label']} writes {k}={v}, a value the game knows {tables[k]}")
+    if "slider" in s:
+        sl = s["slider"]
+        check(sl["min"] <= float(s["defaults"][sl["key"]]) <= sl["max"] and sl.get("step", 1) > 0,
+              f"{s['id']}: the slider holds its default")
+dep = {s["id"]: s.get("when") for s in doc["settings"]}
+check(dep["aspect"] == {"widescreen": "on"} and dep["hud_position"] == {"widescreen": "on"} and
+      dep["sharpness"] == {"upscaler": "fsr"} and dep["antialiasing"] == {"temporal": "off"},
+      "the dependent rows are greyed as on the PC page (pc_deps.h)")
+check(not rl.settings_problems({"config": doc["config"], "settings": [
+          {"id": "a", "label": "A", "choices": [{"label": "x", "set": {"k": "1"}}, {"label": "y", "set": {"k": "2"}}],
+           "defaults": {"k": "1"}}]}) and
+      rl.settings_problems({"config": doc["config"], "settings": [
+          {"id": "a", "label": "A", "when": {"nope": "1"}, "slider": {"key": "k", "min": 0, "max": 1},
+           "defaults": {"j": "1"}}]}),
+      "the settings checker takes a good setting and refuses a when on no key and defaults of another key")
+
 schema = json.loads((ROOT / "tools" / "release" / "recomplauncher.schema.json").read_text())
 bad = [("prepare.version", lambda d: d["prepare"].__setitem__("version", "0.6")),
        ("an unknown top-level key", lambda d: d.__setitem__("version", "1")),
@@ -85,7 +148,10 @@ bad = [("prepare.version", lambda d: d["prepare"].__setitem__("version", "0.6"))
        ("an exit code", lambda d: d["exit_codes"].__setitem__("x", "y")),
        ("a save outside the folder", lambda d: d["saves"].append("{home}/x")),
        ("no start program", lambda d: d["start"].__setitem__("program", [])),
-       ("no prepare.done", lambda d: d["prepare"].pop("done"))]
+       ("no prepare.done", lambda d: d["prepare"].pop("done")),
+       ("a setting with no defaults", lambda d: d["settings"][0].pop("defaults")),
+       ("a slider with no key", lambda d: next(s for s in d["settings"] if "slider" in s)["slider"].pop("key")),
+       ("a config format", lambda d: d["config"][0].__setitem__("format", "yaml"))]
 for what, spoil in bad:
     d = copy.deepcopy(doc)
     spoil(d)

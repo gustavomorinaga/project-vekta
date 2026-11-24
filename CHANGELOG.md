@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- RecompLauncher: the game's page lists the PC settings (display, picture, upscaling, mouse, sound and language),
+  read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
+  package or a decrypted EBOOT.elf that matches the US copy is shown as verified.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added

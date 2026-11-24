@@ -220,6 +220,13 @@
 <h2 id="h-news">News</h2>
 <p class="lede">The newest release notes, newest first.</p>
 <article class="rel">
+<h3>Unreleased</h3>
+<p class="meta">not released yet</p>
+<ul class="rlist">
+<li><span class="kind">Added</span>RecompLauncher: the game&#x27;s page lists the PC settings (display, picture, upscaling, mouse, sound and language), read from and written to <code>kz1hd_pc.ini</code>, greyed out where the game&#x27;s PC page greys them; and a PlayStation Store package or a decrypted EBOOT.elf that matches the US copy is shown as verified.</li>
+</ul>
+</article>
+<article class="rel">
 <h3>0.7.0</h3>
 <p class="meta">23 Nov 2026 · pre-release</p>
 <ul class="rlist">
@@ -278,13 +285,6 @@
 <li><span class="kind">Fixed</span>The Linux folder&#x27;s first build no longer needs about 18 GB of memory: its bundled compiler took that much on one file of glslang (the shader compiler the build includes) at the usual optimisation. glslang is now built optimised for size, and the whole step peaks under 500 MB.</li>
 </ul>
 </article>
-<article class="rel">
-<h3>0.5.4</h3>
-<p class="meta">20 Nov 2026 · pre-release</p>
-<ul class="rlist">
-<li><span class="kind">Fixed</span>&quot;Use my RPCS3 install&quot; on Windows: the RPCS3 the setup starts to decrypt the game gets only the Windows folders on its PATH. A PATH passed on by the program that opened the setup (a download manager in the report) could make RPCS3 load that program&#x27;s copy of <code>msvcp140.dll</code>, stop at its start-up check with a &quot;Fatal Error&quot; window and exit with 0 without decrypting anything (#94). When RPCS3 stops at that check all the same, the setup now says so and names the DLL, instead of &quot;RPCS3 did not make the file&quot;.</li>
-</ul>
-</article>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">The whole changelog<span aria-hidden="true"> &gt;</span></a></p>
 </section>
 <section id="progress" class="sec" aria-labelledby="h-progress">
@@ -293,6 +293,7 @@
 <section id="changelog" class="promo term">
 <h3>Changelog</h3>
 <ul class="clog">
+<li><time>next</time><span><b>Unreleased</b> RecompLauncher: the game&#x27;s page lists the PC settings (display, picture, upscaling, mouse, sound and language), read...</span></li>
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code; not...</span></li>
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The support package also holds the earlier game logs, sessions.jsonl, the game&#x27;s crash and hang reports with the names...</span></li>
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> When the game crashes, its log now says where: a [kz-crash] block with the exception, the faulting module and offset...</span></li>
@@ -300,7 +301,6 @@
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The log starts with the system it runs on: [kz-sys] lines for the system, CPU, cores, memory, monitors, the settings...</span></li>
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> KZ_CRASH_TEST=&lt;kind&gt; makes the game crash or hang on purpose, to check the reports on a build.</span></li>
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The game straight from the Killzone Trilogy disc, with no RPCS3 installed: --disc FOLDER (the copied disc, or its...</span></li>
-<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by GitHub...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
