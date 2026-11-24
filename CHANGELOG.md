@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- The launcher no longer calls a session "hang-killed" when the game stopped showing frames for a while, recovered
+  and was then quit normally (it showed "exit 0: ok (hang-killed)"): a hang counts only when the game was still
+  stuck at the end.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
