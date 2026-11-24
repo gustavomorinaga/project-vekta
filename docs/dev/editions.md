@@ -59,14 +59,41 @@ to 0x4CCAE4, but its EU place is 0x4CCA48 and 0x4CCAE4 is the next site's. In 0x
 against 269, 3 of them gone from the part that changed (0x4CC2AC..0x4CCD50). What those changes do in the game was
 not looked at. The clock's double at 0x21C0F0, between two functions, is in an unchanged range (0x21C0A0).
 
-## What the EU build still needs (stage 3)
+## The EU lift and build
 
-- Function names. The lift names functions by their address, and the port calls `func_XXXXXXXX` by the US names
-  (47 names in code, the `native_ppu` replacements and `PPU_LIFT_NATIVE`). The EU lift must name each EU function by
-  its US address through the table, a lifter option in a new patch; every name the port uses is outside the changed
-  rows except the three changed starts, which map.
-- `tools/kzbuild.py` passes EBOOT addresses to the tools: setjmp 0x3B5CB0 (EU 0x3B5C10), longjmp 0x3B5DD4
-  (0x3B5D34), the code end 0x52F740 (0x52F658) and the policy module 0x5B9180 (0x5B9080). `re/function_seeds.txt` is
-  US: 7 seeds fall in changed functions.
-- `KZ_EDITION` from the game's PARAM.SFO (TITLE_ID), `tools/check-game-files.py` and `eboot_check.h` with the EU
-  EBOOT's hash, the paths that name NPUA80856, and a first lift, build and run of the EU game.
+`tools/kzbuild.py` takes the edition from the game folder's PARAM.SFO (TITLE_ID NPUA80856 or BCUS98116: US;
+NPEA00418 or BCES01743: EU; `KZ_EDITION` overrides it). For the EU edition the lift:
+
+- maps the US seeds of `re/function_seeds.txt` through the table (the 7 that fall in changed functions are those
+  functions' starts, which map);
+- passes the EU setjmp 0x3B5C10, longjmp 0x3B5D34, code end 0x52F658 and policy module 0x5B9080;
+- writes `work/lift/analysis/func_names.txt` (`edition_map.func_names`) and gives it to the lifter's `--func-names`
+  (patch 3038): each EU function keeps its US name, so the port's `func_` names, the `native_ppu` replacements and
+  `PPU_LIFT_NATIVE` resolve; an EU address with no US one is `func_ADDR_eu`. Every EU address whose plain name
+  would be another function's US name is named too, so the file is large (about 1.2 million lines); the lifter
+  stops if two addresses would still share a name;
+- writes `KZ_EBOOT_EDITION_EU` into `gen/eboot_id.h`; the build passes `-DKZ_EDITION` from it, and `main.cpp` stops
+  the compile if the two differ.
+
+`tools/check-game-files.py` and the `data` step check each edition's own sizes and hashes
+(`edition_map.EDITIONS`). The save folder is named by the title id, as on the PS3: `savedata/NPEA00418` for the
+EU edition (the game asked for that folder on the first run).
+
+Checked 2026-11-24 on Linux (RTX 3070 Ti):
+
+- EU lift: 23,363 functions found, the same count as the US lift's list; all 67 `func_` names the port cites are
+  declared. Build: KZ1HD links.
+- US output unchanged: two US lifts, one with release/v0.8.0's tools and patched tree and one with this branch's,
+  give the same `gen/`, `spu/` and `analysis/` (no line of difference).
+- Game runs, headless, under the bench lock, frames dumped every 3 or 5 s: (1) 75 s from a fresh profile, no input:
+  the health warning, logos and intro movie, save folder NPEA00418 created; (2) 170 s with `PS3_LANG=de` and the
+  `PAD_SCRIPT` of docs/dev/testing.md to Level 1: the German front end (Optionen, Spiel, Extras; Level wählen,
+  Schwierigkeitsgrad, Charakter auswählen), the Level 1 intro movie and about 60 s of Level 1 with the HUD, the
+  crosshair and the German tutorial banner with its keyboard glyph. Not checked: other languages, other levels,
+  saves loaded back, Windows.
+
+## What the EU edition still needs
+
+- The installer and launcher know only NPUA80856: `tools/release/rpcs3_import.py`, `rpcs3_disc.py`, `firstrun.py`
+  and the `KZ_EXIT_WRONG_EDITION` text name it. `docs/GETTING-FILES.md` and the release notes too.
+- What the 11 changed functions do differently in the game was not looked at.

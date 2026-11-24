@@ -53,6 +53,48 @@ for us, what in [
 ]:
     check(eu(us) is None, f"{what}: 0x{us:08X} has no EU value, got {eu(us)}")
 
+# us_of is eu's inverse; an EU address with no US one has none.
+for us in (0x004CBBB4, 0x00291FA8, 0x0021C0F0, 0x00544E90, 0x00828734, 0x004CB798, 0x00010230):
+    check(em.us_of(eu(us), rows) == us, f"us_of(eu(0x{us:08X})) is 0x{us:08X}")
+check(em.us_of(0x004CCA48, rows) is None, "an EU site inside the changed 0x4CB798 that no row names has no US address")
+
+# The EU lift's names: each function under its US name, an address with none keeps its own with _eu, and no address
+# left unnamed would take a name given to another.
+starts = [eu(0x00291FA8), eu(0x004CB798), 0x004CCA48, eu(0x00010230)]
+names = em.func_names(starts, rows)
+check(names.get(eu(0x00291FA8)) == "func_00291FA8", f"the player's update keeps its US name: {names.get(0x291F08)}")
+check(names.get(0x004CCA48) == "func_004CCA48_eu", "an address with no US one is func_ADDR_eu")
+check(0x00010230 not in names, "an address that does not move needs no line")
+check(len(set(names.values())) == len(names), "no name twice")
+for a, n in names.items():
+    if n.endswith("_eu"):
+        continue
+    u = int(n[5:13], 16)
+    check(u == a or u in names or em.us_of(u, rows) is None and u not in starts,
+          f"0x{u:08X}, named {n} for 0x{a:08X}, is named too or is no function's EU address")
+
+# The edition from a PARAM.SFO's TITLE_ID.
+def sfo(title):
+    key, val = b"TITLE_ID\0", title.encode() + b"\0"
+    keys, data = 20 + 16, 20 + 16 + len(key)
+    return (b"\0PSF" + (0x101).to_bytes(4, "little") + keys.to_bytes(4, "little") + data.to_bytes(4, "little")
+            + (1).to_bytes(4, "little") + (0).to_bytes(2, "little") + (0x0204).to_bytes(2, "little")
+            + len(val).to_bytes(4, "little") + len(val).to_bytes(4, "little") + (0).to_bytes(4, "little") + key + val)
+
+
+d0 = tempfile.mkdtemp()
+for title, ed in (("NPUA80856", "US"), ("BCUS98116", "US"), ("NPEA00418", "EU"), ("BCES01743", "EU")):
+    p = os.path.join(d0, "PARAM.SFO")
+    with open(p, "wb") as f:
+        f.write(sfo(title))
+    check(em.sfo_title(p) == title and em.edition_of(title) == ed, f"{title} is the {ed} edition")
+try:
+    em.edition_of("BCUS98232")
+    check(False, "an unknown title is refused")
+except ValueError:
+    pass
+check(em.sfo_title(os.path.join(d0, "none")) is None, "no PARAM.SFO: no title")
+
 # Malformed tables are refused.
 with open(em.TSV, encoding="utf-8") as f:
     good = f.read()

@@ -86,6 +86,86 @@ def eu(a, rows):
     return a if a < EBOOT_LO or a >= EBOOT_HI else None
 
 
+def us_of(a, rows):
+    """The US address of EU address a (eu's inverse), or None."""
+    for r in rows:
+        if r["kind"] == "site" and a == r["eu_start"]:
+            return r["us_start"]
+    for r in rows:
+        if r["kind"] == "changed" and r["eu_start"] <= a < max(r["eu_end"], r["eu_start"] + 1):
+            return r["us_start"] if is_function(r) and a == r["eu_start"] else None
+    for r in rows:
+        if r["kind"] == "range" and r["eu_start"] <= a < r["eu_end"]:
+            return a - r["eu_start"] + r["us_start"]
+    return a if a < EBOOT_LO or a >= EBOOT_HI else None
+
+
+# ---------------------------------------------------------------------------------------------------------- editions
+# What each edition's files are (sizes and SHA-256 only; docs/GETTING-FILES.md) and the title ids that name it in a
+# PARAM.SFO: the PlayStation Store title and the Killzone Trilogy disc it comes on.
+EDITIONS = {
+    "US": {"titles": ("NPUA80856", "BCUS98116"),
+           "sfo": "352712c456e94be80fca0cd46dda271b96e81d7bf39365cf13448415dca6f642",
+           "eboot": (19706080, "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc"),
+           "psarc": (3147174243, "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d"),
+           "edat": (3153321376, "3c85c5321bccab33079896f5e74c06902e84648154b315af21e14878d93fe58b")},
+    "EU": {"titles": ("NPEA00418", "BCES01743"),
+           "sfo": "039e155c9de824d8b8f73eb8c4cac7d84ebac395be8e7d51e47dd9a338ac02ea",
+           "eboot": (19706080, "e4fc4f13b1bd940f52c5df16f4cc4bf0af88e17f4c1d2276b877a62490c57f52"),
+           "psarc": (3416897765, "a6ca5f9ad6d2d27d90d9c1d539f3f3d95e4b6ed70639d44bbcde4247ea65b79d"),
+           "edat": (3423571680, "1001a9f1ff55c23df1f626d2c1f2b0506638faa3b5ddb8400b05dbef6d203ae0")},
+}
+
+
+def sfo_title(path):
+    """The TITLE_ID of a PARAM.SFO, or None when the file is missing or not an SFO."""
+    try:
+        with open(path, "rb") as f:
+            b = f.read(1 << 16)
+        if b[:4] != b"\x00PSF":
+            return None
+        keys, data, n = struct.unpack_from("<III", b, 8)
+        for i in range(n):
+            ko, _, length, _, do = struct.unpack_from("<HHIII", b, 20 + 16 * i)
+            k = b[keys + ko:b.index(b"\x00", keys + ko)].decode("ascii", "replace")
+            if k == "TITLE_ID":
+                return b[data + do:data + do + length].split(b"\x00")[0].decode("ascii", "replace")
+    except (OSError, ValueError, struct.error):
+        return None
+    return None
+
+
+def edition_of(title):
+    """US or EU for a title id; ValueError for one the port does not know."""
+    for name, ed in EDITIONS.items():
+        if title in ed["titles"]:
+            return name
+    raise ValueError(f"title {title}: not an edition of Killzone HD the port knows "
+                     f"({', '.join(t for ed in EDITIONS.values() for t in ed['titles'])})")
+
+
+def func_names(eu_starts, rows):
+    """--func-names lines for an EU lift: each EU function start under its US name (func_ + the US address; an
+    address with no US one keeps its own, with _eu), so the port's names resolve. Also names each EU address whose
+    plain func_ADDR would be the US name of another function, until no plain name collides."""
+    names = {}
+
+    def name(a):
+        u = us_of(a, rows)
+        return f"func_{a:08X}_eu" if u is None else f"func_{u:08X}"
+
+    todo = set(eu_starts)
+    while todo:
+        a = todo.pop()
+        if a in names:
+            continue
+        names[a] = name(a)
+        u = int(names[a][5:13], 16)
+        if u != a and u not in names:
+            todo.add(u)          # the EU address u, if unnamed, would be func_u too
+    return {a: n for a, n in names.items() if n != f"func_{a:08X}"}
+
+
 # ------------------------------------------------------------------------------------------------------------ header
 def header(rows):
     """port/kz1hd/edition.h: KZ_GA() as one constant expression, so it works in case labels and plain C."""

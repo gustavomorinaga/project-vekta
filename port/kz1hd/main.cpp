@@ -57,6 +57,9 @@
 #include "sys_info.h"     /* [kz-sys], the session header */
 #if __has_include("eboot_id.h")
 #include "eboot_id.h"    /* KZ_EBOOT_SHA256, KZ_EBOOT_SIZE: written into the lift's gen/ by tools/kzbuild.py */
+#if defined(KZ_EBOOT_EDITION_EU) != KZ_EDITION_EU
+#error "the lift and KZ_EDITION are different editions (tools/kzbuild.py build passes the lift's)"
+#endif
 #endif
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
@@ -886,7 +889,7 @@ int main(int argc, char** argv)
      * entry (tools/release/firstrun.py desktop_entry), where a Wayland desktop takes the icon from. */
     rsx_vulkan_set_window_identity("project-vekta", reinterpret_cast<const uint32_t*>(kz_window_icon),
                                    KZ_WINDOW_ICON_SIZE, KZ_WINDOW_ICON_SIZE);
-    /* The title id (NPUA80856) names the save directory, as on the PS3. */
+    /* The title id (NPUA80856, NPEA00418) names the save directory, as on the PS3. */
     { std::string sfo = std::string(ppu_vfs_root) + "/PS3_GAME/PARAM.SFO";
       cellGame_init_from_paramsfo(sfo.c_str()); }
 

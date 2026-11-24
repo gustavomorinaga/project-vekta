@@ -196,7 +196,8 @@ class Ctx:
                 v = tree_hash(r, ["port/patches", "third_party/ps3recomp.pin", "tools/kzbuild.py"]) + \
                     self.pin()
             elif key == "lift":
-                v = tree_hash(r, ["tools/kzbuild.py", "tools/extract_spu_modules.py", "re/function_seeds.txt",
+                v = tree_hash(r, ["tools/kzbuild.py", "tools/extract_spu_modules.py", "re/function_seeds.txt", "re/eu",
+                                  "tools/edition_map.py",
                                   "port/kz1hd/native", "port/kz1hd/native_ppu"])
             elif key == "vfs":
                 v = tree_hash(r, ["tools/kzbuild.py", "tools/psarc_ls.py"])

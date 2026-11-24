@@ -20,29 +20,36 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import edition_map   # noqa: E402  (each edition's sizes and hashes)
+
 GAME = os.environ.get("KZ_GAME", os.path.join(ROOT, "Game", "NPUA80856"))
+# The edition, from the game's PARAM.SFO (US when there is none, or for a title the port does not know: the PARAM.SFO
+# line then says what it is).
+_TITLE = edition_map.sfo_title(os.path.join(GAME, "PARAM.SFO"))
+try:
+    EDITION = edition_map.edition_of(_TITLE) if _TITLE else "US"
+except ValueError:
+    EDITION = "US"
+ED = edition_map.EDITIONS[EDITION]
 
 # The data archive: the player's decrypted data_ps3.psarc when there is one (as up to 0.4.0), else the installed
 # game's data_ps3.psarc.edat, which the port opens itself (tools/kzbuild.py data, patch 4014).
 PSARC = os.environ.get("KZ_PSARC", os.path.join(ROOT, "Game", "data_ps3.psarc"))
-PSARC_FILE = ("data_ps3.psarc", PSARC, 3147174243,
-              "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d", b"PSAR", True,
+PSARC_FILE = ("data_ps3.psarc", PSARC, *ED["psarc"], b"PSAR", True,
               "a decrypted data archive (a PSARC); without one the port reads the game's own data_ps3.psarc.edat")
-EDAT_FILE = ("data_ps3.psarc.edat", os.path.join(GAME, "USRDIR", "data_ps3.psarc.edat"), 3153321376,
-             "3c85c5321bccab33079896f5e74c06902e84648154b315af21e14878d93fe58b", b"NPD\x00", True,
+EDAT_FILE = ("data_ps3.psarc.edat", os.path.join(GAME, "USRDIR", "data_ps3.psarc.edat"), *ED["edat"], b"NPD\x00", True,
              "the installed game's data archive, USRDIR/data_ps3.psarc.edat, as the package or RPCS3 installs it")
 ARCHIVE = PSARC_FILE if os.path.isfile(PSARC) else EDAT_FILE
 
 # (label, path, size, sha256, magic, required, what it is)
 FILES = [
-    ("PARAM.SFO", os.path.join(GAME, "PARAM.SFO"), None,
-     "352712c456e94be80fca0cd46dda271b96e81d7bf39365cf13448415dca6f642", b"\x00PSF", True,
-     "the installed game's PARAM.SFO (title NPUA80856, version 01.00)"),
+    ("PARAM.SFO", os.path.join(GAME, "PARAM.SFO"), None, ED["sfo"], b"\x00PSF", True,
+     f"the installed game's PARAM.SFO (title {ED['titles'][0]}, version 01.00)"),
     ("TROPHY.TRP", os.path.join(GAME, "TROPDIR", "NPWR03819_00", "TROPHY.TRP"), None,
      "6a770bcec111b64c66a5f674f2107b8957334845d4876f4e8dbcfc93bbc10858", None, False,
      "the installed game's trophy set (only for trophy names; the game runs without it)"),
-    ("EBOOT.elf", os.environ.get("KZ_EBOOT", os.path.join(ROOT, "Game", "EBOOT.elf")), 19706080,
-     "c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc", b"\x7fELF", True,
+    ("EBOOT.elf", os.environ.get("KZ_EBOOT", os.path.join(ROOT, "Game", "EBOOT.elf")), *ED["eboot"], b"\x7fELF", True,
      "the decrypted EBOOT of the installed game (an ELF, not the EBOOT.BIN container)"),
     ARCHIVE,
 ]
