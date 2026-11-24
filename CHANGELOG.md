@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- Extras > Game Intro plays the whole opening movie again with "Opening Movie" off. The option skipped every
+  showing of the movie, so Extras showed a black frame and went back to the menu; now it only skips the one at
+  start-up.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
