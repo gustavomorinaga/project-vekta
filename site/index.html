@@ -29,7 +29,7 @@
 <header id="head">
 <div class="logo"><span class="emblem" aria-hidden="true"><svg viewBox="0 0 64 40" focusable="false"><polygon class="e1" points="0,0 14,0 32,22 50,0 64,0 32,40"/><polygon class="e2" points="22,0 42,0 32,12"/></svg></span><div class="wm"><p class="tag">Killzone HD PC Port</p><h1>Project<span>Vekta</span></h1></div><span class="sticker">Work in progress</span></div>
 <ul class="util"><li><a href="https://github.com/gustavomorinaga/project-vekta">GitHub</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/releases">Releases</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/gustavomorinaga/project-vekta/issues">Issues</a></li><li><a class="plainlink" href="plain.html">Plain page</a></li></ul>
-<a class="cta-box" href="#install"><b>v0.6.0</b>pre-release download</a>
+<a class="cta-box" href="#install"><b>v0.7.0</b>pre-release download</a>
 </header>
 <div class="frontend">
 <nav id="menu" aria-label="Sections">
@@ -238,8 +238,8 @@
 <h2 id="h-news">News</h2>
 <p class="lede">The newest release notes, newest first.</p>
 <article class="rel">
-<h3>Unreleased</h3>
-<p class="meta">not released yet</p>
+<h3>0.7.0</h3>
+<p class="meta">23 Nov 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="kind">Added</span>Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code; not when you quit), the launcher says what the exit code means and shows the crash signature, and offers to make the support package; after it, to open the bug report form on GitHub with the version, system and signature filled in (only on a yes; the zip is never uploaded). A session that never ended (power loss) is named at the next start. <code>work/play.log</code> now ends with <code>[launcher] session ended: exit &lt;code&gt; (&lt;meaning&gt;) after &lt;N&gt; s, &lt;kind&gt;</code>, and <code>work/logs/sessions.jsonl</code> keeps one line per session.</li>
 <li><span class="kind">Added</span>The support package also holds the earlier game logs, <code>sessions.jsonl</code>, the game&#x27;s crash and hang reports with the names of its functions (from your own build&#x27;s symbol table), Windows&#x27; error reports for the game and its display driver events of the last 24 hours (on Linux the kernel log&#x27;s GPU lines), what the game&#x27;s log says about the PC, and a line of your own when you make it in a terminal. <code>scripts/support.cmd</code> and <code>scripts/support.sh</code> make it in the Windows zip and the Linux folder, as the setup&#x27;s Start menu entry does; RecompLauncher gets a &quot;Crash reports&quot; folder button.</li>
@@ -311,14 +311,14 @@
 <section id="changelog" class="promo term">
 <h3>Changelog</h3>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code; not...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The support package also holds the earlier game logs, sessions.jsonl, the game&#x27;s crash and hang reports with the names...</span></li>
-<li><time>next</time><span><b>Unreleased</b> When the game crashes, its log now says where: a [kz-crash] block with the exception, the faulting module and offset...</span></li>
-<li><time>next</time><span><b>Unreleased</b> When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets a...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The log starts with the system it runs on: [kz-sys] lines for the system, CPU, cores, memory, monitors, the settings...</span></li>
-<li><time>next</time><span><b>Unreleased</b> KZ_CRASH_TEST=&lt;kind&gt; makes the game crash or hang on purpose, to check the reports on a build.</span></li>
-<li><time>next</time><span><b>Unreleased</b> The game straight from the Killzone Trilogy disc, with no RPCS3 installed: --disc FOLDER (the copied disc, or its...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by GitHub...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code; not...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The support package also holds the earlier game logs, sessions.jsonl, the game&#x27;s crash and hang reports with the names...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> When the game crashes, its log now says where: a [kz-crash] block with the exception, the faulting module and offset...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets a...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The log starts with the system it runs on: [kz-sys] lines for the system, CPU, cores, memory, monitors, the settings...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> KZ_CRASH_TEST=&lt;kind&gt; makes the game crash or hang on purpose, to check the reports on a build.</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The game straight from the Killzone Trilogy disc, with no RPCS3 installed: --disc FOLDER (the copied disc, or its...</span></li>
+<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> Each release file comes with a build provenance attestation: a statement, signed through Sigstore and kept by GitHub...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -335,10 +335,10 @@
 <h2 id="h-install">Install</h2>
 <p class="lede">The setup program or the release folders: they check your own copy and build the port on your PC.</p>
 <div class="dl">
-<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0">v0.6.0</a> <span>pre-release</span></p>
-<p class="small">20 Nov 2026 · playable · Windows x64 and Linux x64</p>
-<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.6.0">Download v0.6.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
-<p>The release page has the Windows setup program (project-vekta-0.6.0-setup.exe, the easiest way on Windows), the Windows folder as a zip, the Linux folder and the source archive, each with a .sha256 file, and SHA256SUMS: check your download against them.</p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0">v0.7.0</a> <span>pre-release</span></p>
+<p class="small">23 Nov 2026 · playable · Windows x64 and Linux x64</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0">Download v0.7.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has the Windows setup program (project-vekta-0.7.0-setup.exe, the easiest way on Windows), the Windows folder as a zip, the Linux folder and the source archive, each with a .sha256 file, and SHA256SUMS: check your download against them.</p>
 </div>
 <p>The Windows setup program, <code>Project Vekta.exe</code> in the Windows zip and <code>./project-vekta</code> in the Linux folder check your own Killzone HD files (a disc or PlayStation Store copy, or the one your RPCS3 already installed), translate the game's code and build it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <h4>Through a launcher</h4>
