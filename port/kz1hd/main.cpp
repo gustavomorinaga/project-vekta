@@ -53,6 +53,7 @@
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
 #include "crash_report.h" /* [kz-crash], [kz-hang], KZ_CRASH_TEST */
+#include "fios_cache.h"   /* a cut-short FIOS cache.dat is removed before the game reads it */
 #include "sys_info.h"     /* [kz-sys], the session header */
 #if __has_include("eboot_id.h")
 #include "eboot_id.h"    /* KZ_EBOOT_SHA256, KZ_EBOOT_SIZE: written into the lift's gen/ by tools/kzbuild.py */
@@ -881,6 +882,13 @@ int main(int argc, char** argv)
     derive_vfs_root(argv[1]);
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
     set_edat_cache();
+    {   /* the FIOS cache: /dev_hdd1 is $PS3_HDD1_ROOT, else <VFS root>/cache (ps3recomp's ppu_fs.cpp) */
+        const char* h1 = getenv("PS3_HDD1_ROOT");
+        const std::string fios = ((h1 && *h1) ? std::string(h1) : std::string(ppu_vfs_root) + "/cache") + "/BCUS98116/fios";
+        if (!kz_fios_cache_check(fios.c_str()))
+            fprintf(stderr, "[kz] FIOS cache: %s/cache.dat was missing or cut short (an earlier run stopped while writing it); "
+                            "removed with cache.idx, the game makes a new one\n", fios.c_str());
+    }
     /* The window's icon and application id (ps3recomp patch 2081): "project-vekta" is also the name of the Linux menu
      * entry (tools/release/firstrun.py desktop_entry), where a Wayland desktop takes the icon from. */
     rsx_vulkan_set_window_identity("project-vekta", reinterpret_cast<const uint32_t*>(kz_window_icon),

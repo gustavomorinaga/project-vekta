@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- The game no longer stays on a black window forever after an earlier first run was stopped while it was writing
+  its file cache (an empty or missing `cache.dat` under `work/vfs/cache/BCUS98116/fios`): at start the port removes
+  a cut-short cache, and the game makes a new one, the same bytes, as on a first run.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
