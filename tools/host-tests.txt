@@ -58,6 +58,7 @@ tools/tests/test_script_rate.sh
 tools/tests/test_win_dpi.sh
 tools/tests/test_fit_scale.sh
 tools/tests/test_hud_layout.sh
+tools/tests/test_pc_rates.sh
 tools/tests/test_view_aspect.sh
 tools/tests/test_post.sh
 tools/tests/test_vk_debug.sh

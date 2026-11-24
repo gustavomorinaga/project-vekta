@@ -7,6 +7,12 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- Mouse look (#121): looking up and down now turns the same amount per mouse movement as turning left and right, at
+  the same slider value; before, vertical look was about a quarter as fast. Horizontal look is unchanged.
+- Frame pacing at the 60 and 30 fps limits (#121): every frame is now shown for the same time in every V-Sync mode.
+  Before, at 60 fps the frames alternated between about 14 and 21 ms unless V-Sync was set to the VRR mode.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
