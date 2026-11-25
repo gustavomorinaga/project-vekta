@@ -14,6 +14,8 @@ program and folder that build it. Until a release that calls itself playable
 - No more red lines along the top and bottom of the movies with an internal resolution above 1x (a higher
   resolution, DLSS or FSR; #158). The game draws each movie frame from a larger texture, and the scaled picture
   reached the rows past the frame; at 1x nothing changes.
+- Extras > War Scenes picked with the mouse plays its bot battle instead of going straight back to the menu. The
+  click's press lasted past the loading screen, and any button ends War Scenes, as on the PS3.
 
 ## [0.7.0] - 2026-11-23 (pre-release)
 
