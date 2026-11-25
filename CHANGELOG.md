@@ -7,6 +7,10 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- At 144 fps a few game clock ticks (15 every 5 seconds) came 1 ms late, a slightly longer frame between two short
+  ones: the 144 Hz rate is now stored a hair above 0.144 ticks per ms, as the game stores its own 30 Hz one.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
