@@ -7,6 +7,10 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 %
+  at 120).
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
