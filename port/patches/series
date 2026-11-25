@@ -171,3 +171,4 @@
 4017-cellPad-mouse-motion-that-must-not-turn-the-view-is-.patch
 3038-ppu_lifter-func-names-names-functions-from-a-file-di.patch
 2090-Vulkan-window-its-own-thread-so-closing-it-works-whi.patch
+4019-cellPad-several-virtual-pads-hot-plug-by-command-scr.patch

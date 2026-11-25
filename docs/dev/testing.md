@@ -26,6 +26,17 @@ which kinds fire where, and the host test: [crash-reports.md](crash-reports.md).
   profile, `15:0x0008,25:0x4000,35:0x0008,45:0x4000,60:0x4000,66:0x4000,...,120:0x4000` reaches Level 1. Do not press
   START late (during the level's opening movie): the pause request queues and opens the pause menu when the level
   starts.
+- `PAD_FILE=<path>` presses the button mask written into the file (`0x4000`, or `0x0040 4` for 4 reports) and empties
+  it, so a driver outside the game can press what the screen needs. `PAD_SCRIPT_1`..`PAD_SCRIPT_3` and
+  `PAD_FILE_1`..`PAD_FILE_3` do the same for ports 1 to 3 (player 2 is port 1); a port takes them only while it reads
+  connected.
+- `PAD_VIRTUAL=xbox[,ps5,...]` (`xbox`, `xbox360`, `ps4`, `ps5`, `switch`, `steam`) plugs in SDL virtual controllers,
+  in that order (patch 4019). Pad 0 reads `PAD_VIRTUAL_FILE`, pad n `PAD_VIRTUAL_FILE_n`: one line
+  `buttons lx ly rx ry lt rt` (an `SDL_CONTROLLER_BUTTON_*` bit mask in hex, sticks -32768..32767, triggers
+  0..32767), or `detach` to unplug that pad and `attach` to plug it in again (it comes back into the port it had).
+  `PAD_VIRTUAL_KEYS=n` makes the keyboard drive virtual pad n instead of port 0, for a pad + pad test by hand with
+  one real controller; the mouse stays player 1's. A virtual pad takes the controller slot after the real ones SDL
+  found first.
 - `PAD_STICK="lx,ly,rx,ry,from,to"` holds the sticks in a time window; `PAD_MOUSE_POS`/`PAD_MOUSE_POS_FILE` simulate the
   mouse pointer in menus.
 - `KZ_DEBUG_MENU=1` adds the pause menu's Debug Options; its Next Level ends the level on the VICTORY screen.
