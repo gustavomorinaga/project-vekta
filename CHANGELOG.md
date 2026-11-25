@@ -11,6 +11,9 @@ program and folder that build it. Until a release that calls itself playable
 - RecompLauncher: the game's page lists the PC settings (display, picture, upscaling, mouse, sound and language),
   read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
   package or a decrypted EBOOT.elf that matches the US copy is shown as verified.
+- RecompLauncher: the game box also takes the European edition, the folder RPCS3 installed it in (NPEA00418) or
+  your European disc copied to the PC (BCES-01743), and a decrypted EBOOT.elf of the European edition is shown as
+  verified. The release notes name the European edition too.
 
 ### Fixed
 - RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two

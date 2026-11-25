@@ -118,9 +118,16 @@ NEED_060 = ("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy
             "it is installed in your RPCS3, the installers use it and your RPCS3 makes the decrypted copy of the EBOOT, "
             "otherwise you give that decrypted file yourself. No PS3 system software is needed")
 
+# From 0.8.0 the European edition builds too: the Store's (NPEA00418, through RPCS3 like the USA Store copy) and the
+# disc (BCES-01743, whose EBOOT the official RPCS3 decrypts).
+NEED_080 = NEED_060.replace("you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc " + STORE_COPY,
+                            "you need your own Killzone HD (NPUA80856) from the Killzone Trilogy disc " + STORE_COPY +
+                            ", or the European edition, from its disc (BCES-01743) or the PlayStation Store "
+                            "(NPEA00418, through your RPCS3 too)")
+
 
 def need_text(v):
-    return (NEED_060 if v >= (0, 6, 0) else NEED_053 if v >= (0, 5, 3) else NEED_050 if v >= (0, 5, 0) else
+    return (NEED_080 if v >= (0, 8, 0) else NEED_060 if v >= (0, 6, 0) else NEED_053 if v >= (0, 5, 3) else NEED_050 if v >= (0, 5, 0) else
             NEED_PREPARED)
 
 
