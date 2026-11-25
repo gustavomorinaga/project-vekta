@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Fixed
+- Level Select's SELECT CHARACTER: the mouse no longer picks a character the level cannot be played with (the
+  greyed rows). Hovering one selected it, and Select then started the level as that character; now the mouse, like
+  the pad, leaves greyed rows alone.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
