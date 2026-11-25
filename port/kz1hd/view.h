@@ -12,6 +12,7 @@ struct KzView {
     float hud_scale;   /* the HUD's size, 1 = the game's */
     float hud_pos;     /* 0 = the HUD in the 16:9 middle of the screen, 1 = at the screen's edges */
     float crosshair_size;   /* the weapon crosshair's pieces' size (crosshair.h), 1 = the game's */
+    int players;       /* local players (pcoptions.cpp kz_players_sync): 2 = split screen */
 };
 extern struct KzView kz_view;
 /* perspective projections built (native_ppu/camera.cpp): none for a while

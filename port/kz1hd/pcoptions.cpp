@@ -223,7 +223,7 @@ static void overlay_env(void)
 }
 /* ---- the picture: widescreen, FOV and the HUD (view.h) ----------------- */
 
-extern "C" struct KzView kz_view = { 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f };
+extern "C" struct KzView kz_view = { 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1 };
 extern "C" volatile unsigned kz_view_3d = 0, kz_view_menu = 0;
 extern "C" unsigned cellGcm_flip_request_count(void);   /* frames the game asked to flip */
 extern "C" {
@@ -483,6 +483,7 @@ extern "C" void kz_players_sync(void)
     static int last = 1;
     if (n == last) return;
     last = n;
+    kz_view.players = n;   /* the HUD's layout per view (native_ppu/hud.cpp) */
     pad_set_players(n);
     fprintf(stderr, "[kz] %d local player(s)\n", n);
 }

@@ -13,6 +13,12 @@
  * the window's edges, as the original keeps its HUD in the corners of a 4:3
  * screen (its layout is not changed by the game's 4:3 mode: the HUD module
  * never reads the setting, EBOOT 2026-11-12).
+ *
+ * In split screen (two local players) each view's HUD is laid out in its
+ * own 1280x360 band: the frame's ortho is (0, 1280, 360, 0), the quads come
+ * with y scale 1 and offset 0, a panel's bottom at y 349 (seen 2026-11-25).
+ * hud_band_h is that layout's height; the HUD's sides and halves are taken
+ * in it.
  */
 #ifndef KZ_HUD_LAYOUT_H
 #define KZ_HUD_LAYOUT_H
@@ -31,5 +37,33 @@ static inline float hud_widen(float aspect)
 static inline double hud_spread(double widen, double pos)
 {
     return widen < 1.0 ? widen : 1.0 + (widen - 1.0) * pos;
+}
+
+/* the height of one view's HUD layout: 720, 360 per view in split screen */
+static inline double hud_band_h(int players) { return players == 2 ? 360.0 : 720.0; }
+
+/* the side of an extent v is in: its first third (0), the middle (extent/2)
+ * or the last third (extent) */
+static inline double hud_third(double v, double extent)
+{
+    return v < extent / 3 ? 0.0 : v > extent * 2 / 3 ? extent : extent * 0.5;
+}
+
+/* The sides a HUD quad or string (middle cx, cy) goes with in a w x h
+ * layout: the third of the width it is in; in y the third in the middle
+ * third, the half at the sides (a sniper rifle's long column of rounds that
+ * reaches the middle third stays with its panel). */
+static inline void hud_anchor(double cx, double cy, double w, double h, double* ax, double* ay)
+{
+    *ax = hud_third(cx, w);
+    *ay = *ax == w * 0.5 ? hud_third(cy, h) : cy < h * 0.5 ? 0.0 : h;
+}
+
+/* x of a HUD point that goes with side ax, in a layout w wide: the side
+ * spreads from the middle (hud_spread), the point keeps its distance from the
+ * side scaled by the HUD size */
+static inline double hud_place_x(double x, double ax, double w, double spread, double size)
+{
+    return w * 0.5 + (ax - w * 0.5) * spread + (x - ax) * size;
 }
 #endif

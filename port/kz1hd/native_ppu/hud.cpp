@@ -104,23 +104,17 @@ double tut_x(double x) { const double k = kz_view.hud_scale > 0.0f ? kz_view.hud
  * they are at its edges (hud_spread). ax/ay: the sides used. */
 double hud_side_x(double x, double ax, double e)
 {
-    const double spread = hud_spread(e, kz_view.hud_pos);
     const double size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0;
-    return kW * 0.5 + (ax - kW * 0.5) * spread + (x - ax) * size;
+    return hud_place_x(x, ax, kW, hud_spread(e, kz_view.hud_pos), size);
 }
-double third(double v, double extent) { return v < extent / 3 ? 0.0 : v > extent * 2 / 3 ? extent : extent * 0.5; }
+/* the height of the HUD's layout: 720, one view's 360 in split screen */
+double band_h() { return hud_band_h(kz_view.players); }
 
-/* The sides a HUD quad or string goes with: the third of the screen its
- * middle is in (in y too in the middle third; at the sides, the half). Not kept per drawing site: one site draws the weapon's icon
- * both in the ammo panel and over a pickup prompt in the middle, and the
- * bullets both in the panel and as a pickup's "+8". */
-void anchor_of(double cx, double cy, double* ax, double* ay)
-{
-    *ax = third(cx, kW);
-    /* at the sides, the top or bottom half: a long column (a sniper rifle's
-     * rounds) that reaches the middle third stays with its panel */
-    *ay = *ax == kW * 0.5 ? third(cy, kH) : cy < kH * 0.5 ? 0.0 : kH;
-}
+/* The sides a HUD quad or string goes with (hud_layout.h hud_anchor). Not
+ * kept per drawing site: one site draws the weapon's icon both in the ammo
+ * panel and over a pickup prompt in the middle, and the bullets both in the
+ * panel and as a pickup's "+8". */
+void anchor_of(double cx, double cy, double* ax, double* ay) { hud_anchor(cx, cy, kW, band_h(), ax, ay); }
 
 }  // namespace
 
@@ -155,8 +149,9 @@ void func_0005C498(ppu_context* ctx)
         }
     }
     const float e = widen();
+    /* the frame's 2D layer: 1280x720, or one view's 1280x360 in split screen */
     if (e != 1.0f && (uint32_t)ctx->lr == kOrthoRet && ctx->fpr[1] == 0.0 && ctx->fpr[2] == kW &&
-        ctx->fpr[3] == kH && ctx->fpr[4] == 0.0 && !full_screen_effect(ctx)) {
+        (ctx->fpr[3] == kH || ctx->fpr[3] == band_h()) && ctx->fpr[4] == 0.0 && !full_screen_effect(ctx)) {
         ctx->fpr[1] = S(kW * 0.5 - kW * 0.5 * e);
         ctx->fpr[2] = S(kW * 0.5 + kW * 0.5 * e);
     }
@@ -249,7 +244,8 @@ void func_00227A1C(ppu_context* ctx)
         int ow = 0, oh = 0;
         const double lw = kW * widen();
         if (!rsx_vulkan_output_size(&ow, &oh)) { ow = (int)lround(lw); oh = (int)kH; }   /* no window: the frame's own */
-        crosshair_rect(r, cs, ow, oh, lw, kH);
+        /* in split screen one view's band: its share of the output, its layout's height */
+        crosshair_rect(r, cs, ow, oh * band_h() / kH, lw, band_h());
         const uint32_t tmp = ((uint32_t)ctx->gpr[1] - 0x400) & ~15u;
         stf(tmp, r[0]); stf(tmp + 4, (r[1] - ty) / sy); stf(tmp + 8, r[2]); stf(tmp + 12, (r[3] - ty) / sy);
         ctx->gpr[5] = tmp;
@@ -280,7 +276,7 @@ void func_00227A1C(ppu_context* ctx)
         anchor_of(cx, cy, &site_ax, &ay_out);
         if (hud_site_side(ret) == HUD_SIDE_RIGHT) {   /* hud_sites.h: the grenade row goes with the ammo panel */
             site_ax = kW;
-            ay_out = cy < kH * 0.5 ? 0.0 : kH;
+            ay_out = cy < band_h() * 0.5 ? 0.0 : band_h();
         }
         const double ay = sy != 0.0 ? (ay_out - ty) / sy : 0.0;
         const double lo = std::min(x0, x1), hi = std::max(x0, x1);
