@@ -7,6 +7,13 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game
+  folder, lifts it with its own addresses and plays it in the language the system asks for (its archive has English,
+  French, German, Italian, Spanish and Dutch), with its saves in their own folder. Install it in your RPCS3 with its
+  licence and choose "Use my RPCS3 install". The European disc (BCES-01743) has not been tried
+  ([docs/GETTING-FILES.md](docs/GETTING-FILES.md)).
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added

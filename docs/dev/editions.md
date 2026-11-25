@@ -69,9 +69,9 @@ NPEA00418 or BCES01743: EU; `KZ_EDITION` overrides it). For the EU edition the l
 - passes the EU setjmp 0x3B5C10, longjmp 0x3B5D34, code end 0x52F658 and policy module 0x5B9080;
 - writes `work/lift/analysis/func_names.txt` (`edition_map.func_names`) and gives it to the lifter's `--func-names`
   (patch 3038): each EU function keeps its US name, so the port's `func_` names, the `native_ppu` replacements and
-  `PPU_LIFT_NATIVE` resolve; an EU address with no US one is `func_ADDR_eu`. Every EU address whose plain name
-  would be another function's US name is named too, so the file is large (about 1.2 million lines); the lifter
-  stops if two addresses would still share a name;
+  `PPU_LIFT_NATIVE` resolve; an EU address with no US one would be `func_ADDR_eu` (none in this lift). One line
+  per function start that moved: 21,831 of the 23,363. The pieces and call targets the lifter adds outside the list
+  keep their EU names; the lifter stops if one of those would take a name the file gave (none did);
 - writes `KZ_EBOOT_EDITION_EU` into `gen/eboot_id.h`; the build passes `-DKZ_EDITION` from it, and `main.cpp` stops
   the compile if the two differ.
 
@@ -89,11 +89,38 @@ Checked 2026-11-24 on Linux (RTX 3070 Ti):
   the health warning, logos and intro movie, save folder NPEA00418 created; (2) 170 s with `PS3_LANG=de` and the
   `PAD_SCRIPT` of docs/dev/testing.md to Level 1: the German front end (Optionen, Spiel, Extras; Level wählen,
   Schwierigkeitsgrad, Charakter auswählen), the Level 1 intro movie and about 60 s of Level 1 with the HUD, the
-  crosshair and the German tutorial banner with its keyboard glyph. Not checked: other languages, other levels,
-  saves loaded back, Windows.
+  crosshair and the German tutorial banner with its keyboard glyph.
+- 2026-11-24/25, the same machine, after the names file was cut to one line per moved function (the lift's only
+  difference: 215 pieces outside the function list keep EU names): every campaign level loads on the EU build
+  (`KZ_UNLOCK_LEVELS=1`, `KZ_DEBUG_GOD=1`, a fresh profile, the unlocked list opening on level 11 and UP x (11 - N)
+  for level N; one run per level, 140 to 200 s, frames every 5 s). Levels 1, 2, 5, 6, 7, 8 and 10 open their own
+  `Movies/Level N/Intro.avi`; 3, 4 and 9 have none; each reached play with its HUD, no `[kz-crash]` line. Level 11
+  (La Speranza) ran with `PS3_LANG=it`: the Italian front end (Opzioni, Gioco, Seleziona livello, Seleziona
+  difficoltà, Seleziona personaggio). Level 1's start set beside a PS3 longplay of the game (local reference
+  video): the same intro movie, loading screen, trench, palette and HUD (health bar, 270 rounds); the player stood
+  still in these runs, so only the opening view was compared. The US build of this branch (its own lift and build,
+  `KZ_EDITION=US`) still boots to Level 1 from a fresh profile (title id from the VFS's PARAM.SFO, the Level 1 movie
+  and play). Not checked: Spanish, French, Dutch, saves loaded back, play past the start of a level, Windows.
+
+## The installer and the launchers
+
+"Use my RPCS3 install" (`tools/release/rpcs3_import.py`) looks for NPUA80856, then NPEA00418, in the player's RPCS3
+(`TITLES`), copies the licence of the one it found and checks the decrypted files against that edition's sizes and
+hashes; its results add `title=`. The Windows setup (`installer/vekta.iss`) takes a game folder whose PARAM.SFO says
+either title. The disc route (`tools/release/rpcs3_disc.py`) installs only the US disc's package: an EU package
+(content ID `EP9000-NPEA00418_00-GKILLZONE1000001`, the Store's) is named and sent to "Use my RPCS3 install"
+(`eu_pkg`, exit code 71). The European disc (BCES-01743) was not available: ASSUMPTION that its `PS3_EXTRA` package
+names the same content ID; its installed files are not measured, so a copy of it is taken only if they match the
+Store copy's.
+
+`installer/recomplauncher.json` (the RecompLauncher manifest) still describes the US edition; the values an EU line
+would need, for whoever changes it next: title NPEA00418, version 01.00, `EBOOT.elf` 19,706,080 bytes, SHA-256
+`e4fc4f13b1bd940f52c5df16f4cc4bf0af88e17f4c1d2276b877a62490c57f52`; `data_ps3.psarc` 3,416,897,765 bytes, SHA-256
+`a6ca5f9ad6d2d27d90d9c1d539f3f3d95e4b6ed70639d44bbcde4247ea65b79d`; `PARAM.SFO` SHA-256
+`039e155c9de824d8b8f73eb8c4cac7d84ebac395be8e7d51e47dd9a338ac02ea`.
 
 ## What the EU edition still needs
 
-- The installer and launcher know only NPUA80856: `tools/release/rpcs3_import.py`, `rpcs3_disc.py`, `firstrun.py`
-  and the `KZ_EXIT_WRONG_EDITION` text name it. `docs/GETTING-FILES.md` and the release notes too.
+- The release notes (`tools/release/release_notes.py`) and `installer/recomplauncher.json` name only NPUA80856.
+- The European disc (BCES-01743): its package and installed files.
 - What the 11 changed functions do differently in the game was not looked at.

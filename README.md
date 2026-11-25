@@ -76,8 +76,8 @@ The full dated table is [docs/STATUS.md](docs/STATUS.md).
 **What you need:**
 
 - **Your own Killzone HD** (NPUA80856, the US edition), installed from your own **Killzone Trilogy** disc or bought on
-  the PlayStation Store. No PS3 system software is needed. The European edition is not supported yet
-  ([getting your files](docs/GETTING-FILES.md)).
+  the PlayStation Store, or the European edition (NPEA00418) from the PlayStation Store, through your RPCS3. No PS3
+  system software is needed ([getting your files](docs/GETTING-FILES.md)).
 - **A PC:** Windows or Linux x64, a CPU with AVX2 (x86-64-v3), and a Vulkan graphics card and driver
   ([requirements](docs/requirements.md)).
 - **Disk space:** about 4 GB for the game files, plus a few GB free for the port and its build
@@ -165,7 +165,7 @@ General fixes are offered to ps3recomp upstream.
 
 ## Roadmap
 
-Next: each level compared with the PS3 game, the European edition, and the rest of the plan in
+Next: each level compared with the PS3 game, and the rest of the plan in
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
 <p align="center"><img src="assets/divider-rule.png" width="900" alt=""></p>
