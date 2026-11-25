@@ -638,6 +638,15 @@ def play(root, argv, cwd, env, log):
 INPUTS = (("game", "KZ_GAME"), ("eboot", "KZ_EBOOT"), ("psarc", "KZ_PSARC"))
 
 
+def is_disc(path):
+    """The Killzone Trilogy disc rather than an installed game folder: a package file (DATA000.PKG), or a folder with
+    the disc's PS3_GAME, PS3_EXTRA or PS3_DISC.SFB. RecompLauncher's one game box takes either (recomplauncher.json),
+    so a disc given as --game goes the --disc way."""
+    if os.path.isfile(path):
+        return path.lower().endswith(".pkg")
+    return any(os.path.exists(os.path.join(path, n)) for n in ("PS3_GAME", "PS3_EXTRA", "PS3_DISC.SFB"))
+
+
 def firstrun_args(root, a, environ=None):
     """firstrun.py's options for what the launcher was given: --game, --eboot, --psarc (the KZ_* variables are read by
     firstrun.py itself, and all of them are saved in work/paths.env once the check passes) and --rpcs3 [DIR]. With
@@ -645,17 +654,21 @@ def firstrun_args(root, a, environ=None):
     A game folder without a decrypted EBOOT (--game, no --eboot nor KZ_EBOOT) is the folder RPCS3 installed, with
     its encrypted EBOOT.BIN: it is also the hint of --rpcs3, so that the player's RPCS3 makes the decrypted copy (a
     launcher such as RecompLauncher passes only the game folder). --disc PATH (the disc with no RPCS3 installed,
-    rpcs3_disc.py) is passed on as it is and wins over the RPCS3 route."""
+    rpcs3_disc.py) is passed on as it is and wins over the RPCS3 route; a --game that is the disc (is_disc) is taken as
+    --disc."""
     environ = os.environ if environ is None else environ
+    game, disc = getattr(a, "game", None), getattr(a, "disc", None)
+    if game and not disc and is_disc(game):
+        game, disc = None, game
     out = []
     for name, _ in INPUTS:
-        if getattr(a, name, None):
-            out += ["--" + name, os.path.abspath(getattr(a, name))]
+        v = game if name == "game" else getattr(a, name, None)
+        if v:
+            out += ["--" + name, os.path.abspath(v)]
     given = bool(out)
     rpcs3 = getattr(a, "rpcs3", None)
-    game = getattr(a, "game", None)
-    if getattr(a, "disc", None):
-        out += ["--disc", os.path.abspath(a.disc)]
+    if disc:
+        out += ["--disc", os.path.abspath(disc)]
     elif rpcs3 is not None:
         out += ["--rpcs3"] + ([os.path.abspath(rpcs3)] if rpcs3 else [])
     elif game and not getattr(a, "eboot", None) and not environ.get("KZ_EBOOT"):

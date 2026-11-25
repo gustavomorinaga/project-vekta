@@ -34,7 +34,7 @@ unpack; see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 **No RPCS3? Straight from the disc.** With the Killzone Trilogy disc copied to your PC (its folder, with
 `PS3_EXTRA` in it, or just the package `PS3_EXTRA\...\DATA000.PKG`), `Project Vekta.exe --disc FOLDER`,
 `./project-vekta --disc FOLDER`, `scripts/prepare.sh --disc FOLDER`, the setup's "Your game" page ("From my Killzone
-Trilogy disc") and RecompLauncher's disc field download the official RPCS3 (version
+Trilogy disc") and RecompLauncher's game box (given the disc's folder or the package) download the official RPCS3 (version
 0.0.43-20640 from RPCS3's own GitHub releases, about 37 MB on Windows and 83 MB on Linux, checked by SHA-256) into
 the port's `work\toolchain-cache\rpcs3`. It installs the package into `work\prep\disc`, with no window and none of
 your settings, and decrypts a copy of `EBOOT.BIN` into `work\prep`. About 4 GB more disk is used; a minute or less

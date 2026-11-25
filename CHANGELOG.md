@@ -12,6 +12,11 @@ program and folder that build it. Until a release that calls itself playable
   read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
   package or a decrypted EBOOT.elf that matches the US copy is shown as verified.
 
+### Fixed
+- RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two
+  optional boxes, and RecompLauncher counts Easy Setup only for a required one; now one box takes the installed
+  folder, the disc's folder or its DATA000.PKG.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
