@@ -384,6 +384,10 @@ static void player_look(ppu_context* ctx)
     s_last_play_ms = now_ms();
     kz_pc_inject_attrs(ctx);
     const uint32_t obj = (uint32_t)ctx->gpr[3];
+    /* One call per local player per tick; +0x1C is the controller's player
+     * index. The mouse (and the route recorder) are player 1's: with two
+     * players the mouse had turned player 2 as well. */
+    if (rd32(obj + 0x1C) != 0) { func_00291FA8(ctx); return; }
     kz_route_tick_begin();
     func_00291FA8(ctx);
     int dx, dy;
@@ -453,6 +457,34 @@ void rsx_vulkan_set_display(const char* mode, int w, int h, int hz);
 void rsx_vulkan_set_present(const char* mode);
 int  rsx_vulkan_display_sizes(int (*out)[2], int max);
 void pad_set_merge(int on);
+void pad_set_players(int n);
+}
+
+/* The local players the game runs (1, or 2 in split screen) to cellPad,
+ * which then gives player 2 a pad of its own (pad_assign.h). gGamePlayInfo
+ * is *(game object + 0x78), the game object at *0x828734 (data segment: the
+ * same address in the EU edition). It holds the match's players, bots
+ * included: their number at +0x218 and a pointer to their records at +0x220,
+ * 0x1E0 bytes each, with the controller index at +0x84 (0 or 1 for a local
+ * player, -1 for a bot). Read in the menus and in a match on 2026-11-25: a
+ * two-player match with 2+2 bots has 6 records, controllers 0, 1, -1 x4;
+ * the menus before it had 2 (0, 1). Two players while a record has
+ * controller 1; a pause changes nothing. Called from the main loop. */
+extern "C" void kz_players_sync(void)
+{
+    if (!vm_base) return;
+    const uint32_t game = rd32(0x00828734u);
+    const uint32_t gpi = game && game < 0xF0000000u ? rd32(game + 0x78) : 0;
+    const uint32_t count = gpi && gpi < 0xF0000000u ? rd32(gpi + 0x218) : 0;
+    const uint32_t recs = count && count <= 16 ? rd32(gpi + 0x220) : 0;
+    int n = 1;
+    if (recs && recs < 0xF0000000u)
+        for (uint32_t i = 0; i < count; i++) if (rd32(recs + i * 0x1E0 + 0x84) == 1) n = 2;
+    static int last = 1;
+    if (n == last) return;
+    last = n;
+    pad_set_players(n);
+    fprintf(stderr, "[kz] %d local player(s)\n", n);
 }
 /* the menu should look at the rows in use again (get_deps, below) */
 static volatile bool s_deps_dirty;

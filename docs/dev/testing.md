@@ -37,6 +37,11 @@ which kinds fire where, and the host test: [crash-reports.md](crash-reports.md).
   `PAD_VIRTUAL_KEYS=n` makes the keyboard drive virtual pad n instead of port 0, for a pad + pad test by hand with
   one real controller; the mouse stays player 1's. A virtual pad takes the controller slot after the real ones SDL
   found first.
+- Two players (patch 4020, `libs/input/pad_assign.h`): the game's number of local players (`[kz] 2 local player(s)`)
+  moves the pads. With one pad, the keyboard and mouse are player 1 (port 0) and the pad player 2 (port 1); with two
+  or more, the first pad joins the keyboard and mouse as player 1 and the second is player 2. With one player nothing
+  moves, but port 1 reads connected (neutral) whenever a pad is there, so the menu's Two Player is enabled. The log
+  line `[cellPad] N player(s), ...: port 0 <- slots ..., port 1 <- ...` shows each change.
 - `PAD_STICK="lx,ly,rx,ry,from,to"` holds the sticks in a time window; `PAD_MOUSE_POS`/`PAD_MOUSE_POS_FILE` simulate the
   mouse pointer in menus.
 - `KZ_DEBUG_MENU=1` adds the pause menu's Debug Options; its Next Level ends the level on the VICTORY screen.

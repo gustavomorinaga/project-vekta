@@ -21,6 +21,11 @@ program and folder that build it. Until a release that calls itself playable
 - The European disc of Killzone HD (BCES-01743): give a copy of the disc's folder to `--disc FOLDER` (or "From my
   Killzone Trilogy disc" in the setup). Its files are the European edition's; the official RPCS3 only decrypts a copy
   of its `EBOOT.BIN`, and the archive is read where it is ([docs/GETTING-FILES.md](docs/GETTING-FILES.md)).
+- Two players on one PC (Game > Battlefields > Two Players, split screen): "Two Players" is now enabled with a single
+  controller, whatever the Controllers setting. With one controller, player 1 plays on the keyboard and mouse and
+  player 2 on the controller; with two or more, the first controller and the keyboard and mouse are player 1 and the
+  second controller is player 2. The mouse turns only player 1's view (it used to turn both), and player 1's rumble
+  no longer shakes player 2's controller. One-player games are unchanged.
 
 ### Changed
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
