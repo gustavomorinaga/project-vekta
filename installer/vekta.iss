@@ -146,6 +146,8 @@ Source: "{#Payload}\{#LauncherExe}"; DestDir: "{tmp}"; Flags: dontcopy
 ; decompressing everything before it, and as the last entries they made the page freeze while ~750 MB was read.
 Source: "{#Payload}\tools\release\rpcs3_import.py"; DestDir: "{tmp}\rp"; Flags: dontcopy
 Source: "{#Payload}\tools\release\rpcs3_locate.py"; DestDir: "{tmp}\rp"; Flags: dontcopy
+; rpcs3_import.py imports edition_map (which edition a PARAM.SFO is)
+Source: "{#Payload}\tools\edition_map.py"; DestDir: "{tmp}\rp"; Flags: dontcopy
 Source: "{#Payload}\work\toolchain-cache\python\*"; DestDir: "{tmp}\rp\python"; Flags: dontcopy recursesubdirs
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs solidbreak
 ; Named again: a wildcard skips hidden files, and Wine shows a name that starts with a dot as hidden (firstrun.py
@@ -559,7 +561,7 @@ begin
   WizardForm.PageDescriptionLabel.Width := WizardForm.PageDescriptionLabel.Width - ScaleX(8);
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
     'From your RPCS3, your Killzone Trilogy disc, or files you pick.',
-    'Setup looks for RPCS3 with Killzone HD ({#TitleId}) installed. With it, your RPCS3 ' +
+    'Setup looks for RPCS3 with Killzone HD ({#TitleId}, or NPEA00418 in Europe) installed. With it, your RPCS3 ' +
     'decrypts a copy of the game''s EBOOT into the install folder during the build, and nothing needs preparing by ' +
     'hand. Your game, disc and RPCS3 folders are only read.', True, False);
   SourcePage.Add('Use my RPCS3 install');
@@ -602,7 +604,7 @@ begin
     '7-Zip first (https://www.7-zip.org) to unpack it.', False, '');
   DiscPage.Add('Killzone Trilogy disc folder:');
   GamePage := CreateInputDirPage(DiscPage.ID, 'Your game',
-    'The installed Killzone HD ({#TitleId}), from your own Killzone Trilogy disc or PlayStation Store copy.',
+    'The installed Killzone HD ({#TitleId}, or NPEA00418 in Europe), from your own Killzone Trilogy disc or PlayStation Store copy.',
     'Pick the installed game folder: it holds PARAM.SFO, TROPDIR and USRDIR (in RPCS3: dev_hdd0\game\{#TitleId}; ' +
     'picking the folder it is in also works). Setup only reads it.', False, '');
   GamePage.Add('Installed game folder ({#TitleId}):');
@@ -844,13 +846,12 @@ begin
   end else if (CurPageID = SourcePage.ID) and (SourcePage.SelectedValueIndex = 3) then begin
     { "Show me how": the steps (the same as firstrun.py's SHOW_ME_HOW), then the page again }
     MsgBox('The easy way, through RPCS3:' + #13#10 +
-      '1. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc, or your PlayStation Store ' +
+      '1. In RPCS3, install Killzone HD ({#TitleId}, or NPEA00418 in Europe) from your own Killzone Trilogy disc, or your PlayStation Store ' +
       'copy with its licence.' + #13#10 +
       '2. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
       'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
       'Or, with no RPCS3: copy your Killzone Trilogy disc (or European Killzone disc) to this PC and choose "From ' +
-      'my Killzone Trilogy disc": the official RPCS3 is downloaded and makes the copies in the install folder.' +
-      #13#10#13#10 +
+      'my Killzone Trilogy disc": the official RPCS3 is downloaded and makes the copies in the install folder.' + #13#10#13#10 +
       'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +
       'myself" and give the installed game folder and EBOOT.elf.' + #13#10#13#10 +
       'Every step: {#InstallDoc}' + #13#10 + 'What each file must be: {#FilesDoc}', mbInformation, MB_OK);

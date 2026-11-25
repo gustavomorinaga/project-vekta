@@ -44,6 +44,15 @@ for ref in re.findall(r'\{#Payload\}\\\\?([^"\s;]+)', text):
 check('Source: "{#Payload}\\work\\ps3recomp-patched\\.patchset"' in text,
       "vekta.iss names .patchset itself (a wildcard skips hidden files)")
 check('#define LauncherExe "Project Vekta.exe"' in text, "vekta.iss starts the launcher assemble_payload ships")
+# ISPP reads any line whose first non-blank character is # as a directive ("Unknown preprocessor directive"): a
+# Pascal #13#10 must not start a line
+check(not [ln for ln in text.splitlines() if re.match(r"\s*#\d", ln)],
+      "no line of vekta.iss starts with a #13#10 character literal (ISPP takes it for a directive)")
+# The "Your game" page runs rpcs3_import.py from {tmp}\rp: every project module it imports is unpacked there too
+rp = set(re.findall(r'Source: "\{#Payload\}\\tools\\(?:release\\)?(\w+)\.py"; DestDir: "\{tmp\}\\rp"', text))
+imp = set(re.findall(r"^import (\w+)", (ROOT / "tools" / "release" / "rpcs3_import.py").read_text(), re.M))
+own = {m for m in imp if (ROOT / "tools" / f"{m}.py").exists() or (ROOT / "tools" / "release" / f"{m}.py").exists()}
+check(own and own <= rp, f"vekta.iss unpacks every module rpcs3_import.py imports into {{tmp}}\\rp: {sorted(own - rp)}")
 check((ROOT / "installer" / "art" / "vekta.ico").is_file() and "SetupIconFile=art\\vekta-setup.ico" in text,
       "the setup icon is there")
 # The look: every image and icon the script names is in installer/art and matches art.json (installer_art.py --check)
