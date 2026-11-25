@@ -100,7 +100,7 @@ DLSS_SET = "dlss-sdk"
 DLSS_LICENSE_URL = "https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt"
 # The player's files: (option, variable, what it is, default under the root); tools/env.sh has the same defaults.
 INPUTS = [
-    ("game", "KZ_GAME", "the installed game folder (NPUA80856: PARAM.SFO, TROPDIR, USRDIR)",
+    ("game", "KZ_GAME", "the installed game folder (NPUA80856 or NPEA00418: PARAM.SFO, TROPDIR, USRDIR)",
      ("Game", "NPUA80856")),
     ("eboot", "KZ_EBOOT", "the decrypted EBOOT (EBOOT.elf)", ("Game", "EBOOT.elf")),
     ("psarc", "KZ_PSARC", "the decrypted data archive (data_ps3.psarc; optional: without it the game folder's own "
@@ -912,7 +912,7 @@ INSTALL_DOC = "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/I
 SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, also at """ + INSTALL_DOC + """):
   The easy way, through RPCS3:
     1. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc, or your PlayStation Store copy
-       with its licence.
+       (US NPUA80856 or European NPEA00418) with its licence.
     2. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
        Nothing is written into the game's or RPCS3's folders.
   Or, with the decrypted files you already have: choose "I have the files ready" and give the installed game
@@ -961,7 +961,7 @@ def offer_rpcs3(c, hint, ask=input, say=print):
 
 
 RPCS3_FOLDER_QUESTION = ("RPCS3's folder: where rpcs3.exe is (a portable RPCS3), RPCS3's config folder (on Linux "
-                         "~/.config/rpcs3), or the game folder RPCS3 installed (dev_hdd0/game/NPUA80856): ")
+                         "~/.config/rpcs3), or the game folder RPCS3 installed (dev_hdd0/game/NPUA80856 or NPEA00418): ")
 
 
 def ask_paths(paths, only=None, ask=input, say=print):

@@ -51,6 +51,7 @@
 #define EbootSize "19706080"
 #define PsarcSize "3147174243"
 #define TitleId "NPUA80856"
+#define EuTitleId "NPEA00418"   ; the European edition (docs/GETTING-FILES.md)
 #define FilesDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md"
 #define InstallDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
 #define LauncherExe "Project Vekta.exe"
@@ -341,13 +342,17 @@ begin
   end;
 end;
 
-{ The folder that holds PARAM.SFO, whichever level was picked: NPUA80856 itself, or the folder it is in }
+{ The folder that holds PARAM.SFO, whichever level was picked: NPUA80856 (or NPEA00418) itself, or the folder it is
+  in }
 function ResolveGame(Dir: String): String;
 begin
   Result := RemoveBackslashUnlessRoot(Dir);
   if (not FileExists(AddBackslash(Result) + 'PARAM.SFO')) and
      FileExists(AddBackslash(Result) + '{#TitleId}\PARAM.SFO') then
-    Result := AddBackslash(Result) + '{#TitleId}';
+    Result := AddBackslash(Result) + '{#TitleId}'
+  else if (not FileExists(AddBackslash(Result) + 'PARAM.SFO')) and
+     FileExists(AddBackslash(Result) + '{#EuTitleId}\PARAM.SFO') then
+    Result := AddBackslash(Result) + '{#EuTitleId}';
 end;
 
 function GameProblem(Dir: String): String;
@@ -362,9 +367,9 @@ begin
     Exit;
   end;
   Id := SfoField(AddBackslash(Dir) + 'PARAM.SFO', 'TITLE_ID');
-  if Id <> '{#TitleId}' then
+  if (Id <> '{#TitleId}') and (Id <> '{#EuTitleId}') then
     Result := 'This is not Killzone HD: its PARAM.SFO says title ' + Id + ', the port needs {#TitleId} ' +
-      '(the Killzone HD package of the Killzone Trilogy disc).';
+      '(the Killzone HD package of the Killzone Trilogy disc) or {#EuTitleId} (the European edition).';
 end;
 
 { '' when Path looks like the tested file (its kind by the first bytes, its size), else what is wrong. The build's

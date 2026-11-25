@@ -692,7 +692,7 @@ def classify(step, reasons, rc, timed_out=False):
     if any(rpcs3_import.HELP[k][:40] in text for k in ("not_found", "not_rpcs3", "no_exe")):
         return NO_RPCS3
     if "DIFFERENT" in text or rpcs3_import.HELP["wrong_file"][:40] in text or \
-            any(rpcs3_disc.HELP[k][:40] in text for k in ("not_pkg", "psn_pkg", "bad_pkg")):
+            any(rpcs3_disc.HELP[k][:40] in text for k in ("not_pkg", "psn_pkg", "bad_pkg", "eu_pkg")):
         return WRONG_EDITION
     if step in ("check", "rpcs3", "disc"):
         return FILE_MISSING

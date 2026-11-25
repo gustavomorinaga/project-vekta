@@ -46,6 +46,10 @@ import rpcs3_import as imp  # noqa: E402
 WINDOWS = os.name == "nt"
 TITLE = imp.TITLE
 CONTENT_ID = "UP9000-NPUA80856_00-GKILLZONE1000001"
+# The EU edition's package (NPEA00418, the PlayStation Store's, measured 2026-11-24). The EU disc's (BCES01743's
+# PS3_EXTRA) has not been measured: ASSUMPTION that it names the same content ID. Neither goes through this route yet:
+# the player's own RPCS3 installs them and "Use my RPCS3 install" takes them (rpcs3_import.TITLES).
+EU_CONTENT_ID = "EP9000-NPEA00418_00-GKILLZONE1000001"
 PKG_MAGIC = b"\x7fPKG"
 # The Killzone HD package of the Killzone Trilogy disc (BCUS98116's PS3_EXTRA), measured 2026-11-19. The PlayStation
 # Store package has the same content ID and size but another SHA-256, and needs the buyer's licence: it goes through
@@ -82,6 +86,9 @@ HELP = {
     "iso": "A disc image (.iso) is not opened here. Open it with your system (double-click on Windows, or mount it "
            "on Linux) and pick the folder it shows.",
     "not_pkg": "That file is not a PS3 package of Killzone HD (NPUA80856).",
+    "eu_pkg": "That is the European Killzone HD package (NPEA00418). This route installs only the US Killzone Trilogy "
+              "disc's package so far: install yours in your own RPCS3 (a PlayStation Store copy with its licence) "
+              "and choose \"Use my RPCS3 install\".",
     "psn_pkg": "That is the PlayStation Store package of Killzone HD: it needs your licence, which only your own "
                "RPCS3 has. Install it in RPCS3 and choose \"Use my RPCS3 install\".",
     "bad_pkg": "The package is not the Killzone Trilogy disc's (its size or SHA-256 differs): the disc copy may be "
@@ -132,7 +139,8 @@ def find_pkg(path, depth=5):
     if os.path.isfile(path):
         if path.lower().endswith(".iso"):
             return None, "iso"
-        return (path, None) if pkg_content_id(path) == CONTENT_ID else (None, "not_pkg")
+        cid = pkg_content_id(path)
+        return (path, None) if cid == CONTENT_ID else (None, "eu_pkg" if cid == EU_CONTENT_ID else "not_pkg")
     if not os.path.isdir(path):
         return None, "no_pkg"
     hits = []
@@ -143,10 +151,11 @@ def find_pkg(path, depth=5):
         for n in sorted(files):
             if n.lower().endswith(".pkg"):
                 hits.append(os.path.join(base, n))
+    cids = {p: pkg_content_id(p) for p in hits}
     for p in hits:
-        if pkg_content_id(p) == CONTENT_ID:
+        if cids[p] == CONTENT_ID:
             return p, None
-    return None, "no_pkg"
+    return None, "eu_pkg" if EU_CONTENT_ID in cids.values() else "no_pkg"
 
 
 def check_pkg(pkg, digest=sha256):

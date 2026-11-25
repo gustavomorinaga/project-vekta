@@ -119,6 +119,10 @@ with tempfile.TemporaryDirectory() as tmp:
     check(rd.find_pkg(tmp / "trilogy.iso") == (None, "iso"), "an .iso is refused with its own text")
     check(rd.find_pkg(tmp / "nothing") == (None, "no_pkg"), "a missing path")
     check(rd.find_pkg(disc / "PS3_GAME")[1] == "no_pkg", "a folder without this game's package")
+    eu = tmp / "eu"
+    make_pkg(eu / "PS3_EXTRA" / "D0F4" / "DATA000.PKG", cid=rd.EU_CONTENT_ID)
+    check(rd.find_pkg(eu) == (None, "eu_pkg") and rd.find_pkg(eu / "PS3_EXTRA" / "D0F4" / "DATA000.PKG") == (None, "eu_pkg"),
+          "the EU edition's package is named, and sent to \"Use my RPCS3 install\"")
 
     # ---- the disc's package, not the Store's or a damaged one
     rd.DISC_PKG = (len(data), sha(data))
@@ -226,6 +230,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(args == ["--disc", str(disc), "--jobs", "4"], f"the launcher passes --disc on, over --rpcs3: {args}")
     check(launch.classify("disc", [rd.HELP["psn_pkg"]], 1) == launch.WRONG_EDITION, "the Store package: edition code")
     check(launch.classify("disc", [rd.HELP["no_pkg"]], 1) == launch.FILE_MISSING, "no package: the missing-file code")
+    check(launch.classify("disc", [rd.HELP["eu_pkg"]], 1) == launch.WRONG_EDITION, "the EU package: edition code")
     check("--disc" in launch.parser().format_help(), "the launcher takes --disc")
 
 # ---- the pins and paths of the real thing
