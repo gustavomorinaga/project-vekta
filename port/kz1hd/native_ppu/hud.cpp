@@ -95,7 +95,9 @@ bool in_tutorial(uint32_t a) { return a >= KZ_GA(0x004C7A28) && a < KZ_GA(0x004C
 /* The laid-out text being drawn (func_0023A588) from the HUD: its origin as
  * the game placed it and where it goes; 0 scale outside one. */
 double s_rich_x0, s_rich_y0, s_rich_nx, s_rich_ny, s_rich_k;
-double tut_x(double x) { const double k = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0; return kW * 0.5 + (x - kW * 0.5) * k; }
+/* the 1280x720 layout to one view's band: 1, 0.5 in split screen (hud_layout.h) */
+double band_k() { return hud_band_k(kz_view.players); }
+double tut_x(double x) { const double k = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0; return kW * 0.5 + (x - kW * 0.5) * k * band_k(); }
 
 /* A HUD point (x, y), in the 1280x720 layout, to its place: it goes with the
  * third of the screen it is in (in y too), sized by the HUD size around that
@@ -105,18 +107,71 @@ double tut_x(double x) { const double k = kz_view.hud_scale > 0.0f ? kz_view.hud
 double hud_side_x(double x, double ax, double e)
 {
     const double size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0;
-    return hud_place_x(x, ax, kW, hud_spread(e, kz_view.hud_pos), size);
+    return hud_place_x(x, ax, kW, hud_spread(e, kz_view.hud_pos), size * band_k());
 }
-/* the height of the HUD's layout: 720, one view's 360 in split screen */
+/* y of a HUD point in the 1280x720 layout that goes with side ay, in its band */
+double hud_side_y(double y, double ay)
+{
+    const double size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0;
+    return hud_place_y(y, ay, band_k(), size);
+}
+/* the height of one view's band: 720, 360 in split screen */
 double band_h() { return hud_band_h(kz_view.players); }
 
 /* The sides a HUD quad or string goes with (hud_layout.h hud_anchor). Not
  * kept per drawing site: one site draws the weapon's icon both in the ammo
  * panel and over a pickup prompt in the middle, and the bullets both in the
  * panel and as a pickup's "+8". */
-void anchor_of(double cx, double cy, double* ax, double* ay) { hud_anchor(cx, cy, kW, band_h(), ax, ay); }
+void anchor_of(double cx, double cy, double* ax, double* ay) { hud_anchor(cx, cy, kW, kH, ax, ay); }
+
+/* The HUD's own drawing, up the guest stack: its module and the overlays and
+ * prompts next to it. */
+bool hud_chain(const ppu_context* ctx)
+{
+    uint32_t ch[8];
+    const int n = guest_chain(ctx, ch, 8);
+    for (int i = 0; i < n; i++)
+        if (in_hud(ch[i]) || (ch[i] >= 0x00223DB0 && ch[i] < 0x00227A1C)) return true;
+    return false;
+}
+
+/* func_003CEBB8(r3 = the display): its viewport, the rectangle (x0, y0, x1,
+ * y1, 32-bit ints) at r3 + 0x20; reached through the display's vtable
+ * (+0x168). The 2D helpers func_002CA46C..func_002CACA8 map their layout to
+ * that viewport. ENHANCEMENT: in split screen, asked by those helpers for the
+ * HUD, it answers a copy twice as tall, so the HUD lays itself out in a
+ * 1280x720 layout exactly as with one player; func_00227A1C and func_00044108
+ * then scale that layout into the view's band (hud_layout.h hud_band_k). The
+ * game itself lays the split HUD out in the view's 1280x360: heights halve,
+ * the panels' end pieces and the elements' places keep their widths, so its
+ * panels come out squashed and the ammo count stands higher on its bar than
+ * with one player (RPCS3 and the port, 2026-11-25). */
+void hud_viewport(ppu_context* ctx)
+{
+    const uint32_t vp = (uint32_t)ctx->gpr[3] + 0x20;
+    ctx->gpr[3] = vp;
+    if (kz_view.players != 2) return;
+    /* asked by the 2D helpers (func_002CA9A8 five times: the text's size),
+     * each reading the rectangle at once. Not by func_004CB798 (0x004CC740):
+     * it sets the display's viewport from what it reads (KZ_HUD_SITES runs,
+     * 2026-11-25) */
+    const uint32_t lr = (uint32_t)ctx->lr;
+    if (!(lr > 0x002CA46C && lr < 0x002CADA8) || !hud_chain(ctx)) return;
+    /* the copy goes below the caller's frame (red zone), read before its next call */
+    const uint32_t tmp = ((uint32_t)ctx->gpr[1] - 0x200) & ~15u;
+    const int32_t y0 = (int32_t)vm_read32(vp + 4), y1 = (int32_t)vm_read32(vp + 12);
+    vm_write32(tmp, vm_read32(vp));
+    vm_write32(tmp + 4, (uint32_t)y0);
+    vm_write32(tmp + 8, vm_read32(vp + 8));
+    vm_write32(tmp + 12, (uint32_t)(y0 + 2 * (y1 - y0)));
+    ctx->gpr[3] = tmp;
+}
 
 }  // namespace
+
+extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
+/* stubs.cpp, at start */
+void kz_hud_register(void) { ppu_register_function(0x003CEBB8, hud_viewport); }
 
 /* func_0005C498(out r3, left f1, right f2, bottom f3, top f4, near f5, far f6):
  * an orthographic projection. */
@@ -229,8 +284,8 @@ void func_00227A1C(ppu_context* ctx)
      * game gives it, outside the HUD Size rule; its pieces take their own
      * size, on whole pixels of the output */
     if (crosshair_site(ret)) {
-        const double cs = crosshair_clamp(kz_view.crosshair_size > 0.0f ? kz_view.crosshair_size : 1.0);
-        if (cs == 1.0) {
+        const double cs = crosshair_clamp(kz_view.crosshair_size > 0.0f ? kz_view.crosshair_size : 1.0), k = band_k();
+        if (cs == 1.0 && k == 1.0) {
             func_00227A1C_lifted(ctx);
             return;
         }
@@ -241,11 +296,15 @@ void func_00227A1C(ppu_context* ctx)
             return;
         }
         double r[4] = { ldf(rect), ldf(rect + 4) * sy + ty, ldf(rect + 8), ldf(rect + 12) * sy + ty };
-        int ow = 0, oh = 0;
-        const double lw = kW * widen();
-        if (!rsx_vulkan_output_size(&ow, &oh)) { ow = (int)lround(lw); oh = (int)kH; }   /* no window: the frame's own */
-        /* in split screen one view's band: its share of the output, its layout's height */
-        crosshair_rect(r, cs, ow, oh * band_h() / kH, lw, band_h());
+        if (k != 1.0)   /* split screen: from the 1280x720 layout (hud_viewport) into the band, around the middle */
+            for (int i = 0; i < 4; i++) r[i] = i & 1 ? hud_place_y(r[i], kH * 0.5, k, 1.0) : kW * 0.5 + (r[i] - kW * 0.5) * k;
+        if (cs != 1.0) {
+            int ow = 0, oh = 0;
+            const double lw = kW * widen();
+            if (!rsx_vulkan_output_size(&ow, &oh)) { ow = (int)lround(lw); oh = (int)kH; }   /* no window: the frame's own */
+            /* in split screen one view's band: its share of the output, its height */
+            crosshair_rect(r, cs, ow, oh * band_h() / kH, lw, band_h());
+        }
         const uint32_t tmp = ((uint32_t)ctx->gpr[1] - 0x400) & ~15u;
         stf(tmp, r[0]); stf(tmp + 4, (r[1] - ty) / sy); stf(tmp + 8, r[2]); stf(tmp + 12, (r[3] - ty) / sy);
         ctx->gpr[5] = tmp;
@@ -253,7 +312,8 @@ void func_00227A1C(ppu_context* ctx)
         return;
     }
     const float e = widen(), size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0f;
-    if (!hud || (e == 1.0f && size == 1.0f)) {
+    const double k = band_k();
+    if (!hud || (e == 1.0f && size == 1.0f && k == 1.0)) {
         func_00227A1C_lifted(ctx);
         return;
     }
@@ -262,12 +322,18 @@ void func_00227A1C(ppu_context* ctx)
     double x0 = ldf(rect), y0 = ldf(rect + 4), x1 = ldf(rect + 8), y1 = ldf(rect + 12);
     if (in_tutorial(ret)) {
         const uint32_t ys = (uint32_t)ctx->gpr[6];
-        const double sy = ldf(ys), ty = ldf(ys + 4), ay = sy != 0.0 ? -ty / sy : 0.0;   /* the screen's top */
+        const double sy = ldf(ys), ty = ldf(ys + 4);
         x0 = tut_x(x0); x1 = tut_x(x1);
-        y0 = ay + (y0 - ay) * size; y1 = ay + (y1 - ay) * size;
+        /* around the screen's top */
+        y0 = hud_place_y_quad(y0, 0.0, sy, ty, k, size); y1 = hud_place_y_quad(y1, 0.0, sy, ty, k, size);
     } else if (std::min(x0, x1) <= 0.0 && std::max(x0, x1) >= kW) {   /* the whole width: an overlay */
         x0 = kW * 0.5 + (x0 - kW * 0.5) * e;
         x1 = kW * 0.5 + (x1 - kW * 0.5) * e;
+        if (k != 1.0) {   /* split screen: its height into the band */
+            const uint32_t ys = (uint32_t)ctx->gpr[6];
+            const double sy = ldf(ys), ty = ldf(ys + 4);
+            y0 = hud_place_y_quad(y0, 0.0, sy, ty, k, 1.0); y1 = hud_place_y_quad(y1, 0.0, sy, ty, k, 1.0);
+        }
     } else {
         const uint32_t ys = (uint32_t)ctx->gpr[6];
         const double sy = ldf(ys), ty = ldf(ys + 4);
@@ -276,9 +342,8 @@ void func_00227A1C(ppu_context* ctx)
         anchor_of(cx, cy, &site_ax, &ay_out);
         if (hud_site_side(ret) == HUD_SIDE_RIGHT) {   /* hud_sites.h: the grenade row goes with the ammo panel */
             site_ax = kW;
-            ay_out = cy < band_h() * 0.5 ? 0.0 : band_h();
+            ay_out = cy < kH * 0.5 ? 0.0 : kH;
         }
-        const double ay = sy != 0.0 ? (ay_out - ty) / sy : 0.0;
         const double lo = std::min(x0, x1), hi = std::max(x0, x1);
         if (lo < kW / 3 && hi > kW * 2 / 3) {
             /* across the screen (a banner): each end goes with its own side */
@@ -287,7 +352,7 @@ void func_00227A1C(ppu_context* ctx)
         } else {
             x0 = hud_side_x(x0, site_ax, e); x1 = hud_side_x(x1, site_ax, e);
         }
-        y0 = ay + (y0 - ay) * size; y1 = ay + (y1 - ay) * size;
+        y0 = hud_place_y_quad(y0, ay_out, sy, ty, k, size); y1 = hud_place_y_quad(y1, ay_out, sy, ty, k, size);
     }
     const uint32_t tmp = ((uint32_t)ctx->gpr[1] - 0x400) & ~15u;
     stf(tmp, x0); stf(tmp + 4, y0); stf(tmp + 8, x1); stf(tmp + 12, y1);
@@ -313,6 +378,7 @@ void func_00044108(ppu_context* ctx)
          * them) is moved and sized as one block, there */
         for (int i = 0; i < m; i++) rich |= ch[i] == KZ_GA(0x0023A734) || ch[i] == KZ_GA(0x0023A7B0);
         const float e = widen(), size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0f;
+        const double k = band_k();
         if (rich && s_rich_k > 0.0) {
             /* a run of the laid-out text: around the block's origin */
             ctx->fpr[1] = S(s_rich_nx + (ctx->fpr[1] - s_rich_x0) * s_rich_k);
@@ -330,15 +396,15 @@ void func_00044108(ppu_context* ctx)
                   fprintf(stderr, "[kz-hud-text] 0x%08X (%08X %08X) hud %d: x %g y %g size %g (%s third)\n", (uint32_t)ctx->lr,
                           m > 0 ? ch[0] : 0, m > 1 ? ch[1] : 0, hud ? 1 : 0, x, ctx->fpr[2], ctx->fpr[4],
                           x < kW / 3 ? "left" : x > kW * 2 / 3 ? "right" : "middle"); } } }
-        if (hud && !rich && (e != 1.0f || size != 1.0f)) {
+        if (hud && !rich && (e != 1.0f || size != 1.0f || k != 1.0)) {
             const double x = ctx->fpr[1], y = ctx->fpr[2];
             double ax, ay;
             anchor_of(x, y, &ax, &ay);
             ctx->fpr[1] = S(hud_side_x(x, ax, e));
-            ctx->fpr[2] = S(ay + (y - ay) * size);
+            ctx->fpr[2] = S(hud_side_y(y, ay));
             /* the glyphs' size is f4 (the font's height in f5 over its own; f3
              * aligns the string, f5 also spaces the glyphs) */
-            ctx->fpr[4] = S(ctx->fpr[4] * size);
+            ctx->fpr[4] = S(ctx->fpr[4] * size * k);
         }
     }
     if (log_on()) {
@@ -369,9 +435,10 @@ void func_0023A588(ppu_context* ctx)
     bool hud = in_hud((uint32_t)ctx->lr);
     for (int i = 0; i < m && !hud; i++) hud = in_hud(ch[i]);
     const float e = widen(), size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0f;
+    const double k = band_k();
     if (log_on() && hud) { static int n; if (n++ < 30) fprintf(stderr, "[kz-rich] lr %08X hud %d f1 %g f2 %g f3 %g f4 %g\n",
         (uint32_t)ctx->lr, hud, ctx->fpr[1], ctx->fpr[2], ctx->fpr[3], ctx->fpr[4]); }
-    if (hud && (e != 1.0f || size != 1.0f)) {
+    if (hud && (e != 1.0f || size != 1.0f || k != 1.0)) {
         /* the block's origin goes with its side (the tutorial's with the
          * banner, at the top middle); its runs follow it, scaled
          * (func_00044108). The game lays the runs out itself from f1/f2. */
@@ -379,9 +446,9 @@ void func_0023A588(ppu_context* ctx)
         double ax, ay;
         anchor_of(x, y, &ax, &ay);
         const bool tut = in_tutorial((uint32_t)ctx->lr);
-        s_rich_x0 = x; s_rich_y0 = y; s_rich_k = size;
+        s_rich_x0 = x; s_rich_y0 = y; s_rich_k = size * k;
         s_rich_nx = tut ? tut_x(x) : hud_side_x(x, ax, e);
-        s_rich_ny = tut ? y * size : ay + (y - ay) * size;
+        s_rich_ny = tut ? hud_place_y(y, 0.0, k, size) : hud_side_y(y, ay);
     }
     func_0023A588_lifted(ctx);
     s_rich_k = 0.0;

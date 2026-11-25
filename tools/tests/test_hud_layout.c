@@ -33,17 +33,50 @@ int main(void)
     EXPECT(ax == 1280.0 && ay == 0.0);
     hud_anchor(622.0, 30.0, 1280.0, hud_band_h(1), &ax, &ay);
     EXPECT(ax == 640.0 && ay == 0.0);
-    /* split screen: each view's 1280x360 band; the health panel (y 325-349, seen 2026-11-25) goes with the
-     * band's bottom, not the top of a 720 layout */
-    EXPECT(hud_band_h(2) == 360.0);
-    hud_anchor(128.0, 337.0, 1280.0, hud_band_h(2), &ax, &ay);
-    EXPECT(ax == 0.0 && ay == 360.0);
-    hud_anchor(1230.0, 337.0, 1280.0, hud_band_h(2), &ax, &ay);
-    EXPECT(ax == 1280.0 && ay == 360.0);
-    hud_anchor(622.0, 30.0, 1280.0, hud_band_h(2), &ax, &ay);   /* the timer: top middle */
-    EXPECT(ax == 640.0 && ay == 0.0);
-    hud_anchor(640.0, 180.0, 1280.0, hud_band_h(2), &ax, &ay);   /* the band's middle */
-    EXPECT(ax == 640.0 && ay == 180.0);
+    /* split screen: each view's 1280x360 band holds one player's 1280x720 layout at half its size */
+    EXPECT(hud_band_h(2) == 360.0 && hud_band_k(2) == 0.5 && hud_band_k(1) == 1.0 && hud_band_k(0) == 1.0);
+    /* one player's health panel (KZ_HUD_SITES, 1P Battlefields, 2026-11-25): 0..354.062 x 651.094..697.5 */
+    const double p0x = 0.0, p1x = 354.062, p0y = 651.094, p1y = 697.5;
+    hud_anchor((p0x + p1x) * 0.5, (p0y + p1y) * 0.5, 1280.0, 720.0, &ax, &ay);
+    EXPECT(ax == 0.0 && ay == 720.0);
+    const double k = hud_band_k(2);
+    const double q0x = hud_place_x(p0x, ax, 1280.0, 1.0, 1.0 * k), q1x = hud_place_x(p1x, ax, 1280.0, 1.0, 1.0 * k);
+    const double q0y = hud_place_y_quad(p0y, ay, 1.0, 0.0, k, 1.0), q1y = hud_place_y_quad(p1y, ay, 1.0, 0.0, k, 1.0);
+    EXPECT(NEAR(q0x, 0.0) && NEAR(q1x, 177.031) && NEAR(q0y, 325.547) && NEAR(q1y, 348.75));   /* in the band, at its bottom */
+    /* the same shape as one player's (the game's own split panel, 257.031 x 23.203, is not) */
+    EXPECT(NEAR((q1x - q0x) / (q1y - q0y), (p1x - p0x) / (p1y - p0y)));
+    /* the ammo count on its bar: one player's bar 651.094..697.5, its text at y 665.324, glyphs 1.54688
+     * (x 1114.01, the right side); in the band text and quad move and scale together, so the text sits on the bar
+     * exactly as with one player, at half the size */
+    const double ty1 = 665.324, tx1 = 1114.01, f4 = 1.54688;
+    double tax, tay;
+    hud_anchor(tx1, ty1, 1280.0, 720.0, &tax, &tay);
+    EXPECT(tax == 1280.0 && tay == 720.0);
+    const double ty2 = hud_place_y(ty1, tay, k, 1.0), f42 = f4 * 1.0 * k;
+    const double b0 = hud_place_y_quad(p0y, 720.0, 1.0, 0.0, k, 1.0), b1 = hud_place_y_quad(p1y, 720.0, 1.0, 0.0, k, 1.0);
+    EXPECT(NEAR((ty2 - b0) / (b1 - b0), (ty1 - p0y) / (p1y - p0y)));
+    EXPECT(NEAR(f42 / (b1 - b0), f4 / (p1y - p0y)));
+    EXPECT(NEAR(hud_place_x(tx1, tax, 1280.0, 1.0, k), 1280.0 - (1280.0 - tx1) * 0.5));
+    /* HUD size multiplies the band's scale, around the same sides */
+    EXPECT(NEAR(hud_place_y(p0y, 720.0, k, 1.5), 360.0 - (720.0 - p0y) * 0.75));
+    /* the crosshair (120x90 in the middle of one player's layout) in the band's middle, 60x45 as the game's own */
+    EXPECT(NEAR(hud_place_y(315.0, 360.0, k, 1.0), 157.5) && NEAR(hud_place_y(405.0, 360.0, k, 1.0), 202.5));
+    /* one player: exactly the earlier arithmetic, bit for bit */
+    {
+        const double ys[] = { 651.094, 697.5, 25.0842, 509.344, 0.0, 720.0 }, sizes[] = { 1.0, 0.75, 1.5, 1.3 };
+        const double ays[] = { 0.0, 360.0, 720.0 }, sys[] = { 1.0, 2.0, 0.5 }, tys[] = { 0.0, 3.25, -7.5 };
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 4; j++)
+                for (int a = 0; a < 3; a++) {
+                    const double y = ys[i], sz = sizes[j], ay1 = ays[a];
+                    EXPECT(hud_place_y(y, ay1, hud_band_k(1), sz) == ay1 + (y - ay1) * sz);
+                    for (int b = 0; b < 3; b++) {
+                        const double sy = sys[b], ty = tys[b], ayq = (ay1 - ty) / sy;
+                        EXPECT(hud_place_y_quad(y, ay1, sy, ty, hud_band_k(1), sz) == ayq + (y - ayq) * sz);
+                    }
+                    EXPECT(hud_place_x(y, ay1, 1280.0, 1.25, sz * hud_band_k(1)) == hud_place_x(y, ay1, 1280.0, 1.25, sz));
+                }
+    }
     /* x: identity at 16:9 and size 1; at 43:18 with position 1 the panel's left edge lands on the widened layer's */
     EXPECT(hud_place_x(100.0, 0.0, 1280.0, 1.0, 1.0) == 100.0);
     const double e = hud_widen(3440.0f / 1440.0f);

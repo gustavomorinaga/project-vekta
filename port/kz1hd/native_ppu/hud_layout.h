@@ -14,11 +14,18 @@
  * screen (its layout is not changed by the game's 4:3 mode: the HUD module
  * never reads the setting, EBOOT 2026-11-12).
  *
- * In split screen (two local players) each view's HUD is laid out in its
- * own 1280x360 band: the frame's ortho is (0, 1280, 360, 0), the quads come
- * with y scale 1 and offset 0, a panel's bottom at y 349 (seen 2026-11-25).
- * hud_band_h is that layout's height; the HUD's sides and halves are taken
- * in it.
+ * In split screen (two local players) each view is drawn in its own
+ * 1280x360 band: the frame's ortho is (0, 1280, 360, 0), the quads come with
+ * y scale 1 and offset 0 (seen 2026-11-25); hud_band_h is the band's height.
+ * ENHANCEMENT: there the HUD is made to lay itself out in the 1280x720
+ * layout of one player (hud.cpp hud_viewport), and the whole layout is
+ * scaled by hud_band_k into the band, quads and text alike, around the sides
+ * they go with: each player's panels keep one player's shape at half its
+ * size, and the text stays where it is on its panel. The game's own split
+ * HUD is laid out in the band's 1280x360: its heights halve but its panels'
+ * end pieces keep their widths (health panel 257x23 against 354x46 with one
+ * player), and its ammo count stands 2.7 units higher on its bar (RPCS3 and
+ * the port at 16:9, 2026-11-25).
  */
 #ifndef KZ_HUD_LAYOUT_H
 #define KZ_HUD_LAYOUT_H
@@ -39,8 +46,11 @@ static inline double hud_spread(double widen, double pos)
     return widen < 1.0 ? widen : 1.0 + (widen - 1.0) * pos;
 }
 
-/* the height of one view's HUD layout: 720, 360 per view in split screen */
+/* the height of one view's band on the 720-line frame: 720, 360 per view in split screen */
 static inline double hud_band_h(int players) { return players == 2 ? 360.0 : 720.0; }
+
+/* the HUD's 1280x720 layout to one view's band: 1, 0.5 in split screen */
+static inline double hud_band_k(int players) { return hud_band_h(players) / 720.0; }
 
 /* the side of an extent v is in: its first third (0), the middle (extent/2)
  * or the last third (extent) */
@@ -65,5 +75,23 @@ static inline void hud_anchor(double cx, double cy, double w, double h, double* 
 static inline double hud_place_x(double x, double ax, double w, double spread, double size)
 {
     return w * 0.5 + (ax - w * 0.5) * spread + (x - ax) * size;
+}
+
+/* y of a HUD point that goes with side ay of the 1280x720 layout, in its
+ * band: the side scaled into the band by k (hud_band_k), the point's distance
+ * from it by the HUD size and k. With one player (k 1), ay + (y - ay) * size. */
+static inline double hud_place_y(double y, double ay, double k, double size)
+{
+    return ay * k + (y - ay) * size * k;
+}
+
+/* The same for a quad's y in its own units, which reach the screen through
+ * its y scale and offset (screen y = y * sy + ty; func_00227A1C's r6). With
+ * k 1 it is the side in those units plus the distance from it by size, as
+ * one player's HUD has always been placed. */
+static inline double hud_place_y_quad(double y, double ay, double sy, double ty, double k, double size)
+{
+    const double a = sy != 0.0 ? (ay - ty) / sy : 0.0, ak = sy != 0.0 ? (ay * k - ty) / sy : 0.0;
+    return ak + (y - a) * size * k;
 }
 #endif

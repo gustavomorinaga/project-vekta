@@ -27,6 +27,7 @@ void     cellGcmHleSetIsrThread(int on);
 }
 
 void kz_pc_options_register(void);   /* pcoptions.cpp: mouse look, PC options */
+void kz_hud_register(void);   /* native_ppu/hud.cpp: the split-screen HUD's layout */
 #include "route.h"
 #include "edition.h"   /* KZ_GA: guest addresses in this build's edition */
 extern "C" void spu_begin_image(int image_id);
@@ -80,6 +81,7 @@ extern "C" void ps3_load_prx_modules(void)
      * returns 0), reached through its pointer at 0x00549BC0. */
     if (getenv("KZ_DEBUG_MENU")) ppu_register_function(KZ_GA(0x002AE1C4), not_submission);
     kz_pc_options_register();
+    kz_hud_register();
     kz_route_register();   /* route.cpp: KZ_ROUTE_REC / KZ_ROUTE_PLAY */
     /* MultiStream (SPU image 3) decodes the music with the system software's MP3
      * decoder: it reads /dev_flash/sys/external/flashMP3.pic, loads it at LS
