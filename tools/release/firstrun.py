@@ -34,6 +34,8 @@ when an RPCS3 with the game is found and no paths were saved before.
 --disc PATH (tools/release/rpcs3_disc.py): the Killzone Trilogy disc's folder or its PS3_EXTRA package, with no RPCS3
 installed: the official RPCS3, downloaded at a pinned version and SHA-256 into work/toolchain-cache/rpcs3, installs
 the package into work/prep/disc and decrypts a copy of its EBOOT.BIN into work/prep; the paths are saved like --rpcs3's.
+A folder copy of the European Killzone disc (BCES-01743) needs no install: only its EBOOT.BIN is decrypted, and its
+data_ps3.psarc is used where it is.
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
   check     tools/check-game-files.py (every run; a missing or different required file stops here, and so does a CPU
@@ -902,9 +904,13 @@ def use_disc(c, disc, say=print, step=None):
     if r["status"] != "ok":
         return [p["text"] for p in r["problems"]]
     c.paths.update(game=r["game"], eboot=r["eboot"])
-    c.paths.pop("psarc", None)   # the disc's .edat is read by the port itself
+    if r.get("psarc"):
+        c.paths["psarc"] = r["psarc"]   # the European disc's data_ps3.psarc, read where it is
+    else:
+        c.paths.pop("psarc", None)   # the disc package's .edat is read by the port itself
     write_paths(c.work, c.paths)
-    say(f"From the disc: the game installed in {r['game']}; EBOOT.elf made in {os.path.dirname(r['eboot'])}")
+    say(f"From the disc: the game {'in' if r.get('psarc') else 'installed in'} {r['game']}; EBOOT.elf made in "
+        f"{os.path.dirname(r['eboot'])}")
     return []
 
 
@@ -1112,7 +1118,8 @@ def main(argv=None):
                     help="take the game from your RPCS3 (DIR, else the usual places); your RPCS3 "
                          "decrypts a copy of EBOOT.BIN into work/prep")
     ap.add_argument("--disc", metavar="PATH",
-                    help="the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) with no RPCS3 "
+                    help="the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) or your "
+                         "European Killzone disc (a copy of its folder) with no RPCS3 "
                          "installed: the official RPCS3 is downloaded (pinned, SHA-256 checked) to install and decrypt "
                          "it into work/")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: KZ_JOBS, else from free memory)")

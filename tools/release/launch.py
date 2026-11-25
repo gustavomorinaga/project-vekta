@@ -809,8 +809,9 @@ def parser():
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
                     help="take the game from your RPCS3 (DIR, else its usual places)")
     ap.add_argument("--disc", metavar="PATH",
-                    help="install the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) with "
-                         "the official RPCS3, downloaded for this (no RPCS3 of yours needed)")
+                    help="install the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) or "
+                         "your European Killzone disc (a copy of its folder) with the official RPCS3, downloaded for "
+                         "this (no RPCS3 of yours needed)")
     ap.add_argument("--dlss", choices=("accept", "decline"),
                     help="accept: you accept NVIDIA's DLSS SDK licence and the build downloads it (firstrun.py --dlss)")
     ap.add_argument("--repair", action="store_true", help='"Verify and rebuild": check the install, then rebuild')

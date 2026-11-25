@@ -7,10 +7,12 @@ install" does with the player's own RPCS3.
     tools/release/rpcs3_disc.py --find    --disc PATH [--out FILE]
     tools/release/rpcs3_disc.py --prepare --disc PATH --work DIR [--rpcs3-exe EXE] [--out FILE]
 
-PATH is the disc's folder (its PS3_EXTRA is searched for the package) or the package file itself (DATA000.PKG).
+PATH is the disc's folder (its PS3_EXTRA is searched for the package) or the package file itself (DATA000.PKG). A
+folder copy of the European Killzone disc (BCES-01743: the game itself, not a package) is taken too: nothing is
+installed, RPCS3 only decrypts a copy of its EBOOT.BIN, and the port reads its data_ps3.psarc where it is.
 Results are `key=value` lines, as rpcs3_import.py's (UTF-8 with a BOM in --out):
   --find     status=ok|problems, pkg=, problem=code|text
-  --prepare  status=ok|problems|failed, pkg=, game=, edat=, eboot=, exe=, problem=code|text
+  --prepare  status=ok|problems|failed, pkg=, game=, edat=, eboot=, psarc= (the EU disc), exe=, problem=code|text
              (problems: the package or the free space was refused before anything was downloaded or written)
 Exit 0 when status=ok.
 
@@ -50,6 +52,10 @@ CONTENT_ID = "UP9000-NPUA80856_00-GKILLZONE1000001"
 # PS3_EXTRA) has not been measured: ASSUMPTION that it names the same content ID. Neither goes through this route yet:
 # the player's own RPCS3 installs them and "Use my RPCS3 install" takes them (rpcs3_import.TITLES).
 EU_CONTENT_ID = "EP9000-NPEA00418_00-GKILLZONE1000001"
+# The European disc (BCES-01743) holds the game itself. A folder copy of it, with PS3_GAME/USRDIR's files as the game
+# reads them, has the EU PlayStation Store edition's EBOOT.elf (once decrypted) and data_ps3.psarc, byte for byte
+# (SHA-256 e4fc4f13... and a6ca5f9a..., measured 2026-11-25): only its EBOOT.BIN needs RPCS3.
+EU_DISC_TITLE = "BCES01743"
 PKG_MAGIC = b"\x7fPKG"
 # The Killzone HD package of the Killzone Trilogy disc (BCUS98116's PS3_EXTRA), measured 2026-11-19. The PlayStation
 # Store package has the same content ID and size but another SHA-256, and needs the buyer's licence: it goes through
@@ -89,6 +95,11 @@ HELP = {
     "eu_pkg": "That is the European Killzone HD package (NPEA00418). This route installs only the US Killzone Trilogy "
               "disc's package so far: install yours in your own RPCS3 (a PlayStation Store copy with its licence) "
               "and choose \"Use my RPCS3 install\".",
+    "eu_disc_raw": "The files of this European disc copy are still encrypted as they are on the disc (its EBOOT.BIN or "
+                   "data_ps3.psarc does not start as the game reads it). The port needs a copy of the disc's files "
+                   "as the game reads them: docs/GETTING-FILES.md.",
+    "eu_disc_files": "This European disc copy is not the one the port was made from: PS3_GAME/USRDIR/EBOOT.BIN or "
+                     "data_ps3.psarc is missing or its size differs. Copy the disc again.",
     "psn_pkg": "That is the PlayStation Store package of Killzone HD: it needs your licence, which only your own "
                "RPCS3 has. Install it in RPCS3 and choose \"Use my RPCS3 install\".",
     "bad_pkg": "The package is not the Killzone Trilogy disc's (its size or SHA-256 differs): the disc copy may be "
@@ -164,6 +175,61 @@ def check_pkg(pkg, digest=sha256):
     if size == DISC_PKG[0] and digest(pkg) == DISC_PKG[1]:
         return None
     return "psn_pkg" if size == DISC_PKG[0] else "bad_pkg"
+
+
+# ------------------------------------------------------------------------------------------------ the EU disc
+def find_eu_disc(path):
+    """The PS3_GAME folder of a European disc copy at path (the disc's folder, its PS3_GAME or its USRDIR), or None."""
+    path = os.path.abspath(path)
+    for d in (os.path.join(path, "PS3_GAME"), path, os.path.dirname(path)):
+        if imp.edition_map.sfo_title(os.path.join(d, "PARAM.SFO")) == EU_DISC_TITLE:
+            return d
+    return None
+
+
+def eu_disc_problem(game, psarc_size):
+    """None when the EU disc copy's EBOOT.BIN and data_ps3.psarc are there and readable as the game reads them (size
+    and first bytes; the check step hashes the archive), else a problem code."""
+    usr = os.path.join(game, "USRDIR")
+    eboot, psarc = os.path.join(usr, "EBOOT.BIN"), os.path.join(usr, "data_ps3.psarc")
+    if not (os.path.isfile(eboot) and os.path.isfile(psarc)) or os.path.getsize(psarc) != psarc_size:
+        return "eu_disc_files"
+    with open(eboot, "rb") as a, open(psarc, "rb") as b:
+        return None if a.read(4) == b"SCE\0" and b.read(4) == b"PSAR" else "eu_disc_raw"
+
+
+def prepare_eu_disc(work, game, exe=None, log=None, step=None):
+    """The EU disc copy at game (its PS3_GAME): the pinned RPCS3 decrypts a copy of its EBOOT.BIN into work/prep (kept
+    from an earlier run when its SHA-256 is right); its data_ps3.psarc is read where it is. Same result as prepare."""
+    log = log or (lambda line: None)
+    eboot_spec, psarc_spec = imp.files_for(EU_DISC_TITLE)
+    res = {"status": "problems", "problems": [], "game": game}
+    code = eu_disc_problem(game, psarc_spec[2])
+    if code:
+        res["problems"].append(_problem(code))
+        return res
+    prep = os.path.join(work, "prep")
+    os.makedirs(prep, exist_ok=True)
+    res["status"] = "failed"
+    eboot = os.path.join(prep, eboot_spec[1])
+    if not (os.path.isfile(eboot) and imp.sha256(eboot) == eboot_spec[3]):
+        if exe is None:
+            exe, code = fetch(work, log)
+            if code:
+                res["problems"].append(_problem(code))
+                return res
+        if step:
+            step(0, 1, eboot_spec[1])
+        d = imp.decrypt(exe, [(os.path.join(game, "USRDIR", eboot_spec[0]), eboot_spec)], prep, log=log,
+                        title=EU_DISC_TITLE)
+        if not d["ok"]:
+            res["problems"] = d["problems"]
+            return res
+    if exe:
+        res["exe"] = exe
+    log(f"rpcs3: the European disc in {imp.loc.redact(game)}; EBOOT.elf in {imp.loc.redact(prep)}")
+    res.update(eboot=eboot, psarc=os.path.join(game, "USRDIR", "data_ps3.psarc"), status="ok")
+    return res
 
 
 # ------------------------------------------------------------------------------------------- the official RPCS3
@@ -362,6 +428,9 @@ def prepare(work, disc, exe=None, log=None, step=None):
     -> {"status": ok|problems|failed, "pkg", "game", "edat", "eboot", "exe", "problems"}. An install already made
     (prep/disc/NPUA80856 checked) and an EBOOT.elf already decrypted are kept."""
     log = log or (lambda line: None)
+    eu_game = find_eu_disc(disc) if os.path.isdir(disc) else None
+    if eu_game:
+        return prepare_eu_disc(work, eu_game, exe, log, step)
     res = {"status": "problems", "problems": []}
     pkg, code = find_pkg(disc)
     if code:
@@ -417,7 +486,7 @@ def prepare(work, disc, exe=None, log=None, step=None):
 
 def lines(res):
     out = [f"status={res['status']}"]
-    for k in ("pkg", "game", "edat", "eboot"):
+    for k in ("pkg", "game", "edat", "eboot", "psarc"):
         if res.get(k):
             out.append(f"{k}={res[k]}")
     if res.get("exe"):
@@ -437,8 +506,10 @@ def main(argv=None):
     ap.add_argument("--out", help="write the result lines here (UTF-8 with a BOM) instead of stdout")
     a = ap.parse_args(argv)
     if a.find:
-        pkg, code = find_pkg(a.disc)
-        res = {"status": "ok", "pkg": pkg} if pkg else {"status": "problems", "problems": [_problem(code)]}
+        eu_game = find_eu_disc(a.disc) if os.path.isdir(a.disc) else None
+        pkg, code = (None, None) if eu_game else find_pkg(a.disc)
+        res = {"status": "ok", "game": eu_game} if eu_game else {"status": "ok", "pkg": pkg} if pkg else \
+            {"status": "problems", "problems": [_problem(code)]}
     else:
         if not a.work:
             ap.error("--prepare needs --work")

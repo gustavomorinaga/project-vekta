@@ -8,7 +8,7 @@ or keys and gives no such instructions. The files below come from your own disc;
 
 | File | What it is | Where the scripts look (`tools/env.sh`) | Required |
 |---|---|---|---|
-| The installed game folder | Killzone HD, title **NPUA80856**, as installed from the `PS3_EXTRA` package of the **Killzone Trilogy** disc (US, BCUS98116) or bought on the US PlayStation Store; or the European edition, **NPEA00418**, from the European PlayStation Store (see below): `PARAM.SFO`, `TROPDIR/`, `USRDIR/` | `Game/NPUA80856/` (`KZ_GAME`) | yes |
+| The installed game folder | Killzone HD, title **NPUA80856**, as installed from the `PS3_EXTRA` package of the **Killzone Trilogy** disc (US, BCUS98116) or bought on the US PlayStation Store; or the European edition, **NPEA00418**, from the European PlayStation Store, or the `PS3_GAME` folder of a copy of the European disc, **BCES-01743** (see below): `PARAM.SFO`, `TROPDIR/`, `USRDIR/` | `Game/NPUA80856/` (`KZ_GAME`) | yes |
 | `EBOOT.elf` | the game's executable, decrypted: an ELF file, not the `EBOOT.BIN` container in `USRDIR` | `Game/EBOOT.elf` (`KZ_EBOOT`) | yes |
 | `data_ps3.psarc` | the game's data archive, decrypted: a PSARC file. Without it the port reads the installed game's own `USRDIR/data_ps3.psarc.edat` (see below) | `Game/data_ps3.psarc` (`KZ_PSARC`) | no |
 
@@ -48,9 +48,17 @@ PlayStation Store's; its archive has English, French, German, Italian, Spanish a
 NPUA80856 built again, its code moved by up to 232 bytes. The build finds the edition in the game folder's `PARAM.SFO`
 and lifts it with the addresses of `re/eu/address_map.tsv` ([dev/editions.md](dev/editions.md)); its saves go to
 `savedata/NPEA00418`. Its files are checked against the second table below. Install it in your RPCS3 with its licence
-and choose "Use my RPCS3 install", as for the US Store copy. The European **disc** (BCES-01743) has not been measured:
-its package is not taken by the disc route, and a copy of it installed in RPCS3 is taken only if its files match the
-table.
+and choose "Use my RPCS3 install", as for the US Store copy.
+
+**The European disc.** Killzone HD BCES-01743 (the European "Classics HD" disc, also in the European Killzone
+Trilogy) holds the game itself, not a package. A copy of the disc's folder (`PS3_DISC.SFB` and `PS3_GAME/`) whose
+files read as the game reads them has the European edition's program and archive, byte for byte: its `EBOOT.BIN`
+decrypts to the `EBOOT.elf` of the second table and its `PS3_GAME/USRDIR/data_ps3.psarc` is that table's
+`data_ps3.psarc` (measured on 2026-11-25). Give the disc copy's folder to the disc route below (`--disc FOLDER`, or
+"From my Killzone Trilogy disc" in the setup): nothing is installed, the official RPCS3 decrypts a copy of
+`EBOOT.BIN` into `work/prep`, and the port reads the archive where it is (the folder is only read). A raw image of the
+disc, whose files are still encrypted as they are on the disc, is named and refused. Its `PARAM.SFO` is checked by
+its fields (title `BCES01743`, version and app version 01.00), as a copy of the disc may change other bytes of it.
 
 You can keep the files anywhere: set the variables in the third column to point at them, or link them into `Game/`.
 `Game/` and `work/` are ignored by git, so nothing you put there can be committed by accident.
@@ -59,7 +67,7 @@ You can keep the files anywhere: set the variables in the third column to point 
 official RPCS3, downloaded at a pinned version, install the package into `work/prep/disc` and decrypt `EBOOT.BIN`
 into `work/prep` ([INSTALL.md](INSTALL.md); `tools/release/rpcs3_disc.py`). Only the disc's package is taken
 (3,182,645,568 bytes, SHA-256 `94e8db935dca69b5c8b46f21196a923da957fcaf123c895c51cdc6dde4f50179`); the installed files
-are checked against the table below.
+are checked against the table below. A copy of the European disc is taken from its folder too (see above).
 
 ## Checking them
 
@@ -93,6 +101,15 @@ The European edition (NPEA00418), measured on 2026-11-24 from the PlayStation St
 | `EBOOT.elf` | 19,706,080 | `e4fc4f13b1bd940f52c5df16f4cc4bf0af88e17f4c1d2276b877a62490c57f52` |
 | `data_ps3.psarc` (what your RPCS3 opens the `.edat` to) | 3,416,897,765 | `a6ca5f9ad6d2d27d90d9c1d539f3f3d95e4b6ed70639d44bbcde4247ea65b79d` |
 | `USRDIR/data_ps3.psarc.edat` | 3,423,571,680 | `1001a9f1ff55c23df1f626d2c1f2b0506638faa3b5ddb8400b05dbef6d203ae0` |
+
+What you give from a copy of the European disc (BCES-01743, version 01.00), measured on 2026-11-25:
+
+| File | Size (bytes) | SHA-256 |
+|---|---|---|
+| `PS3_GAME/PARAM.SFO` | 1,040 | checked by its fields (title `BCES01743`, version 01.00); `3e728a1f14749043c007ee7b729bc70b8108b1b6f2bcbe2fe1c7a8125b618e5e` on the disc |
+| `PS3_GAME/USRDIR/EBOOT.BIN` | 19,708,512 | `63cf04eddf64b8fba0b41ca7c63e329d135f08b99e97fa93308abd99b9e938ed` (decrypts to the `EBOOT.elf` above) |
+| `PS3_GAME/USRDIR/data_ps3.psarc` | 3,416,897,765 | `a6ca5f9ad6d2d27d90d9c1d539f3f3d95e4b6ed70639d44bbcde4247ea65b79d` (the `data_ps3.psarc` above) |
+| `PS3_GAME/TROPDIR/NPWR03819_00/TROPHY.TRP` | 4,599,680 | `6a770bcec111b64c66a5f674f2107b8957334845d4876f4e8dbcfc93bbc10858` (the same set) |
 
 The lift has addresses of these EBOOTs built in (`tools/lift.sh`, `re/function_seeds.txt`, `re/eu/address_map.tsv`,
 the native functions in `port/kz1hd/`), so a different EBOOT will not work.

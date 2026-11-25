@@ -67,27 +67,48 @@ check(names.get(0x004CCA48) == "func_004CCA48_eu", "an address with no US one is
 check(0x00010230 not in names, "an address that does not move needs no line")
 check(len(names) == 3 and len(set(names.values())) == 3, f"one line per moved start, no name twice: {names}")
 
-# The edition from a PARAM.SFO's TITLE_ID.
-def sfo(title):
-    key, val = b"TITLE_ID\0", title.encode() + b"\0"
-    keys, data = 20 + 16, 20 + 16 + len(key)
+# The edition from a PARAM.SFO's TITLE_ID; a copy judged by its fields (TITLE_ID, VERSION, APP_VER).
+def sfo(title, version="01.00", attribute=0):
+    fields = [(b"APP_VER", 0x0204, version.encode() + b"\0"), (b"ATTRIBUTE", 0x0404, attribute.to_bytes(4, "little")),
+              (b"TITLE_ID", 0x0204, title.encode() + b"\0"), (b"VERSION", 0x0204, version.encode() + b"\0")]
+    names = b"".join(k + b"\0" for k, _, _ in fields)
+    keys = 20 + 16 * len(fields)
+    data = keys + len(names)
+    index, ko, do = b"", 0, 0
+    for k, fmt, v in fields:
+        index += (ko.to_bytes(2, "little") + fmt.to_bytes(2, "little") + len(v).to_bytes(4, "little")
+                  + len(v).to_bytes(4, "little") + do.to_bytes(4, "little"))
+        ko, do = ko + len(k) + 1, do + len(v)
     return (b"\0PSF" + (0x101).to_bytes(4, "little") + keys.to_bytes(4, "little") + data.to_bytes(4, "little")
-            + (1).to_bytes(4, "little") + (0).to_bytes(2, "little") + (0x0204).to_bytes(2, "little")
-            + len(val).to_bytes(4, "little") + len(val).to_bytes(4, "little") + (0).to_bytes(4, "little") + key + val)
+            + len(fields).to_bytes(4, "little") + index + names + b"".join(v for _, _, v in fields))
 
 
 d0 = tempfile.mkdtemp()
+p = os.path.join(d0, "PARAM.SFO")
 for title, ed in (("NPUA80856", "US"), ("BCUS98116", "US"), ("NPEA00418", "EU"), ("BCES01743", "EU")):
-    p = os.path.join(d0, "PARAM.SFO")
     with open(p, "wb") as f:
         f.write(sfo(title))
     check(em.sfo_title(p) == title and em.edition_of(title) == ed, f"{title} is the {ed} edition")
+for title, version, attribute, want in (("BCES01743", "01.00", 0xA5, True), ("BCES01743", "01.01", 0, False),
+                                        ("BCUS98232", "01.00", 0, False), ("NPUA80856", "01.00", 0, True)):
+    with open(p, "wb") as f:
+        f.write(sfo(title, version, attribute))
+    check(em.sfo_tested(p) is want, f"{title} {version} attribute {attribute:#x}: tested {want}")
+check(em.sfo_fields(p).get("VERSION") == "01.00" and "ATTRIBUTE" not in em.sfo_fields(p), "text fields only")
+# check-game-files takes a disc copy's PARAM.SFO (another ATTRIBUTE, so another SHA-256) by its fields.
+with open(p, "wb") as f:
+    f.write(sfo("BCES01743", attribute=0xA5))
+out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "check-game-files.py"), "--quick"],
+                     env=dict(os.environ, KZ_GAME=d0, KZ_EBOOT=os.path.join(d0, "none"), KZ_PSARC=p + ".none"),
+                     capture_output=True, text=True).stdout
+check("ok       PARAM.SFO: BCES01743, version 01.00" in out, f"check-game-files on a disc copy's PARAM.SFO: {out}")
 try:
     em.edition_of("BCUS98232")
     check(False, "an unknown title is refused")
 except ValueError:
     pass
-check(em.sfo_title(os.path.join(d0, "none")) is None, "no PARAM.SFO: no title")
+check(em.sfo_title(os.path.join(d0, "none")) is None and not em.sfo_tested(os.path.join(d0, "none")),
+      "no PARAM.SFO: no title")
 
 # Malformed tables are refused.
 with open(em.TSV, encoding="utf-8") as f:

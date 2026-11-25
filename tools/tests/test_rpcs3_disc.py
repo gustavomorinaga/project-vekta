@@ -201,6 +201,52 @@ with tempfile.TemporaryDirectory() as tmp:
     r_game, probs = rd.install([str(fake)], pkg, str(w / "prep"), timeout=30)
     check(r_game and not probs, f"an RPCS3 that stays after a good install is ended and the install kept: {probs}")
 
+    # ---- the European disc (BCES-01743): a folder copy, nothing installed, only EBOOT.BIN decrypted
+    def sfo(title):
+        key, val = b"TITLE_ID\0", title.encode() + b"\0"
+        keys, dat = 20 + 16, 20 + 16 + len(key)
+        return (b"\0PSF" + (0x101).to_bytes(4, "little") + keys.to_bytes(4, "little") + dat.to_bytes(4, "little")
+                + (1).to_bytes(4, "little") + (0).to_bytes(2, "little") + (0x0204).to_bytes(2, "little")
+                + len(val).to_bytes(4, "little") + len(val).to_bytes(4, "little") + (0).to_bytes(4, "little") + key
+                + val)
+    PSARC = b"PSAR stand-in archive"
+    ri.edition_map.EDITIONS["EU"].update(eboot=(len(ELF), sha(ELF)), psarc=(len(PSARC), sha(PSARC)))
+    eud = tmp / "eu-disc"
+    (eud / "PS3_GAME" / "USRDIR").mkdir(parents=True)
+    (eud / "PS3_GAME" / "PARAM.SFO").write_bytes(sfo("BCES01743"))
+    (eud / "PS3_GAME" / "USRDIR" / "EBOOT.BIN").write_bytes(b"SCE\0 disc eboot")
+    (eud / "PS3_GAME" / "USRDIR" / "data_ps3.psarc").write_bytes(PSARC)
+    eg = str(eud / "PS3_GAME")
+    check(rd.find_eu_disc(eud) == eg and rd.find_eu_disc(eud / "PS3_GAME") == eg
+          and rd.find_eu_disc(eud / "PS3_GAME" / "USRDIR") == eg, "the EU disc from its folder, PS3_GAME or USRDIR")
+    check(rd.find_eu_disc(disc) is None, "the Trilogy disc's PS3_GAME (another title) is not the EU disc")
+    before = {p: p.read_bytes() for p in eud.rglob("*") if p.is_file()}
+    weu = tmp / "w-eu"
+    n = len(flog.read_text().splitlines())
+    res = rd.prepare(str(weu), str(eud), exe=[str(fake)])
+    runs = [__import__("json").loads(x) for x in flog.read_text().splitlines()[n:]]
+    check(res["status"] == "ok" and res.get("game") == eg and res.get("psarc") == str(eud / "PS3_GAME" / "USRDIR" /
+          "data_ps3.psarc") and (weu / "prep" / "EBOOT.elf").read_bytes() == ELF, f"EU disc prepared: {res}")
+    check(runs and all("--installpkg" not in r["args"] for r in runs) and "--decrypt" in runs[0]["args"],
+          f"the EU disc: nothing installed, only EBOOT.BIN decrypted: {runs}")
+    check(not (weu / "prep" / "disc").exists(), "no install folder for the EU disc")
+    check(before == {p: p.read_bytes() for p in eud.rglob("*") if p.is_file()}, "the EU disc is only read")
+    n = len(flog.read_text().splitlines())
+    check(rd.prepare(str(weu), str(eud), exe=[str(fake)])["status"] == "ok" and len(flog.read_text().splitlines()) == n,
+          "a second run reuses the EU EBOOT.elf")
+    (eud / "PS3_GAME" / "USRDIR" / "EBOOT.BIN").write_bytes(b"\x93\x11 still disc-encrypted")
+    r = rd.prepare(str(tmp / "w-eu-raw"), str(eud), exe=[str(fake)])
+    check(r["status"] == "problems" and r["problems"][0]["code"] == "eu_disc_raw", f"a raw disc copy is named: {r}")
+    (eud / "PS3_GAME" / "USRDIR" / "EBOOT.BIN").write_bytes(b"SCE\0 disc eboot")
+    (eud / "PS3_GAME" / "USRDIR" / "data_ps3.psarc").write_bytes(PSARC + b"x")
+    r = rd.prepare(str(tmp / "w-eu-cut"), str(eud), exe=[str(fake)])
+    check(r["status"] == "problems" and r["problems"][0]["code"] == "eu_disc_files", f"a wrong archive size: {r}")
+    (eud / "PS3_GAME" / "USRDIR" / "data_ps3.psarc").write_bytes(PSARC)
+    out = tmp / "find-eu.txt"
+    rc = rd.main(["--find", "--disc", str(eud), "--out", str(out)])
+    text = out.read_text(encoding="utf-8-sig")
+    check(rc == 0 and f"game={eg}" in text, f"--find on the EU disc: {rc} {text}")
+
     # ---- command line
     out = tmp / "find.txt"
     rc = rd.main(["--find", "--disc", str(disc), "--out", str(out)])
@@ -220,6 +266,10 @@ with tempfile.TemporaryDirectory() as tmp:
           and c.paths.get("game") == str(game) and "psarc" not in c.paths, f"use_disc: {c.paths}")
     saved = (work / "paths.env").read_text()
     check(str(game) in saved and "EBOOT.elf" in saved, f"use_disc saves the paths: {saved}")
+    c3 = type("C", (), {"work": str(weu), "paths": {}})()
+    check(firstrun.use_disc(c3, str(eud), said.append) == [] and c3.paths.get("game") == eg
+          and c3.paths.get("psarc") == str(eud / "PS3_GAME" / "USRDIR" / "data_ps3.psarc")
+          and c3.paths.get("eboot") == str(weu / "prep" / "EBOOT.elf"), f"use_disc saves the EU disc's archive: {c3.paths}")
     c2 = type("C", (), {"work": str(tmp / "w3"), "paths": {}})()
     probs = firstrun.use_disc(c2, str(tmp / "trilogy.iso"))
     check(probs and probs[0].startswith(rd.HELP["iso"][:30]), f"use_disc returns the problem's text: {probs}")

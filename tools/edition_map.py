@@ -117,22 +117,36 @@ EDITIONS = {
 }
 
 
-def sfo_title(path):
-    """The TITLE_ID of a PARAM.SFO, or None when the file is missing or not an SFO."""
+def sfo_fields(path):
+    """The text fields of a PARAM.SFO ({key: value}), or {} when the file is missing or not an SFO."""
+    out = {}
     try:
         with open(path, "rb") as f:
             b = f.read(1 << 16)
         if b[:4] != b"\x00PSF":
-            return None
+            return {}
         keys, data, n = struct.unpack_from("<III", b, 8)
         for i in range(n):
-            ko, _, length, _, do = struct.unpack_from("<HHIII", b, 20 + 16 * i)
-            k = b[keys + ko:b.index(b"\x00", keys + ko)].decode("ascii", "replace")
-            if k == "TITLE_ID":
-                return b[data + do:data + do + length].split(b"\x00")[0].decode("ascii", "replace")
+            ko, fmt, length, _, do = struct.unpack_from("<HHIII", b, 20 + 16 * i)
+            if fmt in (0x0004, 0x0204):   # utf-8 text (0x0404 is an integer)
+                k = b[keys + ko:b.index(b"\x00", keys + ko)].decode("ascii", "replace")
+                out[k] = b[data + do:data + do + length].split(b"\x00")[0].decode("utf-8", "replace")
     except (OSError, ValueError, struct.error):
-        return None
-    return None
+        return {}
+    return out
+
+
+def sfo_title(path):
+    """The TITLE_ID of a PARAM.SFO, or None when the file is missing or not an SFO."""
+    return sfo_fields(path).get("TITLE_ID")
+
+
+def sfo_tested(path):
+    """The PARAM.SFO of a known edition at version 01.00, judged by its fields: a copy of the disc may carry another
+    ATTRIBUTE than the disc (measured 2026-11-25 on a folder copy of BCES-01743), so its SHA-256 proves nothing."""
+    f = sfo_fields(path)
+    return any(f.get("TITLE_ID") in ed["titles"] for ed in EDITIONS.values()) and \
+        f.get("VERSION") == "01.00" and f.get("APP_VER") == "01.00"
 
 
 def edition_of(title):

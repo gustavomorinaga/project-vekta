@@ -248,7 +248,7 @@ The exit codes, one table for the exe and the launcher (`port/kz1hd/kz_exit.h`; 
 | 1 | `FAILED` | Something else went wrong: the end of work/play.log or the newest work/logs/firstrun-*.log says what. |
 | 2 | `USAGE` | Wrong arguments: run with --help to see them. |
 | 70 | `NOT_PREPARED` | The game is not built yet: start Project Vekta, or run its prepare step (--prepare), to check your files and build it. |
-| 71 | `WRONG_EDITION` | These files are another edition or version of the game: the port needs NPUA80856 or NPEA00418 version 01.00 (docs/GETTING-FILES.md). |
+| 71 | `WRONG_EDITION` | These files are another edition or version of the game: the port needs NPUA80856, NPEA00418 or BCES01743 version 01.00 (docs/GETTING-FILES.md). |
 | 72 | `FILE_MISSING` | A file the port needs is missing or still encrypted: give the game folder (--game), or let your RPCS3 make the decrypted copy (--rpcs3). |
 | 73 | `NO_RPCS3` | No RPCS3 with the game installed was found in its usual places: give its folder (--rpcs3 DIR), or your files (--game, --eboot). |
 | 74 | `BUILD_FAILED` | The build stopped: the reason is at the end of the newest work/logs/firstrun-*.log; after a fix, prepare again (it resumes). |

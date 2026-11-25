@@ -234,6 +234,9 @@ def main():
             print(f"ok       {label}: size and type match (hash skipped with --quick)")
             continue
         got = sha256(path)
+        if got != digest and label == "PARAM.SFO" and edition_map.sfo_tested(path):
+            print(f"ok       {label}: {_TITLE}, version 01.00 (its fields; a copy of the disc changes other bytes)")
+            continue
         if got != digest:
             then = ("the check stops here: the port is made from the tested file, and no other has been tried"
                     if required else "nobody has tried this version; it is optional, so the check goes on")

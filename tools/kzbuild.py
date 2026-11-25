@@ -549,7 +549,7 @@ def cmd_data(e, a):
     want = psarc_want(e)
     if (size, sha256_file(dec) if size == want[0] else "") != want:
         raise Fail(f"the opened archive {dec} is not the tested one ({size} bytes; docs/GETTING-FILES.md); "
-                   "is the installed game NPUA80856 or NPEA00418 version 01.00?")
+                   "is the game NPUA80856, NPEA00418 or BCES01743 version 01.00?")
     with open(os.path.join(edat_cache(e), "data_ps3.psarc.ok"), "w", encoding="utf-8") as f:
         f.write(dec + "\n")
     extract_movies(e, dec, u)

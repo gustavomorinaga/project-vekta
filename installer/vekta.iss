@@ -594,8 +594,9 @@ begin
   RpcsNote.Caption := '';
   DiscPage := CreateInputDirPage(SourcePage.ID, 'Your game',
     'Your Killzone Trilogy disc, copied to this PC.',
-    'Pick the copied disc''s folder: it holds PS3_GAME and PS3_EXTRA (a disc image, .iso, must be opened first: ' +
-    'double-click it and pick the drive it opens as). Setup only reads it. The build downloads the official RPCS3 ' +
+    'Pick the copied disc''s folder: it holds PS3_GAME and PS3_EXTRA, or only PS3_GAME for the European Killzone ' +
+    'disc (BCES-01743). A disc image (.iso) must be opened first: ' +
+    'double-click it and pick the drive it opens as. Setup only reads it. The build downloads the official RPCS3 ' +
     '(about 37 MB, from RPCS3''s own GitHub releases), which installs the Killzone HD package into the install ' +
     'folder with no window and decrypts a copy of its EBOOT there: about 4 GB more disk. On Windows 10, install ' +
     '7-Zip first (https://www.7-zip.org) to unpack it.', False, '');
@@ -730,19 +731,24 @@ begin
   Result := SourcePage.SelectedValueIndex = 2;
 end;
 
-{ '' when Dir can be the disc's folder, else why not; firstrun.py --disc then finds and checks the package itself }
+{ '' when Dir can be the disc's folder, else why not; firstrun.py --disc then finds and checks the package (or the
+  European disc's PS3_GAME files) itself }
 function DiscProblem(Dir: String): String;
 begin
   Result := '';
   if Dir = '' then
-    Result := 'Pick the folder of your copied Killzone Trilogy disc (it holds PS3_GAME and PS3_EXTRA).'
+    Result := 'Pick the folder of your copied Killzone Trilogy disc (it holds PS3_GAME and PS3_EXTRA) or European ' +
+      'Killzone disc (it holds PS3_GAME).'
   else if not DirExists(Dir) then
     Result := 'There is no folder ' + Dir + '. Pick the folder of your copied Killzone Trilogy disc (it holds ' +
-      'PS3_GAME and PS3_EXTRA); a disc image (.iso) must be opened first.'
+      'PS3_GAME and PS3_EXTRA) or European Killzone disc (it holds PS3_GAME); a disc image (.iso) must be opened first.'
   else if not DirExists(AddBackslash(Dir) + 'PS3_EXTRA') and
-          (CompareText(ExtractFileName(RemoveBackslashUnlessRoot(Dir)), 'PS3_EXTRA') <> 0) then
-    Result := 'No PS3_EXTRA folder in ' + Dir + '. Pick the folder of your copied Killzone Trilogy disc (it holds ' +
-      'PS3_GAME and PS3_EXTRA, where the Killzone HD package is).';
+          (CompareText(ExtractFileName(RemoveBackslashUnlessRoot(Dir)), 'PS3_EXTRA') <> 0) and
+          not FileExists(AddBackslash(Dir) + 'PS3_GAME\PARAM.SFO') and
+          not FileExists(AddBackslash(Dir) + 'PARAM.SFO') then
+    Result := 'No PS3_EXTRA or PS3_GAME folder in ' + Dir + '. Pick the folder of your copied Killzone Trilogy ' +
+      'disc (it holds PS3_GAME and PS3_EXTRA, where the Killzone HD package is) or European Killzone disc (it ' +
+      'holds PS3_GAME).';
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -842,8 +848,9 @@ begin
       'copy with its licence.' + #13#10 +
       '2. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
       'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
-      'Or, with no RPCS3: copy your Killzone Trilogy disc to this PC and choose "From my Killzone Trilogy disc": ' +
-      'the official RPCS3 is downloaded and installs the game into the install folder.' + #13#10#13#10 +
+      'Or, with no RPCS3: copy your Killzone Trilogy disc (or European Killzone disc) to this PC and choose "From ' +
+      'my Killzone Trilogy disc": the official RPCS3 is downloaded and makes the copies in the install folder.' +
+      #13#10#13#10 +
       'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +
       'myself" and give the installed game folder and EBOOT.elf.' + #13#10#13#10 +
       'Every step: {#InstallDoc}' + #13#10 + 'What each file must be: {#FilesDoc}', mbInformation, MB_OK);
