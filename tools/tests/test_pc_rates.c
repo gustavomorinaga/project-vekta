@@ -27,6 +27,30 @@ int main(void)
              KZ_LOOK_YAW_DEG_PER_COUNT, pitch / KZ_LOOK_YAW_DEG_PER_COUNT);
     EXPECT(fabs(pitch / KZ_LOOK_YAW_DEG_PER_COUNT - 1.0) <= 0.03, what);
     EXPECT(fabs(KZ_LOOK_K - 0.022 * 3.14159265 / 180.0 / 2.27) < 1e-9, "mouse: yaw's constant is 0.7.0's");
+
+    /* Frames of 1, 2, 0, 3 and 1 ticks with counts in each: the game applies a frame's rate once per tick, so the
+     * turn is rate x ticks; the total must be the counts, none doubled and none lost (the 0-tick frame's are kept). */
+    {
+        static const unsigned steps[] = { 1, 2, 0, 3, 1, 1 };
+        static const int counts[] = { 10, 400, 7, 30, -5, 0 };
+        struct pc_look_carry c = { 0, 0, 0, 0 };
+        unsigned now = 1000; double turn = 0; int given = 0, held = 0;
+        pc_look_frame(&c, now, &(int){0}, &(int){0});   /* primes */
+        for (int i = 0; i < 6; i++) {
+            now += steps[i];
+            int dx = counts[i], dy = 0;
+            given += counts[i];
+            const float per = pc_look_frame(&c, now, &dx, &dy);
+            turn += (double)dx * per * steps[i];
+            if (!steps[i]) held = c.x == counts[i] && per == 0.0f;
+        }
+        char w[96];
+        snprintf(w, sizeof w, "mouse: frames of 1,2,0,3,1 ticks turn %.3f counts' worth of %d", turn, given);
+        EXPECT(fabs(turn - given) < 1e-3, w);
+        EXPECT(held, "mouse: a frame with no tick keeps its counts for the next");
+        int dx = 50, dy = 0;
+        EXPECT(pc_look_frame(&c, now + 5000, &dx, &dy) == 1.0f && dx == 50, "mouse: a jump of the clock (a load) counts as one tick");
+    }
     if (fails) return 1;
     puts("test_pc_rates: ok");
     return 0;

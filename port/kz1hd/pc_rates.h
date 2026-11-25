@@ -48,4 +48,25 @@ static inline double pc_flip_hz(int fps_limit) { return fps_limit >= 100 ? 144.0
 #define KZ_LOOK_PITCH_DEG_PER_COUNT 0.01184   /* measured with KZ_LOOK_K, before the scale */
 #define KZ_LOOK_PITCH_SCALE 3.687f            /* 0.04365 / 0.01184 */
 
+/* The game applies one frame's turn rates once per tick of the game clock the
+ * frame advances, so a frame of 2 ticks (a dip below the clock's rate, often
+ * at 144) turned the mouse's counts twice (#121: a 400-count pitch burst
+ * turned 34.92 deg instead of 17.46 on a 2-tick step, 2026-11-25). Per frame:
+ * the counts get 1/ticks of the per-tick rate, and a frame that advances no
+ * tick keeps them for the next, so no count is lost or doubled. `now` is the
+ * clock's tick count; a jump of more than 8 (a new clock, a load) counts as
+ * one tick. Returns the rate's scale, 0 when the counts were kept.
+ * ASSUMPTION: +0x6C already holds this frame's ticks when the look runs
+ * (checked in the game by bursts on 2-tick frames, not in the code). */
+struct pc_look_carry { int x, y; unsigned last; int primed; };
+static inline float pc_look_frame(struct pc_look_carry* c, unsigned now, int* dx, int* dy)
+{
+    unsigned n = c->primed ? now - c->last : 1;
+    if (n > 8) n = 1;
+    c->last = now; c->primed = 1;
+    *dx += c->x; *dy += c->y; c->x = c->y = 0;
+    if (!n) { c->x = *dx; c->y = *dy; *dx = *dy = 0; return 0.0f; }
+    return 1.0f / (float)n;
+}
+
 #endif

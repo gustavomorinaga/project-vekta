@@ -387,8 +387,11 @@ static void player_look(ppu_context* ctx)
     pad_mouse_take(&dx, &dy);
     kz_route_mouse(&dx, &dy);
     kz_route_tick_end(obj);
+    static pc_look_carry carry;   /* the clock object (0x828734) counts ticks at +0x6C */
+    const uint32_t clk = rd32(0x828734);
+    const float per = pc_look_frame(&carry, clk && clk < 0xF0000000u ? rd32(clk + 0x6C) : carry.last + 1, &dx, &dy);
     if (!dx && !dy) return;
-    const float k = g_look_k * (float)(g_kz_tick_hz > 0 ? g_kz_tick_hz : 30);   /* per tick */
+    const float k = g_look_k * (float)(g_kz_tick_hz > 0 ? g_kz_tick_hz : 30) * per;   /* per tick of this frame */
     const float yaw = rdf(obj + 0xA8), pitch = rdf(obj + 0xAC);
     wrf(obj + 0xA8, yaw - (float)dx * k * sens(s_yaw));
     wrf(obj + 0x3C, rdf(obj + 0xA8) / 0.93f);

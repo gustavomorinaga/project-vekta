@@ -14,6 +14,8 @@ program and folder that build it. Until a release that calls itself playable
   Before, at 60 fps the frames alternated between about 14 and 21 ms unless V-Sync was set to the VRR mode.
 - Mouse look (#121): mouse movement made while the game window was out of focus, just before a menu opened or as
   the pointer was captured again no longer turns the view all at once afterwards (a sudden jump or flick).
+- Mouse look (#121): a frame that runs slow no longer turns the view twice as far for the same mouse movement (most
+  often at the 144 fps limit).
 
 ## [0.7.0] - 2026-11-23 (pre-release)
 
