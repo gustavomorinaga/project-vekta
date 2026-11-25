@@ -145,25 +145,18 @@ def edition_of(title):
 
 
 def func_names(eu_starts, rows):
-    """--func-names lines for an EU lift: each EU function start under its US name (func_ + the US address; an
-    address with no US one keeps its own, with _eu), so the port's names resolve. Also names each EU address whose
-    plain func_ADDR would be the US name of another function, until no plain name collides."""
-    names = {}
-
-    def name(a):
+    """--func-names lines for an EU lift: {EU function start: name} for each start whose name is not its own
+    func_ADDR: the US name (func_ + the US address), or func_ADDR_eu for a start with no US address. Every function
+    the lift list holds then has its US name, as the port calls them. The names cannot collide among the starts (each
+    is its own US address, and us_of is one to one); the lifter stops if a piece or call target it adds outside the
+    list would take one of them (patch 3038)."""
+    out = {}
+    for a in eu_starts:
         u = us_of(a, rows)
-        return f"func_{a:08X}_eu" if u is None else f"func_{u:08X}"
-
-    todo = set(eu_starts)
-    while todo:
-        a = todo.pop()
-        if a in names:
-            continue
-        names[a] = name(a)
-        u = int(names[a][5:13], 16)
-        if u != a and u not in names:
-            todo.add(u)          # the EU address u, if unnamed, would be func_u too
-    return {a: n for a, n in names.items() if n != f"func_{a:08X}"}
+        n = f"func_{a:08X}_eu" if u is None else f"func_{u:08X}"
+        if n != f"func_{a:08X}":
+            out[a] = n
+    return out
 
 
 # ------------------------------------------------------------------------------------------------------------ header
