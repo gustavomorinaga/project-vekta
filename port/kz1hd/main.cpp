@@ -892,12 +892,12 @@ int main(int argc, char** argv)
     derive_vfs_root(argv[1]);
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
     set_edat_cache();
-    {   /* the FIOS cache: /dev_hdd1 is $PS3_HDD1_ROOT, else <VFS root>/cache (ps3recomp's ppu_fs.cpp) */
+    {   /* the FIOS caches: /dev_hdd1 is $PS3_HDD1_ROOT, else <VFS root>/cache (ps3recomp's ppu_fs.cpp) */
         const char* h1 = getenv("PS3_HDD1_ROOT");
-        const std::string fios = ((h1 && *h1) ? std::string(h1) : std::string(ppu_vfs_root) + "/cache") + "/BCUS98116/fios";
-        if (!kz_fios_cache_check(fios.c_str()))
-            fprintf(stderr, "[kz] FIOS cache: %s/cache.dat was missing or cut short (an earlier run stopped while writing it); "
-                            "removed with cache.idx, the game makes a new one\n", fios.c_str());
+        const std::string root = (h1 && *h1) ? std::string(h1) : std::string(ppu_vfs_root) + "/cache";
+        kz_fios_cache_check_all(root.c_str(), [](const char* dir) {
+            fprintf(stderr, "[kz] FIOS cache: %s/cache.dat was missing or cut short (an earlier run stopped while "
+                            "writing it); removed with cache.idx, the game makes a new one\n", dir); });
     }
     /* The window's icon and application id (ps3recomp patch 2081): "project-vekta" is also the name of the Linux menu
      * entry (tools/release/firstrun.py desktop_entry), where a Wayland desktop takes the icon from. */
