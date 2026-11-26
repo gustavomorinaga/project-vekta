@@ -20,6 +20,16 @@ int main(void)
            "limit 144: clock, cadence and the game's vblanks at 144, as before");
     EXPECT(pc_guest_vblank_hz(60) == 59.94 && pc_guest_vblank_hz(30) == 59.94, "below 100 the game sees the PS3's 59.94 vblanks");
     EXPECT(pc_tick_hz(30) == 30 && pc_tick_hz(60) == 60, "the game clock follows the limit");
+    {   /* the higher limits: clock and the game's vblanks at the limit, a 144 Hz cadence in menus (raised in play) */
+        static const int hi[] = { 120, 144, 165, 240 };
+        int good = 1;
+        for (int i = 0; i < 4; i++)
+            good &= pc_tick_hz(hi[i]) == hi[i] && pc_guest_vblank_hz(hi[i]) == (double)hi[i] && pc_flip_hz(hi[i]) == 144.0;
+        EXPECT(good, "limits 120, 144, 165, 240: clock and vblanks at the limit, cadence 144");
+    }
+    EXPECT(pc_tick_hz(0) == 1000 && pc_guest_vblank_hz(0) == 1000.0 && pc_flip_hz(0) == 144.0,
+           "Unlimited (0): a 1000 Hz clock, a tick per ms of the game's timer");
+    EXPECT(pc_tick_hz(5000) == 1000 && pc_tick_hz(-1) == 30, "an odd value: at most 1000, below 0 the game's 30");
 
     const double pitch = KZ_LOOK_PITCH_DEG_PER_COUNT * KZ_LOOK_PITCH_SCALE;
     char what[96];
@@ -35,12 +45,12 @@ int main(void)
         static const int counts[] = { 10, 400, 7, 30, -5, 0 };
         struct pc_look_carry c = { 0, 0, 0, 0 };
         unsigned now = 1000; double turn = 0; int given = 0, held = 0;
-        pc_look_frame(&c, now, &(int){0}, &(int){0});   /* primes */
+        pc_look_frame(&c, now, 60, &(int){0}, &(int){0});   /* primes */
         for (int i = 0; i < 6; i++) {
             now += steps[i];
             int dx = counts[i], dy = 0;
             given += counts[i];
-            const float per = pc_look_frame(&c, now, &dx, &dy);
+            const float per = pc_look_frame(&c, now, 60, &dx, &dy);
             turn += (double)dx * per * steps[i];
             if (!steps[i]) held = c.x == counts[i] && per == 0.0f;
         }
@@ -49,7 +59,23 @@ int main(void)
         EXPECT(fabs(turn - given) < 1e-3, w);
         EXPECT(held, "mouse: a frame with no tick keeps its counts for the next");
         int dx = 50, dy = 0;
-        EXPECT(pc_look_frame(&c, now + 5000, &dx, &dy) == 1.0f && dx == 50, "mouse: a jump of the clock (a load) counts as one tick");
+        EXPECT(pc_look_frame(&c, now + 5000, 60, &dx, &dy) == 1.0f && dx == 50, "mouse: a jump of the clock (a load) counts as one tick");
+    }
+    /* the jump limit: 8 ticks up to 144 Hz (unchanged), 1/8 s above; an Unlimited (1000 Hz) frame of 10 ticks
+     * (~100 fps) is divided, not taken for a load */
+    EXPECT(pc_look_max_jump(30) == 8 && pc_look_max_jump(60) == 8 && pc_look_max_jump(144) == 8,
+           "mouse: up to 144 Hz a jump is more than 8 ticks, as before");
+    EXPECT(pc_look_max_jump(165) == 20 && pc_look_max_jump(240) == 30 && pc_look_max_jump(1000) == 125,
+           "mouse: above 144 Hz a jump is more than 1/8 s of ticks");
+    {
+        struct pc_look_carry c = { 0, 0, 0, 0 };
+        unsigned now = 5000;
+        pc_look_frame(&c, now, 1000, &(int){0}, &(int){0});
+        int dx = 100, dy = 0;
+        const float per = pc_look_frame(&c, now + 10, 1000, &dx, &dy);
+        EXPECT(per == 0.1f && dx == 100, "mouse: at 1000 Hz a 10-tick frame gets 1/10 of the rate per tick");
+        dx = 40; dy = 0;
+        EXPECT(pc_look_frame(&c, now + 10 + 400, 1000, &dx, &dy) == 1.0f, "mouse: at 1000 Hz a 400 ms jump counts as one tick");
     }
     if (fails) return 1;
     puts("test_pc_rates: ok");

@@ -8,6 +8,9 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (`fps_limit = 0`, a
+  1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the
+  default ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 - RecompLauncher: the game's page lists the PC settings (display, picture, upscaling, mouse, sound and language),
   read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
   package or a decrypted EBOOT.elf that matches the US copy is shown as verified.

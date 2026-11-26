@@ -77,7 +77,11 @@
       "choices": [
         {"label": "30", "set": {"fps_limit": "30"}},
         {"label": "60", "set": {"fps_limit": "60"}},
-        {"label": "144", "set": {"fps_limit": "144"}}
+        {"label": "120", "set": {"fps_limit": "120"}},
+        {"label": "144", "set": {"fps_limit": "144"}},
+        {"label": "165", "set": {"fps_limit": "165"}},
+        {"label": "240", "set": {"fps_limit": "240"}},
+        {"label": "Unlimited", "set": {"fps_limit": "0"}}
       ] },
     {"id": "reflex", "label": "NVIDIA Reflex", "help": "Lower input lag on NVIDIA cards; does nothing on others.", "group": "Display", "defaults": {"reflex": "off"},
       "choices": [

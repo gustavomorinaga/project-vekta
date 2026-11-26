@@ -121,7 +121,8 @@ saves, settings and logs are kept:
 
 All optional, on a **PC** page in the game's own Options and Pause menus:
 
-- window, borderless or fullscreen, any resolution and aspect ratio (Hor+ up to 32:9), V-Sync, VRR, 30/60/144 fps,
+- window, borderless or fullscreen, any resolution and aspect ratio (Hor+ up to 32:9), V-Sync, VRR, 30/60/120/144/165/240 fps or
+  Unlimited (120 and up experimental),
   NVIDIA Reflex
 - AMD FSR 1, AMD FSR 3.1 and NVIDIA DLSS (downloaded only if you accept its licence), anisotropic filtering
 - field of view for the world and the weapon, HUD and crosshair size, motion blur, film grain and glow
