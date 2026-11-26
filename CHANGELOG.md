@@ -16,6 +16,11 @@ program and folder that build it. Until a release that calls itself playable
   Killzone Trilogy disc" in the setup). Its files are the European edition's; the official RPCS3 only decrypts a copy
   of its `EBOOT.BIN`, and the archive is read where it is ([docs/GETTING-FILES.md](docs/GETTING-FILES.md)).
 
+### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
