@@ -56,6 +56,7 @@
 #include "menu_box.h"    /* the list box the mouse drives */
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
+#include "trophies.h"    /* kz_notice_options */
 #include "res_list.h"    /* the sizes the Resolution row offers */
 #include "sys_info.h"    /* kz_sys_pair: the session header's settings line */
 #include "display_seq.h" /* KZ_TEST_DISPLAY_SEQ */
@@ -199,6 +200,9 @@ static void ini_save(void)
  *                             game's, 0 none; an older file's on/off is 100/0. post.h,
  *                             applied at once)
  *   film_grain  = 0-100   (the game's film grain, the same way. post.h, applied at once)
+ *   trophy_notices = on | off   (ENHANCEMENT: the card shown when a trophy unlocks, trophy_notice.cpp;
+ *                             applied at once)
+ *   trophy_sound   = on | off   (its sound; greyed out while trophy_notices is off; applied at once)
  *   glow        = 0-100   (the game's glow, on the GPU (ps3recomp patch 2078), the same way:
  *                             rsx_vulkan_set_glow_strength in 256ths, 100 = 256 the game's.
  *                             PS3RECOMP_GLOW_STRENGTH at start, applied at once) */
@@ -210,7 +214,7 @@ static const struct { const char* key; const char* def; } kVideo[] = {
     { "hud_size", "1" }, { "hud_position", "1" }, { "crosshair_size", "1" }, { "intro", "on" }, { "anisotropic", "game" },
     { "upscaler", "linear" }, { "sharpness", "0.2" }, { "temporal", "off" }, { "speakers", "2" }, { "language", "system" },
     { "reflex", "off" }, { "antialiasing", "mlaa" }, { "motion_blur", "100" }, { "film_grain", "100" },
-    { "glow", "100" },
+    { "glow", "100" }, { "trophy_notices", "on" }, { "trophy_sound", "on" },
 };
 /* MangoHUD with a preset for recording the game's progress: frame rate and
  * frame time, CPU per core, GPU, memory, resolution and driver. A
@@ -283,6 +287,7 @@ static void post_load(void)
 static long long now_ms(void);
 static void display_seq_tick(long long t);   /* KZ_TEST_DISPLAY_SEQ, below */
 static void aspect_apply(void);   /* below, with the aspect row */
+static void notice_apply(void) { kz_notice_options(s_ini["trophy_notices"] != "off", s_ini["trophy_sound"] != "off"); }
 static void aniso_apply(void);    /* below, with the anisotropic row */
 static void temporal_apply(void); /* below, with the temporal row */
 extern "C" void kz_view_update(void)
@@ -356,6 +361,7 @@ extern "C" void kz_pc_settings_env(void)
     { const char* fa = getenv("PS3RECOMP_VK_ASPECT");   /* the one the runtime reads, set here or before */
       s_aspect_forced = s_ini["widescreen"] != "off" && fa ? view_aspect_value(fa) : 0.0f; }
     if (s_ini["intro"] == "off") setenv("KZ_SKIP_INTRO", "1", 0);   /* sail.cpp */
+    notice_apply();
     { const std::string& a = s_ini["anisotropic"];
       setenv("PS3RECOMP_VK_ANISO", a == "off" ? "1" : a == "game" ? "0" : a.c_str(), 0); }
     setenv("PS3RECOMP_VK_FSR", s_ini["upscaler"] == "fsr" ? "1" : "0", 0);
@@ -730,6 +736,13 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
     aniso_apply();
     temporal_apply();
     s_deps_dirty = true; }
+/* The trophy notice's rows (trophy_notice.cpp): the card, and its sound while the card is on. */
+static void get_tnotice(ppu_context* c) { attr_log("get_tnotice", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["trophy_notices"] != "off"; }
+static void set_tnotice(ppu_context* c) { attr_log("set_tnotice", c); if ((int32_t)c->gpr[5] != 2) return;
+    s_ini["trophy_notices"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); notice_apply(); s_deps_dirty = true; }
+static void get_tsound(ppu_context* c) { attr_log("get_tsound", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["trophy_sound"] != "off"; }
+static void set_tsound(ppu_context* c) { attr_log("set_tsound", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_TROPHY_SOUND)) return;
+    s_ini["trophy_sound"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); notice_apply(); }
 static void get_intro(ppu_context* c) { attr_log("get_intro", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["intro"] != "off"; }
 static void set_intro(ppu_context* c) { attr_log("set_intro", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["intro"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); }
@@ -803,11 +816,12 @@ static unsigned s_nopts;
  * mask, a write is the menu saying it has applied it (s_deps_dirty: a setting
  * a row depends on changed, the menu should look again; lua_binding). The PC
  * screen's row of each PC_DEP_* bit: */
-static const int kDepRow[PC_DEP_COUNT] = { 2, 4, 7, 17, 19, 12 };   /* Resolution, Aspect, HUD Position, FSR Sharpness, Anti-aliasing, Reflex */
+static const int kDepRow[PC_DEP_COUNT] = { 2, 4, 7, 17, 19, 12, 30 };   /* Resolution, Aspect, HUD Position, FSR Sharpness, Anti-aliasing, Reflex, Trophy Sound */
 static unsigned deps_mask(void)
 {
     const pc_deps_in in = { s_ini["display"].c_str(), s_ini["widescreen"].c_str(), s_ini["upscaler"].c_str(),
-                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available(), !rsx_vulkan_mlaa_available() };
+                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available(), !rsx_vulkan_mlaa_available(),
+                            s_ini["trophy_notices"].c_str() };
     return pc_deps_mask(&in);
 }
 static void get_deps(ppu_context* c) { attr_log("get_deps", c); wrf((uint32_t)c->gpr[4], (float)deps_mask()); }
@@ -874,6 +888,8 @@ static void kz_pc_inject_attrs(ppu_context* ctx)
         { kSysClass, "HUDPosition",           kFloatVtbl, get_hud_pos, set_hud_pos },
         { kSysClass, "CrosshairSize",         kFloatVtbl, get_xhair,   set_xhair },
         { kSysClass, "IntroMovie",            kBoolVtbl,  get_intro,   set_intro },
+        { kSysClass, "TrophyNotices",         kBoolVtbl,  get_tnotice, set_tnotice },
+        { kSysClass, "TrophySound",           kBoolVtbl,  get_tsound,  set_tsound },
         { kSysClass, "Anisotropic",           kFloatVtbl, get_aniso,   set_aniso },
         { kSysClass, "Upscaler",              kFloatVtbl, get_upscaler, set_upscaler },
         { kSysClass, "Sharpness",             kFloatVtbl, get_sharp,   set_sharp },
@@ -1002,8 +1018,10 @@ static std::string kz_lua(void)
     "  KZPCR(26, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
     "  KZPCR(27, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
     "  KZPCR(28, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
+    "  KZPCR(29, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.TrophyNotices|true;false|$Conditions.On$;$Conditions.Off$', 'Trophy Notices'))\n"
+    "  KZPCR(30, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.TrophySound|true;false|$Conditions.On$;$Conditions.Off$', 'Trophy Sound'))\n"
 #ifndef _WIN32   /* MangoHUD is a Linux Vulkan layer (under Proton: mangohud %command%) */
-    "  KZPCR(29, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
+    "  KZPCR(31, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
 #endif
     "  KZPCDEP()\n"
     " end\n"

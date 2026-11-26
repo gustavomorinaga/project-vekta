@@ -121,7 +121,7 @@ Lua: 21 calls for 20 trophies (They're On Our Side Now has two).
 
 ## Where a toast can be drawn (stage 2)
 
-Spike, 2026-11-26, read only (no prototype built). In `libs/video/rsx_vulkan_backend.c`,
+Spike, 2026-11-26, read only (no prototype built); built as the copy, see the next section. In `libs/video/rsx_vulkan_backend.c`,
 `vk_present_window_body` records the window's command buffer: the display image (DLSS and FSR 3.1 have already
 written it at the end of the scene, `rsx_dlss_evaluate`/`rsx_fsr3_evaluate`), then FSR 1 (EASU + RCAS) into
 `s_fsr.out` when it is on, then the clear of the bars and the blit (linear, or nearest from the FSR output) into
@@ -140,6 +140,36 @@ Two ways to draw there:
   it, and one textured-quad pipeline. A few hundred lines; a draw of a few thousand pixels.
 
 The copy is the first step; the quad only if the opaque card looks wrong.
+
+## The notice (stage 2, 2026-11-26)
+
+Built as the copy above: ps3recomp patch 2097 (`rsx_vulkan_set_overlay`) calls the port once per present on the
+presenting thread (the window's own thread, patch 2090) and copies the rects it returns over the window's image after
+the blit; patch 3039 (`ps3_audio_set_host_mix`) lets the port add its sound into every mixed block, on the mixing
+thread, for the SDL and the WASAPI backends alike.
+
+- `port/kz1hd/trophies.cpp`: the HLE's notice and the count so far (taken on the unlocking thread, so two unlocks
+  read between two frames still count 1 and 2) go through the ring to `kz_trophies_pump`, then `kz_notice_add`.
+- `port/kz1hd/trophy_notice.cpp`: reads the trophy's TROPnnn.PNG from the player's TRP (`ps3_trophy_icon`,
+  stb_image), queues the card (`trophy_notice.h`: at most three on screen, the rest waiting in order; 250 ms in,
+  5 s held, 250 ms out; 470 x 96 at 1080 lines, 56 px from the top and right, 14 px apart, scaled by the window's
+  height), draws it once per window size on the CPU (Rajdhani Bold and Medium built in from `assets/`, stb_truetype)
+  and returns its rows without the two cut corners. Opaque (`shortcut:` in the code): the mockup's 90-94 % panel
+  alpha is not blended. Words in the game's language (PS3_LANG, as the TRP's names: en, fr, es, de, it, nl).
+- The sound (`assets/trophy.mp3`, Project Vekta's own, 0.84 s, 48 kHz stereo; ID3 tags removed, decoded PCM
+  md5 `a66cf06c0825070e910381f4cb8c1a29` with ffmpeg) is decoded with minimp3 at start and mixed at half
+  amplitude (ASSUMPTION: the port does not read the game's own volume settings) when a card appears.
+- PC page: "Trophy Notices" and "Trophy Sound" (`trophy_notices`, `trophy_sound` in `kz1hd_pc.ini`, on by default,
+  applied at once); the sound row is greyed out while notices are off (`pc_deps.h`).
+- A blocked session (debug options, scripted input) gets no notice: the HLE never notifies a blocked unlock.
+
+Checked: `tools/tests/test_trophy_notice.sh` (queue, timing, stacking, scale, the cut rows) and
+`test_pc_deps.c`. Game run (2026-11-26, Linux, RTX 3070 Ti, window 1920x1080, V-Sync on, 60 fps): fresh profile,
+Level 1 through PAD_SCRIPT, two unlocks forced from the level's Lua by a local diagnostic (not committed; it also
+lifted the scripted-input block): one card ("Burn Baby Burn", 1 / 59), and two stacked ("Supply and Demand",
+2 / 59) in the present dumps; `[trophy] notice shown ... sound played` in the log, and the sound found in the
+`AUDIO_WAV` capture of the mix where the card appeared (normalized correlation 0.98). With `trophy_sound=off` the
+card shows without the sound, with `trophy_notices=off` neither.
 
 ## Debug options that block trophies
 

@@ -27,7 +27,10 @@ int main(void)
     in = def; in.reflex_available = 1; EXPECT(on(&in, PC_DEP_REFLEX), "VK_NV_low_latency2: Reflex in use");
     in = def; in.mlaa_unavailable = 1; EXPECT(!on(&in, PC_DEP_ANTIALIASING), "no MLAA pass on this driver (#129): Anti-aliasing greyed");
     EXPECT(on(&in, PC_DEP_RESOLUTION) && on(&in, PC_DEP_ASPECT), "no MLAA pass leaves the others alone");
-    in = (struct pc_deps_in){ 0, 0, 0, 0, 0, 0 };
+    EXPECT(on(&def, PC_DEP_TROPHY_SOUND), "trophy notices on (the default): Trophy Sound in use");
+    in = def; in.trophy_notices = "off"; EXPECT(!on(&in, PC_DEP_TROPHY_SOUND), "trophy notices off: Trophy Sound greyed");
+    EXPECT(on(&in, PC_DEP_RESOLUTION) && on(&in, PC_DEP_ASPECT), "trophy notices off leaves the others alone");
+    in = (struct pc_deps_in){ 0, 0, 0, 0, 0, 0, 0 };
     EXPECT(on(&in, PC_DEP_RESOLUTION) && on(&in, PC_DEP_ASPECT) && !on(&in, PC_DEP_SHARPNESS),
            "missing keys read as the defaults (window, widescreen on, bilinear)");
     if (fails) return 1;

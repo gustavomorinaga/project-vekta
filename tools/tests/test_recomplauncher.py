@@ -132,7 +132,7 @@ tables = {"display": table("kDisplays"), "vsync": table("kVsyncs"), "anisotropic
           "reflex": table("kReflex"), "aspect": table("kViewAspect", aspects),
           "scale": re.findall(r"\d+", re.search(r"kScales\[\] = \{([^}]*)\}", pc).group(1)),
           "fps_limit": re.findall(r"\d+", re.search(r"kFps\[\] = \{([^}]*)\}", pc).group(1)),
-          "widescreen": ["on", "off"], "intro": ["on", "off"], "upscaler": ["linear", "fsr"],
+          "widescreen": ["on", "off"], "intro": ["on", "off"], "trophy_notices": ["on", "off"], "trophy_sound": ["on", "off"], "upscaler": ["linear", "fsr"],
           "antialiasing": ["mlaa", "off"], "controllers": ["merged", "separate"], "overlay": ["off", "mangohud"],
           "mouse_invert": ["0", "1"]}
 check(all(len(v) >= 2 for v in tables.values()), f"the game's tables were found in pcoptions.cpp: {tables}")

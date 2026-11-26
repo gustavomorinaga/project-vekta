@@ -7,8 +7,14 @@ extern "C" {
 
 // Once at boot, before the game runs: the HLE's notify callback, and the debug-options block.
 void kz_trophies_register(void);
-// Once per frame on the main loop: takes the queued unlocks (stage 2 draws them; for now they are logged).
+// Once per frame on the main loop: takes the queued unlocks (logged, and shown by trophy_notice.cpp).
 void kz_trophies_pump(void);
+
+// The notice on screen and its sound (trophy_notice.cpp): once at boot (the overlay and mix hooks), the PC page's
+// two rows (trophy_notices, trophy_sound in kz1hd_pc.ini; at start and when they change), and one unlock to show.
+void kz_notice_init(void);
+void kz_notice_options(int notices, int sound);
+void kz_notice_add(int id, int grade, const char* name, int got, int total);
 
 #ifdef __cplusplus
 }

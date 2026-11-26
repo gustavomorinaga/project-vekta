@@ -18,6 +18,7 @@
  *                      also greyed where the driver does not get the MLAA
  *                      pass (patch 2086, #129: AMD's Windows driver)
  *   NVIDIA Reflex      only where the driver has VK_NV_low_latency2
+ *   Trophy Sound       the notice's sound, only with Trophy Notices on
  *
  * The mask has one bit per row (1 << PC_DEP_*), set when the row is in use.
  */
@@ -27,7 +28,7 @@
 
 enum {
     PC_DEP_RESOLUTION, PC_DEP_ASPECT, PC_DEP_HUD_POSITION, PC_DEP_SHARPNESS,
-    PC_DEP_ANTIALIASING, PC_DEP_REFLEX, PC_DEP_COUNT
+    PC_DEP_ANTIALIASING, PC_DEP_REFLEX, PC_DEP_TROPHY_SOUND, PC_DEP_COUNT
 };
 
 struct pc_deps_in {
@@ -37,6 +38,7 @@ struct pc_deps_in {
     int temporal_running;    /* rsx_vulkan_temporal_active() */
     int reflex_available;    /* rsx_vulkan_reflex_available() */
     int mlaa_unavailable;    /* !rsx_vulkan_mlaa_available() */
+    const char* trophy_notices;   /* on | off */
 };
 
 static inline unsigned pc_deps_mask(const struct pc_deps_in* in)
@@ -48,6 +50,7 @@ static inline unsigned pc_deps_mask(const struct pc_deps_in* in)
     if (in->upscaler && !strcmp(in->upscaler, "fsr")) m |= 1u << PC_DEP_SHARPNESS;
     if (!in->temporal_running && !in->mlaa_unavailable) m |= 1u << PC_DEP_ANTIALIASING;
     if (in->reflex_available) m |= 1u << PC_DEP_REFLEX;
+    if (!in->trophy_notices || strcmp(in->trophy_notices, "off") != 0) m |= 1u << PC_DEP_TROPHY_SOUND;
     return m;
 }
 #endif

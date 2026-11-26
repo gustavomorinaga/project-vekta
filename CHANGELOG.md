@@ -8,6 +8,12 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- A notice when you earn a trophy: a card slides in at the top right with the trophy's own picture from your game's
+  trophy set, its name, its grade and how many of the 59 you have, with a short sound made for Project Vekta. Up to
+  three show at once, the others wait their turn; it shows during loading screens, movies and the pause menu too,
+  and with every upscaler. Two new rows on the PC page, "Trophy Notices" and "Trophy Sound" (on by default; the sound
+  row is greyed out while notices are off). No notice when trophies are not stored (debug options or scripted
+  input). The words on the card follow the game's language (English, French, Spanish, German, Italian, Dutch).
 - More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (`fps_limit = 0`, a
   1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the
   default ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).

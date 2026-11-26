@@ -180,3 +180,5 @@
 2095-Vulkan-the-anisotropic-filtering-setting-changes-whi.patch
 2096-Vulkan-the-temporal-upscaler-changes-while-running-F.patch
 5002-sceNpTrophy-a-host-API-notices-queries-icons-the-tit.patch
+2097-Vulkan-a-host-overlay-over-the-window-copied-after-t.patch
+3039-cellAudio-the-host-s-own-sounds-added-into-every-mix.patch

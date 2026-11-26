@@ -31,16 +31,23 @@ which is (c) Sony Interactive Entertainment and is not part of this repository.
 | FidelityFX Super Resolution 1 (`ffx_a.h`, `ffx_fsr1.h`) | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-FSR1-LICENSE.txt](licenses/AMD-FidelityFX-FSR1-LICENSE.txt)) | the EASU upscaler and RCAS sharpener, unmodified, added by patch 2033 under `libs/video/vulkan/ffx/` |
 | FidelityFX SDK 1.1.4: FSR 3.1 upscaler and Vulkan backend | Advanced Micro Devices, Inc. | MIT ([licenses/AMD-FidelityFX-SDK-LICENSE.txt](licenses/AMD-FidelityFX-SDK-LICENSE.txt)) | the sources, headers and compiled shader permutations the FSR 3.1 path needs, vendored in `third_party/fidelityfx-fsr3/` (two files adapted for Linux, see its README.md) and built into the Linux program and the Windows exe |
 | RenderDoc in-application API | Baldur Karlsson | MIT | the interface only: patch 2066 declares the two entries of its documented `RENDERDOC_GetAPI` table it calls (SetCaptureKeys, TriggerCapture) when RenderDoc is already in the process; no RenderDoc file is included |
-| minimp3 | lieff and its contributors | CC0 1.0 ([third_party/minimp3/LICENSE](third_party/minimp3/LICENSE)) | the MP3 decoder in `third_party/minimp3/minimp3.h` (commit ea99364f, unchanged), which `port/kz1hd/native/flashmp3.c` uses in place of the firmware's `flashMP3.pic` |
+| stb_truetype and stb_image | Sean Barrett and their contributors | public domain or MIT, the reader's choice (the licence text at the end of each header) | the copies in ps3recomp (`libs/font/stb_truetype.h`, `libs/codec/stb_image.h`, compiled there by `cellFont.c` and `cellPngDec.c`): `port/kz1hd/trophy_notice.cpp` draws the notice's text with the first and decodes the trophy's icon from the player's TRP with the second; nothing of them is copied into this repository |
+| minimp3 | lieff and its contributors | CC0 1.0 ([third_party/minimp3/LICENSE](third_party/minimp3/LICENSE)) | the MP3 decoder in `third_party/minimp3/minimp3.h` (commit ea99364f, unchanged), which `port/kz1hd/native/flashmp3.c` (and `port/kz1hd/trophy_notice.cpp`, for the notice's sound) uses in place of the firmware's `flashMP3.pic` |
 | Input Prompts | Kenney (kenney.nl) | CC0 1.0 | the button prompts, as signed distance fields made by `tools/glyphs/kenney_prep.py` into `port/kz1hd/glyphs_kenney.inc` |
 | RecompLauncher badge | RecompLauncher (recomplauncher.com) | its press kit's terms: used as it is, never recoloured, stretched or redrawn, linked to the port's page | `assets/press/recomplauncher/badge-dark.svg` and `.png`, byte for byte from the press kit (SHA-256 pinned in `tools/release/press_badges.py`), in the README, `docs/INSTALL.md` and the site; not under this repository's MIT licence |
 | Quiver Launcher (name only) | tgeorgiadis/quiver-launcher | its TRADEMARKS.md: a project may say truthfully that it works with Quiver Launcher; no Quiver logo or app icon may be used | the words "Quiver Launcher" on the text-only badge `assets/press/quiver/`, drawn by `tools/release/press_badges.py`; no Quiver logo, icon or artwork is used |
+
+## Sounds
+
+| Sound | Author | Licence | What was used |
+|---|---|---|---|
+| Trophy notice sound (`port/kz1hd/assets/trophy.mp3`) | Gustavo Morinaga, Project Vekta's author, made for the project | MIT, as the rest of the port ([LICENSE](LICENSE)) | played once when a trophy notice appears (`port/kz1hd/trophy_notice.cpp`); the file as he made it, ID3 tags removed |
 
 ## Fonts
 
 | Font | Author | Licence | What was used |
 |---|---|---|---|
-| Rajdhani | Indian Type Foundry | SIL Open Font License 1.1 | the text of the images in `assets/` and `installer/art/` (drawn by `tools/release/installer_art.py` and `tools/release/press_badges.py`) and the website's headings: the Bold weight's latin subset as `site/fonts/rajdhani-700.woff2` (Google Fonts' file, unchanged), with its licence in `site/fonts/OFL.txt`; the font is not in the release |
+| Rajdhani | Indian Type Foundry | SIL Open Font License 1.1 | the text of the images in `assets/` and `installer/art/` (drawn by `tools/release/installer_art.py` and `tools/release/press_badges.py`) and the website's headings: the Bold weight's latin subset as `site/fonts/rajdhani-700.woff2` (Google Fonts' file, unchanged), with its licence in `site/fonts/OFL.txt`; Rajdhani Bold and Medium (Google Fonts' `ofl/rajdhani` files, unchanged, SHA-256 pinned in `tools/release/installer_art.py`) in `port/kz1hd/assets/`, built into the program for the trophy notice's text (`port/kz1hd/trophy_notice.cpp`), never installed on the system, with the family's licence in `licenses/Rajdhani-OFL.txt` |
 
 ## Libraries the build links or loads (not part of this repository)
 

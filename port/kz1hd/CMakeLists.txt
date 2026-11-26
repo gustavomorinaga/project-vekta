@@ -249,6 +249,12 @@ set_source_files_properties(${KZ_NATIVE_PPU} PROPERTIES COMPILE_OPTIONS "-O2")
 set_source_files_properties(glyphs.cpp PROPERTIES COMPILE_OPTIONS "-Wno-c23-extensions")
 # trophies.cpp alone needs sceNpTrophy.h: a target-wide include directory would rebuild every lifted TU.
 set_source_files_properties(trophies.cpp PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/libs/network")
+# trophy_notice.cpp: the notice (stb_truetype and stb_image as ps3recomp compiles them, minimp3 as native/flashmp3.c
+# does) and its fonts and sound, embedded from assets/ (#embed).
+set_source_files_properties(trophy_notice.cpp PROPERTIES
+    INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/libs/network;${PS3RECOMP_DIR}/libs/font;${PS3RECOMP_DIR}/libs/codec;${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/minimp3"
+    COMPILE_OPTIONS "-Wno-c23-extensions"
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/Rajdhani-Bold.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/Rajdhani-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/trophy.mp3")
 
 add_executable(${PROJECT_NAME}
     cpu_check.c     # first: the CPU check (constructor 101), compiled for baseline x86-64
@@ -259,6 +265,7 @@ add_executable(${PROJECT_NAME}
     pcoptions.cpp
     route.cpp
     trophies.cpp    # the HLE's unlock notices, queued for the frame loop (docs/dev/trophies.md)
+    trophy_notice.cpp   # the notice on screen and its sound
     glyphs.cpp
     sail.cpp
     prof.cpp
