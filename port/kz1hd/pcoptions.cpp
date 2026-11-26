@@ -458,6 +458,7 @@ void rsx_vulkan_set_present(const char* mode);
 int  rsx_vulkan_display_sizes(int (*out)[2], int max);
 void pad_set_merge(int on);
 void pad_set_players(int n);
+void rsx_temporal_hold(int held);   /* ps3recomp patch 2092 */
 }
 
 /* The local players the game runs (1, or 2 in split screen) to cellPad,
@@ -485,6 +486,9 @@ extern "C" void kz_players_sync(void)
     last = n;
     kz_view.players = n;   /* the HUD's layout per view (native_ppu/hud.cpp) */
     pad_set_players(n);
+    /* one camera's history and jitter cannot describe two views: in split
+     * screen the scene takes the plain scaled path (ps3recomp patch 2092) */
+    rsx_temporal_hold(n == 2);
     fprintf(stderr, "[kz] %d local player(s)\n", n);
 }
 /* the menu should look at the rows in use again (get_deps, below) */

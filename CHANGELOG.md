@@ -30,7 +30,9 @@ program and folder that build it. Until a release that calls itself playable
   ammo panels keep their shape (the PS3 game squashes them in split screen), the ammo count sits centred on its
   bar, and the HUD's text (timer, scores, ammo count, prompts) keeps its shape too. Player 2's HUD has the same
   margins as player 1's (the PS3 game draws it 20 pixels higher, so its timer and scores touched the split line).
-  One-player games are unchanged.
+  With FSR 3 or DLSS on (Temporal), split screen shows both views: the temporal upscaler rests while two players
+  play, and the scene is drawn at the upscaler's render size and stretched to the screen as with a lower Resolution
+  Scale (patch 2092). One-player games are unchanged.
 
 ### Changed
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in

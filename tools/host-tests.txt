@@ -92,3 +92,4 @@ tools/tests/test_flashmp3.sh
 tools/tests/test_crash_report.sh
 tools/tests/test_pad_test_input.sh
 tools/tests/test_pad_assign.sh
+tools/tests/test_temporal_hold.sh

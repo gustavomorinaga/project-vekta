@@ -1,0 +1,88 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 25 Nov 2026 22:35:08 -0300
+Subject: [PATCH] Vulkan: rsx_temporal_hold, the temporal upscaler held while a
+ title draws two views
+
+ENHANCEMENT (the PS3 has no temporal upscaler). A split-screen title draws
+two views into one scene target, each with its own camera, while the
+temporal pass (FSR 3.1 or DLSS) is handed one view-projection and one
+jitter per frame: the last view's. The other view's camera motion and
+jitter are then wrong for it (Killzone HD's split screen also advanced the
+jitter sequence once per view).
+
+rsx_temporal_hold(1) holds the upscaler: rsx_temporal_next_jitter gives no
+jitter and the backend's scene end skips the temporal pass after its
+bookkeeping, so the scene, drawn at the render size chosen at start, takes
+the path a plain internal resolution scale takes (the MLAA at that size,
+the glow and motion blur, the present's upscale). rsx_temporal_hold(0)
+lets it run again; its history starts over (no record of the frame
+before). The scene size cannot change after start, so a held frame stays
+at the render size.
+
+Seen in Killzone HD (port 2026-11-26, FSR 3 quality, 853x480 for
+1280x720): two players in Battlefields show both views with the hold;
+one player still upscales (3600 frames logged, 1 not upscaled). DLSS not
+run (no DLSS SDK on the test machine); it takes the same skip.
+---
+ libs/video/rsx_temporal.c       | 6 +++++-
+ libs/video/rsx_temporal.h       | 9 +++++++++
+ libs/video/rsx_vulkan_backend.c | 4 ++++
+ 3 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/libs/video/rsx_temporal.c b/libs/video/rsx_temporal.c
+index c2601e9..397c9ac 100644
+--- a/libs/video/rsx_temporal.c
++++ b/libs/video/rsx_temporal.c
+@@ -24,11 +24,15 @@ static float tv_halton(uint32_t i, uint32_t base)
+     return r;
+ }
+ 
++static int s_held;
++void rsx_temporal_hold(int held) { __atomic_store_n(&s_held, held != 0, __ATOMIC_RELEASE); }
++int rsx_temporal_held(void) { return __atomic_load_n(&s_held, __ATOMIC_ACQUIRE); }
++
+ int rsx_temporal_next_jitter(float* jitter_x, float* jitter_y)
+ {
+     static uint32_t n;
+     *jitter_x = *jitter_y = 0.0f;
+-    if (!s_on) return 0;
++    if (!s_on || rsx_temporal_held()) return 0;
+     /* 8 phases per output pixel: 8 at native, 32 at half resolution (the
+      * count the DLSS guide asks for) */
+     const float s = s_scale;
+diff --git a/libs/video/rsx_temporal.h b/libs/video/rsx_temporal.h
+index f9b91e0..3b952af 100644
+--- a/libs/video/rsx_temporal.h
++++ b/libs/video/rsx_temporal.h
+@@ -41,6 +41,15 @@ void rsx_temporal_config(int on, float render_per_guest);
+  * y up (a Halton 2,3 sequence over half a render pixel each way). 0 and no
+  * offset when no temporal upscaler is on. */
+ int rsx_temporal_next_jitter(float* jitter_x, float* jitter_y);
++/* Any thread: hold the temporal upscaler (1) or let it run again (0). While
++ * it is held the frustum gets no jitter (rsx_temporal_next_jitter gives 0)
++ * and the backend skips the temporal pass: the scene, drawn at the render
++ * size, takes the path a plain internal resolution scale takes. For a title
++ * that draws several views into one target (split screen), which one
++ * camera's history and jitter cannot describe. History starts over when
++ * the hold ends. */
++void rsx_temporal_hold(int held);
++int rsx_temporal_held(void);
+ /* Guest thread, once per frame the world view is built (the last call wins). */
+ void rsx_temporal_set_view(const float vp[16], float jitter_x, float jitter_y,
+                            float near_z, float far_z, float fov_y);
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 4c269b8..fbc6950 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -5404,6 +5404,10 @@ static int vk_tm_scene_end(void* user, u32 surface, u32 field)
+     vk_tv_frame_end(surface, surface < VK_ENG_MAX_OBJ ? s_tm_depth_of[surface] : 0);
+ 
+     vk_tm_unswap(surface);   /* never presented since the last time: start over */
++    if (rsx_temporal_held()) {   /* split screen: the scaled path's MLAA and post passes instead */
++        s_tm.have_prev = 0;
++        return 0;
++    }
+     vk_eng_obj* o = vk_eng_get(surface, VK_ENG_COLOR);
+     const u32 zh = surface < VK_ENG_MAX_OBJ ? s_tm_depth_of[surface] : 0;
+     const int slot = o ? vk_tm_slot(surface, 1) : -1;
