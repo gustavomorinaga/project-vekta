@@ -148,7 +148,9 @@ static void ini_save(void)
  *                window's differs, menus and movies inside it. At the next start,
  *                PS3RECOMP_VK_ASPECT; view_aspect.h)
  *   field_of_view = the world's horizontal FOV at 16:9 in degrees, 70-120 (87: the game's;
- *                   a wider window shows more at the sides; fov.h)
+ *                   a wider window shows more at the sides; fov.h). A wider FOV draws more of
+ *                   the map: at 120 the multiplayer maps ran 9-12 % slower than at 87, the game's main
+ *                   thread being the limit (docs/KNOWN_ISSUES.md, 2026-11-25)
  *   weapon_fov = the first-person weapon's, the same way (87: the game's, 72 degrees
  *                horizontal at 16:9 on the weapon itself)
  *   hud_size   = 0.5-1.5   (1: the game's)
@@ -1318,7 +1320,8 @@ static void menu_mouse(void)
              * row under the pointer is selected at once, as a PC menu does;
              * the list draws its highlight from the selected index. */
             const int r = box_row_at(box, vy, true);
-            if (r >= 0 && r != (int)rd32(box + 0x12C) && option_enabled(option_at(vx, vy))) wr32(box + 0x12C, (uint32_t)r);
+            if (r >= 0 && r != (int)rd32(box + 0x12C) && option_enabled(option_at(vx, vy)) && menu_box_row_enabled(vm_base, box, r))
+                wr32(box + 0x12C, (uint32_t)r);   /* not onto a greyed row (menu_box.h) */
         } else hover_selection(vx, vy, &g);
         if ((g.box || g.grp) && (g.box != s_goal.box || g.grp != s_goal.grp || g.target != s_goal.target))
             s_goal = g;
@@ -1333,6 +1336,7 @@ hovered:
     if (pressed & 1) { drag_x = x; drag_on = false; }
     if ((pressed & 1) && s_dialog_menu) { dialog_click(vx, vy); s_goal = {}; }  /* a dialog's button, or nothing */
     else if ((pressed & 1) && (opt = option_at(vx, vy)) && !option_enabled(opt)) s_goal = {};   /* greyed out: nothing */
+    else if ((pressed & 1) && box && box_row_at(box, vy) >= 0 && !menu_box_row_enabled(vm_base, box, box_row_at(box, vy))) s_goal = {};   /* a greyed list row: nothing */
     else if ((pressed & 1) && opt && !opt->slider) {
         /* the row first, at once: the press goes to the selected row */
         if (box) { const int r = box_row_at(box, vy); if (r >= 0) wr32(box + 0x12C, (uint32_t)r); }
