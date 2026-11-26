@@ -24,6 +24,11 @@ program and folder that build it. Until a release that calls itself playable
   and was then quit normally (it showed "exit 0: ok (hang-killed)"): a hang counts only when the game was still
   stuck at the end.
 
+### Fixed
+- Level Select's SELECT CHARACTER: the mouse no longer picks a character the level cannot be played with (the
+  greyed rows). Hovering one selected it, and Select then started the level as that character; now the mouse, like
+  the pad, leaves greyed rows alone.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
