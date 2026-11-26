@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
+
 ### Fixed
 - The launcher no longer calls a session "hang-killed" when the game stopped showing frames for a while, recovered
   and was then quit normally (it showed "exit 0: ok (hang-killed)"): a hang counts only when the game was still
