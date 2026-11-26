@@ -48,6 +48,8 @@ program and folder that build it. Until a release that calls itself playable
   printout of every section.
 - Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 %
   at 120).
+- The site's News shows the first 8 items of each release and links the rest in the changelog, so the home view
+  stays within its weight budget as a release grows.
 
 ### Fixed
 - Closing the game's window now ends the game also when the game has stopped responding (it showed no new frames):
