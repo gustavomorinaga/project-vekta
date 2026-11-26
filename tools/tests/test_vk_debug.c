@@ -22,6 +22,18 @@ static void test_flag(void)
         CHECK(rsx_vk_env_flag(bad[i]) == -1, "'%s' is not understood", bad[i]);
 }
 
+/* Patch 2089: F12 asks for a capture only when PS3RECOMP_CAPTURE_KEY is on; unset or not understood keeps the key
+ * free (a release has no debug hotkey). */
+static void test_capture_key(void)
+{
+    CHECK(rsx_vk_capture_key(NULL) == 0, "unset: F12 takes no capture");
+    CHECK(rsx_vk_capture_key("") == 0, "empty: F12 takes no capture");
+    CHECK(rsx_vk_capture_key("0") == 0, "0: F12 takes no capture");
+    CHECK(rsx_vk_capture_key("2") == 0, "'2' is not understood, so F12 takes no capture");
+    CHECK(rsx_vk_capture_key("1") == 1 && rsx_vk_capture_key("on") == 1 && rsx_vk_capture_key("Yes") == 1,
+          "1, on and yes let F12 take a capture");
+}
+
 static void test_repeats(void)
 {
     rsx_vk_msg_filter* f = calloc(1, sizeof *f);
@@ -95,6 +107,7 @@ static void test_summary(void)
 int main(void)
 {
     test_flag();
+    test_capture_key();
     test_repeats();
     test_full_table();
     test_summary();

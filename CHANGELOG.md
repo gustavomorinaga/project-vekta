@@ -8,6 +8,9 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
 - The project site is lighter, faster and usable by everyone: screenshots as small WebP copies (the full PNG one
   click away), its own font file instead of Google Fonts, no layout jumps while it loads, and the whole site checked
   against WCAG 2.2 AA in both themes ([docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md#the-project-website)).
