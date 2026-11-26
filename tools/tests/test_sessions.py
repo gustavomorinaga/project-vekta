@@ -130,6 +130,23 @@ with tempfile.TemporaryDirectory() as tmp:
           not any(n == "play.log" for n in hist), f"each earlier play.log moved to work/logs: {hist}")
     check("[launcher] session ended" in (w / "logs" / hist[0]).read_text(), "an earlier log keeps its end line")
 
+    # A hang the game recovered from ("frames again" after it) and then quit normally is a quit, not a hang (the
+    # launcher used to say "exit 0: ok (hang-killed)"); still stuck at the end, closed or killed, it is one.
+    recovered = ('echo "[kz-hang] begin"; echo "[kz-hang] end"\n'
+                 'echo "begin" > "$KZ_CRASH_DIR/hang-20261123-101012.txt"\n'
+                 'echo "[kz] hang watch: frames again after 6.2 s"\necho "[kz] quitting (Quit Game)"\nexit 0')
+    for body, kind in ((recovered, "quit"),
+                       (recovered.replace('echo "[kz] quitting (Quit Game)"\nexit 0',
+                                          'echo "[kz-hang] begin"\necho "[kz] quitting (signal)"\nexit 0'),
+                        "hang-killed")):
+        game(exe, body)
+        rc, rec = launch.play(str(root), argv, cwd, env, log)
+        check(rec["kind"] == kind, f"a hang, frames again, then {kind}: got {rec['kind']}")
+    check(sessions.classify(0, {}, E, ["hang-20261123-101011.txt"]) == "hang-killed",
+          "a hang report file with no log to read is still a hang")
+    check(sessions.classify(0, {"hang_over": True, "closed": True}, E, ["hang-20261123-101011.txt"]) == "quit",
+          "a hang report file the log shows the game recovered from is not")
+
     # The messages: an abnormal end offers the package; a quit, nothing
     said, asked, made = [], [], []
     real = {k: getattr(launch, k) for k in ("notify", "ask", "can_ask", "support_package", "vulkan_present")}
