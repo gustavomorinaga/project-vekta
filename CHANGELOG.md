@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
+
 ### Fixed
 - Mouse look (#121): looking up and down now turns the same amount per mouse movement as turning left and right, at
   the same slider value; before, vertical look was about a quarter as fast. Horizontal look is unchanged.

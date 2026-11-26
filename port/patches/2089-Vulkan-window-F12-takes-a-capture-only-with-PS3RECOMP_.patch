@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 24 Nov 2026 15:13:11 +0000
+Subject: [PATCH] Vulkan window: F12 takes a capture only with
+ PS3RECOMP_CAPTURE_KEY=1
+
+Patch 2021's F12 asked for a pass capture in every build. A release must
+have no debug hotkey, and F12 is also Steam's screenshot key, so a player
+taking a Steam screenshot also wrote a capture folder. The key now asks
+only when PS3RECOMP_CAPTURE_KEY is on (1, on, yes, true; the parser of
+PS3RECOMP_VK_VALIDATION, rsx_vk_debug.h); unset, it does nothing. The
+trigger file (PS3RECOMP_CAPTURE_TRIGGER) and rsx_vulkan_capture_request()
+from code still ask for one.
+---
+ libs/video/rsx_vk_debug.h       | 9 +++++++++
+ libs/video/rsx_vulkan_backend.c | 7 ++++++-
+ 2 files changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/libs/video/rsx_vk_debug.h b/libs/video/rsx_vk_debug.h
+index bf0f06d..a4b23d7 100644
+--- a/libs/video/rsx_vk_debug.h
++++ b/libs/video/rsx_vk_debug.h
+@@ -34,6 +34,15 @@ static inline int rsx_vk_env_flag(const char* v)
+     return -1;
+ }
+ 
++/* PS3RECOMP_CAPTURE_KEY: F12 takes a pass capture only when this is on
++ * (rsx_vk_env_flag's "1", "on", "yes", "true"); unset or anything else keeps
++ * the key free, so a release has no debug hotkey (F12 is also Steam's
++ * screenshot key). */
++static inline int rsx_vk_capture_key(const char* v)
++{
++    return rsx_vk_env_flag(v) == 1;
++}
++
+ #define RSX_VK_MSG_SLOTS 256   /* distinct keys counted; later new ones only add to "other" */
+ #define RSX_VK_MSG_FULL  3     /* occurrences of one key logged in full */
+ 
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 993b11f..536d950 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -7880,9 +7880,14 @@ int rsx_vulkan_backend_pump_messages(void)
+                                                )) {
+             s_vk.resized = 1;
+         }
++        /* F12 takes a capture only with PS3RECOMP_CAPTURE_KEY=1: a release has
++         * no debug hotkey, and F12 is also Steam's screenshot key. The trigger
++         * file (PS3RECOMP_CAPTURE_TRIGGER) and code still ask for one. */
+         else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F12 && !e.key.repeat &&
+                  !(e.key.keysym.mod & KMOD_SHIFT)) {   /* Shift+F12 is MangoHUD's */
+-            rsx_vulkan_capture_request();
++            static int key = -1;
++            if (key < 0) key = rsx_vk_capture_key(getenv("PS3RECOMP_CAPTURE_KEY"));
++            if (key) rsx_vulkan_capture_request();
+         }
+         else if (e.type == SDL_MOUSEWHEEL) {   /* cellPad: menus scroll with it */
+             extern volatile int g_pad_mouse_wheel;
+-- 
+2.43.0
+
