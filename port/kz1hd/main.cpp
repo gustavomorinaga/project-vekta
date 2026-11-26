@@ -106,6 +106,7 @@ extern "C" int vm_inline_ok;
  * -----------------------------------------------------------------------*/
 extern "C" void cellGame_init_from_paramsfo(const char* sfo_path);   /* cellGame.c */
 extern "C" void kz_pc_settings_env(void);   /* pcoptions.cpp */
+extern "C" void kz_players_sync(void);      /* pcoptions.cpp: 1 or 2 local players to cellPad */
 extern "C" void kz_pc_settings_line(char* out, unsigned long cap);   /* pcoptions.cpp: [kz-sys] settings */
 extern "C" void kz_view_update(void);       /* pcoptions.cpp */
 extern "C" {
@@ -460,7 +461,7 @@ static DWORD WINAPI frame_clock(LPVOID)
         kz_tick_rate();
         /* the hang watchdog (crash_report.c): this loop ran, and whether the window is minimized */
         { static ULONGLONG next_tick_note;
-          if (now >= next_tick_note) { next_tick_note = now + 100; kz_hang_tick(kz_window_minimized()); } }
+          if (now >= next_tick_note) { next_tick_note = now + 100; kz_hang_tick(kz_window_minimized()); kz_players_sync(); } }
         kz_crash_test_hang_point();   /* KZ_CRASH_TEST=hang: this loop stops here for good */
         if (g_kz_flip_hz != tick_hz && g_kz_flip_hz > 0) { tick_hz = g_kz_flip_hz; tick_us = (uint64_t)(1e6 / tick_hz); next_tick = now_t; }
 

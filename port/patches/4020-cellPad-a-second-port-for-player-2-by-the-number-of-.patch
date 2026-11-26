@@ -1,0 +1,294 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 25 Nov 2026 10:33:31 -0300
+Subject: [PATCH] cellPad: a second port for player 2, by the number of local
+ players
+
+ENHANCEMENT: on a PS3 each player has a controller. On a PC one player
+often has the keyboard and mouse and the other a pad, or two people have a
+pad each and the keyboard sits next to the first one.
+
+Symptom (Killzone HD): the Multiplayer screen's "Two Player" stays greyed
+out with the default controllers setting (merged: every pad on port 0), and
+with one pad in either setting, because the game enables it only while
+port 1 reads connected. With two pads and controllers=separate it worked,
+but the mouse is applied on port 0 only through the title's hook, and a
+player on the keyboard had no way to play with one pad.
+
+Fix: the SDL backend reads each controller into its slot (the remembered
+order the hot-plug code keeps), and pad_assign.h turns the slots into
+ports from the number of local players, which the title sets with
+pad_set_players (default 1), and the merged/separate choice:
+
+- 1 player: as before (merged: every pad on port 0; separate: slot n on
+  port n). Port 1 also reads connected whenever a pad is there, with
+  neutral data (nothing pressed, sticks centred) when no pad feeds it.
+- 2 players, 1 pad: the keyboard and mouse are player 1 (port 0), the pad
+  is player 2 (port 1).
+- 2 players, 2 or more pads: the first pad and the keyboard and mouse are
+  player 1, the second pad player 2, the others none.
+
+Which ports read connected does not depend on the number of players, so
+the switch never looks like a controller coming or going. The keyboard and
+mouse stay on port 0. Rumble for a port goes to the controllers that feed
+it: player 1 on the keyboard no longer shakes player 2's pad, and merged
+still rumbles every pad. The host test tools/tests/test_pad_assign.sh runs
+pad_assign.h.
+---
+ libs/input/cellPad.c    | 119 ++++++++++++++++++++++++----------------
+ libs/input/pad_assign.h |  50 +++++++++++++++++
+ 2 files changed, 123 insertions(+), 46 deletions(-)
+ create mode 100644 libs/input/pad_assign.h
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index b67c047..120c4cb 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -14,6 +14,7 @@
+ #include <time.h>
+ #include "cellPad.h"
+ #include "pad_test_input.h"   /* PAD_VIRTUAL, PAD_FILE_n and PAD_SCRIPT_n names */
++#include "pad_assign.h"       /* which controllers feed which port */
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -567,6 +568,18 @@ static void pad_set_active(int dev)
+ static int s_port0_pad;   /* a controller drives port 0 (the keyboard adds to it) */
+ static int s_pad_merge = -1;   /* PAD_MERGE; pad_set_merge changes it */
+ void pad_set_merge(int on) { s_pad_merge = on != 0; }
++/* Local players the title runs (1 or 2), which a title hook sets
++ * (pad_set_players); with 2 the pads move as pad_assign.h says. */
++static volatile int s_pad_players = 1;
++void pad_set_players(int n) { s_pad_players = n >= 2 ? 2 : 1; }
++static PadHostState s_slot_state[PAD_MAX_HOST_PORTS];   /* each controller slot as read */
++/* The ports' controller slots as things stand now. */
++static void pad_assign_now(PadAssign* as)
++{
++    int has[PAD_MAX_HOST_PORTS];
++    for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) has[i] = s_sdl_controllers[i] != NULL;
++    pad_assign(has, s_pad_players, s_pad_merge > 0, as);
++}
+ static int s_sdl_family[PAD_MAX_HOST_PORTS];
+ static int s_sdl_style[PAD_MAX_HOST_PORTS];
+ 
+@@ -767,7 +780,7 @@ static void pad_sdl_close(int p, int gone)
+     s_sdl_controllers[p] = NULL;
+     s_sdl_ids[p] = -1;
+     memset(&s_rumble[p], 0, sizeof s_rumble[p]);
+-    pad_host_release(&s_host_state[p]);
++    pad_host_release(&s_slot_state[p]);
+ }
+ 
+ /* Open every game controller SDL lists that no port has yet. */
+@@ -843,12 +856,12 @@ static void pad_poll_sdl2(void)
+     for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
+         SDL_GameController* gc = s_sdl_controllers[i];
+         if (!gc) {
+-            pad_host_release(&s_host_state[i]);
++            pad_host_release(&s_slot_state[i]);
+             memset(&s_rumble[i], 0, sizeof s_rumble[i]);
+             continue;
+         }
+ 
+-        s_host_state[i].connected = 1;
++        s_slot_state[i].connected = 1;
+ 
+         /* Keep a rumble the title set going (see PAD_RUMBLE_HOLD_MS). */
+         if (s_rumble[i].sent_ms && pad_now_ms() - s_rumble[i].sent_ms >= PAD_RUMBLE_RENEW_MS)
+@@ -876,31 +889,31 @@ static void pad_poll_sdl2(void)
+         if (lt > 3000) btns |= CELL_PAD_CTRL_L2;
+         if (rt > 3000) btns |= CELL_PAD_CTRL_R2;
+ 
+-        s_host_state[i].buttons = btns;
++        s_slot_state[i].buttons = btns;
+ 
+         /* Analog sticks */
+-        s_host_state[i].analog_lx = pad_sdl_axis_to_u8(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_LEFTX));
+-        s_host_state[i].analog_ly = pad_sdl_axis_to_u8(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_LEFTY));
+-        s_host_state[i].analog_rx = pad_sdl_axis_to_u8(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_RIGHTX));
+-        s_host_state[i].analog_ry = pad_sdl_axis_to_u8(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_RIGHTY));
++        s_slot_state[i].analog_lx = pad_sdl_axis_to_u8(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_LEFTX));
++        s_slot_state[i].analog_ly = pad_sdl_axis_to_u8(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_LEFTY));
++        s_slot_state[i].analog_rx = pad_sdl_axis_to_u8(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_RIGHTX));
++        s_slot_state[i].analog_ry = pad_sdl_axis_to_u8(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_RIGHTY));
+ 
+         /* Triggers */
+-        s_host_state[i].trigger_l2 = pad_sdl_trigger_to_u8(lt);
+-        s_host_state[i].trigger_r2 = pad_sdl_trigger_to_u8(rt);
++        s_slot_state[i].trigger_l2 = pad_sdl_trigger_to_u8(lt);
++        s_slot_state[i].trigger_r2 = pad_sdl_trigger_to_u8(rt);
+ 
+         /* Pressure: SDL has digital buttons, so 0 or 255 */
+-        s_host_state[i].press_up       = (btns & CELL_PAD_CTRL_UP)       ? 255 : 0;
+-        s_host_state[i].press_down     = (btns & CELL_PAD_CTRL_DOWN)     ? 255 : 0;
+-        s_host_state[i].press_left     = (btns & CELL_PAD_CTRL_LEFT)     ? 255 : 0;
+-        s_host_state[i].press_right    = (btns & CELL_PAD_CTRL_RIGHT)    ? 255 : 0;
+-        s_host_state[i].press_triangle = (btns & CELL_PAD_CTRL_TRIANGLE) ? 255 : 0;
+-        s_host_state[i].press_circle   = (btns & CELL_PAD_CTRL_CIRCLE)   ? 255 : 0;
+-        s_host_state[i].press_cross    = (btns & CELL_PAD_CTRL_CROSS)    ? 255 : 0;
+-        s_host_state[i].press_square   = (btns & CELL_PAD_CTRL_SQUARE)   ? 255 : 0;
+-        s_host_state[i].press_l1       = (btns & CELL_PAD_CTRL_L1)       ? 255 : 0;
+-        s_host_state[i].press_r1       = (btns & CELL_PAD_CTRL_R1)       ? 255 : 0;
+-
+-        const PadHostState* h = &s_host_state[i];
++        s_slot_state[i].press_up       = (btns & CELL_PAD_CTRL_UP)       ? 255 : 0;
++        s_slot_state[i].press_down     = (btns & CELL_PAD_CTRL_DOWN)     ? 255 : 0;
++        s_slot_state[i].press_left     = (btns & CELL_PAD_CTRL_LEFT)     ? 255 : 0;
++        s_slot_state[i].press_right    = (btns & CELL_PAD_CTRL_RIGHT)    ? 255 : 0;
++        s_slot_state[i].press_triangle = (btns & CELL_PAD_CTRL_TRIANGLE) ? 255 : 0;
++        s_slot_state[i].press_circle   = (btns & CELL_PAD_CTRL_CIRCLE)   ? 255 : 0;
++        s_slot_state[i].press_cross    = (btns & CELL_PAD_CTRL_CROSS)    ? 255 : 0;
++        s_slot_state[i].press_square   = (btns & CELL_PAD_CTRL_SQUARE)   ? 255 : 0;
++        s_slot_state[i].press_l1       = (btns & CELL_PAD_CTRL_L1)       ? 255 : 0;
++        s_slot_state[i].press_r1       = (btns & CELL_PAD_CTRL_R1)       ? 255 : 0;
++
++        const PadHostState* h = &s_slot_state[i];
+         if (btns || h->trigger_l2 > 40 || h->trigger_r2 > 40 ||
+             abs(h->analog_lx - 128) > 48 || abs(h->analog_ly - 128) > 48 ||
+             abs(h->analog_rx - 128) > 48 || abs(h->analog_ry - 128) > 48) {
+@@ -909,28 +922,41 @@ static void pad_poll_sdl2(void)
+         }
+     }
+ 
+-    /* PAD_MERGE=1: every controller drives port 0 (single-player titles
+-     * read one pad; whichever the player picks up just works). Buttons add
+-     * up, each stick and trigger comes from the pad pushing it furthest. */
++    /* The ports from the slots (pad_assign.h). PAD_MERGE=1: with one player
++     * every controller drives port 0 (single-player titles read one pad;
++     * whichever the player picks up just works). Where several pads feed a
++     * port, buttons add up and each stick and trigger comes from the pad
++     * pushing it furthest. */
+     if (s_pad_merge < 0) { const char* e = getenv("PAD_MERGE"); s_pad_merge = e && *e == '1'; }
+-    PadHostState* p0 = &s_host_state[0];
+-    s_port0_pad = p0->connected;
+-    if (!s_pad_merge) return;
+-    for (int i = 1; i < PAD_MAX_HOST_PORTS; i++) {
+-        PadHostState* h = &s_host_state[i];
+-        if (!h->connected) continue;
+-        if (!p0->connected) { *p0 = *h; h->connected = 0; continue; }
+-        p0->buttons |= h->buttons;
++    PadAssign as;
++    pad_assign_now(&as);
++    for (int p = 0; p < PAD_MAX_HOST_PORTS; p++) {
++        PadHostState* p0 = &s_host_state[p];
++        pad_host_release(p0);
++        int first = 1;
++        for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
++            if (!(as.src[p] & (1u << i))) continue;
++            const PadHostState* h = &s_slot_state[i];
++            if (first) { *p0 = *h; first = 0; continue; }
++            p0->buttons |= h->buttons;
+ #define PAD_FAR(f) if (abs(h->f - 128) > abs(p0->f - 128)) p0->f = h->f
+-        PAD_FAR(analog_lx); PAD_FAR(analog_ly); PAD_FAR(analog_rx); PAD_FAR(analog_ry);
++            PAD_FAR(analog_lx); PAD_FAR(analog_ly); PAD_FAR(analog_rx); PAD_FAR(analog_ry);
+ #undef PAD_FAR
+-        if (h->trigger_l2 > p0->trigger_l2) p0->trigger_l2 = h->trigger_l2;
+-        if (h->trigger_r2 > p0->trigger_r2) p0->trigger_r2 = h->trigger_r2;
+-        u8* pd = &p0->press_right; const u8* ps = &h->press_right;
+-        for (int k = 0; k < 10; k++) if (ps[k] > pd[k]) pd[k] = ps[k];
+-        h->connected = 0;
++            if (h->trigger_l2 > p0->trigger_l2) p0->trigger_l2 = h->trigger_l2;
++            if (h->trigger_r2 > p0->trigger_r2) p0->trigger_r2 = h->trigger_r2;
++            u8* pd = &p0->press_right; const u8* ps = &h->press_right;
++            for (int k = 0; k < 10; k++) if (ps[k] > pd[k]) pd[k] = ps[k];
++        }
++        p0->connected = as.connected[p];
+     }
+-    s_port0_pad = p0->connected;
++    s_port0_pad = as.src[0] != 0;
++    { static unsigned last[PAD_MAX_HOST_PORTS] = { ~0u, ~0u, ~0u, ~0u };
++      if (memcmp(last, as.src, sizeof last)) {
++          memcpy(last, as.src, sizeof last);
++          fprintf(stderr, "[cellPad] %d player(s), %s: port 0 <- slots 0x%X (+ keyboard and mouse), port 1 <- 0x%X%s\n",
++                  s_pad_players, s_pad_merge ? "merged" : "separate", as.src[0], as.src[1],
++                  as.connected[1] ? "" : " (not connected)");
++      } }
+ }
+ 
+ /* Hints that differ by platform, set before the controller subsystem starts.
+@@ -2206,10 +2232,9 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+     u16 lo, hi;
+     pad_rumble_levels(param->motor[CELL_PAD_ACTUATOR_PARAM_SMALL],
+                       param->motor[CELL_PAD_ACTUATOR_PARAM_LARGE], &lo, &hi);
++#if PAD_BACKEND_XINPUT
+     s_rumble[port_no].lo = lo;
+     s_rumble[port_no].hi = hi;
+-
+-#if PAD_BACKEND_XINPUT
+     /* XInput keeps the motors at what they were last set to: no renewal. */
+     if (s_host_state[port_no].connected) {
+         XINPUT_VIBRATION vib;
+@@ -2220,11 +2245,13 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+ #endif
+ 
+ #if PAD_BACKEND_SDL2
++    /* The controllers that feed this port (pad_assign.h): every one when
++     * merged, none for player 1 on the keyboard. s_rumble is per slot. */
+     pad_lock();
+-    pad_sdl_rumble_send((int)port_no);
+-    /* Merged (PAD_MERGE), port 0 is every controller. */
+-    if (s_pad_merge > 0 && port_no == 0)
+-        for (int i = 1; i < PAD_MAX_HOST_PORTS; i++) {
++    PadAssign as;
++    pad_assign_now(&as);
++    for (int i = 0; i < PAD_MAX_HOST_PORTS; i++)
++        if (as.src[port_no] & (1u << i)) {
+             s_rumble[i].lo = lo; s_rumble[i].hi = hi;
+             pad_sdl_rumble_send(i);
+         }
+diff --git a/libs/input/pad_assign.h b/libs/input/pad_assign.h
+new file mode 100644
+index 0000000..21f693a
+--- /dev/null
++++ b/libs/input/pad_assign.h
+@@ -0,0 +1,50 @@
++/*
++ * Which controllers feed which PS3 port, from the controllers plugged in, the number of local players the title
++ * runs and the merged/separate choice. Pure (no SDL, no state), so a host test runs it.
++ *
++ * Slots are the backend's controller slots in their remembered order (a pad that reconnects gets its slot back).
++ * The keyboard and mouse always feed port 0 (player 1); this header decides only the pads.
++ *
++ *   1 player, merged:    every pad -> port 0 (today's behaviour)
++ *   1 player, separate:  slot n -> port n (today's behaviour)
++ *   2 players, 1 pad:    the pad -> port 1; port 0 is the keyboard and mouse alone
++ *   2 players, 2+ pads:  the first pad -> port 0 (with the keyboard and mouse), the second -> port 1, the rest none
++ *
++ * Connected, whatever the number of players (switching between 1 and 2 never plugs or unplugs a port): port 0
++ * always, port 1 whenever at least one pad is there, ports 2 and 3 while separate and their slot has a pad. A
++ * connected port that no pad feeds reads neutral: nothing pressed, sticks centred.
++ */
++#ifndef PAD_ASSIGN_H
++#define PAD_ASSIGN_H
++
++#define PA_PORTS 4
++
++typedef struct {
++    unsigned src[PA_PORTS];   /* bit s: slot s feeds this port */
++    int connected[PA_PORTS];
++} PadAssign;
++
++static inline void pad_assign(const int has[PA_PORTS], int players, int merged, PadAssign* a)
++{
++    int first = -1, second = -1, npads = 0;
++    unsigned all = 0;
++    for (int s = 0; s < PA_PORTS; s++) {
++        a->src[s] = 0;
++        if (!has[s]) continue;
++        all |= 1u << s;
++        if (first < 0) first = s; else if (second < 0) second = s;
++        npads++;
++    }
++    for (int p = 0; p < PA_PORTS; p++)
++        a->connected[p] = p == 0 || (p == 1 && npads > 0) || (!merged && has[p]);
++    if (players >= 2) {
++        if (second >= 0) { a->src[0] = 1u << first; a->src[1] = 1u << second; }
++        else if (first >= 0) a->src[1] = 1u << first;
++    } else if (merged) {
++        a->src[0] = all;
++    } else {
++        for (int s = 0; s < PA_PORTS; s++) if (has[s]) a->src[s] = 1u << s;
++    }
++}
++
++#endif

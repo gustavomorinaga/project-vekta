@@ -171,3 +171,7 @@
 4017-cellPad-mouse-motion-that-must-not-turn-the-view-is-.patch
 3038-ppu_lifter-func-names-names-functions-from-a-file-di.patch
 2090-Vulkan-window-its-own-thread-so-closing-it-works-whi.patch
+4019-cellPad-several-virtual-pads-hot-plug-by-command-scr.patch
+4020-cellPad-a-second-port-for-player-2-by-the-number-of-.patch
+4021-cellPad-tests-rumble-follows-the-controllers-that-fe.patch
+2092-Vulkan-rsx_temporal_hold-the-temporal-upscaler-held-.patch

@@ -1,0 +1,431 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Wed, 25 Nov 2026 10:31:06 -0300
+Subject: [PATCH] cellPad: several virtual pads, hot-plug by command, scripted
+ input per port
+
+Test tools for local two-player games, which need two controllers and a way
+to drive the second port without a person at it. All of it is read from
+environment variables that nothing sets in a release.
+
+- PAD_VIRTUAL takes a comma list (PAD_VIRTUAL=xbox,ps5): one SDL virtual
+  controller per entry, in that order. Pad 0 reads its state from
+  PAD_VIRTUAL_FILE as before, pad n from PAD_VIRTUAL_FILE_n. Each pad keeps
+  its own joystick handle; before, the feeder opened the first virtual
+  joystick it found, so a second pad could never be driven.
+- A command file that says "detach" unplugs its pad
+  (SDL_JoystickDetachVirtual) and "attach" plugs it in again. The pad comes
+  back as a new instance with the same GUID, so the hot-plug code puts it
+  back into the port it had: a controller switched off and on mid-game,
+  without hardware.
+- PAD_FILE_n and PAD_SCRIPT_n (n = 1..3) drive ports 1 to 3 the way
+  PAD_FILE and PAD_SCRIPT drive port 0. A port takes them only while it
+  reads connected.
+- PAD_VIRTUAL_KEYS=n: the keyboard, by the key map, drives virtual pad n
+  instead of port 0, so one person with one real pad can test pad + pad by
+  hand. The mouse stays on port 0.
+
+The text parsing (the list, the variable names, the command file) is in
+pad_test_input.h, which the host test tools/tests/test_pad_test_input.sh
+runs without SDL.
+---
+ libs/input/cellPad.c        | 248 +++++++++++++++++++++++++-----------
+ libs/input/pad_test_input.h |  56 ++++++++
+ 2 files changed, 229 insertions(+), 75 deletions(-)
+ create mode 100644 libs/input/pad_test_input.h
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 1074eec..b67c047 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -13,6 +13,7 @@
+ 
+ #include <time.h>
+ #include "cellPad.h"
++#include "pad_test_input.h"   /* PAD_VIRTUAL, PAD_FILE_n and PAD_SCRIPT_n names */
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -612,54 +613,104 @@ static int pad_sdl_family(SDL_GameController* gc)
+     }
+ }
+ 
+-/* PAD_VIRTUAL=xbox|xbox360|ps4|ps5|switch|steam: a virtual controller of that kind (no hardware
+- * needed), driven by PAD_VIRTUAL_FILE: "buttons lx ly rx ry lt rt" with
+- * buttons an SDL_CONTROLLER_BUTTON_* bit mask (hex), sticks -32768..32767 and
+- * triggers 0..32767. */
+-static int s_virt_index = -1;
++/* PAD_VIRTUAL=<kind>[,<kind>...] (xbox|xbox360|ps4|ps5|switch|steam; default
++ * unset, none): virtual controllers of those kinds, in that order (no hardware
++ * needed). Pad 0 is driven by the file PAD_VIRTUAL_FILE, pad n by
++ * PAD_VIRTUAL_FILE_n: "buttons lx ly rx ry lt rt" with buttons an
++ * SDL_CONTROLLER_BUTTON_* bit mask (hex), sticks -32768..32767 and triggers
++ * 0..32767; "detach" unplugs that pad and "attach" plugs it in again (a
++ * hot-plug test: it comes back as a new instance with the same GUID, so into
++ * the port it had). PAD_VIRTUAL_KEYS=n (default unset): the keyboard, by the
++ * key map, drives virtual pad n instead of port 0, for a pad + pad test with
++ * one real controller. Test tools only: nothing sets them in a release. */
++#define PAD_MAX_VIRTUAL 4
++static struct {
++    SDL_VirtualJoystickDesc d;
++    SDL_Joystick* js;      /* open while plugged in */
++    SDL_JoystickID id;
++} s_virt[PAD_MAX_VIRTUAL];
++static int s_nvirt;
++static int s_virt_keys = -1;
++static void pad_virtual_keys(int k);
++
++static void pad_virtual_plug(int k)
++{
++    SDL_NumJoysticks();   /* refreshes sdl2-compat's index list */
++    const int idx = SDL_JoystickAttachVirtualEx(&s_virt[k].d);
++    SDL_Joystick* js = idx >= 0 ? SDL_JoystickOpen(idx) : NULL;
++    s_virt[k].js = js;
++    s_virt[k].id = js ? SDL_JoystickInstanceID(js) : -1;
++    printf("[cellPad] virtual %s controller: device %d (pad %d)%s%s\n", s_virt[k].d.name, idx, k,
++           js ? "" : " ", js ? "" : SDL_GetError());
++}
++static void pad_virtual_unplug(int k)
++{
++    if (!s_virt[k].js) return;
++    SDL_JoystickClose(s_virt[k].js);
++    s_virt[k].js = NULL;
++    const int n = SDL_NumJoysticks();
++    for (int j = 0; j < n; j++)
++        if (SDL_JoystickGetDeviceInstanceID(j) == s_virt[k].id) { SDL_JoystickDetachVirtual(j); break; }
++    printf("[cellPad] virtual controller %d detached (instance %d)\n", k, (int)s_virt[k].id);
++    s_virt[k].id = -1;
++}
+ static void pad_virtual_attach(void)
+ {
+-    const char* kind = getenv("PAD_VIRTUAL");
+-    if (!kind || !*kind) return;
+-    SDL_VirtualJoystickDesc d;
+-    SDL_zero(d);
+-    d.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
+-    d.type = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
+-    d.naxes = SDL_CONTROLLER_AXIS_MAX;
+-    d.nbuttons = SDL_CONTROLLER_BUTTON_MAX;
+-    if (!SDL_strcasecmp(kind, "ps5"))         { d.vendor_id = 0x054C; d.product_id = 0x0CE6; d.name = "Virtual DualSense"; }
+-    else if (!SDL_strcasecmp(kind, "ps4"))    { d.vendor_id = 0x054C; d.product_id = 0x09CC; d.name = "Virtual DualShock 4"; }
+-    else if (!SDL_strcasecmp(kind, "xbox360")) { d.vendor_id = 0x045E; d.product_id = 0x028E; d.name = "Virtual Xbox 360"; }
+-    else if (!SDL_strcasecmp(kind, "steam"))  { d.vendor_id = 0x28DE; d.product_id = 0x1205; d.name = "Virtual Steam Deck"; }
+-    else if (!SDL_strcasecmp(kind, "switch")) { d.vendor_id = 0x057E; d.product_id = 0x2009; d.name = "Virtual Switch Pro"; }
+-    else                                      { d.vendor_id = 0x045E; d.product_id = 0x0B12; d.name = "Virtual Xbox"; }
+-    s_virt_index = SDL_JoystickAttachVirtualEx(&d);
+-    printf("[cellPad] virtual %s controller: device %d%s%s\n", d.name, s_virt_index,
+-           s_virt_index < 0 ? " " : "", s_virt_index < 0 ? SDL_GetError() : "");
++    const char* list = getenv("PAD_VIRTUAL");
++    char kind[32];
++    for (s_nvirt = 0; s_nvirt < PAD_MAX_VIRTUAL && padv_list_item(list, s_nvirt, kind, sizeof kind); s_nvirt++) {
++        SDL_VirtualJoystickDesc* d = &s_virt[s_nvirt].d;
++        SDL_zero(*d);
++        d->version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
++        d->type = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
++        d->naxes = SDL_CONTROLLER_AXIS_MAX;
++        d->nbuttons = SDL_CONTROLLER_BUTTON_MAX;
++        if (!SDL_strcasecmp(kind, "ps5"))         { d->vendor_id = 0x054C; d->product_id = 0x0CE6; d->name = "Virtual DualSense"; }
++        else if (!SDL_strcasecmp(kind, "ps4"))    { d->vendor_id = 0x054C; d->product_id = 0x09CC; d->name = "Virtual DualShock 4"; }
++        else if (!SDL_strcasecmp(kind, "xbox360")) { d->vendor_id = 0x045E; d->product_id = 0x028E; d->name = "Virtual Xbox 360"; }
++        else if (!SDL_strcasecmp(kind, "steam"))  { d->vendor_id = 0x28DE; d->product_id = 0x1205; d->name = "Virtual Steam Deck"; }
++        else if (!SDL_strcasecmp(kind, "switch")) { d->vendor_id = 0x057E; d->product_id = 0x2009; d->name = "Virtual Switch Pro"; }
++        else                                      { d->vendor_id = 0x045E; d->product_id = 0x0B12; d->name = "Virtual Xbox"; }
++        pad_virtual_plug(s_nvirt);
++    }
++    const char* keys = getenv("PAD_VIRTUAL_KEYS");
++    if (keys && *keys) {
++        s_virt_keys = atoi(keys);
++        if (s_virt_keys < 0 || s_virt_keys >= s_nvirt) s_virt_keys = -1;
++        printf("[cellPad] PAD_VIRTUAL_KEYS: the keyboard drives %s\n", s_virt_keys < 0 ? "nothing (no such virtual pad)" : "a virtual pad");
++    }
++}
++static void pad_virtual_set(SDL_Joystick* js, unsigned b, const int ax[6])
++{
++    for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX; i++) SDL_JoystickSetVirtualButton(js, i, (b >> i) & 1);
++    for (int i = 0; i < 6; i++)   /* a virtual trigger's raw range is the full axis */
++        SDL_JoystickSetVirtualAxis(js, i, (Sint16)(i < 4 ? ax[i] : ax[i] * 2 - 32768));
+ }
+ static void pad_virtual_feed(void)
+ {
+-    static SDL_Joystick* js;
+     static unsigned long long next;
+-    const char* path = getenv("PAD_VIRTUAL_FILE");
+-    if (s_virt_index < 0 || !path) return;
++    if (!s_nvirt) return;
+     const unsigned long long now = pad_now_ms();
+     if (now < next) return;
+     next = now + 20;
+-    if (!js) {
+-        for (int j = 0; j < SDL_NumJoysticks() && !js; j++)
+-            if (SDL_JoystickIsVirtual(j)) js = SDL_JoystickOpen(j);
+-        if (!js) return;
+-    }
+-    FILE* f = fopen(path, "r");
+-    if (!f) return;
+-    unsigned b = 0; int ax[6] = {0};
+-    if (fscanf(f, "%x %d %d %d %d %d %d", &b, &ax[0], &ax[1], &ax[2], &ax[3], &ax[4], &ax[5]) >= 1) {
+-        for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX; i++) SDL_JoystickSetVirtualButton(js, i, (b >> i) & 1);
+-        for (int i = 0; i < 6; i++)   /* a virtual trigger's raw range is the full axis */
+-            SDL_JoystickSetVirtualAxis(js, i, (Sint16)(i < 4 ? ax[i] : ax[i] * 2 - 32768));
++    for (int k = 0; k < s_nvirt; k++) {
++        if (k == s_virt_keys) { pad_virtual_keys(k); continue; }
++        char var[40];
++        padv_env_name("PAD_VIRTUAL_FILE", k, var, sizeof var);
++        const char* path = getenv(var);
++        FILE* f = path ? fopen(path, "r") : NULL;
++        if (!f) continue;
++        char line[160] = "";
++        if (!fgets(line, sizeof line, f)) line[0] = 0;
++        fclose(f);
++        unsigned b; int ax[6];
++        switch (padv_parse(line, &b, ax)) {
++        case PADV_DETACH: pad_virtual_unplug(k); break;
++        case PADV_ATTACH: if (!s_virt[k].js) pad_virtual_plug(k); break;
++        case PADV_STATE:  if (s_virt[k].js) pad_virtual_set(s_virt[k].js, b, ax); break;
++        default: break;
++        }
+     }
+-    fclose(f);
+ }
+ 
+ /* Send port i's rumble state to its controller, with a fresh duration. */
+@@ -1296,7 +1347,7 @@ static void pad_poll_keyboard(void)
+ {
+     static int off = -1;
+     if (off < 0) off = getenv("PAD_NO_KEYBOARD") ? 1 : 0;
+-    if (off || SDL_WasInit(SDL_INIT_VIDEO) == 0) return;
++    if (off || SDL_WasInit(SDL_INIT_VIDEO) == 0 || s_virt_keys >= 0) return;   /* PAD_VIRTUAL_KEYS: a virtual pad's */
+ 
+     /* With a controller on port 0 the keyboard adds to it (either can be
+      * used at any moment); without one the keyboard is port 0. */
+@@ -1351,6 +1402,40 @@ static void pad_poll_keyboard(void)
+     if (btns & CELL_PAD_CTRL_L2) hs->trigger_l2 = 255;
+     if (btns & CELL_PAD_CTRL_R2) hs->trigger_r2 = 255;
+ }
++
++/* PAD_VIRTUAL_KEYS: virtual pad k as the keyboard holds it, by the key map
++ * (the mouse stays on port 0). Released while no window has the focus. */
++static void pad_virtual_keys(int k)
++{
++    if (!s_virt[k].js) return;
++    unsigned b = 0;
++    int ax[6] = {0};
++    const Uint8* keys = SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus() ? SDL_GetKeyboardState(NULL) : NULL;
++    if (keys) {
++        if (s_nbinds < 0) pad_keymap_load();
++        PadHostState kb;
++        pad_host_release(&kb);
++        int st[9] = {0};
++        pad_binds_apply(&kb, BIND_KEY, keys, 0, st);
++        pad_sticks_from(&kb, st);
++        static const struct { u16 cell; int sdl; } m[] = {
++            {CELL_PAD_CTRL_CROSS,SDL_CONTROLLER_BUTTON_A},{CELL_PAD_CTRL_CIRCLE,SDL_CONTROLLER_BUTTON_B},
++            {CELL_PAD_CTRL_SQUARE,SDL_CONTROLLER_BUTTON_X},{CELL_PAD_CTRL_TRIANGLE,SDL_CONTROLLER_BUTTON_Y},
++            {CELL_PAD_CTRL_SELECT,SDL_CONTROLLER_BUTTON_BACK},{CELL_PAD_CTRL_START,SDL_CONTROLLER_BUTTON_START},
++            {CELL_PAD_CTRL_L3,SDL_CONTROLLER_BUTTON_LEFTSTICK},{CELL_PAD_CTRL_R3,SDL_CONTROLLER_BUTTON_RIGHTSTICK},
++            {CELL_PAD_CTRL_L1,SDL_CONTROLLER_BUTTON_LEFTSHOULDER},{CELL_PAD_CTRL_R1,SDL_CONTROLLER_BUTTON_RIGHTSHOULDER},
++            {CELL_PAD_CTRL_UP,SDL_CONTROLLER_BUTTON_DPAD_UP},{CELL_PAD_CTRL_DOWN,SDL_CONTROLLER_BUTTON_DPAD_DOWN},
++            {CELL_PAD_CTRL_LEFT,SDL_CONTROLLER_BUTTON_DPAD_LEFT},{CELL_PAD_CTRL_RIGHT,SDL_CONTROLLER_BUTTON_DPAD_RIGHT},
++        };
++        for (unsigned i = 0; i < sizeof m / sizeof m[0]; i++)
++            if (kb.buttons & m[i].cell) b |= 1u << m[i].sdl;
++        const u8 v[4] = { kb.analog_lx, kb.analog_ly, kb.analog_rx, kb.analog_ry };
++        for (int i = 0; i < 4; i++) ax[i] = (v[i] - 128) * 256 + (v[i] > 128 ? 255 : 0);   /* 0..255 -> -32768..32767 */
++        ax[4] = kb.buttons & CELL_PAD_CTRL_L2 ? 32767 : 0;
++        ax[5] = kb.buttons & CELL_PAD_CTRL_R2 ? 32767 : 0;
++    }
++    pad_virtual_set(s_virt[k].js, b, ax);
++}
+ #endif
+ 
+ static void pad_poll_backend(void)
+@@ -1581,45 +1666,48 @@ skip_inject: ;
+      * field before CROSS means anything. Masks are CELL_PAD_CTRL_* packed as
+      * (DIGITAL2 << 8) | DIGITAL1: START 0x0008, UP 0x0010, DOWN 0x0040,
+      * LEFT 0x0080, RIGHT 0x0020, CROSS 0x4000, CIRCLE 0x2000, TRIANGLE 0x1000.
+-     * Legit input simulation on the same footing as PAD_AUTOPRESS/PAD_STICK. */
++     * Legit input simulation on the same footing as PAD_AUTOPRESS/PAD_STICK.
++     * PAD_SCRIPT drives port 0, PAD_SCRIPT_1 .. PAD_SCRIPT_3 ports 1 to 3. */
+     { static int s_sc = -1;
+-      static struct { double t; unsigned mask; } ev[256]; static int n_ev = 0;
+-      static unsigned long long t0 = 0;   /* not ULONGLONG: this builds on POSIX too */
++      static struct { int on, n; unsigned long long t0;   /* not ULONGLONG: this builds on POSIX too */
++                      struct { double t; unsigned mask; int fired, held, said; } ev[256]; } sc[PAD_MAX_HOST_PORTS];
+       if (s_sc < 0) {
+           s_sc = 0;
+-          const char* e = getenv("PAD_SCRIPT");
+-          if (e && *e) {
+-              s_sc = 1; t0 = GetTickCount64();
++          for (int pt = 0; pt < PAD_MAX_HOST_PORTS; pt++) {
++              char var[32]; padv_env_name("PAD_SCRIPT", pt, var, sizeof var);
++              const char* e = getenv(var);
++              if (!e || !*e) continue;
++              s_sc = 1; sc[pt].on = 1; sc[pt].t0 = GetTickCount64();
+               const char* p = e;
+-              while (*p && n_ev < 256) {
++              while (*p && sc[pt].n < 256) {
+                   double t = strtod(p, (char**)&p);
+                   if (*p == ':') p++;
+                   unsigned m = (unsigned)strtoul(p, (char**)&p, 0);
+-                  ev[n_ev].t = t; ev[n_ev].mask = m; n_ev++;
++                  sc[pt].ev[sc[pt].n].t = t; sc[pt].ev[sc[pt].n].mask = m; sc[pt].n++;
+                   while (*p == ',' || *p == ' ') p++;
+               }
+-              printf("[cellPad] PAD_SCRIPT: %d event(s)%s\n", n_ev,
++              printf("[cellPad] %s: %d event(s)%s\n", var, sc[pt].n,
+                      *p ? " -- TRUNCATED at 256, the rest are ignored" : "");
+           }
+       }
+-      if (s_sc && port_no == 0) {
+-          double now = pad_clock(t0);
++      if (s_sc && port_no < PAD_MAX_HOST_PORTS && sc[port_no].on) {
++          double now = pad_clock(sc[port_no].t0);
+           /* Latch, do not window. A fixed time window is missed whenever the
+            * title stops polling the pad for longer than the window (it does
+            * exactly that on a loading screen), so the press silently never
+            * happens. Fire on the first poll at or after the event time and
+            * hold it for a fixed number of polls, which is what a real press
+            * looks like regardless of poll rate. */
+-          static int fired[256], held[256];
+-          for (int i = 0; i < n_ev; i++) {
+-              if (!fired[i] && now >= ev[i].t) { fired[i] = 1; held[i] = 40; }
+-              if (held[i] > 0) {
+-                  held[i]--;
+-                  data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(ev[i].mask & 0xFF);
+-                  data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((ev[i].mask >> 8) & 0xFF);
+-                  static int said[256];
+-                  if (!said[i]) { said[i] = 1;
+-                      printf("[cellPad] PAD_SCRIPT t=%.1fs press 0x%04X\n", ev[i].t, ev[i].mask); }
++          for (int i = 0; i < sc[port_no].n; i++) {
++              __typeof__(&sc[0].ev[0]) ev = &sc[port_no].ev[i];
++              if (!ev->fired && now >= ev->t) { ev->fired = 1; ev->held = 40; }
++              if (ev->held > 0) {
++                  ev->held--;
++                  data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(ev->mask & 0xFF);
++                  data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((ev->mask >> 8) & 0xFF);
++                  if (!ev->said) { ev->said = 1;
++                      if (port_no) printf("[cellPad] PAD_SCRIPT port %u t=%.1fs press 0x%04X\n", port_no, ev->t, ev->mask);
++                      else         printf("[cellPad] PAD_SCRIPT t=%.1fs press 0x%04X\n", ev->t, ev->mask); }
+               }
+           }
+       } }
+@@ -1636,32 +1724,42 @@ skip_inject: ;
+      *   echo 0x4000 > pad.txt    # CROSS
+      *   echo 0x0040 4 > pad.txt  # DOWN for 4 reports (menus auto-repeat a
+      *                            # long hold; the default is 40)
++     *
++     * PAD_FILE drives port 0, PAD_FILE_1 .. PAD_FILE_3 ports 1 to 3.
+      */
+-    { static int s_pf = -1; static char pf_path[512];
+-      static unsigned held_mask = 0; static int held_n = 0;
+-      if (s_pf < 0) { const char* e = getenv("PAD_FILE");
+-                      s_pf = (e && *e) ? 1 : 0;
+-                      if (s_pf) { strncpy(pf_path, e, sizeof pf_path - 1); pf_path[sizeof pf_path - 1] = 0; } }
+-      if (s_pf && port_no == 0) {
+-          if (held_n <= 0) {
+-              FILE* f = fopen(pf_path, "rb");
++    { static int s_pf = -1;
++      static struct { char path[512]; unsigned held_mask; int held_n; } pf[PAD_MAX_HOST_PORTS];
++      if (s_pf < 0) {
++          s_pf = 0;
++          for (int pt = 0; pt < PAD_MAX_HOST_PORTS; pt++) {
++              char var[32]; padv_env_name("PAD_FILE", pt, var, sizeof var);
++              const char* e = getenv(var);
++              if (e && *e) { s_pf = 1; strncpy(pf[pt].path, e, sizeof pf[pt].path - 1); }
++          }
++      }
++      if (s_pf && port_no < PAD_MAX_HOST_PORTS && pf[port_no].path[0]) {
++          __typeof__(&pf[0]) q = &pf[port_no];
++          if (q->held_n <= 0) {
++              FILE* f = fopen(q->path, "rb");
+               if (f) {
+                   char buf[64]; buf[0] = 0;
+                   if (fgets(buf, sizeof buf, f)) {
+                       char* rest;
+                       unsigned m = (unsigned)strtoul(buf, &rest, 0);
+                       int n = (int)strtol(rest, 0, 0);
+-                      if (m) { held_mask = m; held_n = n > 0 ? n : 40;
+-                               printf("[cellPad] PAD_FILE press 0x%04X\n", m); fflush(stdout); }
++                      if (m) { q->held_mask = m; q->held_n = n > 0 ? n : 40;
++                               if (port_no) printf("[cellPad] PAD_FILE port %u press 0x%04X\n", port_no, m);
++                               else         printf("[cellPad] PAD_FILE press 0x%04X\n", m);
++                               fflush(stdout); }
+                   }
+                   fclose(f);
+-                  if (held_n > 0) { FILE* w = fopen(pf_path, "wb"); if (w) fclose(w); }
++                  if (q->held_n > 0) { FILE* w = fopen(q->path, "wb"); if (w) fclose(w); }
+               }
+           }
+-          if (held_n > 0) {
+-              if (data->len > 0) held_n--;
+-              data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(held_mask & 0xFF);
+-              data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((held_mask >> 8) & 0xFF); }
++          if (q->held_n > 0) {
++              if (data->len > 0) q->held_n--;
++              data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(q->held_mask & 0xFF);
++              data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((q->held_mask >> 8) & 0xFF); }
+       } }
+ 
+     /* Buttons a title hook presses (pad_inject), for that many reads within PAD_INJECT_MS. */
+diff --git a/libs/input/pad_test_input.h b/libs/input/pad_test_input.h
+new file mode 100644
+index 0000000..a72efd4
+--- /dev/null
++++ b/libs/input/pad_test_input.h
+@@ -0,0 +1,56 @@
++/*
++ * cellPad's test inputs, the parts that are only text: the PAD_VIRTUAL list, a virtual pad's command file and the
++ * per-port variable names (PAD_FILE, PAD_FILE_1, ...). No SDL and no state, so a host test can run them.
++ */
++#ifndef PAD_TEST_INPUT_H
++#define PAD_TEST_INPUT_H
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++/* The i-th entry of a comma list ("xbox,ps5"), without surrounding spaces, into out (cut to n - 1 characters).
++ * 0 when the list has no such entry or the entry is empty. */
++static inline int padv_list_item(const char* list, int i, char* out, size_t n)
++{
++    if (!list || !out || !n || i < 0) return 0;
++    const char* p = list;
++    for (; i > 0; i--) {
++        p = strchr(p, ',');
++        if (!p) return 0;
++        p++;
++    }
++    while (*p == ' ' || *p == '\t') p++;
++    size_t k = strcspn(p, ",");
++    while (k && (p[k - 1] == ' ' || p[k - 1] == '\t')) k--;
++    if (!k) return 0;
++    if (k >= n) k = n - 1;
++    memcpy(out, p, k);
++    out[k] = 0;
++    return 1;
++}
++
++/* The variable for port (or virtual pad) i: the base name for 0, "<base>_<i>" after it. */
++static inline void padv_env_name(const char* base, int i, char* out, size_t n)
++{
++    if (i > 0) snprintf(out, n, "%s_%d", base, i);
++    else       snprintf(out, n, "%s", base);
++}
++
++enum { PADV_NONE, PADV_STATE, PADV_ATTACH, PADV_DETACH };
++
++/* A virtual pad's command file: "detach" (unplug it), "attach" (plug it in again), or its state,
++ * "buttons lx ly rx ry lt rt" with buttons an SDL_CONTROLLER_BUTTON_* bit mask in hex, sticks -32768..32767 and
++ * triggers 0..32767; values left out are 0. PADV_NONE for anything else (an empty file). */
++static inline int padv_parse(const char* s, unsigned* buttons, int ax[6])
++{
++    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
++    if (!strncmp(s, "detach", 6)) return PADV_DETACH;
++    if (!strncmp(s, "attach", 6)) return PADV_ATTACH;
++    *buttons = 0;
++    for (int i = 0; i < 6; i++) ax[i] = 0;
++    return sscanf(s, "%x %d %d %d %d %d %d", buttons, &ax[0], &ax[1], &ax[2], &ax[3], &ax[4], &ax[5]) >= 1
++               ? PADV_STATE : PADV_NONE;
++}
++
++#endif

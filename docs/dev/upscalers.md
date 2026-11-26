@@ -139,6 +139,13 @@ The conventions were checked this way:
 - **Jitter sign:** as in the DLSS programming guide, the value is the image's offset, x to the right and y down. FSR
   uses the same convention.
 
+**Split screen** (patch 2092, 2026-11-26): the pass takes one camera and one jitter per frame, and a two-player
+match draws two views into the scene. While the game has two local players (`kz_players_sync`), the port calls
+`rsx_temporal_hold(1)`: no jitter, and the scene end skips the temporal pass, so the scene (still at the render
+size chosen at start) takes the plain scaled path. Back to one player, the pass runs again and its history starts
+over. Checked with FSR 3 quality in Battlefields (2P: both views; 1P: 3600 frames upscaled); DLSS takes the same
+skip but was not run.
+
 ## Results (Level 7 route, unpaced)
 
 | Setting | fps | 1 % low |
