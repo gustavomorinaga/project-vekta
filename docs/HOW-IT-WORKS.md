@@ -33,12 +33,12 @@ version can fall back to it.
 ## Frame rate above 30
 
 The PS3 game runs its logic at 30 Hz, paced by the console's vertical blank. The port drives the game's clock
-itself and its vblank: the frame-rate limit on the PC page (30, 60 or 144) sets both, 60 being the default play
+itself and its vblank: the frame-rate limit on the PC page (30, 60, 120, 144, 165, 240 or Unlimited, a 1000 Hz clock) sets both, 60 being the default play
 setting, and `KZ_TICK_HZ`, `KZ_VBLANK_HZ` and `KZ_GUEST_VBLANK_HZ` override them (`port/kz1hd/main.cpp`). The game runs
 at most one frame ahead of the screen. Logic tied to the frame rate was checked at 60 Hz (hints, movement, rate of fire); the
 level scripts' `OnUpdate`, which the game calls once per frame and the scripts count in, runs 30 times per second of
 game time at every rate (`port/kz1hd/script_rate.h`); the
-144 Hz mode is optional and has one known problem ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)).
+limits of 120 and up are optional and experimental, with known problems ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)).
 
 ## Where to read more
 

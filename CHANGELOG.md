@@ -8,6 +8,9 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (`fps_limit = 0`, a
+  1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the
+  default ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 - RecompLauncher: the game's page lists the PC settings (display, picture, upscaling, mouse, sound and language),
   read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
   package or a decrypted EBOOT.elf that matches the US copy is shown as verified.
@@ -52,6 +55,9 @@ program and folder that build it. Until a release that calls itself playable
   stays within its weight budget as a release grows.
 
 ### Fixed
+- Mouse yaw turns by the same amount whatever the frame times: the game turns at the mean of a frame's turn rate and
+  the last one's, so with frames of different lengths (at 144 when it dips, and at 240 and Unlimited) a flick turned
+  up to 14 % more or less than its counts.
 - Closing the game's window now ends the game also when the game has stopped responding (it showed no new frames):
   after 2 s the game quits as Quit Game does. On Windows such a game could not be closed at all, only from the Task
   Manager (ps3recomp patch 2090: the window has a thread of its own).

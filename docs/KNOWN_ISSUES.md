@@ -5,6 +5,15 @@ are linked.
 
 ## Game
 
+- **Frame-rate limits of 120, 165, 240 and Unlimited are experimental (2026-11-26).** They run the game clock at the
+  limit (Unlimited: 1000 Hz, the finest the game's millisecond timer allows), as the 144 Hz mode does, so they share
+  its weapon ghosting and shaking below. Above the limit the frame rate is the PC's, mostly the speed of one
+  processor core: in Level 1 (2026-11-26, VADER, the maintainer's i7-11700K, the game on 4 cores, V-Sync off, 1280x720 window) 120
+  held 119.9 fps (1 % low 86), 144 held 143.9 (111), 165 held 164.7 (115), 240 ran 174 (105) and Unlimited 183 (101),
+  the game's main thread about 95 % busy from 165 up; the game clock kept real time within 0.1 % at every limit.
+  Mouse look turns as at 60 at every limit (0.04365 degrees per count; flicks and slow sweeps injected in Level 1,
+  within 1.7 % at 60, 144, 240 and Unlimited).
+  Reports of how they run on your machine are welcome. The default 60 is not affected.
 - **First-person weapon "ghosting" in the 144 Hz mode.** In busy places (the concrete yard with the Helghast dropships
   in chapter 9, "Hidden Pasts", identified by the maintainer on 2026-11-12), on rare frames the whole first-person
   weapon shows its previous frame's pose while the world moves; the PS3's motion blur then doubles it. Only with the

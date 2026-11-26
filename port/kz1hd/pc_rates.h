@@ -11,8 +11,13 @@
  * mode, a whole number of ticks per game frame: on a 144 Hz cadence a 60 Hz
  * game came out as frames 2 and 3 ticks apart, 13.9 and 20.8 ms (#121,
  * measured 2026-11-24 with V-Sync off: 1% low 47.6 fps at the 60 limit), and
- * on a VRR display the monitor swung between 72 and 144 Hz. At 144 the
- * cadence is 144 and menu_mouse raises it in play (pcoptions.cpp).
+ * on a VRR display the monitor swung between 72 and 144 Hz. From 100 up (120,
+ * 144, 165, 240) the clock and the game's vblanks run at the limit, the
+ * cadence is 144 in menus and menu_mouse raises it in play (pcoptions.cpp).
+ * 0 is Unlimited: the clock at 1000 Hz, one tick per millisecond of the
+ * game's own timer (func_0021C0F8 counts whole ms), its finest; the frame rate
+ * is then the PC's. ASSUMPTION: the game's vblank-counting logic takes 1000 a
+ * second as it takes 144 (checked in play, not in the code).
  *
  * Mouse look. player_look adds the counts times one constant to the
  * controller's turn rates, +0xA8 (yaw) and +0xAC (pitch), after the game's
@@ -32,12 +37,15 @@
 #ifndef KZ_PC_RATES_H
 #define KZ_PC_RATES_H
 
-/* the game clock for a limit: 30 is the game's own */
-static inline int pc_tick_hz(int fps_limit) { return fps_limit >= 100 ? 144 : fps_limit <= 30 ? 30 : 60; }
-/* the vblanks the game sees (KZ_GUEST_VBLANK_HZ) */
-static inline double pc_guest_vblank_hz(int fps_limit) { return fps_limit >= 100 ? 144.0 : 59.94; }
-/* the flip cadence (KZ_VBLANK_HZ), whatever the V-Sync mode */
-static inline double pc_flip_hz(int fps_limit) { return fps_limit >= 100 ? 144.0 : 59.94; }
+/* the game clock for a limit: 30 is the game's own, 0 Unlimited */
+static inline int pc_tick_hz(int fps_limit)
+{
+    return fps_limit == 0 ? 1000 : fps_limit >= 100 ? (fps_limit > 1000 ? 1000 : fps_limit) : fps_limit <= 30 ? 30 : 60;
+}
+/* the vblanks the game sees (KZ_GUEST_VBLANK_HZ): its clock's from 100 up */
+static inline double pc_guest_vblank_hz(int fps_limit) { return pc_tick_hz(fps_limit) >= 100 ? (double)pc_tick_hz(fps_limit) : 59.94; }
+/* the flip cadence (KZ_VBLANK_HZ), whatever the V-Sync mode: 144 in menus from 100 up (raised in play) */
+static inline double pc_flip_hz(int fps_limit) { return pc_tick_hz(fps_limit) >= 100 ? 144.0 : 59.94; }
 
 /* The look constant in rate units per count per second (times the tick rate
  * per tick, times the slider's multiplier). The number is 0.7.0's, written as
@@ -49,24 +57,62 @@ static inline double pc_flip_hz(int fps_limit) { return fps_limit >= 100 ? 144.0
 #define KZ_LOOK_PITCH_SCALE 3.687f            /* 0.04365 / 0.01184 */
 
 /* The game applies one frame's turn rates once per tick of the game clock the
- * frame advances, so a frame of 2 ticks (a dip below the clock's rate, often
- * at 144) turned the mouse's counts twice (#121: a 400-count pitch burst
- * turned 34.92 deg instead of 17.46 on a 2-tick step, 2026-11-25). Per frame:
- * the counts get 1/ticks of the per-tick rate, and a frame that advances no
- * tick keeps them for the next, so no count is lost or doubled. `now` is the
- * clock's tick count; a jump of more than 8 (a new clock, a load) counts as
- * one tick. Returns the rate's scale, 0 when the counts were kept.
- * ASSUMPTION: +0x6C already holds this frame's ticks when the look runs
- * (checked in the game by bursts on 2-tick frames, not in the code). */
-struct pc_look_carry { int x, y; unsigned last; int primed; };
-static inline float pc_look_frame(struct pc_look_carry* c, unsigned now, int* dx, int* dy)
+ * frame advances: func_0021C0F8 (run at 0x10810, before the frame's logic,
+ * func_0021AB28 at 0x10820, which calls the look, func_00291FA8) stores the
+ * tick count in clock +0x6C, the last frame's in +0x70 and their difference,
+ * capped by +0x74 and at least 1 (it waits for a tick), in +0x68. A frame of 2
+ * ticks (a dip below the clock's rate, often at 144) therefore turned the
+ * mouse's counts twice (#121: a 400-count pitch burst turned 34.92 deg instead
+ * of 17.46 on a 2-tick step, 2026-11-25), hence 1/ticks of the rate per tick.
+ *
+ * Yaw's turn of a frame's rate is also shared with the next frame: the player
+ * turns at the mean of this frame's rate and the last one's, so a rate r set
+ * on a frame of n1 ticks, followed by one of n2, turns r x (n1 + n2) / 2.
+ * Measured, not found in the code: at Unlimited (2026-11-26, 20 bursts of
+ * +-1000 counts, the look's own +0x68 and the player's matrix logged at every
+ * call) every burst turned 21.826 deg (half of 43.652) on its frame and
+ * 21.826 x n2 / n1 on the next, to 0.01 deg; +0x68 equalled +0x6C - +0x70 on
+ * all 5332 frames but one. With 1/n1 alone a burst came out n2/n1 off, up to
+ * 14 % at 1000 Hz (frames of 7 to 11 ticks); at 60 and 144 frames are mostly
+ * 1 tick and it hardly showed. Pitch has no such mean (it is integrated on
+ * its own, player +0x154 to +0x14C in func_002DE680): its bursts and sweeps
+ * turned 0.04366 deg/count at every rate with 1/n alone, and the yaw scheme
+ * below on pitch lost up to 60 % of a burst at 144 (both measured 2026-11-26).
+ *
+ * So for yaw the counts still owed (`owe`, half of the last frame's, whose
+ * second half lands on this frame) are settled here: of what is owed after
+ * the last rate's second half, n x q / 2, this frame's rate q = owed / n pays
+ * half now and half on the next frame, if that has n ticks too; a
+ * difference is what the next frame then owes. Equal frames give q = counts /
+ * n, as before; a burst's error shrinks by about |n2 - n1| / 2n a frame.
+ * A frame that advances no tick (the look called twice in one frame) keeps
+ * the counts for the next. `now` is the clock's tick count; a jump of more
+ * than pc_look_max_jump(hz) ticks (a new clock, a load) counts as one tick
+ * and drops what was owed: 8 up to 144 Hz, as before; above, 1/8 s of ticks,
+ * since at 240 or Unlimited (1000) an ordinary frame advances 2 to 15 ticks
+ * and must still be divided. Gives the rates in counts per tick (*qx yaw,
+ * *qy pitch, which is counts / n) and returns the frame's ticks, 0 when the
+ * counts were kept. */
+struct pc_look_carry { int x, y; unsigned last; int primed; double owe_x, q_x; };
+static inline unsigned pc_look_max_jump(int hz) { return hz <= 144 ? 8u : (unsigned)hz / 8u; }
+static inline double pc_look_yaw(double* owe, double* q, int counts, unsigned n)
+{
+    double owed = *owe + counts - n * *q / 2.0;
+    if (owed > -1e-9 && owed < 1e-9) owed = 0.0;   /* rounding left over */
+    *q = owed / n;
+    *owe = owed / 2.0;
+    return *q;
+}
+static inline unsigned pc_look_frame(struct pc_look_carry* c, unsigned now, int hz, int dx, int dy, float* qx, float* qy)
 {
     unsigned n = c->primed ? now - c->last : 1;
-    if (n > 8) n = 1;
+    if (n > pc_look_max_jump(hz)) { n = 1; c->owe_x = c->q_x = 0.0; }
     c->last = now; c->primed = 1;
-    *dx += c->x; *dy += c->y; c->x = c->y = 0;
-    if (!n) { c->x = *dx; c->y = *dy; *dx = *dy = 0; return 0.0f; }
-    return 1.0f / (float)n;
+    dx += c->x; dy += c->y; c->x = c->y = 0;
+    if (!n) { c->x = dx; c->y = dy; *qx = *qy = 0.0f; return 0; }
+    *qx = (float)pc_look_yaw(&c->owe_x, &c->q_x, dx, n);
+    *qy = (float)dy / (float)n;
+    return n;
 }
 
 #endif

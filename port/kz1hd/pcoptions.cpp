@@ -138,8 +138,10 @@ static void ini_save(void)
  *   resolution = WxH (the window's size, or the fullscreen mode)
  *   refresh    = Hz of the fullscreen mode (0 = the display's)
  *   vsync      = on | off | adaptive | fifo   (on: no tearing; fifo: for a VRR display)
- *   fps_limit  = 30 | 60 | 144   (the game clock: 30 is the original; 144 runs
- *                                 ~67-80 fps, the PPU's limit)
+ *   fps_limit  = 30 | 60 | 120 | 144 | 165 | 240 | 0   (the game clock: 30 is the original,
+ *                                 0 Unlimited (a 1000 Hz clock, pc_rates.h); from 120 up the
+ *                                 frame rate is the PC's below the limit: the PPU's,
+ *                                 Level 1 2026-11-26: 144 at 144, ~175-185 at 240 and 0)
  *   controllers = merged | separate   (merged: any controller plays as player 1)
  *   scale      = 50 | 75 | 100 | 150 | 200   (internal resolution, % of the window's; applied at
  *                                             once, rsx_vulkan_set_scale. The frame also follows
@@ -337,7 +339,7 @@ extern "C" void kz_pc_settings_env(void)
     const int fps = atoi(s_ini["fps_limit"].c_str());
     /* KZ_VBLANK_HZ, the flip cadence: the FIFO drains one frame per tick of
      * it, so at 144 it held the 144 Hz clock to ~72 fps (a frame over one tick
-     * waits for the next two). In play at 144 menu_mouse raises it to 1000,
+     * waits for the next two). In play from 120 up menu_mouse raises it to 1000,
      * every frame through at once (~90-115 fps in Level 1). At 60 or 30 it is
      * the PS3's 59.94 in every V-Sync mode (pc_rates.h, #121). */
     { char b[32];
@@ -408,13 +410,15 @@ static void player_look(ppu_context* ctx)
     kz_route_tick_end(obj);
     static pc_look_carry carry;   /* the clock object (0x828734) counts ticks at +0x6C */
     const uint32_t clk = rd32(0x828734);
-    const float per = pc_look_frame(&carry, clk && clk < 0xF0000000u ? rd32(clk + 0x6C) : carry.last + 1, &dx, &dy);
-    if (!dx && !dy) return;
-    const float k = g_look_k * (float)(g_kz_tick_hz > 0 ? g_kz_tick_hz : 30) * per;   /* per tick of this frame */
+    float qx, qy;   /* counts per tick (pc_rates.h) */
+    pc_look_frame(&carry, clk && clk < 0xF0000000u ? rd32(clk + 0x6C) : carry.last + 1,
+                  g_kz_tick_hz > 0 ? g_kz_tick_hz : 30, dx, dy, &qx, &qy);
+    if (qx == 0.0f && qy == 0.0f) return;
+    const float k = g_look_k * (float)(g_kz_tick_hz > 0 ? g_kz_tick_hz : 30);   /* per count per tick */
     const float yaw = rdf(obj + 0xA8), pitch = rdf(obj + 0xAC);
-    wrf(obj + 0xA8, yaw - (float)dx * k * sens(s_yaw));
+    wrf(obj + 0xA8, yaw - qx * k * sens(s_yaw));
     wrf(obj + 0x3C, rdf(obj + 0xA8) / 0.93f);
-    wrf(obj + 0xAC, pitch + (float)(s_invert ? dy : -dy) * k * KZ_LOOK_PITCH_SCALE * sens(s_pitch));
+    wrf(obj + 0xAC, pitch + (s_invert ? qy : -qy) * k * KZ_LOOK_PITCH_SCALE * sens(s_pitch));
     if (g_look_log) { static int n; if (n++ % 30 == 0)
         fprintf(stderr, "[kz-look] dx=%d dy=%d rates %.4f %.4f -> %.4f %.4f\n", dx, dy,
                 yaw, pitch, rdf(obj + 0xA8), rdf(obj + 0xAC)); }
@@ -526,7 +530,8 @@ static const char* present_mode(const std::string& v)
 {
     return v == "off" ? "immediate" : v == "adaptive" ? "relaxed" : v == "fifo" ? "fifo" : "mailbox";
 }
-static const int kFps[] = { 30, 60, 144 };
+static const int kFps[] = { 30, 60, 120, 144, 165, 240, 0 };   /* 0: Unlimited */
+static const int kFpsN = (int)(sizeof kFps / sizeof kFps[0]);
 static std::vector<std::pair<int, int>> s_res;   /* the resolutions offered */
 
 static int pick(const std::string& v, const char* const* names, int n) { for (int i = 0; i < n; i++) if (v == names[i]) return i; return 0; }
@@ -556,7 +561,7 @@ static void apply_fps(int fps)
 {
     g_kz_tick_hz = pc_tick_hz(fps);
     g_kz_guest_vblank_hz = pc_guest_vblank_hz(fps);
-    g_kz_flip_hz = pc_flip_hz(fps);   /* menu_mouse raises it in play at 144 */
+    g_kz_flip_hz = pc_flip_hz(fps);   /* menu_mouse raises it in play from 120 up */
 }
 static float in_f(ppu_context* c) { return rdf((uint32_t)c->gpr[4]); }
 static void get_display(ppu_context* c) { attr_log("get_display", c); wrf((uint32_t)c->gpr[4], (float)pick(s_ini["display"], kDisplays, 3)); }
@@ -575,10 +580,11 @@ static void set_vsync(ppu_context* c) { attr_log("set_vsync", c); if ((int32_t)c
     rsx_vulkan_set_present(present_mode(kVsyncs[i]));
     apply_fps(atoi(s_ini["fps_limit"].c_str())); }
 static void get_fps(ppu_context* c) { attr_log("get_fps", c);
-    const int f = atoi(s_ini["fps_limit"].c_str());
-    wrf((uint32_t)c->gpr[4], (float)(f >= 100 ? 2 : f <= 30 ? 0 : 1)); }
+    const int f = atoi(s_ini["fps_limit"].c_str()); int i = 1;   /* a value not offered: 60's row */
+    for (int k = 0; k < kFpsN; k++) if (kFps[k] == f) i = k;
+    wrf((uint32_t)c->gpr[4], (float)i); }
 static void set_fps(ppu_context* c) { attr_log("set_fps", c); if ((int32_t)c->gpr[5] != 2) return;
-    const int f = kFps[std::clamp((int)lroundf(in_f(c)), 0, 2)];
+    const int f = kFps[std::clamp((int)lroundf(in_f(c)), 0, kFpsN - 1)];
     s_ini["fps_limit"] = std::to_string(f); ini_write(); apply_fps(f); }
 static const int kScales[] = { 50, 75, 100, 150, 200 };
 static void scale_apply(void) { rsx_vulkan_set_scale((float)atoi(s_ini["scale"].c_str()) / 100.0f); }
@@ -976,7 +982,7 @@ static std::string kz_lua(void)
     "  KZPCR(8, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDSize', 'HUD Size'))\n"
     "  KZPCR(9, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.CrosshairSize', 'Crosshair Size'))\n"
     "  KZPCR(10, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.VSync|0.0;1.0;2.0;3.0|On;Off;Adaptive;FIFO (VRR)', 'V-Sync'))\n"
-    "  KZPCR(11, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FrameRate|0.0;1.0;2.0|30;60;144', 'Frame Rate Limit'))\n"
+    "  KZPCR(11, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FrameRate|0.0;1.0;2.0;3.0;4.0;5.0;6.0|30;60;120;144;165;240;Unlimited', 'Frame Rate Limit'))\n"
     "  KZPCR(12, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Reflex|0.0;1.0;2.0|$Conditions.Off$;$Conditions.On$;On + Boost', '" +
         std::string(rsx_vulkan_reflex_available() ? "NVIDIA Reflex" : "NVIDIA Reflex (not available)") + "'))\n"
     "  KZPCR(13, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
