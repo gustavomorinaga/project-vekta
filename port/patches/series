@@ -165,3 +165,4 @@
 2086-Vulkan-no-GPU-MLAA-pass-on-AMD-s-Windows-driver-the-po.patch
 2087-Vulkan-a-32-bit-word-form-of-the-MLAA-shader-for-AMD-s-.patch
 2088-MLAA-log-says-ran-only-when-the-MLAA-itself-ran.patch
+2089-Vulkan-window-F12-takes-a-capture-only-with-PS3RECOMP_.patch
