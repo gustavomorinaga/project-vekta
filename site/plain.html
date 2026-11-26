@@ -232,6 +232,10 @@
 <li><span class="kind">Fixed</span>The game no longer stays on a black window forever after an earlier first run was stopped while it was writing its file cache (an empty or missing <code>cache.dat</code> under <code>work/vfs/cache/BCUS98116/fios</code>): at start the port removes a cut-short cache, and the game makes a new one, the same bytes, as on a first run.</li>
 <li><span class="kind">Fixed</span>The launcher no longer calls a session &quot;hang-killed&quot; when the game stopped showing frames for a while, recovered and was then quit normally (it showed &quot;exit 0: ok (hang-killed)&quot;): a hang counts only when the game was still stuck at the end.</li>
 <li><span class="kind">Fixed</span>Level Select&#x27;s SELECT CHARACTER: the mouse no longer picks a character the level cannot be played with (the greyed rows). Hovering one selected it, and Select then started the level as that character; now the mouse, like the pad, leaves greyed rows alone.</li>
+<li><span class="kind">Fixed</span>Mouse look (#121): looking up and down now turns the same amount per mouse movement as turning left and right, at the same slider value; before, vertical look was about a quarter as fast. Horizontal look is unchanged.</li>
+<li><span class="kind">Fixed</span>Frame pacing at the 60 and 30 fps limits (#121): every frame is now shown for the same time in every V-Sync mode. Before, at 60 fps the frames alternated between about 14 and 21 ms unless V-Sync was set to the VRR mode.</li>
+<li><span class="kind">Fixed</span>Mouse look (#121): mouse movement made while the game window was out of focus, just before a menu opened or as the pointer was captured again no longer turns the view all at once afterwards (a sudden jump or flick).</li>
+<li><span class="kind">Fixed</span>Mouse look (#121): a frame that runs slow no longer turns the view twice as far for the same mouse movement (most often at the 144 fps limit).</li>
 </ul>
 </article>
 <article class="rel">
@@ -364,8 +368,8 @@ tools/install.sh</pre>
 <section id="about" class="sec" aria-labelledby="h-about">
 <h2 id="h-about">About</h2>
 <p class="lede">Built on ps3recomp v0.19.0: PPU and SPU code lifted to C++, the RSX command stream replayed on Vulkan.</p>
-<p class="meta">how it works · ps3recomp v0.19.0 · 166 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 166 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 167 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 167 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </section>
