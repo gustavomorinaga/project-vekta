@@ -15,6 +15,11 @@ program and folder that build it. Until a release that calls itself playable
   your European disc copied to the PC (BCES-01743), and a decrypted EBOOT.elf of the European edition is shown as
   verified. The release notes name the European edition too.
 
+### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
+
 ### Fixed
 - RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two
   optional boxes, and RecompLauncher counts Easy Setup only for a required one; now one box takes the installed
