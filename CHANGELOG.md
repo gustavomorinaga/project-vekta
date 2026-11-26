@@ -11,6 +11,9 @@ program and folder that build it. Until a release that calls itself playable
 - RecompLauncher: the game's page lists the PC settings (display, picture, upscaling, mouse, sound and language),
   read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
   package or a decrypted EBOOT.elf that matches the US copy is shown as verified.
+- RecompLauncher: the game box also takes the European edition, the folder RPCS3 installed it in (NPEA00418) or
+  your European disc copied to the PC (BCES-01743), and a decrypted EBOOT.elf of the European edition is shown as
+  verified. The release notes name the European edition too.
 - The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game
   folder, lifts it with its own addresses and plays it in the language the system asks for (its archive has English,
   French, German, Italian, Spanish and Dutch), with its saves in their own folder. Install it in your RPCS3 with its

@@ -6,18 +6,21 @@
   "inputs": [
     {
       "id": "game",
-      "label": "Your Killzone HD (NPUA80856, version 01.00), one of: the folder your PS3 or RPCS3 installed it in (with PARAM.SFO and USRDIR); or, with no RPCS3, your Killzone Trilogy disc copied to this PC (its folder, with PS3_GAME and PS3_EXTRA) or the Killzone HD package DATA000.PKG. From the disc or the package, the official RPCS3 is downloaded from RPCS3's own GitHub releases to install the game into the install folder; on Windows 10, install 7-Zip first.",
+      "label": "Your Killzone HD, one of: the folder your PS3 or RPCS3 installed it in (with PARAM.SFO and USRDIR), from the USA edition (NPUA80856) or the European one (NPEA00418), version 01.00; or, with no RPCS3, a disc copied to this PC: your Killzone Trilogy disc (its folder, with PS3_GAME and PS3_EXTRA, or the Killzone HD package DATA000.PKG) or your European Killzone HD disc (BCES-01743, its folder with PS3_GAME). From the Trilogy disc or its package, the official RPCS3 is downloaded from RPCS3's own GitHub releases to install the game into the install folder, and from the European disc only to decrypt its EBOOT; on Windows 10, install 7-Zip first. A European PlayStation Store package needs its licence, so install it in your RPCS3 first and give the installed folder.",
       "role": "game",
       "formats": [{ "type": "folder" }, { "type": "file", "extensions": ["pkg"] }],
       "dumps": [{ "name": "USA (PlayStation Store, NPUA80856)", "size": 3182645568, "crc32": "9de18d66" }]
     },
     {
       "id": "eboot",
-      "label": "Optional: your decrypted EBOOT.elf (19,706,080 bytes, SHA-256 c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc). Leave it out when your RPCS3 has the game: it makes this copy itself.",
+      "label": "Optional: your decrypted EBOOT.elf (19,706,080 bytes; SHA-256 c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc for the USA edition, e4fc4f13b1bd940f52c5df16f4cc4bf0af88e17f4c1d2276b877a62490c57f52 for the European one). Leave it out when your RPCS3 has the game: it makes this copy itself.",
       "role": "update",
       "optional": true,
       "formats": [{ "type": "file", "extensions": ["elf"] }],
-      "dumps": [{ "name": "USA (NPUA80856 01.00, decrypted)", "size": 19706080, "crc32": "e3ce792f" }]
+      "dumps": [
+        { "name": "USA (NPUA80856 01.00, decrypted)", "size": 19706080, "crc32": "e3ce792f" },
+        { "name": "Europe (NPEA00418 or BCES-01743 01.00, decrypted)", "size": 19706080, "crc32": "801f0cc3" }
+      ]
     }
   ],
   "prepare": {

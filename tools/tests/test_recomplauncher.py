@@ -64,6 +64,18 @@ with tempfile.TemporaryDirectory() as tmp:
               f"the disc in the game box ({given.name}) gives firstrun.py --disc: {fa}")
     fa = launch.firstrun_args("/nowhere", launch.parser().parse_args(["--prepare", f"--game={installed}"]), {})
     check(fa[:2] == ["--game", str(installed)] and "--disc" not in fa, f"an installed folder stays --game: {fa}")
+    # The European disc copied to the PC (BCES-01743: PS3_DISC.SFB and PS3_GAME, no PS3_EXTRA) is a disc too, and the
+    # European edition installed by RPCS3 (NPEA00418) is a game folder like the USA one
+    eu_disc = pathlib.Path(tmp, "BCES-01743")
+    (eu_disc / "PS3_GAME" / "USRDIR").mkdir(parents=True)
+    (eu_disc / "PS3_DISC.SFB").write_bytes(b"")
+    eu_installed = pathlib.Path(tmp, "NPEA00418")
+    (eu_installed / "USRDIR").mkdir(parents=True)
+    fa = launch.firstrun_args("/nowhere", launch.parser().parse_args(["--prepare", f"--game={eu_disc}"]), {})
+    check(fa[:2] == ["--disc", os.path.abspath(eu_disc)] and "--game" not in fa,
+          f"the European disc's folder in the game box gives firstrun.py --disc: {fa}")
+    fa = launch.firstrun_args("/nowhere", launch.parser().parse_args(["--prepare", f"--game={eu_installed}"]), {})
+    check(fa[:2] == ["--game", str(eu_installed)] and "--disc" not in fa, f"NPEA00418's folder stays --game: {fa}")
 # Easy Setup (RecompLauncher's Launcher Support box, lib.rs profile_covers, as the site counts it): a required input of
 # role game or disc. 0.7.0 made both the game folder and the disc optional, and lost the tick.
 check({i["id"]: i.get("optional", False) for i in doc["inputs"]} == {"game": False, "eboot": True},
@@ -78,6 +90,11 @@ check(row and row.group(2) in eboot["label"] and row.group(1) in eboot["label"] 
 game = next(i for i in doc["inputs"] if i["id"] == "game")
 check(game["role"] == "game" and game["formats"] == [{"type": "folder"}, {"type": "file", "extensions": ["pkg"]}]
       and "NPUA80856" in game["label"], "the game input is the NPUA80856 folder, the disc's folder or its package")
+check(all(t in game["label"] for t in ("NPEA00418", "BCES-01743")),
+      "the game box also names the European editions, the Store's (NPEA00418) and the disc (BCES-01743)")
+check(sorted(d["crc32"] for d in eboot["dumps"]) == ["801f0cc3", "e3ce792f"] and
+      {d["size"] for d in eboot["dumps"]} == {19706080} and "e4fc4f13" in eboot["label"],
+      "the optional EBOOT.elf knows the USA and the European decrypted copies")
 check(not re.search(r"firmware|dev_flash|\.pup|libsre", rl.text(doc), re.I), "nothing in it asks for firmware")
 # prepare.done: the file a finished build always leaves, so the launcher knows the game is built (RecompLauncher's
 # "No prepare.done" warning, 2026-11-20): firstrun.py's last step writes work/build-stamp.json after a good compile
