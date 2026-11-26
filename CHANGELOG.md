@@ -60,6 +60,7 @@ program and folder that build it. Until a release that calls itself playable
   The Internal Resolution setting applies at once too, with DLSS and FSR 3.1 as well (ps3recomp patch 2093).
 - Aspect Ratio and Widescreen apply at once: the picture takes its new shape without a restart (ps3recomp patch
   2094).
+- Anisotropic Filtering applies at once (ps3recomp patch 2095).
 - RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two
   optional boxes, and RecompLauncher counts Easy Setup only for a required one; now one box takes the installed
   folder, the disc's folder or its DATA000.PKG.

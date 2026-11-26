@@ -168,7 +168,8 @@ static void ini_save(void)
  *   intro      = on | off   (the opening movie at start-up; off: skipped, KZ_SKIP_INTRO)
  *   anisotropic = game | off | 2 | 4 | 8 | 16   (game: what each texture asks for, as on
  *                                             the PS3; a number raises mipmapped textures
- *                                             to it; at the next start, PS3RECOMP_VK_ANISO)
+ *                                             to it; applied at once, rsx_vulkan_set_aniso,
+ *                                             ps3recomp patch 2095; at start PS3RECOMP_VK_ANISO)
  *   upscaler   = linear | fsr   (the picture to the window: a linear blit, or AMD FSR 1,
  *                                which sharpens with RCAS at the same size too)
  *   sharpness  = 0-2   (FSR's RCAS in stops: 0 the sharpest; AMD's default 0.2)
@@ -278,6 +279,7 @@ static void post_load(void)
 static long long now_ms(void);
 static void display_seq_tick(long long t);   /* KZ_TEST_DISPLAY_SEQ, below */
 static void aspect_apply(void);   /* below, with the aspect row */
+static void aniso_apply(void);    /* below, with the anisotropic row */
 extern "C" void kz_view_update(void)
 {
     int w, h;
@@ -466,6 +468,7 @@ int  rsx_vulkan_display_sizes(int (*out)[2], int max);
 void rsx_vulkan_set_scale(float k);   /* ps3recomp patch 2093 */
 void rsx_vulkan_set_aspect(float aspect);   /* ps3recomp patch 2094 */
 void rsx_vulkan_set_fit(int fill);
+void rsx_vulkan_set_aniso(int n);   /* ps3recomp patch 2095 */
 void pad_set_merge(int on);
 void pad_set_players(int n);
 void rsx_temporal_hold(int held);   /* ps3recomp patch 2092 */
@@ -610,6 +613,7 @@ static void display_seq_tick(long long t)
             const std::string k(p, eq), v(eq + 1, end);
             s_ini[k] = v;
             if (k == "aspect" || k == "widescreen") { view_load(); aspect_apply(); }
+            if (k == "anisotropic") aniso_apply();
             p = *end ? end + 1 : end;
         }
         fprintf(stderr, "[kz-test] display step %d at %.1f s: %s %dx%d scale %d%% %s\n", next + 1,
@@ -620,11 +624,13 @@ static void get_overlay(ppu_context* c) { attr_log("get_overlay", c); vm_base[(u
 static void set_overlay(ppu_context* c) { attr_log("set_overlay", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["overlay"] = vm_base[(uint32_t)c->gpr[4]] ? "mangohud" : "off"; ini_write(); }
 static const char* const kAniso[] = { "game", "off", "2", "4", "8", "16" };
+/* as PS3RECOMP_VK_ANISO: 0 the game's, 1 off, else the value */
+static void aniso_apply(void) { const std::string& a = s_ini["anisotropic"]; rsx_vulkan_set_aniso(a == "off" ? 1 : a == "game" ? 0 : atoi(a.c_str())); }
 static void get_aniso(ppu_context* c) { attr_log("get_aniso", c); int i = 0;
     for (int k = 0; k < 6; k++) if (s_ini["anisotropic"] == kAniso[k]) i = k;
     wrf((uint32_t)c->gpr[4], (float)i); }
 static void set_aniso(ppu_context* c) { attr_log("set_aniso", c); if ((int32_t)c->gpr[5] != 2) return;
-    s_ini["anisotropic"] = kAniso[std::clamp((int)lroundf(in_f(c)), 0, 5)]; ini_write(); }
+    s_ini["anisotropic"] = kAniso[std::clamp((int)lroundf(in_f(c)), 0, 5)]; ini_write(); aniso_apply(); }
 /* The upscaler and RCAS's sharpness apply at once (rsx_vulkan_set_fsr); the
  * slider runs from 2 stops (0) to the sharpest (1). */
 static void fsr_apply(void) { rsx_vulkan_set_fsr(s_ini["upscaler"] == "fsr", (float)atof(s_ini["sharpness"].c_str())); }
@@ -663,8 +669,8 @@ static void get_reflex(ppu_context* c) { attr_log("get_reflex", c); int i = 0;
 static void set_reflex(ppu_context* c) { attr_log("set_reflex", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_REFLEX)) return;
     const int i = std::clamp((int)lroundf(in_f(c)), 0, 2);
     s_ini["reflex"] = kReflex[i]; ini_write(); rsx_vulkan_set_reflex(i); }
-/* Presets: a set of the options above, written at once (anisotropy and the
- * temporal upscaler at the next start, the rest at once;
+/* Presets: a set of the options above, written at once (the temporal
+ * upscaler at the next start, the rest at once;
  * the screen's rows follow at once). Custom: whatever does not match one.
  * Original is the PS3's: 30 fps, 16:9 with bars, its FOV and weapon FOV, HUD
  * and crosshair, its post-processing, no upscaler; the others keep the
@@ -700,6 +706,7 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
     fsr_apply();
     scale_apply();
     aspect_apply();
+    aniso_apply();
     s_deps_dirty = true; }
 static void get_intro(ppu_context* c) { attr_log("get_intro", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["intro"] != "off"; }
 static void set_intro(ppu_context* c) { attr_log("set_intro", c); if ((int32_t)c->gpr[5] != 2) return;
@@ -956,7 +963,7 @@ static std::string kz_lua(void)
         std::string(rsx_vulkan_reflex_available() ? "NVIDIA Reflex" : "NVIDIA Reflex (not available)") + "'))\n"
     "  KZPCR(13, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
     "  KZPCR(14, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution'))\n"
-    "  KZPCR(15, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering (on restart)'))\n"
+    "  KZPCR(15, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering'))\n"
     "  KZPCR(16, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
     "  KZPCR(17, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
     "  KZPCR(18, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Temporal|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0|"

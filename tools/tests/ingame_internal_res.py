@@ -55,6 +55,9 @@ RUNS = {
           [("window", "3440x1440", "-", "aspect=4:3"), ("-", "-", "-", "aspect=16:9"), ("-", "-", "-", "aspect=auto"),
            ("-", "-", "-", "widescreen=off"), ("-", "-", "200", "widescreen=on;aspect=21:9"),
            ("borderless", "-", "100", "aspect=32:9"), ("window", "1280x720", "-", "aspect=auto")]),
+    "H": ({},   # Anisotropic Filtering while running (patch 2095; PS3RECOMP_VK_ANISO_LOG lines)
+          [("-", "-", "-", "anisotropic=16"), ("-", "-", "-", "anisotropic=off"), ("window", "1920x1080", "-", "anisotropic=4"),
+           ("-", "-", "-", "anisotropic=game")]),
     "F": ({"temporal": "dlss-quality"},
           [("window", "3440x1440", "-"), ("window", "1280x720", "-"), ("window", "3440x1440", "50"), ("-", "-", "100")]),
 }
@@ -109,7 +112,7 @@ def run_one(name, args):
     trigger = os.path.join(out, "dump.go")
     env = dict(os.environ, PS3RECOMP_VK_WINDOW="1", SDL_VIDEODRIVER="x11", KZ_VFS=vfs, KZ_STATS="1",
                PAD_SCRIPT=LEVEL1, KZ_TEST_DISPLAY_SEQ=seq, PS3RECOMP_VK_DUMP=os.path.join(out, "f%06u.ppm"),
-               PS3RECOMP_VK_DUMP_TRIGGER=trigger, PS3RECOMP_ESC_QUITS="0")
+               PS3RECOMP_VK_DUMP_TRIGGER=trigger, PS3RECOMP_ESC_QUITS="0", PS3RECOMP_VK_ANISO_LOG="1")
     if args.validation:
         env["PS3RECOMP_VK_VALIDATION"] = "1"
     secs = FIRST + len(steps) * GAP + 6
