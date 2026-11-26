@@ -53,7 +53,8 @@ which kinds fire where, and the host test: [crash-reports.md](crash-reports.md).
 
 - `PS3RECOMP_VK_DUMP=dir/f%06u.ppm` with `PS3RECOMP_VK_DUMP_EVERY=<frames>` or `PS3RECOMP_VK_DUMP_MS=<ms>` writes frames;
   `tools/ppm_sheet.py` makes a contact sheet.
-- F12 (or `PS3RECOMP_CAPTURE_TRIGGER=<file>`) captures the next frames' passes, textures and draws.
+- F12, with `PS3RECOMP_CAPTURE_KEY=1` (off by default, so releases have no debug key; patch 2089), or
+  `PS3RECOMP_CAPTURE_TRIGGER=<file>` captures the next frames' passes, textures and draws.
 - `RSX_ENGINE_PASS_DUMP*`, `RSX_ENGINE_PS_DEBUG` and `RSX_ENGINE_STATE_LOG` dump passes and state per draw.
 - `KZ_POKE=<file>` is re-read every second: a line `capture` takes an F12 capture from a script; `wv <value> <n>` logs
   the next stores of a value with guest stacks (also `PPU_WVAL=<0xvalue>`, with `PPU_WVAL_LO`/`_HI`/`_GATE`; the
@@ -142,7 +143,7 @@ What changes under RenderDoc (RenderDoc 1.46 on Linux, 2026-11-13):
   directory the run folder (`work/vfs`), and the environment `tools/play.sh` exports (`PS3RECOMP_VK_GUEST_PROGRAMS=1`, `GCM_PARK_SKIP=1`, `PS3RECOMP_VK_WINDOW=1`).
 - **Windows**: RenderDoc's Launch Application on `KZ1HD.exe` in the installed folder, working directory that folder,
   arguments as `scripts\play.cmd` (`tools/release/launch.py --dry-run` prints them) passes them.
-- In the game, **F12** takes a RenderDoc capture of the next frame together with the port's own pass capture
+- In the game, with `PS3RECOMP_CAPTURE_KEY=1`, **F12** takes a RenderDoc capture of the next frame together with the port's own pass capture
   (`capture_<date>_<time>/`, below; ps3recomp patch 2066); RenderDoc's own capture keys are turned off, so one press
   is one capture. `PS3RECOMP_CAPTURE_TRIGGER=<file>` and `KZ_POKE`'s `capture` do the same from a script. The port
   finds RenderDoc only when it is already in the process; it never loads it.

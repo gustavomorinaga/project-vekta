@@ -7,6 +7,11 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
+
 ### Fixed
 - Level Select's SELECT CHARACTER: the mouse no longer picks a character the level cannot be played with (the
   greyed rows). Hovering one selected it, and Select then started the level as that character; now the mouse, like
