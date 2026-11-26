@@ -1,0 +1,14 @@
+{
+  "name": "project-vekta-site-tests",
+  "private": true,
+  "description": "Browser tests of the project site (site/): accessibility (axe-core, WCAG 2.2 AA), layout, keyboard, game pad and the screenshot viewer. Test-only; nothing here is published.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node site_browser.mjs"
+  },
+  "devDependencies": {
+    "axe-core": "4.10.2",
+    "playwright": "1.63.0"
+  }
+}

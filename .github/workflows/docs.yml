@@ -1,15 +1,21 @@
 # The generated docs: docs/FEATURES.md (tools/features.py) and the project page (tools/website.py) are what their
 # sources give. Its own workflow because CI skips pushes and pull requests that change only docs or the site, which is
-# exactly when these drift. Python only; no checkout of submodules, no token beyond reading the repository.
+# exactly when these drift. No checkout of submodules, no token beyond reading the repository. The browser job runs
+# the site's browser tests (tools/site-tests/: axe-core accessibility, layout, keyboard, game pad, viewer, weight and
+# the published files under their own Content-Security-Policy) on the staged site, in Playwright's Chromium.
 name: docs
 on:
   push:
     branches: [main]
     paths: ["docs/**", "site/**", "CHANGELOG.md", "VERSION", ".recomp.json", "port/patches/series", "tools/features.py",
-            "tools/website.py", "tools/release/check_site.py", ".github/workflows/docs.yml"]
+            "tools/website.py", "tools/release/check_site.py", "tools/release/site_images.py",
+            "tools/release/stage_site.py", "tools/site-tests/**", "assets/banner*.png", "assets/icon.png",
+            ".github/workflows/docs.yml"]
   pull_request:
     paths: ["docs/**", "site/**", "CHANGELOG.md", "VERSION", ".recomp.json", "port/patches/series", "tools/features.py",
-            "tools/website.py", "tools/release/check_site.py", ".github/workflows/docs.yml"]
+            "tools/website.py", "tools/release/check_site.py", "tools/release/site_images.py",
+            "tools/release/stage_site.py", "tools/site-tests/**", "assets/banner*.png", "assets/icon.png",
+            ".github/workflows/docs.yml"]
 permissions:
   contents: read
 concurrency:
@@ -23,8 +29,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: docs/FEATURES.md and the site's two pages are current
+      - name: docs/FEATURES.md and the site's pages are current, and the published layout is whole
         run: |
           python3 tools/features.py --check
           python3 tools/website.py --check
+          python3 tools/release/site_images.py --check
           python3 tools/release/check_site.py
+          python3 tools/release/stage_site.py "$RUNNER_TEMP/_site"
+          python3 tools/release/check_site.py --staged "$RUNNER_TEMP/_site"
+  browser:
+    needs: generated
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Playwright and axe-core as pinned by tools/site-tests/package-lock.json (no install scripts)
+        working-directory: tools/site-tests
+        run: |
+          node --version
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx --no-install playwright install --with-deps chromium
+      - name: The site in a browser (tools/site-tests/site_browser.mjs)
+        run: node tools/site-tests/site_browser.mjs

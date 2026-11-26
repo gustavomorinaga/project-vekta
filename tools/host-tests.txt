@@ -5,6 +5,7 @@ tools/tests/test_patch_series.py
 tools/tests/test_features.py
 tools/tests/test_website.py
 tools/tests/test_site.py
+tools/tests/test_site_images.py
 tools/tests/test_press_badges.py
 tools/tests/test_release.py
 tools/tests/test_firstrun.py

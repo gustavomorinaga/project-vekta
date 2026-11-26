@@ -40,7 +40,7 @@ which is (c) Sony Interactive Entertainment and is not part of this repository.
 
 | Font | Author | Licence | What was used |
 |---|---|---|---|
-| Rajdhani | Indian Type Foundry | SIL Open Font License 1.1 | the text of the images in `assets/` and `installer/art/` (drawn by `tools/release/installer_art.py` and `tools/release/press_badges.py`) and the website's headings (loaded from Google Fonts); the font itself is not in this repository or the release |
+| Rajdhani | Indian Type Foundry | SIL Open Font License 1.1 | the text of the images in `assets/` and `installer/art/` (drawn by `tools/release/installer_art.py` and `tools/release/press_badges.py`) and the website's headings: the Bold weight's latin subset as `site/fonts/rajdhani-700.woff2` (Google Fonts' file, unchanged), with its licence in `site/fonts/OFL.txt`; the font is not in the release |
 
 ## Libraries the build links or loads (not part of this repository)
 
@@ -65,6 +65,11 @@ RPCS3: the official RPCS3 build 0.0.43-20640 (<https://github.com/RPCS3/rpcs3>, 
 nor in any release, and no RPCS3 code is used here. Only when the player chooses the game straight from the disc
 (`--disc`, `tools/release/rpcs3_disc.py`), it is downloaded from RPCS3's own GitHub releases on the player's PC,
 checked by SHA-256, and run as a separate program to install the player's package and decrypt its EBOOT.
+
+The website's browser tests (`tools/site-tests/`) use [Playwright](https://playwright.dev) 1.63.0 (Apache-2.0) and
+its Chromium, and [axe-core](https://github.com/dequelabs/axe-core) 4.10.2 (MPL-2.0), pinned in that folder's
+`package-lock.json`; npm installs them in CI and on a developer's machine. Neither is in this repository, in the
+published site or in any release.
 
 ## The game
 

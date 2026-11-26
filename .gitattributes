@@ -2,6 +2,7 @@
 # byte (the same choice as Project Helghast and Project Pyrrhus).
 *.png binary
 *.jpg binary
+*.webp binary
 *.ico binary
 *.ttf binary
 *.woff2 binary

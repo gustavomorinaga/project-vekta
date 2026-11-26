@@ -26,6 +26,14 @@ program and folder that build it. Until a release that calls itself playable
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
   every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
   (ps3recomp patch 2089).
+- The project site is lighter, faster and usable by everyone: screenshots as small WebP copies (the full PNG one
+  click away), its own font file instead of Google Fonts, no layout jumps while it loads, and the whole site checked
+  against WCAG 2.2 AA in both themes ([docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md#the-project-website)).
+- The site works with a keyboard alone and with a game pad (Xbox, PlayStation, Nintendo or generic), with the pad's
+  button pictures in the footer and a **Controls** list of every key and button.
+- The site moved to the root of its address (<https://gustavomorinaga.github.io/project-vekta/>); the old `/site/`
+  address sends you there. New: a FAQ section, a page for unknown addresses, a sitemap and link previews, and a
+  printout of every section.
 - Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 %
   at 120).
 
