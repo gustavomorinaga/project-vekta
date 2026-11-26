@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Patch 2064: builds and runs test_vk_debug.c against the patched tree (tools/ps3recomp-patched.sh first): the parser
-# of PS3RECOMP_VK_VALIDATION and the debug messenger's repeat filter, rsx_vk_debug.h.
+# Patches 2064 and 2089: builds and runs test_vk_debug.c against the patched tree (tools/ps3recomp-patched.sh first):
+# the parsers of PS3RECOMP_VK_VALIDATION and PS3RECOMP_CAPTURE_KEY and the debug messenger's repeat filter,
+# rsx_vk_debug.h.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 KZ_ROOT="$ROOT"; . "$ROOT/tools/env.sh"
