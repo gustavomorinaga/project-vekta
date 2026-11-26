@@ -29,6 +29,13 @@ are linked.
   loads, so it is not a steady leak. If a very long session ever crashes or stutters while a level loads, look
   at it first: `KZ_STATS=1` (on in `tools/play.sh`) logs it every 2 s as `heap=` in the `[kz-stats]` lines of
   `play.log`.
+- **Multiplayer maps below 144 fps, and a wide field of view costs (2026-11-25).** Battlefields with the most bots
+  (6 + 7, Team Deathmatch, 2560x1440, the CPU held at 4.0 GHz, two runs each): Canyon Crossing averages 108-110 fps,
+  Delta Creek about 130, Park Terminal and Beachhead about 137, the other four 140-143. The limit is the game's main
+  thread, not the GPU: Canyon Crossing sends about four times the draws of the light maps, and each costs the game's
+  graphics library (PSGL) about 5 us. `field_of_view = 120` draws more of the map and costs 9-12 %: Canyon Crossing
+  109 to 96 fps, Delta Creek 130 to 119 with six times as many stutters. For the smoothest play on a slower CPU, keep
+  the field of view near 87. Figures and method: [dev/performance.md](dev/performance.md).
 - **White and black blotches on some foliage (2026-11-09).** In Level 6 (after its midpoint movie), at 3440x1440
   with the field of view at 120, the palm leaves at the screen's far left showed white and black blotches instead of
   their edges, as if their alpha test or blending went wrong. Seen once in a player's screenshot; not yet

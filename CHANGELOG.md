@@ -11,6 +11,8 @@ program and folder that build it. Until a release that calls itself playable
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
   every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
   (ps3recomp patch 2089).
+- Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 %
+  at 120).
 
 ### Fixed
 - At 144 fps a few game clock ticks (15 every 5 seconds) came 1 ms late, a slightly longer frame between two short
