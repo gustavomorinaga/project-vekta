@@ -141,7 +141,7 @@ bool hud_chain(const ppu_context* ctx)
     uint32_t ch[8];
     const int n = guest_chain(ctx, ch, 8);
     for (int i = 0; i < n; i++)
-        if (in_hud(ch[i]) || (ch[i] >= 0x00223DB0 && ch[i] < 0x00227A1C)) return true;
+        if (in_hud(ch[i]) || (ch[i] >= KZ_GA(0x00223DB0) && ch[i] < KZ_GA(0x00227A1C))) return true;
     return false;
 }
 
@@ -173,8 +173,8 @@ void hud_viewport(ppu_context* ctx)
      * With one player's HUD in each band that put player 2's timer and
      * scores on the split line; answered 20 lower, its HUD keeps player 1's
      * margins (hud_layout.h hud_view_lift). */
-    const int lift = lr == 0x004CC740 ? hud_view_lift(kz_view.players) : 0;
-    if (!lift && (!(lr > 0x002CA46C && lr < 0x002CADA8) || !hud_chain(ctx))) return;
+    const int lift = lr == KZ_GA(0x004CC740) ? hud_view_lift(kz_view.players) : 0;
+    if (!lift && (!(lr > KZ_GA(0x002CA46C) && lr < KZ_GA(0x002CADA8)) || !hud_chain(ctx))) return;
     /* the copy goes below the caller's frame (red zone), read before its next call */
     const uint32_t tmp = ((uint32_t)ctx->gpr[1] - 0x200) & ~15u;
     const int32_t y0 = (int32_t)vm_read32(vp + 4), y1 = (int32_t)vm_read32(vp + 12);
@@ -189,7 +189,7 @@ void hud_viewport(ppu_context* ctx)
 
 extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
 /* stubs.cpp, at start */
-void kz_hud_register(void) { ppu_register_function(0x003CEBB8, hud_viewport); }
+void kz_hud_register(void) { ppu_register_function(KZ_GA(0x003CEBB8), hud_viewport); }
 
 /* func_0005C498(out r3, left f1, right f2, bottom f3, top f4, near f5, far f6):
  * an orthographic projection. */

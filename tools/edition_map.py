@@ -401,8 +401,10 @@ def check(us_path, eu_path, rows):
     dis = lambda x: (x & 0x03FFFFFC) - ((x & 0x02000000) << 1)
     for s in (r for r in rows if r["kind"] == "site"):
         u, v = word(ub, s["us_start"] - 4), word(eb, s["eu_start"] - 4)
+        if u == v and u & 0xFC0007FF == 0x4C000421:   # bcctrl (XO 528, LK=1) alike on both sides: no target to compare
+            continue
         if u >> 26 != 18 or u & 3 != 1 or v >> 26 != 18 or v & 3 != 1:
-            problems.append(f"site 0x{s['us_start']:08X}: not the return of a bl on both sides")
+            problems.append(f"site 0x{s['us_start']:08X}: not the return of a bl or a bcctrl on both sides")
             continue
         tu, te = s["us_start"] - 4 + dis(u), s["eu_start"] - 4 + dis(v)
         if eu(tu, rows) != te:

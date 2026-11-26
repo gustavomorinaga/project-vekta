@@ -42,6 +42,7 @@ changed	0x00565538	0x0056580C	0x00565438	0x0056570C	walk	rodata strings: 181 wor
 changed	0x0057EFD0	0x0057EFE4	0x0057EED0	0x0057EEE4	walk	section 13: 5 words differ
 site	0x002793A0	0x002793A4	0x00279300	0x00279304	walk	movie quad: return of bl 0x4464C, the 1st of 2 in func_00278888 on both sides (the 2nd: 0x2798C4 / 0x279824)
 site	0x004CBBB4	0x004CBBB8	0x004CBB14	0x004CBB18	ghidra	crosshair: return of bl func_00227A1C, the 1st of its 25 calls here on both sides; 25 instructions around it equal
+site	0x004CC740	0x004CC744	0x004CC67C	0x004CC680	objdump	2P HUD: return of the display viewport read (+0x168) for view 1; the 31 instructions from cmpwi r31,1 to the +0xA8 set match, only register use differs
 site	0x004CD834	0x004CD838	0x004CD74C	0x004CD750	ghidra	HUD text: return of bl 0x4416C, the 1st of 3 on both sides; around it only stack and data offsets differ
 site	0x004CD90C	0x004CD910	0x004CD824	0x004CD828	ghidra	HUD text: return of bl 0x4416C, the 2nd of 3; only stack and data offsets differ
 site	0x004CD9D4	0x004CD9D8	0x004CD8EC	0x004CD8F0	ghidra	HUD text: return of bl 0x4416C, the 3rd of 3; only a data offset differs
