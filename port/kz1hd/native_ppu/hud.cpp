@@ -124,6 +124,16 @@ double band_h() { return hud_band_h(kz_view.players); }
  * panel and as a pickup's "+8". */
 void anchor_of(double cx, double cy, double* ax, double* ay) { hud_anchor(cx, cy, kW, kH, ax, ay); }
 
+/* A HUD string's glyphs (func_00044108: f4 their width's scale, f5 the
+ * font's height) to the HUD size and one view's band (hud_layout.h hud_glyph). */
+void glyph(ppu_context* ctx, double size, double k)
+{
+    double w = ctx->fpr[4], h = ctx->fpr[5];
+    hud_glyph(&w, &h, size, k);
+    ctx->fpr[4] = S(w);
+    if (k != 1.0) ctx->fpr[5] = S(h);
+}
+
 /* The HUD's own drawing, up the guest stack: its module and the overlays and
  * prompts next to it. */
 bool hud_chain(const ppu_context* ctx)
@@ -385,7 +395,7 @@ void func_00044108(ppu_context* ctx)
             ctx->fpr[2] = S(s_rich_ny + (ctx->fpr[2] - s_rich_y0) * s_rich_k);
             /* the glyphs' size is f4 (the font's height in f5 over its own; f3
              * aligns the string, f5 also spaces the glyphs) */
-            ctx->fpr[4] = S(ctx->fpr[4] * s_rich_k);
+            glyph(ctx, size, k);
         }
         { static int on = -1; if (on < 0) on = getenv("KZ_HUD_SITES") ? 1 : 0;
           if (on && (hud || ctx->fpr[2] > 540.0)) { static uint32_t seen[512]; static int n; int i = 0;
@@ -404,7 +414,7 @@ void func_00044108(ppu_context* ctx)
             ctx->fpr[2] = S(hud_side_y(y, ay));
             /* the glyphs' size is f4 (the font's height in f5 over its own; f3
              * aligns the string, f5 also spaces the glyphs) */
-            ctx->fpr[4] = S(ctx->fpr[4] * size * k);
+            glyph(ctx, size, k);
         }
     }
     if (log_on()) {

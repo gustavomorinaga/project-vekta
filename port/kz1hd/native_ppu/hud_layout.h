@@ -94,4 +94,17 @@ static inline double hud_place_y_quad(double y, double ay, double sy, double ty,
     const double a = sy != 0.0 ? (ay - ty) / sy : 0.0, ak = sy != 0.0 ? (ay * k - ty) / sy : 0.0;
     return ak + (y - a) * size * k;
 }
+
+/* A HUD string's glyph scales (func_00044108): w, f4, sizes the glyphs'
+ * width, h, f5, the font's height, so each axis is drawn on its own. Both
+ * go into one view's band by k, so a split-screen string keeps one
+ * player's glyph shape at half its size; the HUD size has always reached w
+ * only. Before 2026-11-25 only w took k: the band's text came out twice as
+ * tall as wide (f4 0.9375 against 1.875, f5 45 in both, KZ_CAM_LOG). */
+static inline void hud_glyph(double* w, double* h, double size, double k)
+{
+    *w = *w * size * k;
+    if (k != 1.0) *h = *h * k;
+}
+
 #endif

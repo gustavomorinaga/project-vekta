@@ -61,6 +61,25 @@ int main(void)
     EXPECT(NEAR(hud_place_y(p0y, 720.0, k, 1.5), 360.0 - (720.0 - p0y) * 0.75));
     /* the crosshair (120x90 in the middle of one player's layout) in the band's middle, 60x45 as the game's own */
     EXPECT(NEAR(hud_place_y(315.0, 360.0, k, 1.0), 157.5) && NEAR(hud_place_y(405.0, 360.0, k, 1.0), 202.5));
+    /* the glyphs' shape (func_00044108: f4 the width's scale, f5 the font's height; KZ_CAM_LOG, 2026-11-25): the timer
+     * 1.875 / 45 and the ammo count 1.54688 / 37.125 with one player. In the band both halve, so a string keeps
+     * one player's shape at half its size (before, f5 stayed 45: the text twice as tall as wide) */
+    {
+        const double f4s[] = { 1.875, 1.54688 }, f5s[] = { 45.0, 37.125 };
+        for (int i = 0; i < 2; i++) {
+            double w = f4s[i], h = f5s[i];
+            hud_glyph(&w, &h, 1.0, k);
+            EXPECT(NEAR(w, f4s[i] * 0.5) && NEAR(h, f5s[i] * 0.5));
+            EXPECT(NEAR(w / h, f4s[i] / f5s[i]));
+            /* one player, any HUD size: f4 as before (f4 * size), f5 untouched */
+            const double sizes[] = { 1.0, 0.75, 1.5 };
+            for (int j = 0; j < 3; j++) {
+                w = f4s[i]; h = f5s[i];
+                hud_glyph(&w, &h, sizes[j], hud_band_k(1));
+                EXPECT(w == f4s[i] * sizes[j] * 1.0 && h == f5s[i]);
+            }
+        }
+    }
     /* one player: exactly the earlier arithmetic, bit for bit */
     {
         const double ys[] = { 651.094, 697.5, 25.0842, 509.344, 0.0, 720.0 }, sizes[] = { 1.0, 0.75, 1.5, 1.3 };
