@@ -21,6 +21,7 @@
 #include "spu_context.h"
 #include "spu_helpers.h"
 #include <immintrin.h>
+#include "../edition.h"   /* KZ_GA: guest addresses in this build's edition */
 
 typedef void (*kz_spu_fn)(spu_context*);
 

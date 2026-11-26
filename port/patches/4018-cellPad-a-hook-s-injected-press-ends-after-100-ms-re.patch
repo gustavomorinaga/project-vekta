@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 24 Nov 2026 23:28:08 -0300
+Subject: [PATCH] cellPad: a hook's injected press ends after 100 ms, read or
+ not
+
+pad_inject(mask, reads) presses buttons for the next reads of port 0 (the
+port's PC menus turn mouse clicks into pad presses with it). Counted in
+reads alone, a press the title had not read up before it stopped polling
+came out on its first reads after a load.
+
+Symptom (Killzone HD, Extras > War Scenes picked with a mouse click): the
+bot match loaded, its attract mode saw a button held on its first update
+(func_001CE4DC, "any button" ends the match) and went back to the menu at
+once. The click's second read of X arrived 2.4 s later, after the load.
+A press picked with a pad that is released in time leaves the match running.
+
+Fix: the press also ends PAD_INJECT_MS (100) after it was made
+(pad_inject.h), so a press is a moment in time as on a pad. 100 ms holds
+the two reads a menu needs at 30 fps.
+---
+ libs/input/cellPad.c    |  8 +++++---
+ libs/input/pad_inject.h | 26 ++++++++++++++++++++++++++
+ 2 files changed, 31 insertions(+), 3 deletions(-)
+ create mode 100644 libs/input/pad_inject.h
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index c18145d..9443f0d 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -183,6 +183,7 @@ typedef struct {
+ static PadRumble s_rumble[PAD_MAX_HOST_PORTS];
+ 
+ static unsigned long long pad_now_ms(void);
++#include "pad_inject.h"
+ 
+ /* The two host motor levels (0-65535) for a PS3 actuator request. */
+ static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
+@@ -193,7 +194,8 @@ static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
+ /* Buttons a title hook presses for the next reads of port 0 (menus with the mouse). */
+ static volatile unsigned s_inj_mask;
+ static volatile int s_inj_reads;
+-void pad_inject(unsigned mask, int reads) { s_inj_mask = mask; s_inj_reads = reads; }
++static unsigned long long s_inj_until;   /* pad_inject.h: the press ends then, read or not */
++void pad_inject(unsigned mask, int reads) { s_inj_mask = mask; s_inj_until = pad_now_ms() + PAD_INJECT_MS; s_inj_reads = reads; }
+ 
+ /* Keyboard fallback for port 0.
+  *
+@@ -1641,8 +1643,8 @@ skip_inject: ;
+               data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((held_mask >> 8) & 0xFF); }
+       } }
+ 
+-    /* Buttons a title hook presses (pad_inject), for that many reads. */
+-    if (port_no == 0 && s_inj_reads > 0) { s_inj_reads--;
++    /* Buttons a title hook presses (pad_inject), for that many reads within PAD_INJECT_MS. */
++    if (port_no == 0 && pad_inject_due((int*)&s_inj_reads, s_inj_until, pad_now_ms())) {
+         data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(s_inj_mask & 0xFF);
+         data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((s_inj_mask >> 8) & 0xFF); }
+ 
+diff --git a/libs/input/pad_inject.h b/libs/input/pad_inject.h
+new file mode 100644
+index 0000000..bd1184c
+--- /dev/null
++++ b/libs/input/pad_inject.h
+@@ -0,0 +1,26 @@
++/*
++ * ps3recomp - buttons a title hook presses for the pad (pad_inject), and for how long.
++ *
++ * A hook (a PC menu driven with the mouse) presses a button for the next few
++ * reads of port 0. Counted in reads alone, a press the title did not read up
++ * before it stopped polling (a load) came out on its first reads afterwards:
++ * a click that picked Killzone HD's Extras > War Scenes was still held when
++ * the bot match's attract mode looked for "any button" on its first update,
++ * and the match ended at once. A pad's button is a moment in time, so the
++ * press also ends PAD_INJECT_MS after it was made, read or not.
++ */
++#ifndef PS3RECOMP_PAD_INJECT_H
++#define PS3RECOMP_PAD_INJECT_H
++
++#define PAD_INJECT_MS 100ull   /* several frames at 30 fps: long enough for a menu to see it */
++
++/* Whether this read carries the press; uses one of `*reads`. `until` is when
++ * the press ends (the time it was made + PAD_INJECT_MS), `now` this read's. */
++static inline int pad_inject_due(int* reads, unsigned long long until, unsigned long long now)
++{
++    if (*reads <= 0) return 0;
++    if (now > until) { *reads = 0; return 0; }
++    (*reads)--;
++    return 1;
++}
++#endif

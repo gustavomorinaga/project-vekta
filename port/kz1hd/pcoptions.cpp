@@ -6,10 +6,11 @@
  * reads the right stick, scales it by YawSensitivity/PitchSensitivity
  * (profile +0x140/+0x144), runs it through the game's response curve and turn
  * ramp, and leaves the turn rates at +0xA8 (yaw) and +0xAC (pitch), which the
- * player update integrates at 2.27 rad/s per unit (measured: rate 0.92 turns
- * once in 3 s). +0x3C is the yaw rate before a 0.93 scale, and a zero there
- * stops the turn. The mouse adds its own rate after all that, so the game's
- * sliders and curve stay the controller's.
+ * player update turns into angles on different scales per axis (pc_rates.h:
+ * about 4.50 rad/s per unit of yaw, 1.22 of pitch). +0x3C is the yaw rate
+ * before a 0.93 scale, and a zero there stops the turn. The mouse adds its
+ * own rate after all that, so the game's sliders and curve stay the
+ * controller's; pitch's is scaled so both axes turn the same per count.
  *
  * Options. The game's Pause > Controls > Advanced Settings menu is Lua
  * (MenuScript.Pause): sliders bound to reflected attributes of the
@@ -44,12 +45,14 @@
 #include "ppu_recomp.h"
 #include "view.h"
 #include "fov.h"
+#include "pc_rates.h"   /* the game clock and flip cadence, the look scale */
 #include "native_ppu/crosshair.h"   /* the crosshair's size */
 #include "post.h"     /* the post-processing strengths */
 #include "view_flat.h"   /* when the picture goes 16:9 */
 #include "view_aspect.h" /* the aspect setting */
 #include "lua_states.h"  /* the Lua states given the PC script */
 #include "debug_give.h"  /* KZ_DEBUG_GIVE */
+#include "edition.h"     /* KZ_GA: guest addresses in this build's edition */
 #include "menu_box.h"    /* the list box the mouse drives */
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
@@ -146,7 +149,9 @@ static void ini_save(void)
  *                window's differs, menus and movies inside it. At the next start,
  *                PS3RECOMP_VK_ASPECT; view_aspect.h)
  *   field_of_view = the world's horizontal FOV at 16:9 in degrees, 70-120 (87: the game's;
- *                   a wider window shows more at the sides; fov.h)
+ *                   a wider window shows more at the sides; fov.h). A wider FOV draws more of
+ *                   the map: at 120 the multiplayer maps ran 9-12 % slower than at 87, the game's main
+ *                   thread being the limit (docs/KNOWN_ISSUES.md, 2026-11-25)
  *   weapon_fov = the first-person weapon's, the same way (87: the game's, 72 degrees
  *                horizontal at 16:9 on the weapon itself)
  *   hud_size   = 0.5-1.5   (1: the game's)
@@ -321,16 +326,12 @@ extern "C" void kz_pc_settings_env(void)
     /* KZ_VBLANK_HZ, the flip cadence: the FIFO drains one frame per tick of
      * it, so at 144 it held the 144 Hz clock to ~72 fps (a frame over one tick
      * waits for the next two). In play at 144 menu_mouse raises it to 1000,
-     * every frame through at once (~90-115 fps in Level 1). At 60 or 30 it
-     * stays 144: faster flips only show the same game tick again -- except
-     * with VRR (vsync = fifo), where the display follows the flips: on a
-     * 144 Hz cadence 60 fps came out as frames 2 and 3 ticks apart (the
-     * monitor swinging between 72 and 144 Hz), so there it is the PS3's
-     * 59.94 and every frame is shown for the same time. */
-    if (fps >= 100) { setenv("KZ_TICK_HZ", "144", 0); setenv("KZ_GUEST_VBLANK_HZ", "144", 0); }
-    else if (fps <= 30) { setenv("KZ_TICK_HZ", "30", 0); setenv("KZ_GUEST_VBLANK_HZ", "59.94", 0); }
-    else { setenv("KZ_TICK_HZ", "60", 0); setenv("KZ_GUEST_VBLANK_HZ", "59.94", 0); }
-    setenv("KZ_VBLANK_HZ", fps < 100 && vs == "fifo" ? "59.94" : "144", 0);
+     * every frame through at once (~90-115 fps in Level 1). At 60 or 30 it is
+     * the PS3's 59.94 in every V-Sync mode (pc_rates.h, #121). */
+    { char b[32];
+      snprintf(b, sizeof b, "%d", pc_tick_hz(fps)); setenv("KZ_TICK_HZ", b, 0);
+      snprintf(b, sizeof b, "%g", pc_guest_vblank_hz(fps)); setenv("KZ_GUEST_VBLANK_HZ", b, 0);
+      snprintf(b, sizeof b, "%g", pc_flip_hz(fps)); setenv("KZ_VBLANK_HZ", b, 0); }
     setenv("PAD_MERGE", s_ini["controllers"] == "separate" ? "0" : "1", 0);
     { char b[16]; snprintf(b, sizeof b, "%.2f", atoi(s_ini["scale"].c_str()) / 100.0);
       setenv("PS3RECOMP_VK_SCALE", b, 0); }
@@ -389,12 +390,15 @@ static void player_look(ppu_context* ctx)
     pad_mouse_take(&dx, &dy);
     kz_route_mouse(&dx, &dy);
     kz_route_tick_end(obj);
+    static pc_look_carry carry;   /* the clock object (0x828734) counts ticks at +0x6C */
+    const uint32_t clk = rd32(0x828734);
+    const float per = pc_look_frame(&carry, clk && clk < 0xF0000000u ? rd32(clk + 0x6C) : carry.last + 1, &dx, &dy);
     if (!dx && !dy) return;
-    const float k = g_look_k * (float)(g_kz_tick_hz > 0 ? g_kz_tick_hz : 30);   /* per tick */
+    const float k = g_look_k * (float)(g_kz_tick_hz > 0 ? g_kz_tick_hz : 30) * per;   /* per tick of this frame */
     const float yaw = rdf(obj + 0xA8), pitch = rdf(obj + 0xAC);
     wrf(obj + 0xA8, yaw - (float)dx * k * sens(s_yaw));
     wrf(obj + 0x3C, rdf(obj + 0xA8) / 0.93f);
-    wrf(obj + 0xAC, pitch + (float)(s_invert ? dy : -dy) * k * sens(s_pitch));
+    wrf(obj + 0xAC, pitch + (float)(s_invert ? dy : -dy) * k * KZ_LOOK_PITCH_SCALE * sens(s_pitch));
     if (g_look_log) { static int n; if (n++ % 30 == 0)
         fprintf(stderr, "[kz-look] dx=%d dy=%d rates %.4f %.4f -> %.4f %.4f\n", dx, dy,
                 yaw, pitch, rdf(obj + 0xA8), rdf(obj + 0xAC)); }
@@ -495,9 +499,9 @@ static void apply_display(void)
 }
 static void apply_fps(int fps)
 {
-    g_kz_tick_hz = fps >= 100 ? 144 : fps <= 30 ? 30 : 60;
-    g_kz_guest_vblank_hz = fps >= 100 ? 144.0 : 59.94;
-    g_kz_flip_hz = fps < 100 && s_ini["vsync"] == "fifo" ? 59.94 : 144.0;   /* VRR: see kz_pc_settings_env; menu_mouse raises it in play at 144 */
+    g_kz_tick_hz = pc_tick_hz(fps);
+    g_kz_guest_vblank_hz = pc_guest_vblank_hz(fps);
+    g_kz_flip_hz = pc_flip_hz(fps);   /* menu_mouse raises it in play at 144 */
 }
 static float in_f(ppu_context* c) { return rdf((uint32_t)c->gpr[4]); }
 static void get_display(ppu_context* c) { attr_log("get_display", c); wrf((uint32_t)c->gpr[4], (float)pick(s_ini["display"], kDisplays, 3)); }
@@ -705,8 +709,8 @@ static void set_pads(ppu_context* c) { attr_log("set_pads", c); if ((int32_t)c->
 
 static const uint32_t kClass      = 0x0131E4DC;   /* ControllerConfig's class (func_00501A70) */
 static const uint32_t kSysClass   = 0x0131ECD0;   /* gGameSystem's class ("Audio settings" and the rest) */
-static const uint32_t kCategory   = 0x00548880;   /* "ControllerConfig" */
-static const uint32_t kFloatVtbl  = 0x00552FC8, kBoolVtbl = 0x00552728;
+static const uint32_t kCategory   = KZ_GA(0x00548880);   /* "ControllerConfig" */
+static const uint32_t kFloatVtbl  = KZ_GA(0x00552FC8), kBoolVtbl = KZ_GA(0x00552728);
 static const uint32_t kToc        = 0x005EE4A0;
 static const uint32_t kFakeCode   = 0x00000100;   /* host functions, at addresses no code has */
 
@@ -1317,7 +1321,8 @@ static void menu_mouse(void)
              * row under the pointer is selected at once, as a PC menu does;
              * the list draws its highlight from the selected index. */
             const int r = box_row_at(box, vy, true);
-            if (r >= 0 && r != (int)rd32(box + 0x12C) && option_enabled(option_at(vx, vy))) wr32(box + 0x12C, (uint32_t)r);
+            if (r >= 0 && r != (int)rd32(box + 0x12C) && option_enabled(option_at(vx, vy)) && menu_box_row_enabled(vm_base, box, r))
+                wr32(box + 0x12C, (uint32_t)r);   /* not onto a greyed row (menu_box.h) */
         } else hover_selection(vx, vy, &g);
         if ((g.box || g.grp) && (g.box != s_goal.box || g.grp != s_goal.grp || g.target != s_goal.target))
             s_goal = g;
@@ -1332,6 +1337,7 @@ hovered:
     if (pressed & 1) { drag_x = x; drag_on = false; }
     if ((pressed & 1) && s_dialog_menu) { dialog_click(vx, vy); s_goal = {}; }  /* a dialog's button, or nothing */
     else if ((pressed & 1) && (opt = option_at(vx, vy)) && !option_enabled(opt)) s_goal = {};   /* greyed out: nothing */
+    else if ((pressed & 1) && box && box_row_at(box, vy) >= 0 && !menu_box_row_enabled(vm_base, box, box_row_at(box, vy))) s_goal = {};   /* a greyed list row: nothing */
     else if ((pressed & 1) && opt && !opt->slider) {
         /* the row first, at once: the press goes to the selected row */
         if (box) { const int r = box_row_at(box, vy); if (r >= 0) wr32(box + 0x12C, (uint32_t)r); }
@@ -1475,18 +1481,18 @@ void kz_pc_options_register(void)
     if (getenv("PAD_MOUSE_STICK")) return;
     ini_load();
     const char* e = getenv("PAD_MOUSE_SENS");
-    g_look_k   = (e ? (float)atof(e) : 1.0f) * 0.022f * 3.14159265f / 180.0f / 2.27f;
+    g_look_k   = (e ? (float)atof(e) : 1.0f) * KZ_LOOK_K;
     g_look_log = getenv("KZ_LOOKLOG") != nullptr;
     g_pad_mouse_direct = 1;
-    ppu_register_function(0x00291FA8, player_look);
-    ppu_register_function(0x00185100, lua_binding);
-    ppu_register_function(0x00272670, dialog_box);
-    ppu_register_function(0x002750D8, add_option<func_002750D8, false>);
-    ppu_register_function(0x00275200, add_option<func_00275200, false>);
-    ppu_register_function(0x00275330, add_option<func_00275330, true>);
-    ppu_register_function(0x00275460, add_option<func_00275460, true>);
+    ppu_register_function(KZ_GA(0x00291FA8), player_look);
+    ppu_register_function(KZ_GA(0x00185100), lua_binding);
+    ppu_register_function(KZ_GA(0x00272670), dialog_box);
+    ppu_register_function(KZ_GA(0x002750D8), add_option<func_002750D8, false>);
+    ppu_register_function(KZ_GA(0x00275200), add_option<func_00275200, false>);
+    ppu_register_function(KZ_GA(0x00275330), add_option<func_00275330, true>);
+    ppu_register_function(KZ_GA(0x00275460), add_option<func_00275460, true>);
     std::thread([] { for (;;) { menu_mouse(); std::this_thread::sleep_for(std::chrono::milliseconds(8)); } }).detach();
-    ppu_register_function(0x00275978, add_list_box);
-    ppu_register_function(0x0026D03C, create_selection);
-    ppu_register_function(0x00276DC0, selection_update);
+    ppu_register_function(KZ_GA(0x00275978), add_list_box);
+    ppu_register_function(KZ_GA(0x0026D03C), create_selection);
+    ppu_register_function(KZ_GA(0x00276DC0), selection_update);
 }

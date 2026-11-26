@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Use my RPCS3 install: find Killzone HD (NPUA80856) and the PS3 system software in the player's RPCS3, and make the
+"""Use my RPCS3 install: find Killzone HD (NPUA80856, or the EU edition NPEA00418) and the PS3 system software in the player's RPCS3, and make the
 decrypted file the port needs (EBOOT.elf) by asking that same RPCS3 to decrypt a copy of it (`rpcs3 --decrypt`) in a
 folder of the port (work/prep). The data archive of the disc's package needs nothing: the port reads the game's own
 data_ps3.psarc.edat (patch 4014, tools/kzbuild.py data). A PlayStation Store copy's .edat is bound to the buyer's
@@ -30,7 +30,7 @@ Rules (after Project Pyrrhus's rpcs3_import.py):
 Built on rpcs3_locate.py, vendored unchanged from Project Pyrrhus (undecuple, MIT, tools/release/rpcs3_locate.py at
 commit 1b11f54; licenses/Project-Pyrrhus-LICENSE.txt). That module is written for disc games listed in RPCS3's
 games.yml; Killzone HD is a game installed in dev_hdd0/game, which it finds as an "update" folder and reports with
-the problems missing_disc and no_decrypted_eboot. This wrapper drops those two for NPUA80856 and does not edit the
+the problems missing_disc and no_decrypted_eboot. This wrapper drops those two for its titles and does not edit the
 module. The `--decrypt` route (copies, redirected settings, null stdin, watchdog, judged by hash) follows Soulbrandt's
 docs/90 (JonathanDC64, MIT); the code is written here. Standard library only, Python 3.8+ (rpcs3_locate: 3.11+ for
 its own command line; the functions used here run on 3.8).
@@ -48,9 +48,13 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.dirname(HERE))
 import rpcs3_locate as loc  # noqa: E402  (vendored unchanged from Project Pyrrhus)
+import edition_map  # noqa: E402  (tools/edition_map.py: each edition's title ids, sizes and hashes)
 
 TITLE = "NPUA80856"
+EU_TITLE = "NPEA00418"
+TITLES = (TITLE, EU_TITLE)   # looked for in this order: the US edition when RPCS3 has both
 # rpcs3_locate's problems that do not apply to a game installed in dev_hdd0/game (see the docstring)
 IGNORED = ("missing_disc", "no_decrypted_eboot")
 # The tested files (docs/GETTING-FILES.md, tools/check-game-files.py): (input, output, size, SHA-256)
@@ -69,9 +73,9 @@ HELP = {
     "not_found": "No RPCS3 folder was found. Pick RPCS3's folder (where rpcs3.exe is, or its config folder on "
                  "Linux), or pick your files yourself.",
     "not_rpcs3": "That folder is not an RPCS3 folder (no rpcs3.exe, vfs.yml or games.yml).",
-    "no_game": "RPCS3 has no Killzone HD (NPUA80856) installed in dev_hdd0/game. Install the game's package from "
-               "the Killzone Trilogy disc, or your PlayStation Store copy with its licence, in RPCS3 (see its "
-               "documentation), then check again.",
+    "no_game": "RPCS3 has no Killzone HD (NPUA80856, or NPEA00418 in Europe) installed in dev_hdd0/game. Install "
+               "the game's package from the Killzone Trilogy disc, or your PlayStation Store copy with its licence, "
+               "in RPCS3 (see its documentation), then check again.",
     "game_incomplete": "The Killzone HD folder in RPCS3 is missing a file (named below). Install the game again in "
                        "RPCS3, then check again.",
     "no_exe": "The RPCS3 program itself was not found (rpcs3.exe, the rpcs3 command, an AppImage or the Flatpak). "
@@ -84,8 +88,8 @@ HELP = {
     "bad_runtime": "RPCS3 stopped at its start-up check of the Visual C++ runtime: it loaded the DLL named below "
                    "from another program's folder. Install the latest Microsoft Visual C++ 2015-2022 Redistributable "
                    "(x64), start this setup from File Explorer rather than from another program, then try again.",
-    "wrong_file": "RPCS3 made the file named below, but it is not the tested one: the game must be NPUA80856 "
-                  "version 01.00.",
+    "wrong_file": "RPCS3 made the file named below, but it is not the tested one: the game must be NPUA80856 or "
+                  "NPEA00418, version 01.00.",
 }
 
 
@@ -205,7 +209,8 @@ def _hints(hint):
 
 def _game_of(hint):
     """The game folder a hint names when it is not in an RPCS3 folder: the hint itself or the folder it is in, when
-    a PARAM.SFO is there (else None). An RPCS3 found elsewhere counts only when its NPUA80856 is that folder."""
+    a PARAM.SFO is there (else None). An RPCS3 found elsewhere counts only when its game (NPUA80856 or NPEA00418)
+    is that folder."""
     if not hint or rpcs3_root_of(hint):
         return None
     p = os.path.abspath(os.path.expanduser(str(hint)))
@@ -215,23 +220,42 @@ def _game_of(hint):
     return None
 
 
-def _game_path(res):
-    t = res["titles"].get(TITLE) or {}
+def _game_path(res, title=None):
+    title = title or _title_of(res) or TITLE
+    t = res["titles"].get(title) or {}
     upd = t.get("update") or {}
     return upd.get("path") if upd.get("ok") else next((i["path"] for i in t.get("installs") or []
-                                                       if i.get("name") == TITLE), "")
+                                                       if i.get("name") == title), "")
 
 
-def _has_game(res):
-    t = res["titles"].get(TITLE) or {}
-    return bool((t.get("update") or {}).get("ok") or any(i.get("name") == TITLE for i in t.get("installs") or []))
+def _has_game(res, title=None):
+    if title is None:
+        return _title_of(res) is not None
+    t = res["titles"].get(title) or {}
+    return bool((t.get("update") or {}).get("ok") or any(i.get("name") == title for i in t.get("installs") or []))
+
+
+def _title_of(res):
+    """The first of TITLES installed in the RPCS3 that res describes, or None."""
+    return next((t for t in TITLES if _has_game(res, t)), None)
+
+
+def files_for(title):
+    """(EBOOT, PSARC) specs of an edition's title: (input, output, size, SHA-256) as EBOOT and PSARC are the US one's."""
+    if title == TITLE:
+        return EBOOT, PSARC
+    ed = edition_map.EDITIONS[edition_map.edition_of(title)]
+    return (EBOOT[0], EBOOT[1], *ed["eboot"]), (PSARC[0], PSARC[1], *ed["psarc"])
+
+
+WANTS = {t: None for t in TITLES}
 
 
 def detect(hint=None):
     game = _game_of(hint)
     for h in _hints(hint):
         if game and h != hint:
-            r = loc.locate(h, {TITLE: None})
+            r = loc.locate(h, WANTS)
             if not (r["ok"] and _same(_game_path(r), game)):
                 continue
             return {"status": "ok", "root": r["root"], "source": r["source"]}
@@ -252,7 +276,7 @@ def resolve(hint=None, exe=None, home=None):
     res = None
     game = _game_of(hint)
     for h in _hints(hint):
-        r = loc.locate(h, {TITLE: None})
+        r = loc.locate(h, WANTS)
         if game and h != hint and not (r["ok"] and _same(_game_path(r), game)):
             continue   # the game folder was given: only the RPCS3 that has that very folder
         if r["ok"] and _has_game(r):
@@ -266,10 +290,10 @@ def resolve(hint=None, exe=None, home=None):
         code = "not_rpcs3" if res.get("code") == "not_rpcs3" else "not_found"
         out["problems"].append(_problem(code))
         return out
-    t = res["titles"][TITLE]
-    upd = t.get("update") or {}
-    game = upd.get("path") if upd.get("ok") else next((i["path"] for i in t.get("installs") or []
-                                                       if i.get("name") == TITLE), "")
+    title = _title_of(res) or TITLE
+    out["title"] = title
+    t = res["titles"][title]
+    game = _game_path(res, title)
     probs = [p for p in t["problems"] if p["code"] not in IGNORED + ("missing_update",)]
     if not game:
         probs = [_problem("no_game")]
@@ -340,14 +364,15 @@ EXDATA = ("home", "00000001", "exdata")   # where RPCS3 looks for a game's licen
 
 
 def _exdata_copies(cfg, hdd0):
-    """Copies the player's licence for this game (dev_hdd0/home/00000001/exdata/*NPUA80856*.rap, by name) to where
+    """Copies the player's licence for this game (dev_hdd0/home/00000001/exdata/*NPUA80856*.rap or *NPEA00418*.rap,
+    by name) to where
     RPCS3 looks under the redirected settings (RPCS3_CONFIG_DIR's dev_hdd0 on Windows, XDG_CONFIG_HOME/rpcs3/dev_hdd0
     on Linux): a PSN copy of the game needs it to decrypt the EBOOT and the .edat. The copies live in cfg and go with
     it. Copies, not a link to the player's folder: on Windows neither a symbolic link nor a junction to exdata was
     followed in a 0.5.3 test (2026-11-19). The player's folder is only read. Returns the names copied."""
     src = os.path.join(hdd0, *EXDATA)
     try:
-        names = [n for n in os.listdir(src) if n.lower().endswith(".rap") and TITLE in n.upper()]
+        names = [n for n in os.listdir(src) if n.lower().endswith(".rap") and any(t in n.upper() for t in TITLES)]
     except OSError:
         return []
     for d in (os.path.join(cfg, "dev_hdd0", *EXDATA), os.path.join(cfg, "config", "rpcs3", "dev_hdd0", *EXDATA)):
@@ -400,7 +425,7 @@ def _place(src, copy):
         shutil.copyfile(src, copy)
 
 
-def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None, step=None):
+def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None, step=None, title=TITLE):
     """Copies each (source path, (in name, out name, size, sha)) into prep/in, runs RPCS3 --decrypt on each copy and
     checks each output. hdd0: the player's dev_hdd0, for the licence RPCS3 may need (see _exdata_copies). Returns {"ok",
     "files": {out name: path}, "problems"}. The copies and RPCS3's settings are removed afterwards; the good outputs
@@ -416,7 +441,7 @@ def decrypt(exe, sources, prep, watchdog=WATCHDOG, log=None, hdd0=None, step=Non
     else:
         try:
             raps = _exdata_copies(cfg, hdd0)
-            log(f"rpcs3: {len(raps)} licence file(s) for {TITLE} found in {loc.redact(os.path.join(hdd0, *EXDATA))}"
+            log(f"rpcs3: {len(raps)} licence file(s) for {title} found in {loc.redact(os.path.join(hdd0, *EXDATA))}"
                 + (" (needed only for a PSN copy)" if not raps else ""))
         except OSError as e:
             log(f"rpcs3: the licence could not be copied ({e}); a PSN copy of the game may not decrypt")
@@ -468,18 +493,21 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG, step=None):
         return r
     prep = os.path.join(work, "prep")
     os.makedirs(prep, exist_ok=True)
-    have = os.path.join(prep, EBOOT[1])
-    want = [] if os.path.isfile(have) and sha256(have) == EBOOT[3] else \
-        [(os.path.join(r["game"], "USRDIR", EBOOT[0]), EBOOT)]   # else kept from a last run
+    title = r.get("title") or TITLE
+    eboot, archive = files_for(title)
+    have = os.path.join(prep, eboot[1])
+    want = [] if os.path.isfile(have) and sha256(have) == eboot[3] else \
+        [(os.path.join(r["game"], "USRDIR", eboot[0]), eboot)]   # else kept from a last run
     psarc = os.path.join(prep, PSARC_NAME)
     psn = edat_license(r["edat"]) in (1, 2)
-    if psn and not (os.path.isfile(psarc) and os.path.getsize(psarc) == PSARC[2] and sha256(psarc) == PSARC[3]):
+    if psn and not (os.path.isfile(psarc) and os.path.getsize(psarc) == archive[2] and sha256(psarc) == archive[3]):
         log("rpcs3: the game's .edat is a PSN copy's (bound to your licence); your RPCS3 opens it too (3 GB, a minute "
             "or two)")
-        want.append((r["edat"], PSARC))
-    d = decrypt(r["exe"], want, prep, watchdog, log, r.get("dev_hdd0"), step) if want else {"ok": True, "problems": []}
-    if PSARC[1] in d.get("files", {}):
-        os.replace(d["files"][PSARC[1]], psarc)
+        want.append((r["edat"], archive))
+    d = decrypt(r["exe"], want, prep, watchdog, log, r.get("dev_hdd0"), step, title) if want else \
+        {"ok": True, "problems": []}
+    if archive[1] in d.get("files", {}):
+        os.replace(d["files"][archive[1]], psarc)
     r["problems"] = d["problems"]
     r["status"] = "ok" if d["ok"] else "failed"
     if d["ok"]:
@@ -492,7 +520,7 @@ def prepare(work, hint=None, exe=None, log=None, watchdog=WATCHDOG, step=None):
 # -------------------------------------------------------------------------------------------------- command line
 def lines(res):
     out = [f"status={res['status']}"]
-    for k in ("root", "source", "game", "edat", "eboot", "psarc"):
+    for k in ("root", "source", "title", "game", "edat", "eboot", "psarc"):
         if res.get(k):
             out.append(f"{k}={res[k]}")
     if res.get("exe"):

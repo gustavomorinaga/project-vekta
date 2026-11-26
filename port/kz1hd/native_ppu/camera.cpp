@@ -42,7 +42,7 @@ namespace {
 
 /* the temporal upscalers' jitter: the frame's from the sky's call (0x2B81DC),
  * the same for the world's (0x21A190) */
-constexpr uint32_t kSkyRet = 0x002B81DC, kViewRet = 0x0021A190;
+constexpr uint32_t kSkyRet = KZ_GA(0x002B81DC), kViewRet = KZ_GA(0x0021A190);
 constexpr float kGameAspect = 16.0f / 9.0f;
 
 /* the FOV scale for a call site (fov.h): the world's, or 1 */
@@ -161,7 +161,7 @@ void func_001A9FC8(ppu_context* ctx)
  * by the weapon's setting. */
 void func_0005C368(ppu_context* ctx)
 {
-    constexpr uint32_t kWeaponRet = 0x001F8528;
+    constexpr uint32_t kWeaponRet = KZ_GA(0x001F8528);
     if ((uint32_t)ctx->lr == kWeaponRet) {
         const double aspect = ctx->fpr[2];
         const int wide = kz_view.aspect > 0.0f && fabs(aspect - kz_view.aspect) < 0.01;

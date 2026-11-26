@@ -2,8 +2,8 @@
 # Host test for the EBOOT check (port/kz1hd/eboot_check.h, main.cpp's kz_eboot_verify, tools/kzbuild.py's
 # write_eboot_id): test_eboot_check.c (SHA-256 vectors from hashlib, equal / one byte changed / truncated / missing, in
 # a folder with a space and accents); its hash of a random 3 MB file equals hashlib's; write_eboot_id writes the size
-# and hash of a stand-in EBOOT and nothing of its content; main.cpp checks before ppu_load_elf; launch.py's EXIT_EBOOT
-# is kz_exit.h's KZ_EXIT_EBOOT. The Windows build runs under Wine in tools/wine-host-tests.sh. No game data.
+# and hash of a stand-in EBOOT and nothing of its content (and KZ_EBOOT_EDITION_EU for an EU lift); main.cpp checks
+# before ppu_load_elf; launch.py's EXIT_EBOOT is kz_exit.h's KZ_EXIT_EBOOT. The Windows build runs under Wine in tools/wine-host-tests.sh. No game data.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 K="$ROOT/port/kz1hd"
@@ -41,7 +41,10 @@ assert hx == hashlib.sha256(data).hexdigest() and size == len(data), (hx, size)
 assert f'#define KZ_EBOOT_SHA256 "{hx}"' in text and f"#define KZ_EBOOT_SIZE {len(data)}LL" in text, text
 assert len(text) < 400 and re.findall(r"#define (\w+)", text) == ["KZ_EBOOT_SHA256", "KZ_EBOOT_SIZE"], text
 src = open(sys.argv[1] + "/tools/kzbuild.py").read()
-assert 'write_eboot_id(eboot, j(k, "gen"))' in src, "cmd_lift writes it into the lift's gen/"
+assert 'write_eboot_id(eboot, j(k, "gen"), ed)' in src, "cmd_lift writes it into the lift's gen/"
+kzbuild.write_eboot_id(e, gen, "EU")   # an EU lift also says so, for the build's KZ_EDITION
+text = open(os.path.join(gen, "eboot_id.h")).read()
+assert re.findall(r"#define (\w+)", text) == ["KZ_EBOOT_SHA256", "KZ_EBOOT_SIZE", "KZ_EBOOT_EDITION_EU"], text
 PY
 
 main="$K/main.cpp"

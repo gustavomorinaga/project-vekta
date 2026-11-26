@@ -101,6 +101,17 @@ set_source_files_properties(cpu_check.c PROPERTIES
     COMPILE_DEFINITIONS "KZ_CPU_REQUIRED=${KZ_CPU_REQUIRED}")
 message(STATUS "CPU check:       x86-64-v${KZ_CPU_REQUIRED} (0 = none)")
 
+# The edition of Killzone HD the lift is made from: US (NPUA80856, the default; the sources name its addresses) or EU
+# (NPEA00418). KZ_EDITION=EU defines KZ_EDITION_EU, which turns port/kz1hd/edition.h's KZ_GA() into the EU addresses
+# (re/eu/address_map.tsv). The US build is unchanged.
+set(KZ_EDITION "US" CACHE STRING "Killzone HD edition the lift is made from: US or EU")
+if(KZ_EDITION STREQUAL "EU")
+    add_compile_definitions(KZ_EDITION_EU=1)
+elseif(NOT KZ_EDITION STREQUAL "US")
+    message(FATAL_ERROR "KZ_EDITION is ${KZ_EDITION}: US or EU")
+endif()
+message(STATUS "Edition:         ${KZ_EDITION}")
+
 # ENHANCEMENT: AMD FSR 3.1 as a temporal upscaler (docs/dev/upscalers.md). The FidelityFX SDK's FSR 3 upscaler and
 # Vulkan backend are built here from third_party/fidelityfx-fsr3 (its shaders compiled ahead by
 # tools/ffx/build_fsr3.sh; README.md there), and ps3recomp links the target (patch 2051). PS3RECOMP_FFX_DIR=<another

@@ -9,8 +9,9 @@ and the reports the game left. Standard library only.
   game starts (start only) and completed when it ends, so a session that never ended (the PC lost power, the
   launcher was stopped) is the last line, with no end: the next start says so once, and marks it "interrupted".
 - Kinds: clean (exit 0, no quit line), quit (the game's "[kz] quitting (...)" line, or the window closed: the
-  player ended it), crash (a crash report, a Windows crash code, or a POSIX crash signal), hang-killed (a hang report:
-  the game's watchdog stopped it), gpu-lost (exit 78, KZ_EXIT_GPU_LOST, or "[RSX vulkan] device lost"), killed
+  player ended it), crash (a crash report, a Windows crash code, or a POSIX crash signal), hang-killed (a hang report
+  with no "frames again" line after it: the game was still stuck when it was closed or killed; a hang it recovered
+  from is not one), gpu-lost (exit 78, KZ_EXIT_GPU_LOST, or "[RSX vulkan] device lost"), killed
   (terminated from outside: 0x40010004, Ctrl+C, SIGKILL, SIGTERM), failed (any other code). The line format and the
   kinds are shared with the game's crash reporter (port/kz1hd): see docs/TROUBLESHOOTING.md.
 - The log history: before a session, the last play.log moves to work/logs/play-YYYYmmdd-HHMMSS.log (its session's
@@ -33,6 +34,8 @@ ABNORMAL = BAD + ("killed", "failed")
 JOURNAL = "sessions.jsonl"
 JOURNAL_MAX = 200          # sessions kept in sessions.jsonl
 QUIT_MARK = b"[kz] quitting ("
+HANG_MARK = b"[kz-hang] begin"
+HANG_OVER_MARK = b"[kz] hang watch: frames again"   # port/kz1hd/crash_report.c: the hang ended, the game went on
 CLOSED_MARKS = (b"window closed", b"window disabled", QUIT_MARK)
 GPU_LOST_FALLBACK = 78     # port/kz1hd/kz_exit.h KZ_EXIT_GPU_LOST, when this tree's header does not have it yet
 # Windows' NTSTATUS codes a process ends with: (meaning, kind)
@@ -95,7 +98,9 @@ def meaning(rc, codes):
 
 
 def scan(log):
-    """What the log says about the session's end: {quit, closed, crash, hang, gpu_lost, signature}."""
+    """What the log says about the session's end: {quit, closed, crash, hang, hang_over, gpu_lost, signature}.
+    hang: the last hang report has no "frames again" line after it (still stuck at the end); hang_over: a hang was
+    reported and the game showed frames again after the last one."""
     try:
         with open(log, "rb") as f:
             data = f.read()
@@ -103,14 +108,17 @@ def scan(log):
         data = b""
     text = data.decode("utf-8", "replace")
     m = SIGNATURE_RX.search(text)
+    hang_at, over_at = data.rfind(HANG_MARK), data.rfind(HANG_OVER_MARK)
     return {"quit": QUIT_MARK in data, "closed": any(c in data for c in CLOSED_MARKS),
-            "crash": b"[kz-crash] begin" in data, "hang": b"[kz-hang] begin" in data,
+            "crash": b"[kz-crash] begin" in data, "hang": hang_at > over_at,
+            "hang_over": 0 <= hang_at < over_at,
             "gpu_lost": b"[RSX vulkan] device lost" in data, "signature": m.group(1) if m else ""}
 
 
 def classify(rc, seen, codes, reports=()):
     """The session's kind (see the docstring). seen: scan()'s; reports: the report file names it left."""
-    if seen.get("hang") or any(r.startswith("hang-") for r in reports):
+    # a hang report file alone (no log to read) counts; one the log shows the game recovered from does not
+    if seen.get("hang") or (not seen.get("hang_over") and any(r.startswith("hang-") for r in reports)):
         return "hang-killed"
     if rc == gpu_lost_code(codes) or seen.get("gpu_lost"):
         return "gpu-lost"
