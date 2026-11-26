@@ -149,8 +149,9 @@ static void ini_save(void)
  *                            16:9 middle; off: a 16:9 picture with bars)
  *   aspect     = auto | 4:3 | 16:10 | 16:9 | 21:9 | 32:9   (with widescreen on: the picture's
  *                aspect, auto = the window's; another shows that ratio with bars where the
- *                window's differs, menus and movies inside it. At the next start,
- *                PS3RECOMP_VK_ASPECT; view_aspect.h)
+ *                window's differs, menus and movies inside it. Applied at once
+ *                (rsx_vulkan_set_aspect, ps3recomp patch 2094; at start PS3RECOMP_VK_ASPECT);
+ *                view_aspect.h)
  *   field_of_view = the world's horizontal FOV at 16:9 in degrees, 70-120 (87: the game's;
  *                   a wider window shows more at the sides; fov.h). A wider FOV draws more of
  *                   the map: at 120 the multiplayer maps ran 9-12 % slower than at 87, the game's main
@@ -244,7 +245,7 @@ int  rsx_vulkan_output_size(int* w, int* h);
 extern volatile int kz_post_pct[KZ_POST_COUNT];   /* native_ppu/post.cpp */
 }
 static bool s_widescreen = true;
-static float s_aspect_forced;   /* the aspect setting as the window got it at start; 0 = the window's */
+static float s_aspect_forced;   /* the aspect setting (widescreen on), as the frame has it; 0 = the window's */
 static void view_load(void)
 {
     s_widescreen = s_ini["widescreen"] != "off";
@@ -272,10 +273,11 @@ static void post_load(void)
     if (changed) ini_write();
 }
 /* Every frame (main.cpp): the cameras' aspect follows the window's, or the
- * aspect setting's (fixed at start, as the frame's size is). Within 0.01 of
+ * aspect setting's (both followed while running, aspect_apply). Within 0.01 of
  * 16:9 it is the game's own, so a 16:9 picture is the game's exactly. */
 static long long now_ms(void);
 static void display_seq_tick(long long t);   /* KZ_TEST_DISPLAY_SEQ, below */
+static void aspect_apply(void);   /* below, with the aspect row */
 extern "C" void kz_view_update(void)
 {
     int w, h;
@@ -462,6 +464,8 @@ void rsx_vulkan_set_display(const char* mode, int w, int h, int hz);
 void rsx_vulkan_set_present(const char* mode);
 int  rsx_vulkan_display_sizes(int (*out)[2], int max);
 void rsx_vulkan_set_scale(float k);   /* ps3recomp patch 2093 */
+void rsx_vulkan_set_aspect(float aspect);   /* ps3recomp patch 2094 */
+void rsx_vulkan_set_fit(int fill);
 void pad_set_merge(int on);
 void pad_set_players(int n);
 void rsx_temporal_hold(int held);   /* ps3recomp patch 2092 */
@@ -598,8 +602,18 @@ static void display_seq_tick(long long t)
         if (d.w) { w = d.w; h = d.h; }
         if (d.mode[0] || d.w) rsx_vulkan_set_display(mode.c_str(), w, h, atoi(s_ini["refresh"].c_str()));
         if (d.scale) rsx_vulkan_set_scale((float)d.scale / 100.0f);
-        fprintf(stderr, "[kz-test] display step %d at %.1f s: %s %dx%d scale %d%%\n", next + 1,
-                (double)(t - t0) / 1000.0, mode.c_str(), w, h, d.scale);
+        for (const char* p = d.set; *p;) {   /* key=value;... as the rows set them (not written to the ini) */
+            const char* eq = strchr(p, '=');
+            const char* end = strchr(p, ';');
+            if (!end) end = p + strlen(p);
+            if (!eq || eq > end) break;
+            const std::string k(p, eq), v(eq + 1, end);
+            s_ini[k] = v;
+            if (k == "aspect" || k == "widescreen") { view_load(); aspect_apply(); }
+            p = *end ? end + 1 : end;
+        }
+        fprintf(stderr, "[kz-test] display step %d at %.1f s: %s %dx%d scale %d%% %s\n", next + 1,
+                (double)(t - t0) / 1000.0, mode.c_str(), w, h, d.scale, d.set);
     }
 }
 static void get_overlay(ppu_context* c) { attr_log("get_overlay", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["overlay"] == "mangohud"; }
@@ -685,6 +699,7 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
     post_apply();
     fsr_apply();
     scale_apply();
+    aspect_apply();
     s_deps_dirty = true; }
 static void get_intro(ppu_context* c) { attr_log("get_intro", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["intro"] != "off"; }
 static void set_intro(ppu_context* c) { attr_log("set_intro", c); if ((int32_t)c->gpr[5] != 2) return;
@@ -710,13 +725,23 @@ static void set_glow(ppu_context* c) { attr_log("set_glow", c); set_post_key(c, 
 static void get_aa(ppu_context* c) { attr_log("get_aa", c); wrf((uint32_t)c->gpr[4], s_ini["antialiasing"] == "off" ? 1.0f : 0.0f); }
 static void set_aa(ppu_context* c) { attr_log("set_aa", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_ANTIALIASING)) return;
     s_ini["antialiasing"] = lroundf(in_f(c)) == 1 ? "off" : "mlaa"; ini_write(); post_apply(); }
+/* Widescreen and Aspect Ratio at once: the frame's fit to the window (fill: anamorphic to its aspect, or the forced
+ * aspect's box), the box itself, and the cameras' aspect (kz_view_update) */
+static void aspect_apply(void)
+{
+    const bool wide = s_ini["widescreen"] != "off";
+    const float a = view_aspect_value(s_ini["aspect"].c_str());
+    s_aspect_forced = wide && a > 0.0f ? a : 0.0f;
+    rsx_vulkan_set_fit(wide);
+    rsx_vulkan_set_aspect(s_aspect_forced);
+}
 static void get_aspect(ppu_context* c) { attr_log("get_aspect", c);
     wrf((uint32_t)c->gpr[4], (float)view_aspect_row(s_ini["aspect"].c_str())); }
 static void set_aspect(ppu_context* c) { attr_log("set_aspect", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_ASPECT)) return;
-    s_ini["aspect"] = kViewAspect[std::clamp((int)lroundf(in_f(c)), 0, VIEW_ASPECTS - 1)]; ini_write(); }
+    s_ini["aspect"] = kViewAspect[std::clamp((int)lroundf(in_f(c)), 0, VIEW_ASPECTS - 1)]; ini_write(); aspect_apply(); }
 static void get_wide(ppu_context* c) { attr_log("get_wide", c); vm_base[(uint32_t)c->gpr[4]] = s_widescreen; }
 static void set_wide(ppu_context* c) { attr_log("set_wide", c); if ((int32_t)c->gpr[5] != 2) return;
-    s_ini["widescreen"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); view_load(); s_deps_dirty = true; }
+    s_ini["widescreen"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); view_load(); aspect_apply(); s_deps_dirty = true; }
 /* The FOV rows (fov.h): 0 the game's 87, then 70 to 120 by 5. The sliders'
  * positions, 0..1: HUD size 0.5-1.5, HUD position as is. */
 static void set_num(const char* key, float v) { char b[32]; snprintf(b, sizeof b, "%.4g", v); s_ini[key] = b; ini_write(); view_load(); }
@@ -919,7 +944,7 @@ static std::string kz_lua(void)
     "  KZPCR(1, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Display|0.0;1.0;2.0|Window;Borderless;Fullscreen', 'Display Mode'))\n"
     "  KZPCR(2, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Resolution|" + rv + "|" + rl + "', 'Resolution'))\n"
     "  KZPCR(3, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Widescreen|true;false|$Conditions.On$;$Conditions.Off$', 'Widescreen'))\n"
-    "  KZPCR(4, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Aspect|0.0;1.0;2.0;3.0;4.0;5.0|Auto (Window);4:3;16:10;16:9;21:9;32:9', 'Aspect Ratio (on restart)'))\n"
+    "  KZPCR(4, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Aspect|0.0;1.0;2.0;3.0;4.0;5.0|Auto (Window);4:3;16:10;16:9;21:9;32:9', 'Aspect Ratio'))\n"
     "  KZPCR(5, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Field of View'))\n"
     "  KZPCR(6, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.WeaponFOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Weapon Field of View'))\n"
     "  KZPCR(7, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.HUDPosition', 'HUD Position'))\n"

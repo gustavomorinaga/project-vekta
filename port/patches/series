@@ -176,3 +176,4 @@
 4021-cellPad-tests-rumble-follows-the-controllers-that-fe.patch
 2092-Vulkan-rsx_temporal_hold-the-temporal-upscaler-held-.patch
 2093-Vulkan-the-internal-resolution-follows-the-window-an.patch
+2094-Vulkan-the-forced-aspect-and-the-frame-s-fit-to-the-.patch

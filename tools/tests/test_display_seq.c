@@ -17,6 +17,10 @@ int main(void)
     EXPECT(d[1].at == 150.5 && d[1].mode[0] == 0 && d[1].w == 0 && d[1].scale == 200);
     EXPECT(!strcmp(d[2].mode, "fullscreen") && d[2].w == 1280 && d[2].h == 720 && d[2].scale == 50);
     EXPECT(display_seq_parse("10:borderless:-:-", d, DISPLAY_SEQ_MAX) == 1 && !strcmp(d[0].mode, "borderless"));
+    /* other keys after the scale */
+    n = display_seq_parse("10:-:-:-:aspect=4:3;widescreen=on,20:window:1280x720:100", d, DISPLAY_SEQ_MAX);
+    EXPECT(n == 2 && !strcmp(d[0].set, "aspect=4:3;widescreen=on") && d[0].scale == 0 && d[1].set[0] == 0);
+    EXPECT(display_seq_parse("10:-:-:-:aspect", d, DISPLAY_SEQ_MAX) == -1);
     /* anything it cannot read takes nothing */
     EXPECT(display_seq_parse("10:tv:-:-", d, DISPLAY_SEQ_MAX) == -1);
     EXPECT(display_seq_parse("10:-:100x100:-", d, DISPLAY_SEQ_MAX) == -1);

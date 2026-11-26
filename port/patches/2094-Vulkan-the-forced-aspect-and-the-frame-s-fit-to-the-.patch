@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 26 Nov 2026 13:59:40 -0300
+Subject: [PATCH] Vulkan: the forced aspect and the frame's fit to the window
+ change while running
+
+Symptom: the PC page's Aspect Ratio (PS3RECOMP_VK_ASPECT) and the fit or fill of the frame to the window that its
+Widescreen row picks (PS3RECOMP_VK_SCALE_FIT) were read once, at start: a new aspect changed the cameras but the
+frame kept the old box until the next start.
+
+Fix: rsx_vulkan_set_aspect (the forced aspect, 0 the window's) and rsx_vulkan_set_fit (1 fill, 0 fit), from any
+thread. vk_forced_aspect and the new vk_fit_mode return what was set, else the environment as before; patch
+2093's vk_rescale_check takes them at a frame's end and makes the frame again at the box's size, and the present
+puts it in the new box.
+
+ENHANCEMENT: the PS3 game has no aspect setting. Seen in Level 1 (2026-11-26, Linux, RTX 3070 Ti): a 3440x1320
+window drew 1760x1320 at 4:3, 2347x1320 at 16:9 and with fit, 3440x1320 at the window's, 6160x2640 at 21:9 and
+200 %, 3440x968 at 32:9 borderless, each from the next frames on.
+---
+ libs/video/rsx_vulkan_backend.c | 29 ++++++++++++++++++++++-------
+ libs/video/rsx_vulkan_backend.h |  4 ++++
+ 2 files changed, 26 insertions(+), 7 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 9d016f9..92cde0a 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -3527,16 +3527,32 @@ static void vk_read_scale(void)
+  * at that aspect whatever the window's, with bars, for a title that renders
+  * its cameras to it: the frame is scaled to that box, and a stretched frame
+  * (rsx_vulkan_set_stretch) fills the box instead of the window. Read once. */
++/* rsx_vulkan_set_aspect / rsx_vulkan_set_fit (any thread) change both while
++ * running: the frame follows at its next rescale (vk_rescale_check). */
++static volatile float s_aspect_req = -1.0f;   /* < 0: PS3RECOMP_VK_ASPECT */
++static volatile int s_fit_req = -1;           /* < 0: PS3RECOMP_VK_SCALE_FIT; 0 fit, 1 fill */
++void rsx_vulkan_set_aspect(float a) { s_aspect_req = a >= 1.0f && a <= 4.0f ? a : 0.0f; }
++void rsx_vulkan_set_fit(int fill) { s_fit_req = fill ? 1 : 0; }
+ static float vk_forced_aspect(void)
+ {
++    if (s_aspect_req >= 0.0f) return s_aspect_req;
+     static float a = -1.0f;
+     if (a < 0.0f) a = rsx_parse_aspect(getenv("PS3RECOMP_VK_ASPECT"));
+     return a;
+ }
++/* -1 no fit to the window, 0 fit, 1 fill */
++static int vk_fit_mode(void)
++{
++    if (s_fit_req >= 0) return s_fit_req;
++    static int m = -2;
++    if (m == -2) { const char* e = getenv("PS3RECOMP_VK_SCALE_FIT"); m = !e || !*e ? -1 : !strcmp(e, "fill"); }
++    return m;
++}
+ static void vk_fit_scale(void)
+ {
+-    const char* e = getenv("PS3RECOMP_VK_SCALE_FIT");
+-    if (!e || !*e || !s_vk.window) return;
++    const int fill = vk_fit_mode();
++    const char* e = fill ? "fill" : "fit";
++    if (fill < 0 || !s_vk.window) return;
+     int w = 0, h = 0;
+     const Uint32 fl = SDL_GetWindowFlags(s_vk.window);
+     SDL_DisplayMode m;
+@@ -3549,7 +3565,7 @@ static void vk_fit_scale(void)
+     if (w <= 0 || h <= 0 || !s_guest_w || !s_guest_h) return;
+     /* a forced display aspect: the frame fills its box, not the window */
+     float sx, sy;
+-    rsx_fit_scale(w, h, vk_forced_aspect(), s_guest_w, s_guest_h, vk_scale_k(), !strcmp(e, "fill"), vk_max_dim(), &sx, &sy);
++    rsx_fit_scale(w, h, vk_forced_aspect(), s_guest_w, s_guest_h, vk_scale_k(), fill, vk_max_dim(), &sx, &sy);
+     s_rscale_x = sx; s_rscale_y = sy;
+     s_vk.width = vk_scx(s_guest_w); s_vk.height = vk_scy(s_guest_h);
+     VK_LOG("window %dx%d: frame rendered at %ux%u (%s)\n", w, h, s_vk.width, s_vk.height, e);
+@@ -7527,13 +7543,12 @@ static struct { u32 w, h; } s_rs_want;   /* the size wanted at the last present
+  * follow and no scale set while running, or no swapchain yet). */
+ static int vk_rescale_target(u32* ow, u32* oh, float* sx, float* sy)
+ {
+-    static const char* fit = (const char*)-1;
+-    if (fit == (const char*)-1) { fit = getenv("PS3RECOMP_VK_SCALE_FIT"); if (fit && !*fit) fit = NULL; }
++    const int fill = vk_fit_mode();
+     if (!s_guest_w || !s_guest_h) return -1;
+-    if (fit && s_vk.window) {
++    if (fill >= 0 && s_vk.window) {
+         if (!s_vk.swapchain || s_vk.no_area || !s_vk.sc_extent.width || !s_vk.sc_extent.height) return -1;
+         rsx_fit_scale((int)s_vk.sc_extent.width, (int)s_vk.sc_extent.height, vk_forced_aspect(), s_guest_w, s_guest_h,
+-                      vk_scale_k(), !strcmp(fit, "fill"), vk_max_dim(), sx, sy);
++                      vk_scale_k(), fill, vk_max_dim(), sx, sy);
+     } else if (s_scale_k > 0.0f) {
+         *sx = *sy = s_scale_k;
+     } else return -1;
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 3b2a186..5f20fb4 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -141,6 +141,10 @@ void rsx_vulkan_render_scale(float* x, float* y);   /* the internal resolution s
+  * multiple of the window's share (PS3RECOMP_VK_SCALE_FIT) or of the guest's size from the next frame but one. The
+  * frame also follows the window's size, its display mode and Alt+Enter by itself. */
+ void rsx_vulkan_set_scale(float k);
++/* The forced display aspect (as PS3RECOMP_VK_ASPECT; 0 = the window's) and the frame's fit to the window (as
++ * PS3RECOMP_VK_SCALE_FIT: 1 fill, 0 fit), from any thread; the frame follows from the next frame but one. */
++void rsx_vulkan_set_aspect(float aspect);
++void rsx_vulkan_set_fit(int fill);
+ 
+ /* Read the frame back to host memory (and to PS3RECOMP_VK_DUMP if set), and
+  * show it in the window if there is one. Same as _present_begin() followed

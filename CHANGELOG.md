@@ -58,6 +58,8 @@ program and folder that build it. Until a release that calls itself playable
 - A new resolution or display mode (window, borderless, fullscreen, Alt+Enter, a window resized by hand) is drawn at
   its full detail at once: the scene kept the size the game started with and was stretched until the next start.
   The Internal Resolution setting applies at once too, with DLSS and FSR 3.1 as well (ps3recomp patch 2093).
+- Aspect Ratio and Widescreen apply at once: the picture takes its new shape without a restart (ps3recomp patch
+  2094).
 - RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two
   optional boxes, and RecompLauncher counts Easy Setup only for a required one; now one box takes the installed
   folder, the disc's folder or its DATA000.PKG.
