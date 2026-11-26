@@ -39,25 +39,35 @@ check(doc["prepare"]["version"] == version and rl.build(version="9.9.9")["prepar
 check(doc["exit_codes"] == {"0": "ok", **{str(c): t for c, t in launch.EXIT.values()}},
       "exit_codes are kz_exit.h's table (launch.py's), and 0 is a normal quit")
 args = doc["prepare"]["args"] + doc["prepare"]["options"][0]["args"]
-filled = [a.replace("{input:game}", "/games/NPUA80856").replace("{input:eboot}", "/x/EBOOT.elf")
-          .replace("{input:disc}", "") for a in args]
+filled = [a.replace("{input:game}", "/games/NPUA80856").replace("{input:eboot}", "/x/EBOOT.elf") for a in args]
 a = launch.parser().parse_args(["--prepare", *filled])
 check(a.prepare and a.game == "/games/NPUA80856" and a.eboot == "/x/EBOOT.elf" and a.dlss == "accept",
       f"launch.py --prepare takes the file's arguments as filled in: {filled}")
 check(launch.firstrun_args("/nowhere", a, {})[:4] == ["--game", "/games/NPUA80856", "--eboot", "/x/EBOOT.elf"] and
       "--dlss" in launch.firstrun_args("/nowhere", a, {}), "and passes them on to firstrun.py")
-check(all(a.endswith(("={input:game}", "={input:eboot}", "={input:disc}")) or "{" not in a for a in doc["prepare"]["args"]),
+check(all(a.endswith(("={input:game}", "={input:eboot}")) or "{" not in a for a in doc["prepare"]["args"]),
       "each input is one argument (--x={input:id}), so an optional one left out leaves nothing behind")
-# The disc instead of the game folder: the game input left out (empty), --disc wins over the RPCS3 route
-filled = [a.replace("{input:game}", "").replace("{input:eboot}", "").replace("{input:disc}", "/discs/Trilogy")
-          for a in doc["prepare"]["args"]]
-a = launch.parser().parse_args(["--prepare", *filled])
-fa = launch.firstrun_args("/nowhere", a, {})
-check(fa[:2] == ["--disc", os.path.abspath("/discs/Trilogy")] and "--rpcs3" not in fa and "--game" not in fa,
-      f"the disc input alone gives firstrun.py --disc: {fa}")
-check({i["id"]: i.get("optional", False) for i in doc["inputs"]} == {"game": True, "disc": True, "eboot": True}
-      and next(i for i in doc["inputs"] if i["id"] == "disc")["role"] == "disc",
-      "the game folder or the disc: both optional, the disc with RecompLauncher's disc role")
+# The disc instead of the game folder, in the same box: a folder with PS3_GAME, or DATA000.PKG, goes the --disc way
+# (launch.is_disc), which wins over the RPCS3 route
+import tempfile  # noqa: E402
+with tempfile.TemporaryDirectory() as tmp:
+    disc_dir = pathlib.Path(tmp, "Trilogy")
+    (disc_dir / "PS3_GAME").mkdir(parents=True)
+    pkg = pathlib.Path(tmp, "DATA000.PKG")
+    pkg.write_bytes(b"")
+    installed = pathlib.Path(tmp, "NPUA80856")
+    (installed / "USRDIR").mkdir(parents=True)
+    for given in (disc_dir, pkg):
+        filled = [a.replace("{input:game}", str(given)).replace("{input:eboot}", "") for a in doc["prepare"]["args"]]
+        fa = launch.firstrun_args("/nowhere", launch.parser().parse_args(["--prepare", *filled]), {})
+        check(fa[:2] == ["--disc", os.path.abspath(given)] and "--rpcs3" not in fa and "--game" not in fa,
+              f"the disc in the game box ({given.name}) gives firstrun.py --disc: {fa}")
+    fa = launch.firstrun_args("/nowhere", launch.parser().parse_args(["--prepare", f"--game={installed}"]), {})
+    check(fa[:2] == ["--game", str(installed)] and "--disc" not in fa, f"an installed folder stays --game: {fa}")
+# Easy Setup (RecompLauncher's Launcher Support box, lib.rs profile_covers, as the site counts it): a required input of
+# role game or disc. 0.7.0 made both the game folder and the disc optional, and lost the tick.
+check({i["id"]: i.get("optional", False) for i in doc["inputs"]} == {"game": False, "eboot": True},
+      "one required game input (the folder, the disc or its package): RecompLauncher's Easy Setup")
 opt = doc["prepare"]["options"][0]
 check(opt["license"]["url"] == firstrun.DLSS_LICENSE_URL and opt["gpu"] == "nvidia",
       "the DLSS tick shows NVIDIA's licence, firstrun.py's link, to NVIDIA cards only")
@@ -66,8 +76,8 @@ eboot = next(i for i in doc["inputs"] if i["id"] == "eboot")
 check(row and row.group(2) in eboot["label"] and row.group(1) in eboot["label"] and eboot.get("optional"),
       "the optional EBOOT.elf names docs/GETTING-FILES.md's size and SHA-256")
 game = next(i for i in doc["inputs"] if i["id"] == "game")
-check(game["role"] == "game" and game["formats"] == [{"type": "folder"}] and "NPUA80856" in game["label"],
-      "the game input is the installed NPUA80856 folder")
+check(game["role"] == "game" and game["formats"] == [{"type": "folder"}, {"type": "file", "extensions": ["pkg"]}]
+      and "NPUA80856" in game["label"], "the game input is the NPUA80856 folder, the disc's folder or its package")
 check(not re.search(r"firmware|dev_flash|\.pup|libsre", rl.text(doc), re.I), "nothing in it asks for firmware")
 # prepare.done: the file a finished build always leaves, so the launcher knows the game is built (RecompLauncher's
 # "No prepare.done" warning, 2026-11-20): firstrun.py's last step writes work/build-stamp.json after a good compile
@@ -80,12 +90,11 @@ check(doc["start"]["program"] == [launch_name for launch_name in ("Project Vekta
 
 # dumps: the launcher reads a file input whole only when it has dumps, to show "matches the verified copy"; the
 # EBOOT's is the one docs/GETTING-FILES.md names (size here; its SHA-256 is checked above), the package's the US
-# PlayStation Store one (measured from the maintainer's own copy, 2026-11-24). The game folder has none: a folder is
-# never read whole.
+# PlayStation Store one (measured from the maintainer's own copy, 2026-11-24), on the game input, whose file is the
+# package (a folder is never read whole).
 dumps = {i["id"]: i.get("dumps") for i in doc["inputs"]}
-check(dumps["game"] is None and dumps["eboot"][0]["size"] == int(row.group(1).replace(",", "")) and
-      dumps["disc"][0]["size"] > 10**9,
-      f"dumps: the EBOOT's size is GETTING-FILES.md's, the disc input's is the package's, none on the folder: {dumps}")
+check(dumps["eboot"][0]["size"] == int(row.group(1).replace(",", "")) and dumps["game"][0]["size"] > 10**9,
+      f"dumps: the EBOOT's size is GETTING-FILES.md's, the game input's is the package's: {dumps}")
 
 # config and settings: the PC page's file (kz1hd_pc.ini, key=value lines with no sections, in the run folder) and
 # rows that write what the game reads: each key is one the game keeps (kVideo or the mouse rows), each default is the

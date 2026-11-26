@@ -27,6 +27,9 @@ program and folder that build it. Until a release that calls itself playable
   at 120).
 
 ### Fixed
+- RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two
+  optional boxes, and RecompLauncher counts Easy Setup only for a required one; now one box takes the installed
+  folder, the disc's folder or its DATA000.PKG.
 - Extras > Game Intro plays the whole opening movie again with "Opening Movie" off. The option skipped every
   showing of the movie, so Extras showed a black frame and went back to the menu; now it only skips the one at
   start-up.
