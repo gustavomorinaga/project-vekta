@@ -81,6 +81,7 @@ STATUS_CLASS = {"works": "ok", "partial": "part", "not yet": "no", "n/a": "na"}
 STATUS_TAG = {"works": "OK", "partial": "WIP", "not yet": "NO", "n/a": "N/A"}
 CHANGELOG_N = 8     # items in the changelog box
 NEWS_N = 3          # changelog entries shown as news
+NEWS_ITEMS_N = 8    # items of each news entry on the page; the rest are in CHANGELOG.md (keeps the home view light)
 TODO_N = 5          # objectives
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 SCRIPT = "site.js"   # the one script a page may load (same origin)
@@ -508,9 +509,14 @@ def sections(root, problems):
         when = long_date(e["date"]) if e["date"] else "not released yet"
         w.append(f"<article class=\"rel\">\n<h3>{esc(e['name'])}</h3>\n"
                  f"<p class=\"meta\">{esc(when)}{' · ' + esc(e['note']) if e['note'] else ''}</p>\n<ul class=\"rlist\">\n")
-        for sec, t in e["items"]:
+        for sec, t in e["items"][:NEWS_ITEMS_N]:
             w.append(f"<li><span class=\"kind\">{esc(sec or 'Note')}</span>{inline(t)}</li>\n")
-        w.append("</ul>\n</article>\n")   # no per-entry release link: test_version_agree allows only VERSION's
+        w.append("</ul>\n")
+        rest = len(e["items"]) - NEWS_ITEMS_N
+        if rest > 0:
+            w.append(f"<p class=\"small\">And {rest} more {'item' if rest == 1 else 'items'} in "
+                     f"<a href=\"{esc(gh(CHANGELOG))}\">CHANGELOG.md</a>.</p>\n")
+        w.append("</article>\n")   # no per-entry release link: test_version_agree allows only VERSION's
     w.append(more(gh(CHANGELOG), "The whole changelog"))
     secs.append(("news", "News", "The newest release notes, newest first.", "".join(w)))
 
