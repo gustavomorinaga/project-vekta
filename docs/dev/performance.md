@@ -204,6 +204,34 @@ Tried and not kept (local branches, no measurable gain):
 Upstream #732 and #731 (reservation and lock-line paths) were not tried: what they speed up is below 0.5 % of the main
 thread here. The draw engine's vertex cache of upstream #718 became patches 2062 and 2063.
 
+## Multiplayer maps, 2026-11-25
+
+Battlefields > One Player > Team Deathmatch, 6 ISA + 7 Helghast bots (the menu's maximum), 2560x1440 windowed,
+fps_limit 144, vsync off, field of view 87, the CPU capped at 4.0 GHz (the maintainer's i7-11700K reaches 96-99 C at a
+map load at its stock clock), 100 s of play per run (match result screens and loads left out), two runs per map.
+The 0.7.0 build.
+
+| Map | fps (two runs) | 1 % low | draws per frame | main thread |
+|---|---|---|---|---|
+| Delta Creek | 130.7 / 129.7 | 72.7 / 70.9 | about 140 | 90 % |
+| Canyon Crossing | 110.0 / 108.0 | 61.5 / 60.0 | about 560 | 95 % |
+| Vektan Slums | 143.4 / 143.3 | 88.0 / 88.5 | about 110 | 88 % |
+| Core Shaft | 143.3 / 143.3 | 86.9 / 86.9 | about 80 | 81 % |
+| Park Terminal | 136.7 / 137.9 | 76.6 / 79.9 | about 190 | 94 % |
+| Orbital Station | 142.6 / 142.7 | 83.5 / 81.5 | about 80 | 86 % |
+| Southern Hills | 140.8 / 140.5 | 80.4 / 81.6 | about 120 | 85 % |
+| Beachhead | 136.8 / 136.7 | 79.5 / 77.8 | about 165 | 90 % |
+
+The GPU was 45 to 75 % busy. Field of view 120: Canyon Crossing 96.4 fps (700 draws), Delta Creek 119.1.
+
+Main thread per presented frame, from `KZ_PROF_STACK=1 KZ_PROF_TS=1` samples taken in play only: Canyon Crossing
+7.05 ms, of which world drawing (`func_0017FB14`) 3.03 ms, against 0.62 ms of 5.72 on Vektan Slums; the extra draws
+cost about 5 us each, mostly PSGL's per-draw setup (`func_00054FFC`: `glDrawElements` `func_003239CC`, shader setup
+`func_00059278`, `func_0005A578`, `func_00057E1C`). The bots cost little: the characters' skeletal animation
+(`func_001B55F0`, shared by every animated entity; its pose moves the characters and is read by aiming, target points
+and damage, so it is not cosmetic) 0.5 to 1.0 ms, the object movers (`func_00287FB0`) 0.2 to 0.65 ms. Nothing in
+the main loop `func_0021AB28` runs at a fixed 30 Hz: at 144 Hz every update runs once a frame.
+
 ## What is left
 
 1. ~~Rewrite PSGL in C++, routine by routine.~~ Two steps measured (above): no gain within the A/B's resolution

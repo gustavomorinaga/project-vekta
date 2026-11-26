@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 24 Nov 2026 19:19:53 -0300
+Subject: [PATCH] Vulkan: the internal resolution scale for a title's own code
+
+rsx_vulkan_render_scale(&x, &y) returns the scale frames are drawn at
+(PS3RECOMP_VK_SCALE, _SCALE_XY, the window's fit or fill, or the temporal
+upscaler's scene size; 1 x 1 at the guest's size).
+
+Symptom (Killzone HD, issue #158): red lines along the top and bottom of the
+opening movie at 5760x3240 with DLSS, and at 4.5x with the linear upscaler
+too; none at 1x. The game draws a 1280x720 movie frame from a 2048x1024
+texture, and at a scale other than 1 the bilinear filter reaches the texels
+past the frame, which are other memory. The port's fix pulls the quad's
+coordinates in by half a texel, only when the frames are scaled, so at 1x
+it changes nothing: it needs to know the scale, which until now only the
+backend knew.
+---
+ libs/video/rsx_vulkan_backend.c | 4 ++++
+ libs/video/rsx_vulkan_backend.h | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 993b11f..03b1300 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -3487,6 +3487,10 @@ static float s_rscale_x = 1.0f, s_rscale_y = 1.0f;
+ static u32 vk_scx(u32 v) { const u32 r = (u32)((float)v * s_rscale_x + 0.5f); return r ? r : 1u; }
+ static u32 vk_scy(u32 v) { const u32 r = (u32)((float)v * s_rscale_y + 0.5f); return r ? r : 1u; }
+ static int vk_scaled(void) { return s_rscale_x != 1.0f || s_rscale_y != 1.0f; }
++/* The internal resolution scale now (1 x 1 when frames are drawn at the guest's
++ * size), for a title's own code that has to know whether texels land on pixel
++ * centres. */
++void rsx_vulkan_render_scale(float* x, float* y) { *x = s_rscale_x; *y = s_rscale_y; }
+ static void vk_read_scale(void)
+ {
+     const char* e = getenv("PS3RECOMP_VK_SCALE");
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 8633db6..547d052 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -136,6 +136,7 @@ int  rsx_vulkan_temporal_built(void);
+ void rsx_vulkan_latency_sleep(void);   /* the game's thread, after a flip */
+ void rsx_vulkan_set_crop(float f);
+ int  rsx_vulkan_output_size(int* w, int* h);
++void rsx_vulkan_render_scale(float* x, float* y);   /* the internal resolution scale (1 x 1: the guest's size) */
+ 
+ /* Read the frame back to host memory (and to PS3RECOMP_VK_DUMP if set), and
+  * show it in the window if there is one. Same as _present_begin() followed

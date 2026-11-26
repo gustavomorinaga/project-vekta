@@ -35,12 +35,15 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import edition_map   # noqa: E402  (tools/edition_map.py: the EU edition's addresses)
 WINDOWS = os.name == "nt"
 PATH_VARS = ("KZ_GAME", "KZ_EBOOT", "KZ_PSARC", "KZ_WORK", "KZ_VFS", "PS3RECOMP_DIR", "KZ_PY")
 # The data archive the port was made from (docs/GETTING-FILES.md): the decrypted data_ps3.psarc, which the game reads
 # either as the player's own file (KZ_PSARC) or, when there is none, from the installed game's data_ps3.psarc.edat,
 # decrypted by the runtime into work/edat-cache on the first open (patch 4014).
-PSARC_SIZE, PSARC_SHA256 = 3147174243, "341f3c61ee14836047659ebca863ab454fff14f712301ccf8e7f9029deb65d2d"
+# Each edition has its own (edition_map.EDITIONS); these are the US one's.
+PSARC_SIZE, PSARC_SHA256 = edition_map.EDITIONS["US"]["psarc"]
 EDAT_NAME = "data_ps3.psarc.edat"
 
 
@@ -296,9 +299,34 @@ def read_seeds(path):
         return [line.strip() for line in f if not line.startswith("#") and line.strip()]
 
 
-def write_eboot_id(eboot, gen):
+def edition(e):
+    """The edition of Killzone HD in KZ_GAME, from its PARAM.SFO's TITLE_ID (tools/edition_map.py): US or EU.
+    KZ_EDITION overrides it; a game folder without a PARAM.SFO is taken as US, the edition the port was made from."""
+    if e.get("KZ_EDITION"):
+        if e["KZ_EDITION"] not in edition_map.EDITIONS:
+            raise Fail(f"KZ_EDITION is {e['KZ_EDITION']}: US or EU")
+        return e["KZ_EDITION"]
+    title = edition_map.sfo_title(os.path.join(e["KZ_GAME"], "PARAM.SFO"))
+    if title is None:
+        return "US"
+    try:
+        return edition_map.edition_of(title)
+    except ValueError as x:
+        raise Fail(str(x))
+
+
+def guest(ed, rows, us):
+    """A US EBOOT address the lift passes to a tool, in edition ed (re/eu/address_map.tsv), as 0x hex."""
+    a = us if ed == "US" else edition_map.eu(us, rows)
+    if a is None:
+        raise Fail(f"0x{us:X} has no {ed} address in re/eu/address_map.tsv")
+    return f"0x{a:X}"
+
+
+def write_eboot_id(eboot, gen, ed="US"):
     """gen/eboot_id.h: the size and SHA-256 of the EBOOT the lift is made from, which port/kz1hd/main.cpp checks the
-    EBOOT it loads against (eboot_check.h). Only the two numbers: nothing of the file is copied."""
+    EBOOT it loads against (eboot_check.h). Only the two numbers: nothing of the file is copied. An EU lift also
+    defines KZ_EBOOT_EDITION_EU, which the build follows (lift_defs) and main.cpp checks against KZ_EDITION_EU."""
     h = hashlib.sha256()
     size = 0
     with open(eboot, "rb") as f:
@@ -308,7 +336,8 @@ def write_eboot_id(eboot, gen):
     os.makedirs(gen, exist_ok=True)
     with open(os.path.join(gen, "eboot_id.h"), "w", encoding="utf-8", newline="\n") as f:
         f.write("/* written by tools/kzbuild.py lift: the EBOOT.elf this lift was made from (port/kz1hd/eboot_check.h) */\n"
-                f'#define KZ_EBOOT_SHA256 "{h.hexdigest()}"\n#define KZ_EBOOT_SIZE {size}LL\n')
+                f'#define KZ_EBOOT_SHA256 "{h.hexdigest()}"\n#define KZ_EBOOT_SIZE {size}LL\n'
+                + ("#define KZ_EBOOT_EDITION_EU 1\n" if ed == "EU" else ""))
     return h.hexdigest(), size
 
 
@@ -331,9 +360,16 @@ def cmd_lift(e, a):
     print("== PPU", flush=True)
     # The loader's view of the EBOOT (segments, imports, the functions its tables name), then the function list
     # from those and the seeds in re/function_seeds.txt.
+    ed = edition(e)
+    rows = edition_map.load() if ed != "US" else None
+    print(f"edition: {ed}", flush=True)
     run([py, j(t, "ppu_loader.py"), eboot, "-o", an], e, "null")
+    # The seeds are the US EBOOT's function starts; another edition's are the same functions, moved.
+    seeds = read_seeds(j(root, "re", "function_seeds.txt"))
+    if rows:
+        seeds = [guest(ed, rows, int(s, 16)) for s in seeds]
     with open(j(k, "analysis", "seeds.json"), "w", encoding="utf-8") as f:
-        json.dump(read_seeds(j(root, "re", "function_seeds.txt")), f)
+        json.dump(seeds, f)
     run([py, j(t, "find_functions.py"), eboot, "--seed-json", j(k, "analysis", "EBOOT.functions.json"),
          "--seed-json", j(k, "analysis", "seeds.json"), "--output", j(k, "analysis", "functions.json")], e, "null")
     # Functions port/kz1hd/native_ppu/ reimplements: the lifter emits them as <name>_lifted.
@@ -341,14 +377,23 @@ def cmd_lift(e, a):
     # The build globs the folder's sources: a chunk an earlier lift left there (another version's chunk count) would be
     # compiled in, so each lift starts from an empty folder, as the SPU one does.
     shutil.rmtree(j(k, "gen"), ignore_errors=True)
-    # 0x3B5CB0/0x3B5DD4: its libc setjmp/longjmp, which Lua 4.0 raises its errors with.
+    # Another edition's functions keep the US names the port calls (patch 3038's --func-names).
+    names = []
+    if rows:
+        with open(j(k, "analysis", "functions.json"), encoding="utf-8") as f:
+            starts = [int(fn["start"], 16) for fn in json.load(f)]
+        with open(j(k, "analysis", "func_names.txt"), "w", encoding="utf-8", newline="\n") as f:
+            f.writelines(f"0x{a:08X} {n}\n" for a, n in sorted(edition_map.func_names(starts, rows).items()))
+        names = ["--func-names", j(k, "analysis", "func_names.txt")]
+    # 0x3B5CB0/0x3B5DD4: its libc setjmp/longjmp, which Lua 4.0 raises its errors with; 0x52F740: the code's end.
     run([py, j(t, "ppu_lifter.py"), eboot, "--functions", j(k, "analysis", "functions.json"), "--hle-stubs",
-         j(k, "analysis", "EBOOT.imports.json"), "--setjmp", "0x3B5CB0", "--longjmp", "0x3B5DD4", "--code-end",
-         "0x52f740", "--chunk-lines", "150000", "-j", jobs(e), "--output", j(k, "gen") + os.sep], e, j(k, "lift.log"))
+         j(k, "analysis", "EBOOT.imports.json"), "--setjmp", guest(ed, rows, 0x3B5CB0), "--longjmp",
+         guest(ed, rows, 0x3B5DD4), "--code-end", guest(ed, rows, 0x52F740).lower(), *names, "--chunk-lines",
+         "150000", "-j", jobs(e), "--output", j(k, "gen") + os.sep], e, j(k, "lift.log"))
     tail_file(j(k, "lift.log"), 2)
     # Guest registers in host locals inside each function (see the tool's header): ~+7% in Level 1 at 144 Hz.
     tail(run([py, j(t, "ppu_regcache.py"), j(k, "gen")], e, "capture"), 1)
-    write_eboot_id(eboot, j(k, "gen"))
+    write_eboot_id(eboot, j(k, "gen"), ed)
 
     print("== SPU", flush=True)
     # Functions port/kz1hd/native/ reimplements: the lifter emits them as <name>_lifted.
@@ -358,7 +403,7 @@ def cmd_lift(e, a):
     shutil.rmtree(s, ignore_errors=True)
     os.makedirs(j(s, "images"))
     run([py, j(t, "extract_spu_images.py"), eboot, "--output", j(s, "images")], e, "null")
-    tail(run([py, j(root, "tools", "extract_spu_modules.py"), eboot, "--out", s, "--pm", "0x5B9180:12160",
+    tail(run([py, j(root, "tools", "extract_spu_modules.py"), eboot, "--out", s, "--pm", guest(ed, rows, 0x5B9180) + ":12160",
               "--ps3recomp", e["PS3RECOMP_DIR"]], e, "capture"), 1)
     tail(run([py, j(t, "lift_jobmods.py"), "--jobmods", j(s, "jobmods"), "--out", s, "--register",
               j(s, "jobmods_register.c"), "--symbol-prefix", "kz1"], e, "capture"), 1)
@@ -447,7 +492,13 @@ def prepared_archive(e):
             dec = f.read().strip()
     except OSError:
         return None
-    return dec if os.path.isfile(dec) and os.path.getsize(dec) == PSARC_SIZE else None
+    return dec if os.path.isfile(dec) and os.path.getsize(dec) == psarc_want(e)[0] else None
+
+
+def psarc_want(e):
+    """(size, SHA-256) of the plaintext archive of KZ_GAME's edition."""
+    ed = edition(e)
+    return (PSARC_SIZE, PSARC_SHA256) if ed == "US" else edition_map.EDITIONS[ed]["psarc"]
 
 
 def sha256_file(path):
@@ -495,9 +546,10 @@ def cmd_data(e, a):
                    + "\n".join(text.splitlines()[-12:]))
     dec = data_archive(e, m.group(1))
     size = os.path.getsize(dec) if os.path.isfile(dec) else -1
-    if size != PSARC_SIZE or sha256_file(dec) != PSARC_SHA256:
+    want = psarc_want(e)
+    if (size, sha256_file(dec) if size == want[0] else "") != want:
         raise Fail(f"the opened archive {dec} is not the tested one ({size} bytes; docs/GETTING-FILES.md); "
-                   "is the installed game NPUA80856 version 01.00?")
+                   "is the game NPUA80856, NPEA00418 or BCES01743 version 01.00?")
     with open(os.path.join(edat_cache(e), "data_ps3.psarc.ok"), "w", encoding="utf-8") as f:
         f.write(dec + "\n")
     extract_movies(e, dec, u)
@@ -508,8 +560,10 @@ def lift_defs(e):
     w = e["KZ_WORK"]
     if not os.path.isfile(os.path.join(w, "lift", "gen", "ppu_recomp.h")):
         raise Fail(f"no lift in {os.path.join(w, 'lift')}: run tools/lift.sh first")
+    with open(os.path.join(w, "lift", "gen", "eboot_id.h"), encoding="utf-8") as f:
+        ed = "EU" if "KZ_EBOOT_EDITION_EU" in f.read() else "US"   # the edition the lift was made from
     return [f"-DPS3RECOMP_DIR={e['PS3RECOMP_DIR']}", f"-DRECOMP_DIR={os.path.join(w, 'lift', 'gen')}",
-            f"-DSPU_DIR={os.path.join(w, 'lift', 'spu')}"]
+            f"-DSPU_DIR={os.path.join(w, 'lift', 'spu')}", f"-DKZ_EDITION={ed}"]
 
 
 def ninja(e, b):

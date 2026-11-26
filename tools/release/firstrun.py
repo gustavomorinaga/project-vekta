@@ -34,6 +34,8 @@ when an RPCS3 with the game is found and no paths were saved before.
 --disc PATH (tools/release/rpcs3_disc.py): the Killzone Trilogy disc's folder or its PS3_EXTRA package, with no RPCS3
 installed: the official RPCS3, downloaded at a pinned version and SHA-256 into work/toolchain-cache/rpcs3, installs
 the package into work/prep/disc and decrypts a copy of its EBOOT.BIN into work/prep; the paths are saved like --rpcs3's.
+A folder copy of the European Killzone disc (BCES-01743) needs no install: only its EBOOT.BIN is decrypted, and its
+data_ps3.psarc is used where it is.
 
 The steps, each skipped when its marker in work/.firstrun says its inputs have not changed:
   check     tools/check-game-files.py (every run; a missing or different required file stops here, and so does a CPU
@@ -100,7 +102,7 @@ DLSS_SET = "dlss-sdk"
 DLSS_LICENSE_URL = "https://github.com/NVIDIA/DLSS/blob/v310.9.16/LICENSE.txt"
 # The player's files: (option, variable, what it is, default under the root); tools/env.sh has the same defaults.
 INPUTS = [
-    ("game", "KZ_GAME", "the installed game folder (NPUA80856: PARAM.SFO, TROPDIR, USRDIR)",
+    ("game", "KZ_GAME", "the installed game folder (NPUA80856 or NPEA00418: PARAM.SFO, TROPDIR, USRDIR)",
      ("Game", "NPUA80856")),
     ("eboot", "KZ_EBOOT", "the decrypted EBOOT (EBOOT.elf)", ("Game", "EBOOT.elf")),
     ("psarc", "KZ_PSARC", "the decrypted data archive (data_ps3.psarc; optional: without it the game folder's own "
@@ -196,7 +198,8 @@ class Ctx:
                 v = tree_hash(r, ["port/patches", "third_party/ps3recomp.pin", "tools/kzbuild.py"]) + \
                     self.pin()
             elif key == "lift":
-                v = tree_hash(r, ["tools/kzbuild.py", "tools/extract_spu_modules.py", "re/function_seeds.txt",
+                v = tree_hash(r, ["tools/kzbuild.py", "tools/extract_spu_modules.py", "re/function_seeds.txt", "re/eu",
+                                  "tools/edition_map.py",
                                   "port/kz1hd/native", "port/kz1hd/native_ppu"])
             elif key == "vfs":
                 v = tree_hash(r, ["tools/kzbuild.py", "tools/psarc_ls.py"])
@@ -901,9 +904,13 @@ def use_disc(c, disc, say=print, step=None):
     if r["status"] != "ok":
         return [p["text"] for p in r["problems"]]
     c.paths.update(game=r["game"], eboot=r["eboot"])
-    c.paths.pop("psarc", None)   # the disc's .edat is read by the port itself
+    if r.get("psarc"):
+        c.paths["psarc"] = r["psarc"]   # the European disc's data_ps3.psarc, read where it is
+    else:
+        c.paths.pop("psarc", None)   # the disc package's .edat is read by the port itself
     write_paths(c.work, c.paths)
-    say(f"From the disc: the game installed in {r['game']}; EBOOT.elf made in {os.path.dirname(r['eboot'])}")
+    say(f"From the disc: the game {'in' if r.get('psarc') else 'installed in'} {r['game']}; EBOOT.elf made in "
+        f"{os.path.dirname(r['eboot'])}")
     return []
 
 
@@ -911,7 +918,7 @@ INSTALL_DOC = "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/I
 SHOW_ME_HOW = """How to give the port your game (every step: docs/INSTALL.md, also at """ + INSTALL_DOC + """):
   The easy way, through RPCS3:
     1. In RPCS3, install Killzone HD (NPUA80856) from your own Killzone Trilogy disc, or your PlayStation Store copy
-       with its licence.
+       (US NPUA80856 or European NPEA00418) with its licence.
     2. Choose "Use my RPCS3 install" here: your RPCS3 makes the copies the port needs, in this folder's work/prep.
        Nothing is written into the game's or RPCS3's folders.
   Or, with the decrypted files you already have: choose "I have the files ready" and give the installed game
@@ -960,7 +967,7 @@ def offer_rpcs3(c, hint, ask=input, say=print):
 
 
 RPCS3_FOLDER_QUESTION = ("RPCS3's folder: where rpcs3.exe is (a portable RPCS3), RPCS3's config folder (on Linux "
-                         "~/.config/rpcs3), or the game folder RPCS3 installed (dev_hdd0/game/NPUA80856): ")
+                         "~/.config/rpcs3), or the game folder RPCS3 installed (dev_hdd0/game/NPUA80856 or NPEA00418): ")
 
 
 def ask_paths(paths, only=None, ask=input, say=print):
@@ -1111,7 +1118,8 @@ def main(argv=None):
                     help="take the game from your RPCS3 (DIR, else the usual places); your RPCS3 "
                          "decrypts a copy of EBOOT.BIN into work/prep")
     ap.add_argument("--disc", metavar="PATH",
-                    help="the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) with no RPCS3 "
+                    help="the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) or your "
+                         "European Killzone disc (a copy of its folder) with no RPCS3 "
                          "installed: the official RPCS3 is downloaded (pinned, SHA-256 checked) to install and decrypt "
                          "it into work/")
     ap.add_argument("--jobs", type=int, help="parallel jobs (default: KZ_JOBS, else from free memory)")

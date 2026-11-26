@@ -692,7 +692,7 @@ def classify(step, reasons, rc, timed_out=False):
     if any(rpcs3_import.HELP[k][:40] in text for k in ("not_found", "not_rpcs3", "no_exe")):
         return NO_RPCS3
     if "DIFFERENT" in text or rpcs3_import.HELP["wrong_file"][:40] in text or \
-            any(rpcs3_disc.HELP[k][:40] in text for k in ("not_pkg", "psn_pkg", "bad_pkg")):
+            any(rpcs3_disc.HELP[k][:40] in text for k in ("not_pkg", "psn_pkg", "bad_pkg", "eu_pkg")):
         return WRONG_EDITION
     if step in ("check", "rpcs3", "disc"):
         return FILE_MISSING
@@ -809,8 +809,9 @@ def parser():
     ap.add_argument("--rpcs3", nargs="?", const="", metavar="DIR",
                     help="take the game from your RPCS3 (DIR, else its usual places)")
     ap.add_argument("--disc", metavar="PATH",
-                    help="install the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) with "
-                         "the official RPCS3, downloaded for this (no RPCS3 of yours needed)")
+                    help="install the game from your Killzone Trilogy disc (its folder, or PS3_EXTRA's package) or "
+                         "your European Killzone disc (a copy of its folder) with the official RPCS3, downloaded for "
+                         "this (no RPCS3 of yours needed)")
     ap.add_argument("--dlss", choices=("accept", "decline"),
                     help="accept: you accept NVIDIA's DLSS SDK licence and the build downloads it (firstrun.py --dlss)")
     ap.add_argument("--repair", action="store_true", help='"Verify and rebuild": check the install, then rebuild')

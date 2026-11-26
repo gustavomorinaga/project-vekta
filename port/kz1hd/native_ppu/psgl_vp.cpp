@@ -41,9 +41,9 @@ bool load_kinds(uint32_t table)
     if (s_table == table) return true;
     for (uint32_t i = 0; i < 0x6E; i++) {
         const uint32_t t = table + (uint32_t)(int32_t)vm_read32(table + 4 * i);
-        s_kind[i] = t == 0x00312654u ? K_SKIP : t == 0x003128CCu ? K_MAT4
-                  : (t == 0x00312B20u || t == 0x00312D2Cu) ? K_MAT3
-                  : (t == 0x00312C60u || t == 0x00312D00u) ? K_VEC4 : K_UNKNOWN;
+        s_kind[i] = t == KZ_GA(0x00312654u) ? K_SKIP : t == KZ_GA(0x003128CCu) ? K_MAT4
+                  : (t == KZ_GA(0x00312B20u) || t == KZ_GA(0x00312D2Cu)) ? K_MAT3
+                  : (t == KZ_GA(0x00312C60u) || t == KZ_GA(0x00312D00u)) ? K_VEC4 : K_UNKNOWN;
     }
     s_table = table;
     return true;
