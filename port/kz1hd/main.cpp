@@ -53,11 +53,15 @@
 #include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
+#include "edition.h"     /* KZ_GA: guest addresses in this build's edition */
 #include "crash_report.h" /* [kz-crash], [kz-hang], KZ_CRASH_TEST */
 #include "fios_cache.h"   /* a cut-short FIOS cache.dat is removed before the game reads it */
 #include "sys_info.h"     /* [kz-sys], the session header */
 #if __has_include("eboot_id.h")
 #include "eboot_id.h"    /* KZ_EBOOT_SHA256, KZ_EBOOT_SIZE: written into the lift's gen/ by tools/kzbuild.py */
+#if defined(KZ_EBOOT_EDITION_EU) != KZ_EDITION_EU
+#error "the lift and KZ_EDITION are different editions (tools/kzbuild.py build passes the lift's)"
+#endif
 #endif
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
@@ -277,7 +281,7 @@ static void kz_tick_rate(void)
     static int applied = 30;         /* the rate the clock object holds */
     static uint32_t cap30;           /* the game's own tick cap */
     static double ms30 = -1;         /* the game's own ticks per ms */
-    if (ms30 < 0) { uint64_t u; memcpy(&u, vm_base + 0x21C0F0u, 8); u = __builtin_bswap64(u); memcpy(&ms30, &u, 8); }
+    if (ms30 < 0) { uint64_t u; memcpy(&u, vm_base + KZ_GA(0x21C0F0u), 8); u = __builtin_bswap64(u); memcpy(&ms30, &u, 8); }
     uint32_t p; memcpy(&p, vm_base + 0x828734u, 4); p = __builtin_bswap32(p);
     if (!p || p >= 0xF0000000u) return;
     uint32_t v; memcpy(&v, vm_base + p + 0x54, 4); v = __builtin_bswap32(v);
@@ -290,7 +294,7 @@ static void kz_tick_rate(void)
         if (hz == 30) return;
     } else if (applied == 30 || v != cur_bits || hz == applied) return;   /* not ours, or in force */
     { const double d = hz == 30 ? ms30 : kz_tick_factor(hz); uint64_t u;   /* tick_rate.h: a hair above hz / 1000 */ memcpy(&u, &d, 8); u = __builtin_bswap64(u);
-      memcpy(vm_base + 0x21C0F0u, &u, 8); }
+      memcpy(vm_base + KZ_GA(0x21C0F0u), &u, 8); }
     const float f = 1.0f / (float)hz; memcpy(&v, &f, 4); v = __builtin_bswap32(v);
     memcpy(vm_base + p + 0x54, &v, 4);
     /* +0x74 caps the ticks one frame may advance: the same span of game time
@@ -894,7 +898,7 @@ int main(int argc, char** argv)
      * entry (tools/release/firstrun.py desktop_entry), where a Wayland desktop takes the icon from. */
     rsx_vulkan_set_window_identity("project-vekta", reinterpret_cast<const uint32_t*>(kz_window_icon),
                                    KZ_WINDOW_ICON_SIZE, KZ_WINDOW_ICON_SIZE);
-    /* The title id (NPUA80856) names the save directory, as on the PS3. */
+    /* The title id (NPUA80856, NPEA00418) names the save directory, as on the PS3. */
     { std::string sfo = std::string(ppu_vfs_root) + "/PS3_GAME/PARAM.SFO";
       cellGame_init_from_paramsfo(sfo.c_str()); }
 

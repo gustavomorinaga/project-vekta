@@ -52,6 +52,7 @@
 #include "view_aspect.h" /* the aspect setting */
 #include "lua_states.h"  /* the Lua states given the PC script */
 #include "debug_give.h"  /* KZ_DEBUG_GIVE */
+#include "edition.h"     /* KZ_GA: guest addresses in this build's edition */
 #include "menu_box.h"    /* the list box the mouse drives */
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
@@ -708,8 +709,8 @@ static void set_pads(ppu_context* c) { attr_log("set_pads", c); if ((int32_t)c->
 
 static const uint32_t kClass      = 0x0131E4DC;   /* ControllerConfig's class (func_00501A70) */
 static const uint32_t kSysClass   = 0x0131ECD0;   /* gGameSystem's class ("Audio settings" and the rest) */
-static const uint32_t kCategory   = 0x00548880;   /* "ControllerConfig" */
-static const uint32_t kFloatVtbl  = 0x00552FC8, kBoolVtbl = 0x00552728;
+static const uint32_t kCategory   = KZ_GA(0x00548880);   /* "ControllerConfig" */
+static const uint32_t kFloatVtbl  = KZ_GA(0x00552FC8), kBoolVtbl = KZ_GA(0x00552728);
 static const uint32_t kToc        = 0x005EE4A0;
 static const uint32_t kFakeCode   = 0x00000100;   /* host functions, at addresses no code has */
 
@@ -1483,15 +1484,15 @@ void kz_pc_options_register(void)
     g_look_k   = (e ? (float)atof(e) : 1.0f) * KZ_LOOK_K;
     g_look_log = getenv("KZ_LOOKLOG") != nullptr;
     g_pad_mouse_direct = 1;
-    ppu_register_function(0x00291FA8, player_look);
-    ppu_register_function(0x00185100, lua_binding);
-    ppu_register_function(0x00272670, dialog_box);
-    ppu_register_function(0x002750D8, add_option<func_002750D8, false>);
-    ppu_register_function(0x00275200, add_option<func_00275200, false>);
-    ppu_register_function(0x00275330, add_option<func_00275330, true>);
-    ppu_register_function(0x00275460, add_option<func_00275460, true>);
+    ppu_register_function(KZ_GA(0x00291FA8), player_look);
+    ppu_register_function(KZ_GA(0x00185100), lua_binding);
+    ppu_register_function(KZ_GA(0x00272670), dialog_box);
+    ppu_register_function(KZ_GA(0x002750D8), add_option<func_002750D8, false>);
+    ppu_register_function(KZ_GA(0x00275200), add_option<func_00275200, false>);
+    ppu_register_function(KZ_GA(0x00275330), add_option<func_00275330, true>);
+    ppu_register_function(KZ_GA(0x00275460), add_option<func_00275460, true>);
     std::thread([] { for (;;) { menu_mouse(); std::this_thread::sleep_for(std::chrono::milliseconds(8)); } }).detach();
-    ppu_register_function(0x00275978, add_list_box);
-    ppu_register_function(0x0026D03C, create_selection);
-    ppu_register_function(0x00276DC0, selection_update);
+    ppu_register_function(KZ_GA(0x00275978), add_list_box);
+    ppu_register_function(KZ_GA(0x0026D03C), create_selection);
+    ppu_register_function(KZ_GA(0x00276DC0), selection_update);
 }

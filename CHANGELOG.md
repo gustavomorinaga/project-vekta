@@ -7,6 +7,15 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game
+  folder, lifts it with its own addresses and plays it in the language the system asks for (its archive has English,
+  French, German, Italian, Spanish and Dutch), with its saves in their own folder. Install it in your RPCS3 with its
+  licence and choose "Use my RPCS3 install".
+- The European disc of Killzone HD (BCES-01743): give a copy of the disc's folder to `--disc FOLDER` (or "From my
+  Killzone Trilogy disc" in the setup). Its files are the European edition's; the official RPCS3 only decrypts a copy
+  of its `EBOOT.BIN`, and the archive is read where it is ([docs/GETTING-FILES.md](docs/GETTING-FILES.md)).
+
 ### Changed
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
   every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`

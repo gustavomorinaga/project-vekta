@@ -1,0 +1,270 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 24 Nov 2026 12:59:46 -0300
+Subject: [PATCH] ppu_lifter: --func-names names functions from a file,
+ dispatch stays by address
+
+A second build of the same program from another EBOOT (Killzone HD's EU edition: the same source linked again, its
+code moved by up to 0xE8 bytes) lifts every function under a new func_ADDR name, so the integration code that calls
+lifted functions by name (the port's native overrides, PPU_LIFT_NATIVE, direct calls) no longer links.
+
+--func-names FILE takes 'ADDR NAME' lines: the function at ADDR is emitted as NAME everywhere the lifter writes its
+name (its definition, calls, tail calls, jump-table arms, the header's externals and function_table's name), while
+function_table keeps the real address, so dispatch is unchanged. Names must be C identifiers, each given to one
+address; a lift where two addresses (functions or the externals it declares) would end up with one name stops with
+a message. Without the option the output
+is what it was. tools/test_ppu_func_names.py checks the names, the address in function_table, that only the names
+differ from a plain lift, and the two refusals.
+---
+ tools/ppu_lifter.py          | 79 +++++++++++++++++++++++++++++++-----
+ tools/test_ppu_func_names.py | 53 ++++++++++++++++++++++++
+ 2 files changed, 121 insertions(+), 11 deletions(-)
+ create mode 100644 tools/test_ppu_func_names.py
+
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+index 225c535..ab7f65c 100644
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -1185,6 +1185,11 @@ class PPULifter:
+         # addr(int) -> recovered name label (from Ghidra analysis). Emitted as a
+         # comment above func_ADDR so dispatch stays address-based.
+         self.name_map: dict[int, str] = {}
++        # --func-names: addr(int) -> the C name of the function at addr, in place
++        # of func_ADDR (fname). Dispatch stays address-based: function_table keeps
++        # the real address. Lets a second build of the same program (another
++        # region's EBOOT, its code moved) keep the names its integration code calls.
++        self.func_names: dict[int, str] = {}
+         # Symbol prefix for every emitted func_* / function_table[] symbol, so
+         # a relocated PRX image (e.g. libsre_) can link alongside the main
+         # title without func_XXXXXXXX / function_table collisions. Shared types
+@@ -1234,11 +1239,15 @@ class PPULifter:
+         hi = bisect.bisect_left(addrs, end)
+         return ordered[lo:hi]
+ 
++    def fname(self, addr: int) -> str:
++        """The C name of the function at addr: func_ADDR, or its --func-names name."""
++        return self.prefix + self.func_names.get(addr, f"func_{addr:08X}")
++
+     def lift_function(self, instructions: list[Instruction],
+                       start: int, end: int) -> LiftedFunction:
+         """Lift a range of instructions into a C function."""
+         func = LiftedFunction(
+-            name=f"{self.prefix}func_{start:08X}",
++            name=self.fname(start),
+             start_addr=start,
+             end_addr=end,
+         )
+@@ -2237,7 +2246,7 @@ class PPULifter:
+                     # runs on its own frame; the mid-function pass lifts func_<tgt>
+                     # (it starts at the prologue, so it's a clean framed function).
+                     self.branch_targets.add(tgt)
+-                    return f"{{ g_trampoline_fn = (void(*)(void*)){self.prefix}func_{tgt:08X}; return; }}"
++                    return f"{{ g_trampoline_fn = (void(*)(void*)){self.fname(tgt)}; return; }}"
+                 if func.start_addr <= tgt < func.end_addr:
+                     return f"goto loc_{tgt:08X};"
+                 elif self._outside_code(tgt):
+@@ -2249,7 +2258,7 @@ class PPULifter:
+                     # stack-growing recursion when backward branches re-enter
+                     # a fragment's prologue (stack allocation).
+                     self.branch_targets.add(tgt)
+-                    return f"{{ g_trampoline_fn = (void(*)(void*)){self.prefix}func_{tgt:08X}; return; }}"
++                    return f"{{ g_trampoline_fn = (void(*)(void*)){self.fname(tgt)}; return; }}"
+             except ValueError:
+                 return f"goto {target}; /* branch */"
+ 
+@@ -2272,7 +2281,7 @@ class PPULifter:
+                 # PPC `bl` sets LR = return address (next instr). Emit it so mflr
+                 # reads the correct value AND stack-saved LRs are real return
+                 # addresses -> reliable back-chain unwinding for diagnostics.
+-                call = f"{self.prefix}func_{tgt:08X}(ctx); DRAIN_TRAMPOLINE(ctx);"
++                call = f"{self.fname(tgt)}(ctx); DRAIN_TRAMPOLINE(ctx);"
+                 if tgt in self.setjmp_addrs:
+                     # A host longjmp lands here, with the guest registers the
+                     # lifted longjmp restored: r3 = its value, as after a setjmp.
+@@ -2337,7 +2346,7 @@ class PPULifter:
+                     cond = self._branch_condition(mn, ops, insn.raw)
+                     self.branch_targets.add(tgt)
+                     return (f"if ({cond}) {{ g_trampoline_fn = "
+-                            f"(void(*)(void*)){self.prefix}func_{tgt:08X}; return; }}")
++                            f"(void(*)(void*)){self.fname(tgt)}; return; }}")
+                 if func.start_addr <= tgt < func.end_addr:
+                     cond = self._branch_condition(mn, ops, insn.raw)
+                     return f"if ({cond}) goto loc_{tgt:08X};"
+@@ -2349,7 +2358,7 @@ class PPULifter:
+                     cond = self._branch_condition(mn, ops, insn.raw)
+                     # Use trampoline for cross-fragment conditional branches
+                     self.branch_targets.add(tgt)
+-                    return f"if ({cond}) {{ g_trampoline_fn = (void(*)(void*)){self.prefix}func_{tgt:08X}; return; }}"
++                    return f"if ({cond}) {{ g_trampoline_fn = (void(*)(void*)){self.fname(tgt)}; return; }}"
+             except ValueError:
+                 return f"/* {mn} {insn.operands} */;"
+ 
+@@ -2380,7 +2389,7 @@ class PPULifter:
+                         self.branch_targets.add(c)
+                         arms.append(
+                             f"case 0x{c:08X}u: {{ g_trampoline_fn = "
+-                            f"(void(*)(void*)){self.prefix}func_{c:08X}; return; }}")
++                            f"(void(*)(void*)){self.fname(c)}; return; }}")
+                 if arms:
+                     return ("switch ((uint32_t)ctx->ctr) { " + "".join(arms) +
+                             " default: ps3_indirect_call(ctx); return; } return;")
+@@ -4139,8 +4148,17 @@ class PPULifter:
+                 lines.append(f"void {func.name}_lifted(ppu_context* ctx); /* {func.name} is native */")
+         # Also declare any call targets that aren't defined
+         defined = {f.start_addr for f in self.functions}
+-        for target in sorted((self.call_targets | self.branch_targets) - defined):
+-            lines.append(f"void {self.prefix}func_{target:08X}(ppu_context* ctx); /* external */")
++        externals = sorted((self.call_targets | self.branch_targets) - defined)
++        if self.func_names:
++            # --func-names: an address the file does not name keeps func_ADDR,
++            # which must not be a name the file gave another address.
++            seen: dict[str, int] = {}
++            for a in sorted(defined) + externals:
++                n = self.fname(a)
++                if seen.setdefault(n, a) != a:
++                    sys.exit(f"--func-names: {n} names both 0x{seen[n]:08X} and 0x{a:08X}")
++        for target in externals:
++            lines.append(f"void {self.fname(target)}(ppu_context* ctx); /* external */")
+         lines.append("")
+         return "\n".join(lines)
+ 
+@@ -5050,10 +5068,35 @@ def discover_jump_tables(all_insns, read_u32, toc, text_lo, text_hi, func_starts
+ 
+ _WORKER_STATE: dict = {}
+ 
++_C_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*$")
++
++
++def load_func_names(path: str) -> dict[int, str]:
++    """--func-names: 'ADDR NAME' lines (blank lines and # comments skipped) ->
++    {addr: name}. Each NAME is a C identifier and names one address only."""
++    out: dict[int, str] = {}
++    seen: dict[str, int] = {}
++    with open(path) as f:
++        for n, line in enumerate(f, 1):
++            line = line.split("#", 1)[0].strip()
++            if not line:
++                continue
++            parts = line.split()
++            if len(parts) != 2 or not _C_NAME_RE.match(parts[1]):
++                raise SystemExit(f"{path}:{n}: expected 'ADDR NAME', got {line!r}")
++            addr, name = int(parts[0], 0), parts[1]
++            if addr in out or name in seen:
++                raise SystemExit(f"{path}:{n}: {parts[0]} or {name} given twice")
++            out[addr] = name
++            seen[name] = addr
++    return out
++
+ 
+ def _worker_init(segs, big_endian, name_map, prefix, hle_stub_nids=None,
+                  function_entries=None, code_lo=0, code_hi=None, jump_tables=None,
+-                 toc_base=0, insn_patches=None, setjmp_addrs=None, longjmp_addrs=None):
++                 toc_base=0, insn_patches=None, setjmp_addrs=None, longjmp_addrs=None,
++                 func_names=None):
++    _WORKER_STATE["func_names"] = func_names or {}
+     _WORKER_STATE["setjmp_addrs"] = setjmp_addrs or set()
+     _WORKER_STATE["longjmp_addrs"] = longjmp_addrs or set()
+     _WORKER_STATE["segs"] = segs
+@@ -5077,6 +5120,7 @@ def _worker_lift(task):
+     idx0, bounds = task
+     lifter = PPULifter(prefix=_WORKER_STATE.get("prefix", ""))
+     lifter.name_map = _WORKER_STATE["names"]
++    lifter.func_names = _WORKER_STATE.get("func_names", {})
+     # Import stubs must dispatch as ps3_hle_call in workers too, else the literal
+     # .lib.stub trampoline (which derefs an unpopulated import table) is lifted as
+     # real code and bctrl's to garbage. (Single-threaded lift set this directly.)
+@@ -5125,7 +5169,8 @@ def _parallel_lift(lifter, func_bounds, segs, big_endian, jobs):
+                              lifter.code_lo, lifter.code_hi, lifter.jump_tables,
+                              getattr(lifter, "toc_base", 0),
+                              lifter.insn_patches,
+-                             lifter.setjmp_addrs, lifter.longjmp_addrs))
++                             lifter.setjmp_addrs, lifter.longjmp_addrs,
++                             lifter.func_names))
+     try:
+         for idx0, results, ct, bt in pool.imap_unordered(_worker_lift, tasks):
+             results_by_idx[idx0] = results
+@@ -5168,6 +5213,10 @@ def main() -> None:
+     parser.add_argument("--names", metavar="FILE", default=None,
+                         help="JSON name map from ghidra_names.py "
+                              "({\"0xADDR\": {\"label\": ...}}); emitted as comments")
++    parser.add_argument("--func-names", metavar="FILE", default=None,
++                        help="text file of 'ADDR NAME' lines: the function at ADDR "
++                             "is emitted as NAME instead of func_ADDR (dispatch "
++                             "stays by address)")
+     parser.add_argument("--jobs", "-j", type=int,
+                         default=max(1, os.cpu_count() or 1),
+                         help="Worker processes for the main lift "
+@@ -5744,6 +5793,14 @@ def main() -> None:
+                 loaded += 1
+         print(f"  Loaded {loaded} recovered names from {args.names}")
+ 
++    if args.func_names:
++        lifter.func_names = load_func_names(args.func_names)
++        names = [lifter.fname(s) for s, _ in func_bounds]
++        if len(set(names)) != len(names):
++            dup = sorted({n for n in names if names.count(n) > 1})
++            sys.exit(f"--func-names: {len(dup)} names given to two functions, e.g. {dup[:3]}")
++        print(f"  func-names: {len(lifter.func_names)} from {args.func_names}")
++
+     if args.jobs > 1:
+         _parallel_lift(lifter, func_bounds, seg_blobs, big_endian, args.jobs)
+     else:
+diff --git a/tools/test_ppu_func_names.py b/tools/test_ppu_func_names.py
+new file mode 100644
+index 0000000..56bba2f
+--- /dev/null
++++ b/tools/test_ppu_func_names.py
+@@ -0,0 +1,53 @@
++#!/usr/bin/env python3
++"""--func-names: the lifter emits the functions it names under those names (definition, calls, tail calls,
++externals, function_table), keeps dispatch by address, refuses a name given twice, and without the option keeps
++func_ADDR."""
++import json
++import subprocess
++import sys
++import tempfile
++from pathlib import Path
++
++TOOLS = Path(__file__).resolve().parent
++
++
++def lift(root, extra):
++    out = root / ('out' + str(len(extra)))
++    r = subprocess.run([sys.executable, str(TOOLS / 'ppu_lifter.py'), str(root / 'code.bin'), '--raw', '--base',
++                        '0x10000', '--functions', str(root / 'functions.json'), '--jobs', '1', '--output', str(out)]
++                       + extra, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
++    return r, ''.join(p.read_text() for p in sorted(out.glob('*'))) if out.is_dir() else ''
++
++
++def main():
++    with tempfile.TemporaryDirectory() as tmp:
++        root = Path(tmp)
++        # 0x10000: bl 0x10010; b 0x10014 (a tail call) | 0x10010: blr | 0x10014: blr
++        (root / 'code.bin').write_bytes(bytes.fromhex('48000011' '48000010' '60000000' '60000000'
++                                                      '4e800020' '4e800020'))
++        (root / 'functions.json').write_text(json.dumps([
++            {'start': '0x10000', 'end': '0x10010'}, {'start': '0x10010', 'end': '0x10014'},
++            {'start': '0x10014', 'end': '0x10018'}]))
++        r, plain = lift(root, [])
++        assert r.returncode == 0, r.stderr
++        assert 'void func_00010010(' in plain and 'func_00010010(ctx);' in plain, plain
++        (root / 'names.txt').write_text('# a comment\n0x10010 func_00020000\n0x10014 func_00020004\n')
++        r, named = lift(root, ['--func-names', str(root / 'names.txt')])
++        assert r.returncode == 0, r.stderr
++        assert 'func_00010010' not in named and 'func_00010014' not in named, named
++        assert 'void func_00020000(' in named and 'func_00020000(ctx);' in named, named
++        assert 'func_00020004' in named and 'void func_00010000(' in named, named
++        assert '0x00010010ULL, func_00020000' in named, named          # dispatch stays by address
++        assert named.replace('func_00020000', 'func_00010010').replace('func_00020004', 'func_00010014') == \
++            plain.replace(str(root / 'out0'), str(root / 'out2')), 'only the names differ'
++        (root / 'dup.txt').write_text('0x10010 func_00010000\n')
++        r, _ = lift(root, ['--func-names', str(root / 'dup.txt')])
++        assert r.returncode != 0 and 'two functions' in r.stderr, r.stderr
++        (root / 'bad.txt').write_text('0x10010 func_00020000\n0x10014 func_00020000\n')
++        r, _ = lift(root, ['--func-names', str(root / 'bad.txt')])
++        assert r.returncode != 0 and 'given twice' in r.stderr, r.stderr
++    print('PASS: --func-names names functions and keeps dispatch by address')
++
++
++if __name__ == '__main__':
++    main()

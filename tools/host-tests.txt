@@ -56,6 +56,7 @@ tools/tests/test_fov.sh
 tools/tests/test_hud_sites.sh
 tools/tests/test_crosshair.sh
 tools/tests/test_menu_box.sh
+tools/tests/test_edition_map.py
 tools/tests/test_pgo_write.sh
 tools/tests/test_blend_state.sh
 tools/tests/test_script_rate.sh

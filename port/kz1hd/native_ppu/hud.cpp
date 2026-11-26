@@ -45,7 +45,7 @@ extern "C" int rsx_vulkan_output_size(int* w, int* h);
 namespace {
 
 constexpr float kW = 1280.0f, kH = 720.0f, k169 = 16.0f / 9.0f;
-constexpr uint32_t kOrthoRet = 0x0005599C, kMenuOrthoRet = 0x000554AC;
+constexpr uint32_t kOrthoRet = KZ_GA(0x0005599C), kMenuOrthoRet = KZ_GA(0x000554AC);
 
 /* The 2D layer's width over 16:9's (hud_layout.h): 1 at 16:9, more for a
  * wider window, less for a narrower one. */
@@ -82,16 +82,16 @@ bool full_screen_effect(const ppu_context* ctx)
     uint32_t ch[8];
     const int n = guest_chain(ctx, ch, 8);
     for (int i = 0; i < n; i++)
-        if ((ch[i] >= 0x0029BDC8 && ch[i] < 0x0029C444) || ch[i] == 0x004CD834 || ch[i] == 0x004CD90C || ch[i] == 0x004CD9D4 ||
-            ch[i] == 0x004CE4BC) return true;
+        if ((ch[i] >= KZ_GA(0x0029BDC8) && ch[i] < KZ_GA(0x0029C444)) || ch[i] == KZ_GA(0x004CD834) || ch[i] == KZ_GA(0x004CD90C) || ch[i] == KZ_GA(0x004CD9D4) ||
+            ch[i] == KZ_GA(0x004CE4BC)) return true;
     return false;
 }
 
-bool in_hud(uint32_t a) { return a >= 0x004C6B78 && a < 0x004CEC70; }
+bool in_hud(uint32_t a) { return a >= KZ_GA(0x004C6B78) && a < KZ_GA(0x004CEC70); }
 /* The tutorial's banner (func_004C7A28: its bar, the controller and the line
  * of text) is one element at the top middle: it scales with the HUD around
  * that point and stays in the 16:9 middle, so its pieces stay together. */
-bool in_tutorial(uint32_t a) { return a >= 0x004C7A28 && a < 0x004C8980; }
+bool in_tutorial(uint32_t a) { return a >= KZ_GA(0x004C7A28) && a < KZ_GA(0x004C8980); }
 /* The laid-out text being drawn (func_0023A588) from the HUD: its origin as
  * the game placed it and where it goes; 0 scale outside one. */
 double s_rich_x0, s_rich_y0, s_rich_nx, s_rich_ny, s_rich_k;
@@ -183,7 +183,7 @@ void func_0005C498(ppu_context* ctx)
 void func_00227A1C(ppu_context* ctx)
 {
     const uint32_t ret = (uint32_t)ctx->lr, rect = (uint32_t)ctx->gpr[5];
-    const bool hud = in_hud(ret) || (ret >= 0x00223DB0 && ret < 0x00227A1C);
+    const bool hud = in_hud(ret) || (ret >= KZ_GA(0x00223DB0) && ret < KZ_GA(0x00227A1C));
     if (log_on()) {
         /* each drawing site with each rectangle (to whole pixels), once */
         static uint32_t seen[1024]; static int n;
@@ -310,12 +310,12 @@ void func_00044108(ppu_context* ctx)
         /* the HUD's own module and the overlays and prompts next to its
          * drawing (func_00223DB0..: "Hold X to pick up", whose weapon icon
          * goes through func_00227A1C from there) */
-        auto ours = [](uint32_t a) { return in_hud(a) || (a >= 0x00223DB0 && a < 0x00227A1C); };
+        auto ours = [](uint32_t a) { return in_hud(a) || (a >= KZ_GA(0x00223DB0) && a < KZ_GA(0x00227A1C)); };
         bool hud = ours((uint32_t)ctx->lr), rich = false;
         for (int i = 0; i < m && !hud; i++) hud = ours(ch[i]);
         /* laid-out text (func_0023A588: the tutorial's lines, with buttons in
          * them) is moved and sized as one block, there */
-        for (int i = 0; i < m; i++) rich |= ch[i] == 0x0023A734 || ch[i] == 0x0023A7B0;
+        for (int i = 0; i < m; i++) rich |= ch[i] == KZ_GA(0x0023A734) || ch[i] == KZ_GA(0x0023A7B0);
         const float e = widen(), size = kz_view.hud_scale > 0.0f ? kz_view.hud_scale : 1.0f;
         if (rich && s_rich_k > 0.0) {
             /* a run of the laid-out text: around the block's origin */

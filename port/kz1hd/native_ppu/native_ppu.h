@@ -20,6 +20,7 @@
 #include "ppu_recomp.h"
 #include <math.h>
 #include <string.h>
+#include "../edition.h"   /* KZ_GA: guest addresses in this build's edition */
 
 extern int kz_native_verify;
 /* Compares `mine` with what the lifted body produced and reports a difference. */

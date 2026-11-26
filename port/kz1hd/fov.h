@@ -22,6 +22,7 @@
 #ifndef KZ_FOV_H
 #define KZ_FOV_H
 #include <math.h>
+#include "edition.h"   /* KZ_GA */
 
 #define FOV_GAME_V    56.25         /* the game's vertical FOV at 16:9 */
 #define FOV_ASPECT    (16.0 / 9.0)
@@ -107,7 +108,7 @@ static inline double fov_narrow(double fov, double aspect)
 static inline int fov_site_world(unsigned ret)
 {
     switch (ret) {
-    case 0x0021A190u: case 0x002B81DCu: case 0x001CEC28u: case 0x001EE3D0u: case 0x001B53E8u: case 0x000DF734u: return 1;
+    case KZ_GA(0x0021A190u): case KZ_GA(0x002B81DCu): case KZ_GA(0x001CEC28u): case KZ_GA(0x001EE3D0u): case KZ_GA(0x001B53E8u): case KZ_GA(0x000DF734u): return 1;
     default: return 0;
     }
 }

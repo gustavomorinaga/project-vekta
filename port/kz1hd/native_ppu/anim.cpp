@@ -19,7 +19,7 @@ void load_tab()
 {
     static bool done;
     if (done) return;
-    for (int i = 0; i < 18; i++) tab[i] = ldf(0x1879A8u + 4u * i);
+    for (int i = 0; i < 18; i++) tab[i] = ldf(KZ_GA(0x1879A8u) + 4u * i);
     done = true;
 }
 
