@@ -7,6 +7,16 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- The project site is lighter, faster and usable by everyone: screenshots as small WebP copies (the full PNG one
+  click away), its own font file instead of Google Fonts, no layout jumps while it loads, and the whole site checked
+  against WCAG 2.2 AA in both themes ([docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md#the-project-website)).
+- The site works with a keyboard alone and with a game pad (Xbox, PlayStation, Nintendo or generic), with the pad's
+  button pictures in the footer and a **Controls** list of every key and button.
+- The site moved to the root of its address (<https://gustavomorinaga.github.io/project-vekta/>); the old `/site/`
+  address sends you there. New: a FAQ section, a page for unknown addresses, a sitemap and link previews, and a
+  printout of every section.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added

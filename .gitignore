@@ -50,3 +50,6 @@ __pycache__/
 *.profraw
 *.bin
 !port/patches/*.patch
+
+# Browser tests of the site: their npm packages (tools/site-tests/package-lock.json pins them)
+/tools/site-tests/node_modules/
