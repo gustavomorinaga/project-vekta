@@ -146,7 +146,9 @@ static void ini_save(void)
  *                window's differs, menus and movies inside it. At the next start,
  *                PS3RECOMP_VK_ASPECT; view_aspect.h)
  *   field_of_view = the world's horizontal FOV at 16:9 in degrees, 70-120 (87: the game's;
- *                   a wider window shows more at the sides; fov.h)
+ *                   a wider window shows more at the sides; fov.h). A wider FOV draws more of
+ *                   the map: at 120 the multiplayer maps ran 9-12 % slower than at 87, the game's main
+ *                   thread being the limit (docs/KNOWN_ISSUES.md, 2026-11-25)
  *   weapon_fov = the first-person weapon's, the same way (87: the game's, 72 degrees
  *                horizontal at 16:9 on the weapon itself)
  *   hud_size   = 0.5-1.5   (1: the game's)

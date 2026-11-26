@@ -11,6 +11,18 @@ program and folder that build it. Until a release that calls itself playable
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
   every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
   (ps3recomp patch 2089).
+- Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 %
+  at 120).
+
+### Fixed
+- At 144 fps a few game clock ticks (15 every 5 seconds) came 1 ms late, a slightly longer frame between two short
+  ones: the 144 Hz rate is now stored a hair above 0.144 ticks per ms, as the game stores its own 30 Hz one.
+- The game no longer stays on a black window forever after an earlier first run was stopped while it was writing
+  its file cache (an empty or missing `cache.dat` under `work/vfs/cache/BCUS98116/fios`): at start the port removes
+  a cut-short cache, and the game makes a new one, the same bytes, as on a first run.
+- The launcher no longer calls a session "hang-killed" when the game stopped showing frames for a while, recovered
+  and was then quit normally (it showed "exit 0: ok (hang-killed)"): a hang counts only when the game was still
+  stuck at the end.
 
 ### Fixed
 - Level Select's SELECT CHARACTER: the mouse no longer picks a character the level cannot be played with (the
