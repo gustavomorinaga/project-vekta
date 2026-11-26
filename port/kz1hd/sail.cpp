@@ -50,6 +50,7 @@ extern "C" {
 }
 #define KZ_FF_IMPL
 #include "ffmpeg_dyn.h"
+#include "intro_skip.h"
 extern "C" {
 
 extern uint8_t* vm_base;
@@ -375,10 +376,13 @@ void player_open_stream(ppu_context* ctx)
 {
     delete g_player.movie;
     /* KZ_SKIP_INTRO (intro = off in kz1hd_pc.ini): the opening movie is a blank
-     * stream, so the game goes from the logos straight to the main menu. */
+     * stream, so the game goes from the logos straight to the main menu. Only its
+     * start-up open: Extras > Game Intro plays the whole movie (intro_skip.h). */
     static const bool skip_intro = getenv("KZ_SKIP_INTRO") != nullptr;
-    const bool intro = g_player.path == resolve("Movies/Intro/Intro.avi");
-    Movie* mv = g_player.movie = g_player.path.empty() || (skip_intro && intro) ? nullptr : movie_open(g_player.path);
+    static int intro_opened = 0;
+    const bool blank = kz_intro_blank(skip_intro, g_player.path == resolve("Movies/Intro/Intro.avi"), &intro_opened);
+    if (getenv("KZ_SAIL_LOG") && blank) fprintf(stderr, "[kz-sail] intro = off: start-up intro blank\n");
+    Movie* mv = g_player.movie = g_player.path.empty() || blank ? nullptr : movie_open(g_player.path);
     if (mv) {
         mv->vstream = av_find_best_stream(mv->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
         mv->astream = g_player.audio_pick > 0 && g_player.audio_pick < (int)mv->fmt->nb_streams &&
@@ -658,4 +662,13 @@ extern "C" void kz_sail_register(void)
         if (trace && n < 48) { names[n] = e.name; fns[n] = e.fn; ps3_hle_register_ctx(e.nid, e.name, wrap[n]); n++; }
         else ps3_hle_register_ctx(e.nid, e.name, e.fn);
     }
+}
+
+/* The open movie's frame size, for the movie quad (native_ppu/movie_quad.cpp). */
+extern "C" int kz_sail_movie_size(int* w, int* h)
+{
+    const Movie* mv = g_player.movie;
+    if (!mv || mv->width <= 0 || mv->height <= 0) return 0;
+    *w = mv->width; *h = mv->height;
+    return 1;
 }
