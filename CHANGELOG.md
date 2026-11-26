@@ -12,6 +12,11 @@ program and folder that build it. Until a release that calls itself playable
   read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
   package or a decrypted EBOOT.elf that matches the US copy is shown as verified.
 
+### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added
