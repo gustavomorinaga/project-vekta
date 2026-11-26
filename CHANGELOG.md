@@ -14,6 +14,16 @@ program and folder that build it. Until a release that calls itself playable
 - Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 %
   at 120).
 
+### Fixed
+- At 144 fps a few game clock ticks (15 every 5 seconds) came 1 ms late, a slightly longer frame between two short
+  ones: the 144 Hz rate is now stored a hair above 0.144 ticks per ms, as the game stores its own 30 Hz one.
+- The game no longer stays on a black window forever after an earlier first run was stopped while it was writing
+  its file cache (an empty or missing `cache.dat` under `work/vfs/cache/BCUS98116/fios`): at start the port removes
+  a cut-short cache, and the game makes a new one, the same bytes, as on a first run.
+- The launcher no longer calls a session "hang-killed" when the game stopped showing frames for a while, recovered
+  and was then quit normally (it showed "exit 0: ok (hang-killed)"): a hang counts only when the game was still
+  stuck at the end.
+
 ## [0.7.0] - 2026-11-23 (pre-release)
 
 ### Added

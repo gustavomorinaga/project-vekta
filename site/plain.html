@@ -225,6 +225,9 @@
 <ul class="rlist">
 <li><span class="kind">Changed</span>F12 no longer takes a developer capture (a <code>capture_&lt;date&gt;_&lt;time&gt;</code> folder in the game&#x27;s folder): it was on in every build, and F12 is also Steam&#x27;s screenshot key. Developers turn it on with <code>PS3RECOMP_CAPTURE_KEY=1</code> (ps3recomp patch 2089).</li>
 <li><span class="kind">Changed</span>Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 % at 120).</li>
+<li><span class="kind">Fixed</span>At 144 fps a few game clock ticks (15 every 5 seconds) came 1 ms late, a slightly longer frame between two short ones: the 144 Hz rate is now stored a hair above 0.144 ticks per ms, as the game stores its own 30 Hz one.</li>
+<li><span class="kind">Fixed</span>The game no longer stays on a black window forever after an earlier first run was stopped while it was writing its file cache (an empty or missing <code>cache.dat</code> under <code>work/vfs/cache/BCUS98116/fios</code>): at start the port removes a cut-short cache, and the game makes a new one, the same bytes, as on a first run.</li>
+<li><span class="kind">Fixed</span>The launcher no longer calls a session &quot;hang-killed&quot; when the game stopped showing frames for a while, recovered and was then quit normally (it showed &quot;exit 0: ok (hang-killed)&quot;): a hang counts only when the game was still stuck at the end.</li>
 </ul>
 </article>
 <article class="rel">
@@ -296,12 +299,12 @@
 <ul class="clog">
 <li><time>next</time><span><b>Unreleased</b> F12 no longer takes a developer capture (a capture_&lt;date&gt;_&lt;time&gt; folder in the game&#x27;s folder): it was on in every...</span></li>
 <li><time>next</time><span><b>Unreleased</b> Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 % at...</span></li>
+<li><time>next</time><span><b>Unreleased</b> At 144 fps a few game clock ticks (15 every 5 seconds) came 1 ms late, a slightly longer frame between two short ones...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The game no longer stays on a black window forever after an earlier first run was stopped while it was writing its...</span></li>
+<li><time>next</time><span><b>Unreleased</b> The launcher no longer calls a session &quot;hang-killed&quot; when the game stopped showing frames for a while, recovered and...</span></li>
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> Reporting a crash (#129): when the game closes unexpectedly (a crash, a hang, a lost GPU, killed, an error code; not...</span></li>
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The support package also holds the earlier game logs, sessions.jsonl, the game&#x27;s crash and hang reports with the names...</span></li>
 <li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> When the game crashes, its log now says where: a [kz-crash] block with the exception, the faulting module and offset...</span></li>
-<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> When the game stops showing new frames for 5 s (and again at 30 s) while its window is not minimized, the log gets a...</span></li>
-<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> The log starts with the system it runs on: [kz-sys] lines for the system, CPU, cores, memory, monitors, the settings...</span></li>
-<li><time datetime="2026-11-23">11-23</time><span><b>0.7.0</b> KZ_CRASH_TEST=&lt;kind&gt; makes the game crash or hang on purpose, to check the reports on a build.</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
