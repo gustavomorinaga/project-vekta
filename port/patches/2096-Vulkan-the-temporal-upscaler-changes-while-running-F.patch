@@ -1,0 +1,295 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 26 Nov 2026 14:01:25 -0300
+Subject: [PATCH] Vulkan: the temporal upscaler changes while running, FSR 3.1
+ also turned on
+
+Symptom: PS3RECOMP_TEMPORAL and PS3RECOMP_UPSCALE_MODE were read at start: another mode, turning the upscaler
+off, or turning FSR 3.1 on waited for the next start.
+
+Fix: rsx_vulkan_set_temporal(want, quality) from any thread (0 off, 1 DLSS, 2 FSR 3.1; quality, balanced,
+performance, ultra performance, native/DLAA), taken at a frame's end (vk_temporal_check, before patch 2093's
+rescale), with the device idle first:
+
+- another mode, or off and on again, of the upscaler the game started with: the scene goes to its render size
+  for the output (or the frame's size when off: the MLAA takes the frame again, vk_eng_mlaa), through
+  vk_rescale; the upscaler's context or feature is released and the history starts over;
+- FSR 3.1 on a game started without an upscaler: the device is now made with FSR 3.1's features (16-bit types,
+  storage images without a format, Vulkan 1.2) whenever the build has FSR 3.1 and the device has them
+  (s_tm.live; PS3RECOMP_FSR3_LIVE=0 turns that off), so its interface starts at that frame's end (vk_tm_init);
+  the pipelines made before then keep their programs (vel_vs, vel_ps) and get their velocity variant at their
+  first draw with it on (vk_eng_pipe_vel);
+- DLSS when the game did not start with it, or the other upscaler: logged as needing a restart (NGX's instance
+  and device extensions are chosen when they are made). rsx_vulkan_temporal_live says which applies at once.
+
+rsx_vulkan_temporal_active counts a request it will take this frame, so a menu greys its rows at once.
+
+ENHANCEMENT: the PS3 game has no upscaler. Seen in Level 1 (2026-11-26, Linux, RTX 3070 Ti): started with FSR 3.1
+quality and without an upscaler, switched between quality, performance, native, balanced and off with window
+and scale changes in between, the scene at 1720x660 for 3440x1320 (performance), 1280x720 for 1920x1080
+(quality), the frame's size when off; a DLSS request logged as needing a restart. With PS3RECOMP_VK_VALIDATION=1:
+no validation error. Turning it off before the device was idle destroyed FSR 3.1's context while the last frame
+still used it (a lost device, and validation errors naming vkDestroyImage, vkDestroyPipeline and
+vkFreeDescriptorSets): the device is idled first.
+---
+ libs/video/rsx_vulkan_backend.c | 134 +++++++++++++++++++++++++++++---
+ libs/video/rsx_vulkan_backend.h |   5 ++
+ 2 files changed, 127 insertions(+), 12 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index bc36541..2426222 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -5155,6 +5155,8 @@ static int vk_tv_on(void)
+ #define VK_TM_SWAPS 4
+ static struct {
+     int want, ok, mode;
++    int inited;                       /* want's upscaler started with the device (it can be turned off and on again) */
++    int live;                         /* started without one, FSR 3.1's device features asked for: it can start later */
+     u32 out_w, out_h;                 /* the output (s_vk.width x height) */
+     float jsign_x, jsign_y;           /* PS3RECOMP_DLSS_JITTER_SIGN=<x>,<y> */
+     VkSampler samp;
+@@ -5174,16 +5176,48 @@ static struct {
+ } s_tm;
+ 
+ /* Whether the temporal upscaler (PS3RECOMP_TEMPORAL) is running: chosen at
+- * start, made with the device, and not dropped since. It then takes the
++ * start, made with the device, and not turned off since (rsx_vulkan_set_temporal). It then takes the
+  * place of the MLAA (vk_eng_mlaa: vk_tm_scene_end), so a title's options
+  * screen can show the anti-aliasing setting as not in use. Any thread. */
+-int rsx_vulkan_temporal_active(void) { return s_tm.ok; }
++static volatile int s_tm_req;   /* rsx_vulkan_set_temporal's request, below */
++int rsx_vulkan_temporal_active(void)
++{
++    const int r = s_tm_req;   /* a request it will take at this frame's end counts already (a menu greys rows by it) */
++    if (r >= 0 && (!(r / 8) || (r / 8 == s_tm.want && s_tm.inited) || (r / 8 == 2 && s_tm.live && !s_tm.inited)))
++        return r / 8 != 0;
++    return s_tm.ok;
++}
+ /* 0 when the MLAA pass is not built (vk_mlaa_build_wanted, #129); 1 before the device is up. */
+ int rsx_vulkan_mlaa_available(void) { return !s_vk.device || vk_mlaa_build_wanted(); }
+ 
+ static int vk_eng_depth_readback(void* user, u32 depth, u32 x, u32 y, u32 w, u32 h,
+                                  float* out, u32 out_pitch);
+ 
++/* The upscaler's own mode for quality 0..4 (quality, balanced, performance, ultra performance, native/DLAA). */
++static int vk_tm_mode_of(int want, int q)
++{
++    static const int dlss[5] = { RSX_DLSS_QUALITY, RSX_DLSS_BALANCED, RSX_DLSS_PERFORMANCE, RSX_DLSS_ULTRA_PERFORMANCE, RSX_DLSS_DLAA };
++    static const int fsr[5] = { RSX_FSR3_QUALITY, RSX_FSR3_BALANCED, RSX_FSR3_PERFORMANCE, RSX_FSR3_ULTRA_PERFORMANCE, RSX_FSR3_NATIVE_AA };
++    if (q < 0 || q > 4) q = 0;
++    return want == 2 ? fsr[q] : dlss[q];
++}
++/* Whether rsx_vulkan_set_temporal(want, ...) applies while running: the upscaler the game started with, or FSR 3.1
++ * on a device made able to start it (s_tm.live); else at the next start. Any thread, after the device is up. */
++int rsx_vulkan_temporal_live(int want)
++{
++    return want == 0 || (want == s_tm.want && s_tm.inited) || (want == 2 && s_tm.live);
++}
++/* rsx_vulkan_set_temporal (any thread): 0 off, 1 DLSS, 2 FSR 3.1, and its quality 0..4. Applied at a frame's end
++ * (vk_temporal_check): another mode, or off and on again, of the upscaler the game started with; one it did not
++ * start with needs a restart (its device features and extensions are chosen when the device is made). */
++static volatile int s_tm_req = -1;   /* want * 8 + quality; < 0 none */
++void rsx_vulkan_set_temporal(int want, int quality)
++{
++    if (want < 0 || want > 2) want = 0;
++    if (quality < 0 || quality > 4) quality = 0;
++    __atomic_store_n(&s_tm_req, want * 8 + quality, __ATOMIC_RELEASE);
++}
++
+ /* After the device: NGX, then the render size. The output is the frame size
+  * the scale gave (s_vk.width x height, the window's with
+  * PS3RECOMP_VK_SCALE_FIT); the scene is then drawn at DLSS's render size for
+@@ -5205,7 +5239,7 @@ static void vk_tm_init(void)
+         VK_LOG("temporal: no render size, off\n"); return;
+     }
+     s_rscale_x = (float)rw / (float)s_guest_w; s_rscale_y = (float)rh / (float)s_guest_h;
+-    s_tm.ok = 1;
++    s_tm.ok = s_tm.inited = 1;
+     rsx_temporal_config(1, s_rscale_x);
+     VK_LOG("temporal: %s mode %d, scene drawn at %ux%u for %ux%u\n", s_tm.want == 2 ? "FSR 3" : "DLSS", s_tm.mode, rw, rh, s_tm.out_w, s_tm.out_h);
+ }
+@@ -5772,6 +5806,9 @@ typedef struct vk_eng_pipe {
+      * scale its fs (and fsv) were made for (vk_eng_pipe_wpos) */
+     char*               wpos_ps;
+     float               wsx, wsy;
++    /* made without a temporal upscaler on a device that can start FSR 3.1 later (s_tm.live): the programs, for the
++     * velocity variant at its first draw with it on (vk_eng_pipe_vel) */
++    char                *vel_vs, *vel_ps;
+ } vk_eng_pipe;
+ 
+ static vk_eng_pipe s_epipe[VK_ENG_MAX_PIPE];
+@@ -6295,6 +6332,29 @@ static int vk_eng_pipe_wpos(vk_eng_pipe* P)
+     return 0;
+ }
+ 
++/* A pipeline made before FSR 3.1 was turned on (vel_vs, vel_ps): its velocity variant's modules at its first draw
++ * with the upscaler running, as vk_eng_pipeline_create makes them; tried once. */
++static void vk_eng_pipe_vel(vk_eng_pipe* P)
++{
++    if (!P->vel_vs || !s_tm.ok) return;
++    char* vs = P->vel_vs; char* ps0 = P->vel_ps;
++    P->vel_vs = P->vel_ps = NULL;
++    for (const char* q = vs; (q = strstr(q, "vp_c[")); q += 5) {   /* the rows the program reads */
++        if (q[5] == '(') { memset(P->vrows, 0xFF, sizeof P->vrows); break; }
++        const u32 r = (u32)atoi(q + 5) & (RSX_MAX_VERTEX_CONSTANTS - 1u);
++        P->vrows[r >> 5] |= 1u << (r & 31u);
++    }
++    char* sp = vk_eng_wpos_scaled(ps0);
++    char* vv = vk_tm_vel_vs(vs);
++    char* pv = vv ? vk_tm_vel_ps(sp ? sp : ps0, P->rt_count) : NULL;
++    if (pv && !vk_eng_translate(vv, RSX_SHADER_STAGE_VERTEX, &P->vsv, &P->vsv_h) &&
++        vk_eng_translate(pv, RSX_SHADER_STAGE_FRAGMENT, &P->fsv, &P->psv_h)) {
++        pvkDestroyShaderModule(s_vk.device, P->vsv, NULL); P->vsv = VK_NULL_HANDLE;
++    }
++    if (!P->vsv || !P->fsv) P->vsv = P->fsv = VK_NULL_HANDLE;
++    free(vv); free(pv); free(sp); free(vs); free(ps0);
++}
++
+ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_hlsl,
+                                   const rsx_be_render_state* rs, const rsx_vertex_layout_plan* layout,
+                                   u32 vertex_stride, rsx_be_format rt_fmt, u32 rt_count)
+@@ -6331,6 +6391,10 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
+     P->rt_count = rt_count;
+     P->rt_fmt = cf;
+     P->cube_mask = vk_eng_cube_units(ps_hlsl);
++    if (!s_tm.inited && s_tm.live && rsx_vk_vel_on(2, vk_tv_on(), s_vk.indep_blend_ok)) {
++        P->vel_vs = strdup(vs_hlsl);
++        P->vel_ps = strdup(P->wpos_ps ? P->wpos_ps : ps_hlsl);   /* before WPOS scaling: made at the scale then */
++    }
+     if (rsx_vk_vel_on(s_tm.want, vk_tv_on(), s_vk.indep_blend_ok)) {   /* the velocity variant, when its programs translate */
+         /* the rows the program reads: by number, and every one when it indexes them */
+         for (const char* q = vs_hlsl; (q = strstr(q, "vp_c[")); q += 5) {
+@@ -6370,7 +6434,7 @@ static void vk_eng_pipeline_release(void* user, u32 pipeline)
+     if (P->fs) pvkDestroyShaderModule(s_vk.device, P->fs, NULL);
+     if (P->vsv) pvkDestroyShaderModule(s_vk.device, P->vsv, NULL);
+     if (P->fsv) pvkDestroyShaderModule(s_vk.device, P->fsv, NULL);
+-    free(P->wpos_ps);
++    free(P->wpos_ps); free(P->vel_vs); free(P->vel_ps);
+     memset(P, 0, sizeof *P);
+     if (s_e2.pipeline == pipeline) s_e2.pipeline = 0;
+ }
+@@ -7288,6 +7352,7 @@ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vert
+     if (topology < RSX_TOPOLOGY_POINTS || topology > RSX_TOPOLOGY_TRIANGLE_STRIP) { vk_draw_why(2); return; }
+     vk_eng_pipe* P = &s_epipe[s_e2.pipeline - 1];
+     if (!P->used || stride != P->stride || vk_eng_pipe_wpos(P)) { vk_draw_why(3); return; }
++    vk_eng_pipe_vel(P);
+ 
+     /* Targets: every member of a set is target A's size (engine contract). */
+     const u32 n = s_eng_bound.nrt;
+@@ -7737,10 +7802,53 @@ static void vk_rescale(u32 ow, u32 oh, float sx, float sy)
+                vk_scx(s_guest_w), vk_scy(s_guest_h), ow, oh);
+ }
+ 
++/* A temporal upscaler request (rsx_vulkan_set_temporal) at a frame's end: the scene at its render size, or at the
++ * frame's when it goes off (the MLAA takes the frame again, vk_eng_mlaa). */
++static void vk_temporal_check(void)
++{
++    const int r = __atomic_exchange_n(&s_tm_req, -1, __ATOMIC_ACQ_REL);
++    if (r < 0) return;
++    const int want = r / 8, mode = want ? vk_tm_mode_of(want, r % 8) : 0;
++    if (want == 2 && !s_tm.inited && s_tm.live) {   /* FSR 3.1 the first time: its interface, with the device idle */
++        vk_flush();
++        pvkDeviceWaitIdle(s_vk.device);
++        s_tm.want = 2; s_tm.mode = mode;
++        vk_tm_init();
++        if (!s_tm.inited) { s_tm.want = 0; VK_LOG("temporal: FSR 3 could not start\n"); return; }
++        s_tm.ok = 0;   /* turned on below, with the rescale */
++    }
++    if (want && (want != s_tm.want || !s_tm.inited)) {
++        VK_LOG("temporal: %s needs a restart (the game started %s)\n", want == 2 ? "FSR 3" : "DLSS",
++               !s_tm.inited ? "without a temporal upscaler" : s_tm.want == 2 ? "with FSR 3" : "with DLSS");
++        return;
++    }
++    if (want ? s_tm.ok && mode == s_tm.mode : !s_tm.ok) return;   /* as it is */
++    u32 ow, oh;
++    float sx, sy;
++    if (vk_rescale_target(&ow, &oh, &sx, &sy)) {   /* no window to follow: the frame keeps its size */
++        ow = s_vk.width; oh = s_vk.height;
++        sx = (float)ow / (float)s_guest_w; sy = (float)oh / (float)s_guest_h;
++    }
++    vk_flush();
++    pvkDeviceWaitIdle(s_vk.device);   /* the upscaler's context goes: nothing submitted may still use it */
++    if (!want) {
++        s_tm.ok = 0;
++        rsx_temporal_config(0, 1.0f);
++        if (s_tm.want == 2) rsx_fsr3_drop(); else rsx_dlss_drop();
++    } else {
++        s_tm.mode = mode;
++        s_tm.ok = 1;
++    }
++    VK_LOG("temporal: %s%s, mode %d\n", s_tm.want == 2 ? "FSR 3" : "DLSS", want ? "" : " off", s_tm.mode);
++    vk_rescale(ow, oh, sx, sy);   /* with it on: its render size for that output, and the history over */
++    s_rs_want.w = ow; s_rs_want.h = oh;
++}
++
+ /* At a frame's end (vk_cb_present, after the window's present). */
+ static void vk_rescale_check(void)
+ {
+     vk_aniso_check();
++    vk_temporal_check();
+     u32 ow, oh;
+     float sx, sy;
+     if (vk_rescale_target(&ow, &oh, &sx, &sy)) return;
+@@ -7790,9 +7898,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+       if (!m) m = getenv("PS3RECOMP_DLSS_MODE");
+       const int q = !m || !strcmp(m, "quality") ? 0 : !strcmp(m, "balanced") ? 1 : !strcmp(m, "performance") ? 2 :
+                     !strcmp(m, "ultra") ? 3 : !strcmp(m, "native") || !strcmp(m, "dlaa") ? 4 : 0;
+-      static const int dlss[5] = { RSX_DLSS_QUALITY, RSX_DLSS_BALANCED, RSX_DLSS_PERFORMANCE, RSX_DLSS_ULTRA_PERFORMANCE, RSX_DLSS_DLAA };
+-      static const int fsr[5] = { RSX_FSR3_QUALITY, RSX_FSR3_BALANCED, RSX_FSR3_PERFORMANCE, RSX_FSR3_ULTRA_PERFORMANCE, RSX_FSR3_NATIVE_AA };
+-      s_tm.mode = s_tm.want == 2 ? fsr[q] : dlss[q];
++      s_tm.mode = vk_tm_mode_of(s_tm.want, q);
+       const char* js = getenv("PS3RECOMP_DLSS_JITTER_SIGN");
+       s_tm.jsign_x = s_tm.jsign_y = 1.0f;
+       if (js) sscanf(js, "%f,%f", &s_tm.jsign_x, &s_tm.jsign_y); }
+@@ -7818,8 +7924,12 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     { PFN_vkEnumerateInstanceVersion eiv = (PFN_vkEnumerateInstanceVersion)
+           pvkGetInstanceProcAddr(NULL, "vkEnumerateInstanceVersion");
+       u32 lv = VK_API_VERSION_1_0;
+-      if (eiv && eiv(&lv) == VK_SUCCESS && lv >= VK_API_VERSION_1_1) s_inst_api = VK_API_VERSION_1_1; }
+-    if (s_reflex.want || s_tm.want) s_inst_api = VK_API_VERSION_1_2;
++      if (eiv && eiv(&lv) == VK_SUCCESS && lv >= VK_API_VERSION_1_1) s_inst_api = VK_API_VERSION_1_1;
++      /* Started without a temporal upscaler: FSR 3.1's features are still asked for when the device has them, so the
++       * player can turn it on while running (rsx_vulkan_set_temporal; patch 2096). PS3RECOMP_FSR3_LIVE=0: not. */
++      { const char* e = getenv("PS3RECOMP_FSR3_LIVE");
++        s_tm.live = !s_tm.want && rsx_fsr3_built() && lv >= VK_API_VERSION_1_2 && !(e && !strcmp(e, "0")); } }
++    if (s_reflex.want || s_tm.want || s_tm.live) s_inst_api = VK_API_VERSION_1_2;
+     VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+                               .pApplicationName = "ps3recomp", .pEngineName = "ps3recomp RSX",
+                               .apiVersion = s_inst_api };
+@@ -7904,8 +8014,8 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+     /* FSR 3's shaders use 16-bit types, and both upscalers storage images
+      * written without a format; the velocity variants blend their extra
+      * target apart from the title's */
+-    if (s_tm.want) {
+-        want.shaderInt16 = s_tm.want == 2 ? have.shaderInt16 : VK_FALSE;
++    if (s_tm.want || s_tm.live) {
++        want.shaderInt16 = s_tm.want == 2 || s_tm.live ? have.shaderInt16 : VK_FALSE;
+         want.shaderStorageImageWriteWithoutFormat = have.shaderStorageImageWriteWithoutFormat;
+         want.shaderStorageImageReadWithoutFormat = have.shaderStorageImageReadWithoutFormat;
+     }
+@@ -7960,7 +8070,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+                                                            .bufferDeviceAddress = VK_TRUE };
+     /* FSR 3: half floats in shaders (Vulkan 1.2) */
+     VkPhysicalDeviceShaderFloat16Int8Features f16 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES };
+-    PFN_vkGetPhysicalDeviceFeatures2 gf2 = s_tm.want == 2
++    PFN_vkGetPhysicalDeviceFeatures2 gf2 = s_tm.want == 2 || s_tm.live
+         ? (PFN_vkGetPhysicalDeviceFeatures2)pvkGetInstanceProcAddr(s_vk.instance, "vkGetPhysicalDeviceFeatures2") : NULL;
+     if (gf2) {
+         VkPhysicalDeviceShaderFloat16Int8Features q = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES };
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 392eb50..84bfb2b 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -148,6 +148,11 @@ void rsx_vulkan_set_fit(int fill);
+ /* The anisotropy mipmapped linear textures are raised to (as PS3RECOMP_VK_ANISO: 0 the title's own, 1 off, 2-16),
+  * from any thread; from the next frame but one. */
+ void rsx_vulkan_set_aniso(int n);
++/* The temporal upscaler while running, from any thread: want 0 off, 1 DLSS, 2 FSR 3.1; quality 0 quality,
++ * 1 balanced, 2 performance, 3 ultra performance, 4 native (DLAA). Another mode, or off and on again, of the
++ * upscaler the game started with applies from the next frame but one; another upscaler at the next start. */
++void rsx_vulkan_set_temporal(int want, int quality);
++int  rsx_vulkan_temporal_live(int want);   /* 1 when set_temporal(want, ...) applies while running */
+ 
+ /* Read the frame back to host memory (and to PS3RECOMP_VK_DUMP if set), and
+  * show it in the window if there is one. Same as _present_begin() followed

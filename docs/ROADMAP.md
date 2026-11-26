@@ -143,7 +143,8 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] Vblank and flip pacing for a 144 Hz monitor
 - [x] Display mode: fullscreen, borderless window, window (`kz1hd_pc.ini`, Alt+Enter)
 - [x] Output resolution and the monitor's refresh rate (resizable window, aspect ratio kept)
-- [x] Internal resolution scale (50 % to 200 % of the window, on the PC page; applies on the next start)
+- [x] Internal resolution scale (50 % to 200 % of the window, on the PC page; applies at once, and the frame follows
+      a new resolution or display mode while running)
 - [x] V-Sync on, off and adaptive
 - [x] VRR (G-Sync/FreeSync) checked on a compatible monitor (with a 60 limit the monitor shows about 60 Hz; in that
       mode presents follow 59.94 instead of 144)

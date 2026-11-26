@@ -754,7 +754,7 @@ Starting point: about 35.4 fps.
   applies at once: window and swapchain through the Vulkan backend (`rsx_vulkan_set_display`/`set_present`, applied on
   the window thread), the game clock through `g_kz_tick_hz`/`g_kz_guest_vblank_hz` in `main.cpp`, controllers through
   `pad_set_merge`. The pause script has already built the menu when the Lua piece runs, so it redoes the items.
-- Internal scale (`scale` in `kz1hd_pc.ini`, the "Internal Resolution" row on the PC page, applies on the next start):
+- Internal scale (`scale` in `kz1hd_pc.ini`, the "Internal Resolution" row on the PC page; on the next start until ps3recomp patch 2093, at once since):
   the Vulkan backend creates colour and depth targets `f` times the guest size, scales viewport and scissor, and divides
   the fragment program's WPOS by `f` (HLSL text before translation). What crosses guest memory (seeds, 2D transfers,
   colour and depth readbacks) is resampled at guest size on the CPU. The display image is scaled too. Level 1, 60 s of

@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 26 Nov 2026 14:00:48 -0300
+Subject: [PATCH] Vulkan: the anisotropic filtering setting changes while
+ running
+
+Symptom: PS3RECOMP_VK_ANISO (the PC page's Anisotropic Filtering) was read once, at the first sampler: a new
+value waited for the next start.
+
+Fix: rsx_vulkan_set_aniso (0 the title's own, 1 off, 2-16), from any thread. At a frame's end (patch 2093's
+vk_rescale_check) a new value empties the engine's sampler cache with the device idle; the samplers made from
+then on carry it, and the cache keeps its limit of 64.
+
+ENHANCEMENT: the PS3 game has no such setting. Seen in Level 1 (2026-11-26, Linux, RTX 3070 Ti, with
+PS3RECOMP_VK_ANISO_LOG): after each change 11-14 samplers were made again, the largest at 16, 1 (off), 4, and
+the title's own.
+---
+ libs/video/rsx_vulkan_backend.c | 30 ++++++++++++++++++++++++++++--
+ libs/video/rsx_vulkan_backend.h |  3 +++
+ 2 files changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 92cde0a..bc36541 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -6891,6 +6891,32 @@ static VkImageView vk_eng_scratch_depth(u32 w, u32 h)
+     return s_e2.scratch_depth.view;
+ }
+ 
++/* PS3RECOMP_VK_ANISO at start, rsx_vulkan_set_aniso (any thread) while running: the samplers made so far go at the
++ * next frame's end (vk_aniso_check), the new ones have the new value. */
++static volatile int s_aniso_req = -1;
++static int s_aniso_made = -1;   /* the value the cached samplers were made with */
++void rsx_vulkan_set_aniso(int n) { s_aniso_req = n < 0 ? 0 : n; }
++static int vk_aniso_force(void)
++{
++    if (s_aniso_req >= 0) return s_aniso_req;
++    static int env = -1;
++    if (env < 0) { const char* e = getenv("PS3RECOMP_VK_ANISO"); env = e ? atoi(e) : 0; }
++    return env;
++}
++/* At a frame's end (vk_rescale_check): a new anisotropy empties the sampler cache, with the device idle. */
++static void vk_aniso_check(void)
++{
++    const int f = vk_aniso_force();
++    if (s_aniso_made < 0) { s_aniso_made = f; return; }
++    if (f == s_aniso_made) return;
++    s_aniso_made = f;
++    vk_flush();
++    pvkDeviceWaitIdle(s_vk.device);
++    for (u32 i = 0; i < s_esamp_count; i++) pvkDestroySampler(s_vk.device, s_esamp[i].s, NULL);
++    VK_LOG("anisotropic filtering: %d (%u samplers made again)\n", f, s_esamp_count);
++    s_esamp_count = 0;
++}
++
+ /* rsx_be_sampler_desc is the registers decoded the D3D12 way; the wrap codes
+  * stay the guest's 1..8, which vk_gcm_wrap already translates. */
+ static VkSampler vk_eng_sampler(const rsx_be_sampler_desc* d)
+@@ -6899,8 +6925,7 @@ static VkSampler vk_eng_sampler(const rsx_be_sampler_desc* d)
+      * and mag filters are both linear, as D3D12's ANISOTROPIC filter needs),
+      * raised to PS3RECOMP_VK_ANISO for mipmapped linear units (a PC option;
+      * 0 or unset = the title's own, 1 = off), within the device's limit. */
+-    static int force = -1;
+-    if (force < 0) { const char* e = getenv("PS3RECOMP_VK_ANISO"); force = e ? atoi(e) : 0; }
++    const int force = vk_aniso_force();
+     u32 aniso = (d->min_linear && d->mag_linear) ? d->aniso : 1u;
+     if (force > 1 && d->min_linear && d->mag_linear && d->mip_present && (u32)force > aniso) aniso = (u32)force;
+     if (!s_vk.aniso_ok || force == 1) aniso = 1;
+@@ -7715,6 +7740,7 @@ static void vk_rescale(u32 ow, u32 oh, float sx, float sy)
+ /* At a frame's end (vk_cb_present, after the window's present). */
+ static void vk_rescale_check(void)
+ {
++    vk_aniso_check();
+     u32 ow, oh;
+     float sx, sy;
+     if (vk_rescale_target(&ow, &oh, &sx, &sy)) return;
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 5f20fb4..392eb50 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -145,6 +145,9 @@ void rsx_vulkan_set_scale(float k);
+  * PS3RECOMP_VK_SCALE_FIT: 1 fill, 0 fit), from any thread; the frame follows from the next frame but one. */
+ void rsx_vulkan_set_aspect(float aspect);
+ void rsx_vulkan_set_fit(int fill);
++/* The anisotropy mipmapped linear textures are raised to (as PS3RECOMP_VK_ANISO: 0 the title's own, 1 off, 2-16),
++ * from any thread; from the next frame but one. */
++void rsx_vulkan_set_aniso(int n);
+ 
+ /* Read the frame back to host memory (and to PS3RECOMP_VK_DUMP if set), and
+  * show it in the window if there is one. Same as _present_begin() followed
