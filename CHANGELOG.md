@@ -8,6 +8,9 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- RecompLauncher: the game's page lists the PC settings (display, picture, upscaling, mouse, sound and language),
+  read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
+  package or a decrypted EBOOT.elf that matches the US copy is shown as verified.
 - The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game
   folder, lifts it with its own addresses and plays it in the language the system asks for (its archive has English,
   French, German, Italian, Spanish and Dutch), with its saves in their own folder. Install it in your RPCS3 with its
@@ -43,8 +46,6 @@ program and folder that build it. Until a release that calls itself playable
 - Level Select's SELECT CHARACTER: the mouse no longer picks a character the level cannot be played with (the
   greyed rows). Hovering one selected it, and Select then started the level as that character; now the mouse, like
   the pad, leaves greyed rows alone.
-
-### Fixed
 - Mouse look (#121): looking up and down now turns the same amount per mouse movement as turning left and right, at
   the same slider value; before, vertical look was about a quarter as fast. Horizontal look is unchanged.
 - Frame pacing at the 60 and 30 fps limits (#121): every frame is now shown for the same time in every V-Sync mode.

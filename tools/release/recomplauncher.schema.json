@@ -29,6 +29,17 @@
                 "extensions": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z0-9]+$" } }
               }
             }
+          },
+          "dumps": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object", "required": ["name", "size", "crc32"], "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "size": { "type": "integer", "minimum": 1 },
+                "crc32": { "type": "string", "pattern": "^[0-9a-f]{8}$" }
+              }
+            }
           }
         }
       }
@@ -67,6 +78,46 @@
       "properties": { "program": { "$ref": "#/definitions/programs" }, "args": { "$ref": "#/definitions/args" } }
     },
     "saves": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^\\{install\\}/" } },
+    "config": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["format", "file"], "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+          "format": { "enum": ["ini", "toml", "json"] },
+          "file": { "$ref": "#/definitions/places" }
+        }
+      }
+    },
+    "settings": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["id", "label", "defaults"], "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+          "label": { "type": "string", "minLength": 1 },
+          "help": { "type": "string", "minLength": 1 },
+          "group": { "type": "string", "minLength": 1 },
+          "advanced": { "type": "boolean" },
+          "when": { "$ref": "#/definitions/values" },
+          "defaults": { "$ref": "#/definitions/values" },
+          "choices": {
+            "type": "array", "minItems": 2,
+            "items": {
+              "type": "object", "required": ["label", "set"], "additionalProperties": false,
+              "properties": { "label": { "type": "string", "minLength": 1 }, "set": { "$ref": "#/definitions/values" } }
+            }
+          },
+          "slider": {
+            "type": "object", "required": ["key", "min", "max"], "additionalProperties": false,
+            "properties": {
+              "key": { "type": "string", "minLength": 1 }, "min": { "type": "number" }, "max": { "type": "number" },
+              "step": { "type": "number" }, "format": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
     "folders": {
       "type": "object", "required": ["saves", "logs"],
       "additionalProperties": { "$ref": "#/definitions/places" }
@@ -90,6 +141,7 @@
   "definitions": {
     "programs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
     "args": { "type": "array", "items": { "type": "string" } },
+    "values": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } },
     "places": {
       "type": "array", "minItems": 1,
       "items": {
