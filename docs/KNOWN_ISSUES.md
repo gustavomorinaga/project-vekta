@@ -28,6 +28,9 @@ are linked.
   previous pose, so it is not the ghosting above; with motion blur a large step looks doubled. Seen with the main
   branch's build too, and the same with `PS3_SPURS_WANTED=0` and with `KZ_FRAME_WAIT_SPIN=1`: not caused by the SPURS
   default or the frame clock wait. Cause not known yet.
+- **Uneven frames at the 30 fps limit (2026-11-26).** In Level 1 with the frame-rate limit at 30, frames are shown
+  17, 33 or 50 ms apart instead of an even 33 (p99 50.0 ms, 1 % low 20 fps, V-Sync off, headless; the same on the
+  release branch before and after the 60 fps latency work). 60 fps is even. Workaround: play at 60.
 - **One crash when a rocket exploded in Level 11 (2026-11-11).** At 144 Hz in `11.SDDockingBay` the game closed
   once when a rocket launcher shot exploded: an SPU job's host stack was 8 bytes off alignment. Not seen again in two
   full plays of the chapter. If it happens, keep `play.log` and the core and play on with the stack tripwire build

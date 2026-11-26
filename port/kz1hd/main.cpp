@@ -50,6 +50,7 @@
 #include "../libs/filesystem/edat.h"   /* via the include directory: the EDAT cache folder (patch 4014) */
 #include "window_icon.h" /* the window's icon, from installer/art/vekta.ico (tools/icon_header.py) */
 #include "tick_rate.h"     /* the game clock's ticks per ms for KZ_TICK_HZ */
+#include "flip_phase.h"    /* at the 60 limit: the flip cadence's phase follows the flips */
 #include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
@@ -444,6 +445,13 @@ static DWORD WINAPI frame_clock(LPVOID)
     auto now_us = [] { return (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
                            std::chrono::steady_clock::now().time_since_epoch()).count(); };
     uint64_t next_tick = now_us();
+    /* KZ_FLIP_PHASE_US=<us> (experimental, default 0 = off): at the 60 limit the flips are shown on the game clock's
+     * own 60 Hz ticks, placed about <us> after the flips arrive (flip_phase.h, 2500 measured), instead of on the
+     * 59.94 cadence: less input latency, less even pacing. */
+    static const double phase_margin = getenv("KZ_FLIP_PHASE_US") ? atof(getenv("KZ_FLIP_PHASE_US")) : 0.0;
+    static kz_flip_phase phase;
+    int phase_on = 0;
+    double flip_seen = g_kz_flip_hz;   /* the cadence asked for, which the phase lock overrides */
 
     /* KZ_RSX_POLL_US: how often the FIFO drains between vblank ticks
      * (default 100). Every fence the game waits on -- a label a job or the
@@ -463,7 +471,18 @@ static DWORD WINAPI frame_clock(LPVOID)
         { static ULONGLONG next_tick_note;
           if (now >= next_tick_note) { next_tick_note = now + 100; kz_hang_tick(kz_window_minimized()); kz_players_sync(); } }
         kz_crash_test_hang_point();   /* KZ_CRASH_TEST=hang: this loop stops here for good */
-        if (g_kz_flip_hz != tick_hz && g_kz_flip_hz > 0) { tick_hz = g_kz_flip_hz; tick_us = (uint64_t)(1e6 / tick_hz); next_tick = now_t; }
+        if (g_kz_flip_hz != flip_seen && g_kz_flip_hz > 0) { flip_seen = tick_hz = g_kz_flip_hz; tick_us = (uint64_t)(1e6 / tick_hz); next_tick = now_t; phase_on = 0; }
+        /* the phase lock: the game clock between 30 and 100 Hz (the 60 limit) */
+        const int lock_hz = phase_margin > 0 && g_kz_tick_hz > 30 && g_kz_tick_hz < 100 ? g_kz_tick_hz : 0;
+        if (phase_on && (double)lock_hz != tick_hz) { tick_hz = flip_seen; tick_us = (uint64_t)(1e6 / tick_hz); next_tick = now_t; phase_on = 0; }
+        if (!phase_on && lock_hz) {
+            tick_hz = lock_hz;
+            kz_flip_phase_start(&phase, tick_hz, phase_margin, (double)now_t);
+            next_tick = now_t;
+            phase_on = 1;
+            static int said;
+            if (said++ < 4) fprintf(stderr, "[kz] flips follow the %d Hz game clock, %.0f us after they arrive (KZ_FLIP_PHASE_US)\n", lock_hz, phase_margin);
+        }
 
         int fired = 0;
         /* One guest flip per refresh: the drain stops at each flip word, and
@@ -492,8 +511,10 @@ static DWORD WINAPI frame_clock(LPVOID)
              * batch held right now is exactly the completed frame; presenting
              * after the drain races the guest's next-frame writes and shows a
              * mixed one. */
+            int presented = 0;
             if (rsx_ok && cellGcm_take_flip_pending()) {
                 present_guest_frame();
+                presented = 1;
             }
             /* Drain the FIFO every tick. This is what writes the RSX sync-fence
              * labels the game's per-frame logic blocks on, so it has to keep
@@ -503,10 +524,11 @@ static DWORD WINAPI frame_clock(LPVOID)
                 cellGcm_rsx_process_fifo();
                 flipped_this_tick = cellGcm_flip_request_count() != before;
             }
-            next_tick += tick_us;
+            if (phase_on) { kz_flip_phase_tick(&phase, presented); next_tick = (uint64_t)phase.next; }
+            else next_tick += tick_us;
             fired++;
         }
-        if (fired >= 240) next_tick = now_t;   /* fell too far behind -- resync */
+        if (fired >= 240) { next_tick = now_t; phase_on = 0; }   /* fell too far behind -- resync */
 
         /* KZ_STATS=1: one line every 2 s with the flips the guest asked for. */
         static int stats = -1;
@@ -609,6 +631,8 @@ static DWORD WINAPI frame_clock(LPVOID)
                 unsigned before = cellGcm_flip_request_count();
                 cellGcm_rsx_process_fifo();
                 flipped_this_tick = cellGcm_flip_request_count() != before;
+                if (flipped_this_tick && phase_on) { kz_flip_phase_reach(&phase, (double)now_us(), 0);
+                                                     next_tick = (uint64_t)phase.next; }
             }
 
             if (rsx_backend_pump() != 0) kz_quit("window closed");
