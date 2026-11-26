@@ -398,14 +398,15 @@ static void player_look(ppu_context* ctx)
     kz_route_tick_end(obj);
     static pc_look_carry carry;   /* the clock object (0x828734) counts ticks at +0x6C */
     const uint32_t clk = rd32(0x828734);
-    const float per = pc_look_frame(&carry, clk && clk < 0xF0000000u ? rd32(clk + 0x6C) : carry.last + 1,
-                                  g_kz_tick_hz > 0 ? g_kz_tick_hz : 30, &dx, &dy);
-    if (!dx && !dy) return;
-    const float k = g_look_k * (float)(g_kz_tick_hz > 0 ? g_kz_tick_hz : 30) * per;   /* per tick of this frame */
+    float qx, qy;   /* counts per tick (pc_rates.h) */
+    pc_look_frame(&carry, clk && clk < 0xF0000000u ? rd32(clk + 0x6C) : carry.last + 1,
+                  g_kz_tick_hz > 0 ? g_kz_tick_hz : 30, dx, dy, &qx, &qy);
+    if (qx == 0.0f && qy == 0.0f) return;
+    const float k = g_look_k * (float)(g_kz_tick_hz > 0 ? g_kz_tick_hz : 30);   /* per count per tick */
     const float yaw = rdf(obj + 0xA8), pitch = rdf(obj + 0xAC);
-    wrf(obj + 0xA8, yaw - (float)dx * k * sens(s_yaw));
+    wrf(obj + 0xA8, yaw - qx * k * sens(s_yaw));
     wrf(obj + 0x3C, rdf(obj + 0xA8) / 0.93f);
-    wrf(obj + 0xAC, pitch + (float)(s_invert ? dy : -dy) * k * KZ_LOOK_PITCH_SCALE * sens(s_pitch));
+    wrf(obj + 0xAC, pitch + (s_invert ? qy : -qy) * k * KZ_LOOK_PITCH_SCALE * sens(s_pitch));
     if (g_look_log) { static int n; if (n++ % 30 == 0)
         fprintf(stderr, "[kz-look] dx=%d dy=%d rates %.4f %.4f -> %.4f %.4f\n", dx, dy,
                 yaw, pitch, rdf(obj + 0xA8), rdf(obj + 0xAC)); }

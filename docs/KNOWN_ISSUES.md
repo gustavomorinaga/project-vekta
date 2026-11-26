@@ -11,10 +11,8 @@ are linked.
   processor core: in Level 1 (2026-11-26, VADER, the maintainer's i7-11700K, the game on 4 cores, V-Sync off, 1280x720 window) 120
   held 119.9 fps (1 % low 86), 144 held 143.9 (111), 165 held 164.7 (115), 240 ran 174 (105) and Unlimited 183 (101),
   the game's main thread about 95 % busy from 165 up; the game clock kept real time within 0.1 % at every limit.
-  Mouse look (the same day, counts injected in Level 1): a slow sweep and most flicks turn as at 60 (0.04365 degrees
-  per count), but at 240 and Unlimited one movement in about eight turned 6 to 7 % more (46.8 degrees for a 1000-count
-  flick at Unlimited instead of 43.7), as if the frame's mouse counts were spread over one tick fewer than the game
-  applies.
+  Mouse look turns as at 60 at every limit (0.04365 degrees per count; flicks and slow sweeps injected in Level 1,
+  within 1.7 % at 60, 144, 240 and Unlimited).
   Reports of how they run on your machine are welcome. The default 60 is not affected.
 - **First-person weapon "ghosting" in the 144 Hz mode.** In busy places (the concrete yard with the Helghast dropships
   in chapter 9, "Hidden Pasts", identified by the maintainer on 2026-11-12), on rare frames the whole first-person

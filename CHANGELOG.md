@@ -55,6 +55,9 @@ program and folder that build it. Until a release that calls itself playable
   stays within its weight budget as a release grows.
 
 ### Fixed
+- Mouse yaw turns by the same amount whatever the frame times: the game turns at the mean of a frame's turn rate and
+  the last one's, so with frames of different lengths (at 144 when it dips, and at 240 and Unlimited) a flick turned
+  up to 14 % more or less than its counts.
 - Closing the game's window now ends the game also when the game has stopped responding (it showed no new frames):
   after 2 s the game quits as Quit Game does. On Windows such a game could not be closed at all, only from the Task
   Manager (ps3recomp patch 2090: the window has a thread of its own).
