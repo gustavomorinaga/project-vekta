@@ -176,7 +176,9 @@ static void ini_save(void)
  *   temporal   = off | fsr3-<mode> | dlss-<mode>, mode quality | balanced | performance |
  *                native   (a temporal upscaler: the scene drawn smaller and rebuilt at the
  *                frame's size with AMD FSR 3.1 or NVIDIA DLSS, native = their AA alone;
- *                at the next start, PS3RECOMP_TEMPORAL and PS3RECOMP_UPSCALE_MODE.
+ *                applied at once for FSR 3.1 and for the upscaler the game started with,
+ *                rsx_vulkan_set_temporal, ps3recomp patch 2096; DLSS otherwise at the next
+ *                start; at start PS3RECOMP_TEMPORAL and PS3RECOMP_UPSCALE_MODE.
  *                docs/dev/upscalers.md)
  *   speakers   = 2 | 6 | 8   (stereo, 5.1 or 7.1: the device the sound goes to, and what
  *                             the game is told it plays to, so its own mixer fills the
@@ -280,6 +282,7 @@ static long long now_ms(void);
 static void display_seq_tick(long long t);   /* KZ_TEST_DISPLAY_SEQ, below */
 static void aspect_apply(void);   /* below, with the aspect row */
 static void aniso_apply(void);    /* below, with the anisotropic row */
+static void temporal_apply(void); /* below, with the temporal row */
 extern "C" void kz_view_update(void)
 {
     int w, h;
@@ -469,6 +472,8 @@ void rsx_vulkan_set_scale(float k);   /* ps3recomp patch 2093 */
 void rsx_vulkan_set_aspect(float aspect);   /* ps3recomp patch 2094 */
 void rsx_vulkan_set_fit(int fill);
 void rsx_vulkan_set_aniso(int n);   /* ps3recomp patch 2095 */
+void rsx_vulkan_set_temporal(int want, int quality);   /* ps3recomp patch 2096 */
+int  rsx_vulkan_temporal_live(int want);
 void pad_set_merge(int on);
 void pad_set_players(int n);
 void rsx_temporal_hold(int held);   /* ps3recomp patch 2092 */
@@ -614,6 +619,7 @@ static void display_seq_tick(long long t)
             s_ini[k] = v;
             if (k == "aspect" || k == "widescreen") { view_load(); aspect_apply(); }
             if (k == "anisotropic") aniso_apply();
+            if (k == "temporal") temporal_apply();
             p = *end ? end + 1 : end;
         }
         fprintf(stderr, "[kz-test] display step %d at %.1f s: %s %dx%d scale %d%% %s\n", next + 1,
@@ -637,14 +643,23 @@ static void fsr_apply(void) { rsx_vulkan_set_fsr(s_ini["upscaler"] == "fsr", (fl
 static void get_upscaler(ppu_context* c) { attr_log("get_upscaler", c); wrf((uint32_t)c->gpr[4], s_ini["upscaler"] == "fsr" ? 1.0f : 0.0f); }
 static void set_upscaler(ppu_context* c) { attr_log("set_upscaler", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["upscaler"] = lroundf(in_f(c)) ? "fsr" : "linear"; ini_write(); fsr_apply(); s_deps_dirty = true; }
-/* The temporal upscaler: at the next start (the scene's size is set then). */
+/* The temporal upscaler: another mode, or off and on again, of the one the game started with at once
+ * (rsx_vulkan_set_temporal); another upscaler at the next start (its device features are chosen then). */
 static const char* const kTemporal[] = { "off", "fsr3-quality", "fsr3-balanced", "fsr3-performance", "fsr3-native",
                                          "dlss-quality", "dlss-balanced", "dlss-performance", "dlss-native" };
+static void temporal_apply(void)
+{
+    const std::string& t = s_ini["temporal"];
+    const int want = !t.compare(0, 4, "dlss") ? 1 : !t.compare(0, 4, "fsr3") ? 2 : 0;
+    const size_t d = t.find('-');
+    const std::string m = d == std::string::npos ? "" : t.substr(d + 1);
+    rsx_vulkan_set_temporal(want, m == "balanced" ? 1 : m == "performance" ? 2 : m == "native" ? 4 : 0);
+}
 static void get_temporal(ppu_context* c) { attr_log("get_temporal", c); int i = 0;
     for (int k = 0; k < 9; k++) if (s_ini["temporal"] == kTemporal[k]) i = k;
     wrf((uint32_t)c->gpr[4], (float)i); }
 static void set_temporal(ppu_context* c) { attr_log("set_temporal", c); if ((int32_t)c->gpr[5] != 2) return;
-    s_ini["temporal"] = kTemporal[std::clamp((int)lroundf(in_f(c)), 0, 8)]; ini_write(); }
+    s_ini["temporal"] = kTemporal[std::clamp((int)lroundf(in_f(c)), 0, 8)]; ini_write(); temporal_apply(); s_deps_dirty = true; }
 static void get_sharp(ppu_context* c) { attr_log("get_sharp", c);
     wrf((uint32_t)c->gpr[4], 1.0f - std::clamp((float)atof(s_ini["sharpness"].c_str()), 0.0f, 2.0f) / 2.0f); }
 static void set_sharp(ppu_context* c) { attr_log("set_sharp", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_SHARPNESS)) return;
@@ -707,6 +722,7 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
     scale_apply();
     aspect_apply();
     aniso_apply();
+    temporal_apply();
     s_deps_dirty = true; }
 static void get_intro(ppu_context* c) { attr_log("get_intro", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["intro"] != "off"; }
 static void set_intro(ppu_context* c) { attr_log("set_intro", c); if ((int32_t)c->gpr[5] != 2) return;
@@ -906,9 +922,11 @@ static std::string kz_lua(void)
         rv += (i ? ";" : "") + std::to_string(i) + ".0";   /* a float attribute reads back as "1.0" */
         rl += (i ? ";" : "") + std::to_string(s_res[i].first) + "x" + std::to_string(s_res[i].second);
     }
-    /* the upscalers this build lacks are named so (their rows still store the choice) */
+    /* the upscalers this build lacks are named so (their rows still store the choice), and one that applies only at
+     * the next start (not the one the game started with; DLSS's device extensions are chosen then) */
     const int tb = rsx_vulkan_temporal_built();
-    const std::string fs = tb & 1 ? "FSR 3.1 " : "FSR 3.1 (not built) ", dl = tb & 2 ? "DLSS " : "DLSS (not built) ";
+    const std::string fs = !(tb & 1) ? "FSR 3.1 (not built) " : rsx_vulkan_temporal_live(2) ? "FSR 3.1 " : "FSR 3.1 (on restart) ";
+    const std::string dl = !(tb & 2) ? "DLSS (not built) " : rsx_vulkan_temporal_live(1) ? "DLSS " : "DLSS (on restart) ";
     const std::string tl = fs + "Quality;" + fs + "Balanced;" + fs + "Performance;" + fs + "Native AA;" +
                            dl + "Quality;" + dl + "Balanced;" + dl + "Performance;" + (tb & 2 ? "DLAA" : "DLAA (not built)");
     /* the post strengths' rows (post.h): 0 % to 100 %, 100 the game's */
@@ -967,7 +985,7 @@ static std::string kz_lua(void)
     "  KZPCR(16, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
     "  KZPCR(17, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
     "  KZPCR(18, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Temporal|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0|"
-        "$Conditions.Off$;" + tl + "', 'Temporal Upscaler (on restart)'))\n"
+        "$Conditions.Off$;" + tl + "', 'Temporal Upscaler'))\n"
     "  KZPCR(19, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.AntiAliasing|0.0;1.0|Original (MLAA);$Conditions.Off$', 'Anti-aliasing'))\n"
     "  KZPCR(20, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.MotionBlur|" + kPct + "', 'Motion Blur'))\n"
     "  KZPCR(21, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FilmGrain|" + kPct + "', 'Film Grain'))\n"

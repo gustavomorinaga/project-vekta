@@ -17,9 +17,13 @@ has, for the PC menu), 2050 (per-object motion pairs, on by default), 2051 (FSR 
 | `PS3RECOMP_TEMPORAL_OBJECT_MOTION` | `0` turns per-object motion vectors off (default on) |
 | `PS3RECOMP_TEMPORAL_DUMP` | writes each frame's colour, depth, camera, motion and velocity, for offline checks |
 
-In the game the choice is PC > "Temporal Upscaler (on restart)" (the `temporal` key of `kz1hd_pc.ini`: `off`,
-`fsr3-<mode>` or `dlss-<mode>`); an upscaler the build does not have shows as "(not built)". It takes effect at the
-next start. A window, resolution, display-mode or internal-scale change during play applies at once (ps3recomp patch
+In the game the choice is PC > "Temporal Upscaler" (the `temporal` key of `kz1hd_pc.ini`: `off`,
+`fsr3-<mode>` or `dlss-<mode>`); an upscaler the build does not have shows as "(not built)". FSR 3.1 turns on, off
+or to another mode at once, also in a game started without an upscaler: the device is made with FSR 3.1's features
+whenever the build and the GPU have them (`PS3RECOMP_FSR3_LIVE=0`: not), and the pipelines made before get their
+velocity variant at their next draw (ps3recomp patch 2096). DLSS applies at once only in a game started with DLSS
+(another mode, or off and on again); otherwise its choices say "(on restart)", as NGX's extensions are chosen when
+the device is made. A window, resolution, display-mode or internal-scale change during play applies at once (ps3recomp patch
 2093): the output becomes the new frame size, the scene the upscaler's render size for it, DLSS's feature or FSR 3.1's
 context is made again and the history starts over.
 

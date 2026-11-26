@@ -58,6 +58,15 @@ RUNS = {
     "H": ({},   # Anisotropic Filtering while running (patch 2095; PS3RECOMP_VK_ANISO_LOG lines)
           [("-", "-", "-", "anisotropic=16"), ("-", "-", "-", "anisotropic=off"), ("window", "1920x1080", "-", "anisotropic=4"),
            ("-", "-", "-", "anisotropic=game")]),
+    "T": ({"temporal": "fsr3-quality"},   # the temporal upscaler while running (patch 2096)
+          [("window", "3440x1440", "-", "temporal=fsr3-performance"), ("-", "-", "-", "temporal=off"),
+           ("-", "-", "-", "temporal=fsr3-native"), ("window", "1920x1080", "-", "temporal=fsr3-quality"),
+           ("-", "-", "-", "temporal=dlss-quality"), ("-", "-", "50", "temporal=off"),
+           ("-", "-", "100", "temporal=fsr3-balanced")]),
+    "U": ({},   # FSR 3.1 turned on while running, from a start without an upscaler (patch 2096)
+          [("window", "3440x1440", "-", "temporal=fsr3-quality"), ("-", "-", "-", "temporal=fsr3-performance"),
+           ("-", "-", "-", "temporal=off"), ("window", "1920x1080", "-", "temporal=fsr3-native"),
+           ("-", "-", "-", "temporal=dlss-quality"), ("-", "-", "200", "temporal=fsr3-balanced"), ("-", "-", "100", "temporal=off")]),
     "F": ({"temporal": "dlss-quality"},
           [("window", "3440x1440", "-"), ("window", "1280x720", "-"), ("window", "3440x1440", "50"), ("-", "-", "100")]),
 }

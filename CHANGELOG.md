@@ -61,6 +61,9 @@ program and folder that build it. Until a release that calls itself playable
 - Aspect Ratio and Widescreen apply at once: the picture takes its new shape without a restart (ps3recomp patch
   2094).
 - Anisotropic Filtering applies at once (ps3recomp patch 2095).
+- The Temporal Upscaler applies at once for AMD FSR 3.1: on, off or another mode, also when the game started without
+  it. DLSS still needs a restart unless the game started with DLSS; its choices then say "(on restart)" (ps3recomp
+  patch 2096).
 - RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two
   optional boxes, and RecompLauncher counts Easy Setup only for a required one; now one box takes the installed
   folder, the disc's folder or its DATA000.PKG.
