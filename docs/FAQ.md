@@ -23,8 +23,8 @@ built on your PC from your own copy of Killzone HD. What each file must be: [GET
 ## Which copies work?
 
 Killzone HD, the US edition (NPUA80856), installed from your own **Killzone Trilogy** disc or bought on the
-PlayStation Store. The European edition (NPEA00418, disc BCES-01743) is not supported yet: its executable is another
-build ([GETTING-FILES.md](GETTING-FILES.md)).
+PlayStation Store, and the European edition (NPEA00418) from the European PlayStation Store, through your RPCS3. The
+European disc (BCES-01743) has not been tried ([GETTING-FILES.md](GETTING-FILES.md)).
 
 ## Do I need PS3 firmware?
 

@@ -7,6 +7,21 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Added
+- RecompLauncher: the game's page lists the PC settings (display, picture, upscaling, mouse, sound and language),
+  read from and written to `kz1hd_pc.ini`, greyed out where the game's PC page greys them; and a PlayStation Store
+  package or a decrypted EBOOT.elf that matches the US copy is shown as verified.
+- RecompLauncher: the game box also takes the European edition, the folder RPCS3 installed it in (NPEA00418) or
+  your European disc copied to the PC (BCES-01743), and a decrypted EBOOT.elf of the European edition is shown as
+  verified. The release notes name the European edition too.
+- The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game
+  folder, lifts it with its own addresses and plays it in the language the system asks for (its archive has English,
+  French, German, Italian, Spanish and Dutch), with its saves in their own folder. Install it in your RPCS3 with its
+  licence and choose "Use my RPCS3 install".
+- The European disc of Killzone HD (BCES-01743): give a copy of the disc's folder to `--disc FOLDER` (or "From my
+  Killzone Trilogy disc" in the setup). Its files are the European edition's; the official RPCS3 only decrypts a copy
+  of its `EBOOT.BIN`, and the archive is read where it is ([docs/GETTING-FILES.md](docs/GETTING-FILES.md)).
+
 ### Changed
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
   every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
@@ -19,6 +34,40 @@ program and folder that build it. Until a release that calls itself playable
 - The site moved to the root of its address (<https://gustavomorinaga.github.io/project-vekta/>); the old `/site/`
   address sends you there. New: a FAQ section, a page for unknown addresses, a sitemap and link previews, and a
   printout of every section.
+- Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 %
+  at 120).
+
+### Fixed
+- RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two
+  optional boxes, and RecompLauncher counts Easy Setup only for a required one; now one box takes the installed
+  folder, the disc's folder or its DATA000.PKG.
+- Extras > Game Intro plays the whole opening movie again with "Opening Movie" off. The option skipped every
+  showing of the movie, so Extras showed a black frame and went back to the menu; now it only skips the one at
+  start-up.
+- No more red lines along the top and bottom of the movies with an internal resolution above 1x (a higher
+  resolution, DLSS or FSR; #158). The game draws each movie frame from a larger texture, and the scaled picture
+  reached the rows past the frame; at 1x nothing changes.
+- Extras > War Scenes picked with the mouse plays its bot battle instead of going straight back to the menu. The
+  click's press lasted past the loading screen, and any button ends War Scenes, as on the PS3.
+- At 144 fps a few game clock ticks (15 every 5 seconds) came 1 ms late, a slightly longer frame between two short
+  ones: the 144 Hz rate is now stored a hair above 0.144 ticks per ms, as the game stores its own 30 Hz one.
+- The game no longer stays on a black window forever after an earlier first run was stopped while it was writing
+  its file cache (an empty or missing `cache.dat` under `work/vfs/cache/BCUS98116/fios`): at start the port removes
+  a cut-short cache, and the game makes a new one, the same bytes, as on a first run.
+- The launcher no longer calls a session "hang-killed" when the game stopped showing frames for a while, recovered
+  and was then quit normally (it showed "exit 0: ok (hang-killed)"): a hang counts only when the game was still
+  stuck at the end.
+- Level Select's SELECT CHARACTER: the mouse no longer picks a character the level cannot be played with (the
+  greyed rows). Hovering one selected it, and Select then started the level as that character; now the mouse, like
+  the pad, leaves greyed rows alone.
+- Mouse look (#121): looking up and down now turns the same amount per mouse movement as turning left and right, at
+  the same slider value; before, vertical look was about a quarter as fast. Horizontal look is unchanged.
+- Frame pacing at the 60 and 30 fps limits (#121): every frame is now shown for the same time in every V-Sync mode.
+  Before, at 60 fps the frames alternated between about 14 and 21 ms unless V-Sync was set to the VRR mode.
+- Mouse look (#121): mouse movement made while the game window was out of focus, just before a menu opened or as
+  the pointer was captured again no longer turns the view all at once afterwards (a sudden jump or flick).
+- Mouse look (#121): a frame that runs slow no longer turns the view twice as far for the same mouse movement (most
+  often at the 144 fps limit).
 
 ## [0.7.0] - 2026-11-23 (pre-release)
 

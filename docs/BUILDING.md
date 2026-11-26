@@ -236,7 +236,10 @@ their usual places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR`.
 - `--dlss accept` (or `decline`): the answer to NVIDIA's DLSS SDK licence, passed to `firstrun.py`.
 - `recomplauncher.json` at the top of both folders tells a launcher such as RecompLauncher the same things: the game
   folder to ask for (and an optional decrypted `EBOOT.elf`), the prepare step with its DLSS tick (the licence is the
-  player's to accept), the program to start, the saves, the log folders and the exit codes below. It is written by
+  player's to accept), the program to start, the saves, the log folders and the exit codes below. It also lists the
+  PC page's settings (`config` and `settings`: `kz1hd_pc.ini`, so the launcher's game page shows and edits the same
+  values, greyed out where the PC page greys them) and the size and CRC32 of the US PlayStation Store package and the
+  decrypted EBOOT (`dumps`: a copy that matches gets the launcher's "verified" badge). It is written by
   `tools/release/recomplauncher.py` from `installer/recomplauncher.json`, with `prepare.version` set to `VERSION` and
   the exit codes taken from `kz_exit.h`. The tests check it against `tools/release/recomplauncher.schema.json`, the
   part of the format this project uses, written here.
@@ -248,7 +251,7 @@ The exit codes, one table for the exe and the launcher (`port/kz1hd/kz_exit.h`; 
 | 1 | `FAILED` | Something else went wrong: the end of work/play.log or the newest work/logs/firstrun-*.log says what. |
 | 2 | `USAGE` | Wrong arguments: run with --help to see them. |
 | 70 | `NOT_PREPARED` | The game is not built yet: start Project Vekta, or run its prepare step (--prepare), to check your files and build it. |
-| 71 | `WRONG_EDITION` | These files are another edition or version of the game: the port needs NPUA80856 version 01.00 (docs/GETTING-FILES.md). |
+| 71 | `WRONG_EDITION` | These files are another edition or version of the game: the port needs NPUA80856, NPEA00418 or BCES01743 version 01.00 (docs/GETTING-FILES.md). |
 | 72 | `FILE_MISSING` | A file the port needs is missing or still encrypted: give the game folder (--game), or let your RPCS3 make the decrypted copy (--rpcs3). |
 | 73 | `NO_RPCS3` | No RPCS3 with the game installed was found in its usual places: give its folder (--rpcs3 DIR), or your files (--game, --eboot). |
 | 74 | `BUILD_FAILED` | The build stopped: the reason is at the end of the newest work/logs/firstrun-*.log; after a fix, prepare again (it resumes). |

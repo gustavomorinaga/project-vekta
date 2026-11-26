@@ -14,6 +14,7 @@
 #ifndef KZ_HUD_SITES_H
 #define KZ_HUD_SITES_H
 #include <stdint.h>
+#include "../edition.h"   /* KZ_GA */
 
 enum { HUD_SIDE_BY_POSITION = -1, HUD_SIDE_RIGHT = 1 };
 
@@ -21,7 +22,7 @@ enum { HUD_SIDE_BY_POSITION = -1, HUD_SIDE_RIGHT = 1 };
 static inline int hud_site_side(uint32_t ret)
 {
     switch (ret) {
-    case 0x004CDC0C: case 0x004CDCC0:   /* the grenade row, with the ammo panel */
+    case KZ_GA(0x004CDC0C): case KZ_GA(0x004CDCC0):   /* the grenade row, with the ammo panel */
         return HUD_SIDE_RIGHT;
     default:
         return HUD_SIDE_BY_POSITION;

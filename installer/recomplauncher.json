@@ -6,30 +6,27 @@
   "inputs": [
     {
       "id": "game",
-      "label": "Your installed Killzone HD folder (NPUA80856, version 01.00, from the Killzone Trilogy disc or the PlayStation Store): the folder with PARAM.SFO and USRDIR, as your PS3 or RPCS3 installed it.",
+      "label": "Your Killzone HD, one of: the folder your PS3 or RPCS3 installed it in (with PARAM.SFO and USRDIR), from the USA edition (NPUA80856) or the European one (NPEA00418), version 01.00; or, with no RPCS3, a disc copied to this PC: your Killzone Trilogy disc (its folder, with PS3_GAME and PS3_EXTRA, or the Killzone HD package DATA000.PKG) or your European Killzone HD disc (BCES-01743, its folder with PS3_GAME). From the Trilogy disc or its package, the official RPCS3 is downloaded from RPCS3's own GitHub releases to install the game into the install folder, and from the European disc only to decrypt its EBOOT; on Windows 10, install 7-Zip first. A European PlayStation Store package needs its licence, so install it in your RPCS3 first and give the installed folder.",
       "role": "game",
-      "optional": true,
-      "formats": [{ "type": "folder" }]
-    },
-    {
-      "id": "disc",
-      "label": "Or, with no RPCS3: your Killzone Trilogy disc copied to this PC (its folder, with PS3_GAME and PS3_EXTRA, or the Killzone HD package DATA000.PKG). The official RPCS3 is downloaded from RPCS3's own GitHub releases to install the game into the install folder; on Windows 10, install 7-Zip first. Leave the game folder empty then.",
-      "role": "disc",
-      "optional": true,
-      "formats": [{ "type": "folder" }, { "type": "file", "extensions": ["pkg"] }]
+      "formats": [{ "type": "folder" }, { "type": "file", "extensions": ["pkg"] }],
+      "dumps": [{ "name": "USA (PlayStation Store, NPUA80856)", "size": 3182645568, "crc32": "9de18d66" }]
     },
     {
       "id": "eboot",
-      "label": "Optional: your decrypted EBOOT.elf (19,706,080 bytes, SHA-256 c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc). Leave it out when your RPCS3 has the game: it makes this copy itself.",
+      "label": "Optional: your decrypted EBOOT.elf (19,706,080 bytes; SHA-256 c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc for the USA edition, e4fc4f13b1bd940f52c5df16f4cc4bf0af88e17f4c1d2276b877a62490c57f52 for the European one). Leave it out when your RPCS3 has the game: it makes this copy itself.",
       "role": "update",
       "optional": true,
-      "formats": [{ "type": "file", "extensions": ["elf"] }]
+      "formats": [{ "type": "file", "extensions": ["elf"] }],
+      "dumps": [
+        { "name": "USA (NPUA80856 01.00, decrypted)", "size": 19706080, "crc32": "e3ce792f" },
+        { "name": "Europe (NPEA00418 or BCES-01743 01.00, decrypted)", "size": 19706080, "crc32": "801f0cc3" }
+      ]
     }
   ],
   "prepare": {
     "program": ["scripts/prepare.cmd", "scripts/prepare.sh"],
-    "args": ["--game={input:game}", "--eboot={input:eboot}", "--disc={input:disc}"],
-    "label": "Checking your files and building the port on this PC (5 to 30 minutes; nothing of the game is downloaded, only the official RPCS3 when you give the disc)",
+    "args": ["--game={input:game}", "--eboot={input:eboot}"],
+    "label": "Checking your files and building the port on this PC (5 to 30 minutes; nothing of the game is downloaded, only the official RPCS3 when you give the disc or the package)",
     "timeout": 7200,
     "version": "stamped by tools/release/recomplauncher.py: the release's VERSION",
     "done": ["{install}/work/build-stamp.json"],
@@ -49,6 +46,217 @@
     "program": ["Project Vekta.exe", "project-vekta"]
   },
   "saves": ["{install}/work/vfs/gamedata", "{install}/work/vfs/kz1hd_pc.ini", "{install}/work/vfs/kz1hd_keys.ini"],
+  "config": [
+    { "id": "main", "format": "ini", "file": [{ "path": "{install}/work/vfs/kz1hd_pc.ini" }] }
+  ],
+  "settings": [
+    {"id": "display", "label": "Display Mode", "group": "Display", "defaults": {"display": "window"},
+      "choices": [
+        {"label": "Window", "set": {"display": "window"}},
+        {"label": "Borderless", "set": {"display": "borderless"}},
+        {"label": "Fullscreen", "set": {"display": "fullscreen"}}
+      ] },
+    {"id": "resolution", "label": "Resolution", "help": "The window's size, or the fullscreen mode. Borderless always takes the desktop's.", "group": "Display", "defaults": {"resolution": "1280x720"},
+      "choices": [
+        {"label": "1280x720", "set": {"resolution": "1280x720"}},
+        {"label": "1600x900", "set": {"resolution": "1600x900"}},
+        {"label": "1920x1080", "set": {"resolution": "1920x1080"}},
+        {"label": "2560x1080", "set": {"resolution": "2560x1080"}},
+        {"label": "2560x1440", "set": {"resolution": "2560x1440"}},
+        {"label": "3440x1440", "set": {"resolution": "3440x1440"}},
+        {"label": "3840x2160", "set": {"resolution": "3840x2160"}}
+      ] },
+    {"id": "vsync", "label": "V-Sync", "group": "Display", "defaults": {"vsync": "on"},
+      "choices": [
+        {"label": "On", "set": {"vsync": "on"}},
+        {"label": "Off", "set": {"vsync": "off"}},
+        {"label": "Adaptive", "set": {"vsync": "adaptive"}},
+        {"label": "FIFO (VRR)", "set": {"vsync": "fifo"}}
+      ] },
+    {"id": "fps_limit", "label": "Frame Rate Limit", "help": "30 is the PS3's. 60 is the default.", "group": "Display", "defaults": {"fps_limit": "60"},
+      "choices": [
+        {"label": "30", "set": {"fps_limit": "30"}},
+        {"label": "60", "set": {"fps_limit": "60"}},
+        {"label": "144", "set": {"fps_limit": "144"}}
+      ] },
+    {"id": "reflex", "label": "NVIDIA Reflex", "help": "Lower input lag on NVIDIA cards; does nothing on others.", "group": "Display", "defaults": {"reflex": "off"},
+      "choices": [
+        {"label": "Off", "set": {"reflex": "off"}},
+        {"label": "On", "set": {"reflex": "on"}},
+        {"label": "On + Boost", "set": {"reflex": "boost"}}
+      ] },
+    {"id": "widescreen", "label": "Widescreen", "help": "Off: the PS3's 16:9 picture with bars.", "group": "Picture", "defaults": {"widescreen": "on"},
+      "choices": [
+        {"label": "On", "set": {"widescreen": "on"}},
+        {"label": "Off", "set": {"widescreen": "off"}}
+      ] },
+    {"id": "aspect", "label": "Aspect Ratio", "group": "Picture", "when": {"widescreen": "on"}, "defaults": {"aspect": "auto"},
+      "choices": [
+        {"label": "Auto (Window)", "set": {"aspect": "auto"}},
+        {"label": "4:3", "set": {"aspect": "4:3"}},
+        {"label": "16:10", "set": {"aspect": "16:10"}},
+        {"label": "16:9", "set": {"aspect": "16:9"}},
+        {"label": "21:9", "set": {"aspect": "21:9"}},
+        {"label": "32:9", "set": {"aspect": "32:9"}}
+      ] },
+    {"id": "field_of_view", "label": "Field of View", "group": "Picture", "defaults": {"field_of_view": "87"},
+      "choices": [
+        {"label": "87 (Original)", "set": {"field_of_view": "87"}},
+        {"label": "70", "set": {"field_of_view": "70"}},
+        {"label": "75", "set": {"field_of_view": "75"}},
+        {"label": "80", "set": {"field_of_view": "80"}},
+        {"label": "85", "set": {"field_of_view": "85"}},
+        {"label": "90", "set": {"field_of_view": "90"}},
+        {"label": "95", "set": {"field_of_view": "95"}},
+        {"label": "100", "set": {"field_of_view": "100"}},
+        {"label": "105", "set": {"field_of_view": "105"}},
+        {"label": "110", "set": {"field_of_view": "110"}},
+        {"label": "115", "set": {"field_of_view": "115"}},
+        {"label": "120", "set": {"field_of_view": "120"}}
+      ] },
+    {"id": "weapon_fov", "label": "Weapon Field of View", "group": "Picture", "defaults": {"weapon_fov": "87"},
+      "choices": [
+        {"label": "87 (Original)", "set": {"weapon_fov": "87"}},
+        {"label": "70", "set": {"weapon_fov": "70"}},
+        {"label": "75", "set": {"weapon_fov": "75"}},
+        {"label": "80", "set": {"weapon_fov": "80"}},
+        {"label": "85", "set": {"weapon_fov": "85"}},
+        {"label": "90", "set": {"weapon_fov": "90"}},
+        {"label": "95", "set": {"weapon_fov": "95"}},
+        {"label": "100", "set": {"weapon_fov": "100"}},
+        {"label": "105", "set": {"weapon_fov": "105"}},
+        {"label": "110", "set": {"weapon_fov": "110"}},
+        {"label": "115", "set": {"weapon_fov": "115"}},
+        {"label": "120", "set": {"weapon_fov": "120"}}
+      ] },
+    {"id": "hud_position", "label": "HUD Position", "help": "0 keeps the HUD in the 16:9 middle, 1 puts it at the screen's edges.", "group": "Picture", "when": {"widescreen": "on"},
+      "slider": {"key": "hud_position", "min": 0, "max": 1, "step": 0.1, "format": "%.4g"}, "defaults": {"hud_position": "1"} },
+    {"id": "hud_size", "label": "HUD Size", "help": "1 is the game's.", "group": "Picture",
+      "slider": {"key": "hud_size", "min": 0.5, "max": 1.5, "step": 0.1, "format": "%.4g"}, "defaults": {"hud_size": "1"} },
+    {"id": "crosshair_size", "label": "Crosshair Size", "help": "1 is the game's.", "group": "Picture",
+      "slider": {"key": "crosshair_size", "min": 0.5, "max": 1.5, "step": 0.1, "format": "%.4g"}, "defaults": {"crosshair_size": "1"} },
+    {"id": "antialiasing", "label": "Anti-aliasing", "help": "A temporal upscaler does its own anti-aliasing instead.", "group": "Picture", "when": {"temporal": "off"}, "defaults": {"antialiasing": "mlaa"},
+      "choices": [
+        {"label": "Original (MLAA)", "set": {"antialiasing": "mlaa"}},
+        {"label": "Off", "set": {"antialiasing": "off"}}
+      ] },
+    {"id": "motion_blur", "label": "Motion Blur", "group": "Picture", "defaults": {"motion_blur": "100"},
+      "choices": [
+        {"label": "0%", "set": {"motion_blur": "0"}},
+        {"label": "10%", "set": {"motion_blur": "10"}},
+        {"label": "20%", "set": {"motion_blur": "20"}},
+        {"label": "30%", "set": {"motion_blur": "30"}},
+        {"label": "40%", "set": {"motion_blur": "40"}},
+        {"label": "50%", "set": {"motion_blur": "50"}},
+        {"label": "60%", "set": {"motion_blur": "60"}},
+        {"label": "70%", "set": {"motion_blur": "70"}},
+        {"label": "80%", "set": {"motion_blur": "80"}},
+        {"label": "90%", "set": {"motion_blur": "90"}},
+        {"label": "100% (Original)", "set": {"motion_blur": "100"}}
+      ] },
+    {"id": "film_grain", "label": "Film Grain", "group": "Picture", "defaults": {"film_grain": "100"},
+      "choices": [
+        {"label": "0%", "set": {"film_grain": "0"}},
+        {"label": "10%", "set": {"film_grain": "10"}},
+        {"label": "20%", "set": {"film_grain": "20"}},
+        {"label": "30%", "set": {"film_grain": "30"}},
+        {"label": "40%", "set": {"film_grain": "40"}},
+        {"label": "50%", "set": {"film_grain": "50"}},
+        {"label": "60%", "set": {"film_grain": "60"}},
+        {"label": "70%", "set": {"film_grain": "70"}},
+        {"label": "80%", "set": {"film_grain": "80"}},
+        {"label": "90%", "set": {"film_grain": "90"}},
+        {"label": "100% (Original)", "set": {"film_grain": "100"}}
+      ] },
+    {"id": "glow", "label": "Glow", "group": "Picture", "defaults": {"glow": "100"},
+      "choices": [
+        {"label": "0%", "set": {"glow": "0"}},
+        {"label": "10%", "set": {"glow": "10"}},
+        {"label": "20%", "set": {"glow": "20"}},
+        {"label": "30%", "set": {"glow": "30"}},
+        {"label": "40%", "set": {"glow": "40"}},
+        {"label": "50%", "set": {"glow": "50"}},
+        {"label": "60%", "set": {"glow": "60"}},
+        {"label": "70%", "set": {"glow": "70"}},
+        {"label": "80%", "set": {"glow": "80"}},
+        {"label": "90%", "set": {"glow": "90"}},
+        {"label": "100% (Original)", "set": {"glow": "100"}}
+      ] },
+    {"id": "anisotropic", "label": "Anisotropic Filtering", "group": "Picture", "defaults": {"anisotropic": "game"},
+      "choices": [
+        {"label": "Original", "set": {"anisotropic": "game"}},
+        {"label": "Off", "set": {"anisotropic": "off"}},
+        {"label": "2x", "set": {"anisotropic": "2"}},
+        {"label": "4x", "set": {"anisotropic": "4"}},
+        {"label": "8x", "set": {"anisotropic": "8"}},
+        {"label": "16x", "set": {"anisotropic": "16"}}
+      ] },
+    {"id": "scale", "label": "Internal Resolution", "help": "What the game draws at, as a share of the window.", "group": "Upscaling", "defaults": {"scale": "100"},
+      "choices": [
+        {"label": "50%", "set": {"scale": "50"}},
+        {"label": "75%", "set": {"scale": "75"}},
+        {"label": "100%", "set": {"scale": "100"}},
+        {"label": "150%", "set": {"scale": "150"}},
+        {"label": "200%", "set": {"scale": "200"}}
+      ] },
+    {"id": "upscaler", "label": "Upscaling", "group": "Upscaling", "defaults": {"upscaler": "linear"},
+      "choices": [
+        {"label": "Bilinear", "set": {"upscaler": "linear"}},
+        {"label": "AMD FSR 1", "set": {"upscaler": "fsr"}}
+      ] },
+    {"id": "sharpness", "label": "FSR Sharpness", "help": "0 is the sharpest.", "group": "Upscaling", "when": {"upscaler": "fsr"},
+      "slider": {"key": "sharpness", "min": 0, "max": 2, "step": 0.1, "format": "%.2f"}, "defaults": {"sharpness": "0.2"} },
+    {"id": "temporal", "label": "Temporal Upscaler", "help": "DLSS needs an NVIDIA RTX card and a build with DLSS. FSR 3.1 works on any card.", "group": "Upscaling", "defaults": {"temporal": "off"},
+      "choices": [
+        {"label": "Off", "set": {"temporal": "off"}},
+        {"label": "FSR 3.1 Quality", "set": {"temporal": "fsr3-quality"}},
+        {"label": "FSR 3.1 Balanced", "set": {"temporal": "fsr3-balanced"}},
+        {"label": "FSR 3.1 Performance", "set": {"temporal": "fsr3-performance"}},
+        {"label": "FSR 3.1 Native AA", "set": {"temporal": "fsr3-native"}},
+        {"label": "DLSS Quality", "set": {"temporal": "dlss-quality"}},
+        {"label": "DLSS Balanced", "set": {"temporal": "dlss-balanced"}},
+        {"label": "DLSS Performance", "set": {"temporal": "dlss-performance"}},
+        {"label": "DLAA", "set": {"temporal": "dlss-native"}}
+      ] },
+    {"id": "mouse_yaw", "label": "Mouse Left/Right Sensitivity", "group": "Controls",
+      "slider": {"key": "mouse_yaw", "min": 0, "max": 1, "step": 0.05, "format": "%.4f"}, "defaults": {"mouse_yaw": "0.5000"} },
+    {"id": "mouse_pitch", "label": "Mouse Up/Down Sensitivity", "group": "Controls",
+      "slider": {"key": "mouse_pitch", "min": 0, "max": 1, "step": 0.05, "format": "%.4f"}, "defaults": {"mouse_pitch": "0.5000"} },
+    {"id": "mouse_invert", "label": "Mouse Invert Look", "group": "Controls", "defaults": {"mouse_invert": "0"},
+      "choices": [
+        {"label": "Off", "set": {"mouse_invert": "0"}},
+        {"label": "On", "set": {"mouse_invert": "1"}}
+      ] },
+    {"id": "controllers", "label": "Controllers", "help": "One per Player is needed for split-screen.", "group": "Controls", "defaults": {"controllers": "merged"},
+      "choices": [
+        {"label": "Any is Player 1", "set": {"controllers": "merged"}},
+        {"label": "One per Player", "set": {"controllers": "separate"}}
+      ] },
+    {"id": "speakers", "label": "Audio Output", "group": "Sound and language", "defaults": {"speakers": "2"},
+      "choices": [
+        {"label": "Stereo", "set": {"speakers": "2"}},
+        {"label": "5.1", "set": {"speakers": "6"}},
+        {"label": "7.1", "set": {"speakers": "8"}}
+      ] },
+    {"id": "language", "label": "Language", "help": "Voices, subtitles and menus.", "group": "Sound and language", "defaults": {"language": "system"},
+      "choices": [
+        {"label": "System", "set": {"language": "system"}},
+        {"label": "English (US)", "set": {"language": "en"}},
+        {"label": "English (UK)", "set": {"language": "en-gb"}},
+        {"label": "French", "set": {"language": "fr"}},
+        {"label": "Spanish", "set": {"language": "es"}}
+      ] },
+    {"id": "intro", "label": "Opening Movie", "group": "Sound and language", "defaults": {"intro": "on"},
+      "choices": [
+        {"label": "On", "set": {"intro": "on"}},
+        {"label": "Off", "set": {"intro": "off"}}
+      ] },
+    {"id": "overlay", "label": "Performance Overlay", "help": "Linux only: MangoHUD's frame rate and timings over the game.", "group": "Display", "advanced": true, "defaults": {"overlay": "off"},
+      "choices": [
+        {"label": "Off", "set": {"overlay": "off"}},
+        {"label": "MangoHUD", "set": {"overlay": "mangohud"}}
+      ] }
+  ],
   "folders": {
     "saves": [{ "path": "{install}/work/vfs/gamedata" }],
     "logs": [{ "path": "{install}/work" }],

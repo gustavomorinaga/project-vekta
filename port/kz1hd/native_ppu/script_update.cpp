@@ -45,7 +45,7 @@ static void set_translation(ppu_context* ctx, uint32_t obj, const float p[3])
     const uint64_t r3 = ctx->gpr[3], r4 = ctx->gpr[4], lr = ctx->lr;
     const double f1 = ctx->fpr[1], f2 = ctx->fpr[2], f3 = ctx->fpr[3];
     ctx->gpr[3] = obj; ctx->fpr[1] = p[0]; ctx->fpr[2] = p[1]; ctx->fpr[3] = p[2];
-    ctx->lr = 0x00069A3C;   /* any guest address: the body returns to the host */
+    ctx->lr = KZ_GA(0x00069A3C);   /* any guest address: the body returns to the host */
     func_004940B0_lifted(ctx);
     while (g_trampoline_fn) { void (*t)(void*) = g_trampoline_fn; g_trampoline_fn = 0; t(ctx); }
     ctx->gpr[3] = r3; ctx->gpr[4] = r4; ctx->lr = lr; ctx->fpr[1] = f1; ctx->fpr[2] = f2; ctx->fpr[3] = f3;
@@ -70,8 +70,8 @@ void func_00069A3C(ppu_context* ctx)
 {
     static int every_frame = -1;
     static struct script_rate rate[2];
-    const int site = ctx->lr == 0x0021AE1Cu ? 0 : ctx->lr == 0x0021AE38u ? 1 : -1;
-    if (site >= 0 && (uint32_t)ctx->gpr[4] == 0x005436D4u) {
+    const int site = ctx->lr == KZ_GA(0x0021AE1Cu) ? 0 : ctx->lr == KZ_GA(0x0021AE38u) ? 1 : -1;
+    if (site >= 0 && (uint32_t)ctx->gpr[4] == KZ_GA(0x005436D4u)) {
         if (every_frame < 0) { const char* e = getenv("KZ_SCRIPT_EVERY_FRAME"); every_frame = e && *e && *e != '0'; }
         const uint32_t game = vm_read32(0x828734);   /* the main loop's object, with the game clock (main.cpp) */
         const bool ok = game && game < 0xF0000000u;
@@ -112,7 +112,7 @@ void func_00069A3C(ppu_context* ctx)
             }
         }
     }
-    if (site >= 0 && (uint32_t)ctx->gpr[4] == 0x005436D4u) {
+    if (site >= 0 && (uint32_t)ctx->gpr[4] == KZ_GA(0x005436D4u)) {
         s_in_update = 1;
         func_00069A3C_lifted(ctx);
         s_in_update = 0;

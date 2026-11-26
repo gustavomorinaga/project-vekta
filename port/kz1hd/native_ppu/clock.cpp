@@ -31,7 +31,7 @@ static void wait_for_tick(ppu_context* ctx, uint32_t clk)
 {
     static const bool spin = getenv("KZ_FRAME_WAIT_SPIN") && atoi(getenv("KZ_FRAME_WAIT_SPIN"));
     if (spin) return;
-    uint64_t fbits = vm_read64(0x0021C0F0);
+    uint64_t fbits = vm_read64(KZ_GA(0x0021C0F0));
     double factor;
     memcpy(&factor, &fbits, sizeof factor);
     const int32_t last = (int32_t)vm_read32(clk + 0x6C);
@@ -83,10 +83,10 @@ void func_0021C0F8(ppu_context* ctx)
         const uint64_t sp = ctx->gpr[1], lr = ctx->lr;
         vm_write64(sp - 0xA0, sp);
         ctx->gpr[1] = sp - 0xA0;
-        const double a = ldf(0x544E90), b = ldf(0x544E94);
+        const double a = ldf(KZ_GA(0x544E90)), b = ldf(KZ_GA(0x544E94));
         ctx->fpr[1] = a; ctx->fpr[3] = b; ctx->fpr[2] = S(a + b);
         ctx->gpr[3] = clk; ctx->gpr[4] = ctx->gpr[5] = 0x540000;
-        ctx->lr = 0x0021C1B4; func_0021BDF8(ctx);
+        ctx->lr = KZ_GA(0x0021C1B4); func_0021BDF8(ctx);
         while (g_trampoline_fn) { void (*t)(void*) = g_trampoline_fn; g_trampoline_fn = 0; t(ctx); }
         ctx->gpr[1] = sp; ctx->lr = lr;
     }

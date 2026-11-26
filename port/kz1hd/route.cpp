@@ -78,6 +78,7 @@
 #include "ppu_recomp.h"
 #include "route.h"
 #include "route_rebase.h"
+#include "edition.h"   /* KZ_GA: guest addresses in this build's edition */
 
 extern "C" void kz_perf_begin(void);             /* perf.cpp */
 extern "C" void kz_perf_report(const char* tag);
@@ -522,6 +523,6 @@ extern "C" void kz_route_register(void)
             else { s_rebase = true; s_rebase_path = rb; fprintf(stderr, "[route] rebasing into %s\n", rb); }
         }
     } else return;
-    ppu_register_function(0x003D48F0, pad_read);
-    ppu_register_function(0x001A5380, sound_variant);
+    ppu_register_function(KZ_GA(0x003D48F0), pad_read);
+    ppu_register_function(KZ_GA(0x001A5380), sound_variant);
 }
