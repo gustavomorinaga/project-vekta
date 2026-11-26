@@ -247,6 +247,8 @@ file(GLOB KZ_NATIVE_PPU CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/native_pp
 set_source_files_properties(${KZ_NATIVE_PPU} PROPERTIES COMPILE_OPTIONS "-O2")
 # glyphs.cpp embeds the Controls screen's pad pictures (pads/, #embed).
 set_source_files_properties(glyphs.cpp PROPERTIES COMPILE_OPTIONS "-Wno-c23-extensions")
+# trophies.cpp alone needs sceNpTrophy.h: a target-wide include directory would rebuild every lifted TU.
+set_source_files_properties(trophies.cpp PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/libs/network")
 
 add_executable(${PROJECT_NAME}
     cpu_check.c     # first: the CPU check (constructor 101), compiled for baseline x86-64
@@ -256,6 +258,7 @@ add_executable(${PROJECT_NAME}
     stubs.cpp
     pcoptions.cpp
     route.cpp
+    trophies.cpp    # the HLE's unlock notices, queued for the frame loop (docs/dev/trophies.md)
     glyphs.cpp
     sail.cpp
     prof.cpp

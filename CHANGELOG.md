@@ -38,6 +38,11 @@ program and folder that build it. Until a release that calls itself playable
   Scale (patch 2092). One-player games are unchanged.
 
 ### Changed
+- Trophies are kept more safely: the trophy file is written in full to a temporary file and then put in place, so a
+  crash or a power cut while saving keeps the old file instead of a broken one. With a debug option that changes the
+  game (`KZ_UNLOCK_LEVELS`, `KZ_DEBUG_MENU`, `KZ_DEBUG_GOD`, `KZ_DEBUG_GIVE`, `KZ_POKE`), trophies are not stored,
+  and the log says so. Each new trophy is also a `[trophy] unlocked` line in the log (the groundwork for showing it
+  in the game).
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
   every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
   (ps3recomp patch 2089).

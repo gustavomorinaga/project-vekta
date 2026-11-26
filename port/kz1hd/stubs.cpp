@@ -12,6 +12,7 @@
 
 #include "ppu_recomp.h"
 #include "spu_context.h"
+#include "trophies.h"     /* kz_trophies_register */
 
 extern "C" {
 void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
@@ -83,6 +84,7 @@ extern "C" void ps3_load_prx_modules(void)
     kz_pc_options_register();
     kz_hud_register();
     kz_route_register();   /* route.cpp: KZ_ROUTE_REC / KZ_ROUTE_PLAY */
+    kz_trophies_register();   /* trophies.cpp: the unlock notices; the debug options block the store */
     /* MultiStream (SPU image 3) decodes the music with the system software's MP3
      * decoder: it reads /dev_flash/sys/external/flashMP3.pic, loads it at LS
      * 0x1A880 and calls its entry (0x74A0 in the file) at LS 0x21D20. That call
