@@ -49,6 +49,7 @@
 #include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
 #include "../libs/filesystem/edat.h"   /* via the include directory: the EDAT cache folder (patch 4014) */
 #include "window_icon.h" /* the window's icon, from installer/art/vekta.ico (tools/icon_header.py) */
+#include "tick_rate.h"     /* the game clock's ticks per ms for KZ_TICK_HZ */
 #include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
@@ -288,7 +289,7 @@ static void kz_tick_rate(void)
         applied = 30;
         if (hz == 30) return;
     } else if (applied == 30 || v != cur_bits || hz == applied) return;   /* not ours, or in force */
-    { const double d = hz == 30 ? ms30 : hz / 1000.0; uint64_t u; memcpy(&u, &d, 8); u = __builtin_bswap64(u);
+    { const double d = hz == 30 ? ms30 : kz_tick_factor(hz); uint64_t u;   /* tick_rate.h: a hair above hz / 1000 */ memcpy(&u, &d, 8); u = __builtin_bswap64(u);
       memcpy(vm_base + 0x21C0F0u, &u, 8); }
     const float f = 1.0f / (float)hz; memcpy(&v, &f, 4); v = __builtin_bswap32(v);
     memcpy(vm_base + p + 0x54, &v, 4);
