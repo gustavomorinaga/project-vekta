@@ -20,6 +20,7 @@
 #if KZ_EDITION_EU
 #define KZ_GA(a) KZ_GA_EU_((uint32_t)(a))
 #define KZ_GA_EU_(a) ( \
+    (a) == 0x002793A0u ? 0x00279300u : \
     (a) == 0x004CBBB4u ? 0x004CBB14u : \
     (a) == 0x004CD834u ? 0x004CD74Cu : \
     (a) == 0x004CD90Cu ? 0x004CD824u : \

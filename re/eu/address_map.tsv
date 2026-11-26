@@ -40,6 +40,7 @@ changed	0x004CB6BC	0x004CB6D0	0x004CB61C	0x004CB630	walk	20 bytes between functi
 changed	0x004CB798	0x004CEC70	0x004CB6F8	0x004CEB88	lift	HUD and crosshair; 269 calls in US, 266 in EU
 changed	0x00565538	0x0056580C	0x00565438	0x0056570C	walk	rodata strings: 181 words differ (a string of another length); the words before and after are equal
 changed	0x0057EFD0	0x0057EFE4	0x0057EED0	0x0057EEE4	walk	section 13: 5 words differ
+site	0x002793A0	0x002793A4	0x00279300	0x00279304	walk	movie quad: return of bl 0x4464C, the 1st of 2 in func_00278888 on both sides (the 2nd: 0x2798C4 / 0x279824)
 site	0x004CBBB4	0x004CBBB8	0x004CBB14	0x004CBB18	ghidra	crosshair: return of bl func_00227A1C, the 1st of its 25 calls here on both sides; 25 instructions around it equal
 site	0x004CD834	0x004CD838	0x004CD74C	0x004CD750	ghidra	HUD text: return of bl 0x4416C, the 1st of 3 on both sides; around it only stack and data offsets differ
 site	0x004CD90C	0x004CD910	0x004CD824	0x004CD828	ghidra	HUD text: return of bl 0x4416C, the 2nd of 3; only stack and data offsets differ
