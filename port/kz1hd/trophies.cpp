@@ -40,12 +40,15 @@ const char* grade_name(int g)
          : g == SCE_NP_TROPHY_GRADE_SILVER ? "silver" : g == SCE_NP_TROPHY_GRADE_BRONZE ? "bronze" : "?";
 }
 
-// The debug switches that change what the player can do: with any of them on, no trophy is stored
-// (docs/dev/trophies.md, "Debug options that block trophies"). Input replays (PAD_SCRIPT, KZ_ROUTE_PLAY) do not block.
+// The debug switches that change what the player can do, and the scripted inputs (a run driven by a control script
+// is not the player's): with any of them on, no trophy is stored (docs/dev/trophies.md, "Debug options that block
+// trophies").
 const char* blocking_option()
 {
     static const char* const names[] = { "KZ_UNLOCK_LEVELS", "KZ_DEBUG_MENU", "KZ_DEBUG_GOD", "KZ_DEBUG_GIVE",
-                                         "KZ_POKE" };
+                                         "KZ_POKE", "PAD_SCRIPT", "PAD_FILE", "PAD_STICK", "PAD_STICK_FILE",
+                                         "PAD_SWEEP", "PAD_AUTOPRESS", "PAD_VIRTUAL_FILE", "PAD_MOUSE_FAKE",
+                                         "PAD_MOUSE_POS", "PAD_MOUSE_POS_FILE", "KZ_ROUTE_PLAY" };
     for (const char* n : names)
         if (const char* v = std::getenv(n); v && *v) return n;
     return nullptr;

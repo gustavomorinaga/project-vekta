@@ -146,4 +146,7 @@ The copy is the first step; the quad only if the opaque card looks wrong.
 When a debug option that changes what the player can do is on, the port calls `ps3_trophy_set_blocked(1)` and
 an unlock is logged (`blocked by debug option`) and not stored: `KZ_UNLOCK_LEVELS` (every level open in the
 level select), `KZ_DEBUG_MENU` (the pause menu's God Mode and Victory Status), `KZ_DEBUG_GOD`, `KZ_DEBUG_GIVE`
-(weapons) and `KZ_POKE` (memory writes). Input replays (`PAD_SCRIPT`, `KZ_ROUTE_PLAY`) do not block. Add any new such switch to `blocking_option()` in `port/kz1hd/trophies.cpp` and to this list.
+(weapons) and `KZ_POKE` (memory writes). Runs driven by a control script block too, since the input is not the
+player's: `PAD_SCRIPT`, `PAD_FILE`, `PAD_STICK`, `PAD_STICK_FILE`, `PAD_SWEEP`, `PAD_AUTOPRESS`, `PAD_VIRTUAL_FILE`,
+`PAD_MOUSE_FAKE`, `PAD_MOUSE_POS`, `PAD_MOUSE_POS_FILE` (cellPad's test inputs) and `KZ_ROUTE_PLAY` (a recorded
+route played back). Add any new such switch to `blocking_option()` in `port/kz1hd/trophies.cpp` and to this list.
