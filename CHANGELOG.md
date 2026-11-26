@@ -28,7 +28,9 @@ program and folder that build it. Until a release that calls itself playable
   no longer shakes player 2's controller. Each view's HUD follows the HUD Size and HUD Position settings in its own
   half of the screen, on a 16:9 display and a wider one, and is one player's HUD at half its size: the health and
   ammo panels keep their shape (the PS3 game squashes them in split screen), the ammo count sits centred on its
-  bar, and the HUD's text (timer, scores, ammo count, prompts) keeps its shape too. One-player games are unchanged.
+  bar, and the HUD's text (timer, scores, ammo count, prompts) keeps its shape too. Player 2's HUD has the same
+  margins as player 1's (the PS3 game draws it 20 pixels higher, so its timer and scores touched the split line).
+  One-player games are unchanged.
 
 ### Changed
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in

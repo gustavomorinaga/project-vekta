@@ -162,18 +162,26 @@ void hud_viewport(ppu_context* ctx)
     ctx->gpr[3] = vp;
     if (kz_view.players != 2) return;
     /* asked by the 2D helpers (func_002CA9A8 five times: the text's size),
-     * each reading the rectangle at once. Not by func_004CB798 (0x004CC740):
-     * it sets the display's viewport from what it reads (KZ_HUD_SITES runs,
-     * 2026-11-25) */
+     * each reading the rectangle at once. Not doubled for func_004CB798
+     * (0x004CC740): it sets the display's viewport from what it reads
+     * (KZ_HUD_SITES runs, 2026-11-25) */
     const uint32_t lr = (uint32_t)ctx->lr;
-    if (!(lr > 0x002CA46C && lr < 0x002CADA8) || !hud_chain(ctx)) return;
+    /* ENHANCEMENT: func_004CB798 draws the second player's HUD 20 pixels
+     * up: for view 1 it reads this rectangle (0x004CC740) and sets it back
+     * with y0 and y1 less 20 (0x004CC71C..0x004CC77C; the view's 2D viewport
+     * is 0, 340, 1280x360 against 0, 360, VPLOG 2026-11-25; RPCS3 the same).
+     * With one player's HUD in each band that put player 2's timer and
+     * scores on the split line; answered 20 lower, its HUD keeps player 1's
+     * margins (hud_layout.h hud_view_lift). */
+    const int lift = lr == 0x004CC740 ? hud_view_lift(kz_view.players) : 0;
+    if (!lift && (!(lr > 0x002CA46C && lr < 0x002CADA8) || !hud_chain(ctx))) return;
     /* the copy goes below the caller's frame (red zone), read before its next call */
     const uint32_t tmp = ((uint32_t)ctx->gpr[1] - 0x200) & ~15u;
     const int32_t y0 = (int32_t)vm_read32(vp + 4), y1 = (int32_t)vm_read32(vp + 12);
     vm_write32(tmp, vm_read32(vp));
-    vm_write32(tmp + 4, (uint32_t)y0);
+    vm_write32(tmp + 4, (uint32_t)(y0 + lift));
     vm_write32(tmp + 8, vm_read32(vp + 8));
-    vm_write32(tmp + 12, (uint32_t)(y0 + 2 * (y1 - y0)));
+    vm_write32(tmp + 12, (uint32_t)(lift ? y1 + lift : y0 + 2 * (y1 - y0)));
     ctx->gpr[3] = tmp;
 }
 

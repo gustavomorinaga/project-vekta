@@ -107,4 +107,10 @@ static inline void hud_glyph(double* w, double* h, double size, double k)
     if (k != 1.0) *h = *h * k;
 }
 
+/* The rows the game moves the second split-screen view's HUD up
+ * (func_004CB798, 0x004CC71C..0x004CC77C: the viewport's y0 and y1 less 20
+ * for view 1). The port hands it a viewport that many rows lower, so each
+ * player's HUD sits in its own band with the same margins; none with one
+ * player. */
+static inline int hud_view_lift(int players) { return players == 2 ? 20 : 0; }
 #endif

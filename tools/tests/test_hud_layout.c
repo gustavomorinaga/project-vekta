@@ -80,6 +80,10 @@ int main(void)
             }
         }
     }
+    /* the second view's HUD: the game sets its viewport 20 rows up (0, 340, 1280x360, VPLOG 2026-11-25); from the
+     * lifted rectangle it lands on the view's own band, 360..720, as the first view's on 0..360 */
+    EXPECT(hud_view_lift(1) == 0 && hud_view_lift(0) == 0);
+    EXPECT((360 + hud_view_lift(2)) - 20 == 360 && (720 + hud_view_lift(2)) - 20 == 720);
     /* one player: exactly the earlier arithmetic, bit for bit */
     {
         const double ys[] = { 651.094, 697.5, 25.0842, 509.344, 0.0, 720.0 }, sizes[] = { 1.0, 0.75, 1.5, 1.3 };
