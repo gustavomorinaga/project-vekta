@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Tue, 24 Nov 2026 19:17:16 -0300
+Subject: [PATCH] cellPad: mouse motion that must not turn the view is dropped
+
+Symptom (port issue #121, a tester's report on 0.7.0, borderless on an
+external monitor): the mouse look now and then jumps or flicks in another
+direction.
+
+Cause: three kinds of motion reached the mouse look late, all at once.
+SDL keeps counting relative motion while the window is out of focus (the
+pointer crossing the window, or coming back from another monitor), and
+pad_poll_mouse, which only runs with the keyboard focus, handed that count
+to the title on the first poll after the focus came back. Counts the title
+had not taken when a menu freed the pointer stayed in s_mouse_dx/dy and came
+out on the first tick back in play. And the drain after turning relative
+mode on again ran before the event loop delivered the capture's own motion,
+so that motion came out on a later poll.
+
+Fix: pad_mouse_drop() clears SDL's relative count and the direct-look
+counters, and the delta of that poll and the next is ignored. It runs when
+the keyboard focus comes back and whenever relative mode is turned on again
+(back in play, the first click into the window); a menu freeing the pointer
+clears the direct-look counters. Losing two polls of motion (8 to 16 ms) after
+a capture is not noticeable; a turn from motion made elsewhere is.
+
+Tested with a host test (tools/tests/test_pad_mouse_drop.sh, fake SDL calls).
+The jump itself was not reproduced in the game: the measurement runs are
+headless, where no window ever has the focus and pad_poll_mouse does not run.
+---
+ libs/input/cellPad.c | 27 ++++++++++++++++++++++++---
+ 1 file changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index c18145d..93ad040 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -1151,6 +1151,21 @@ void pad_mouse_ui_state(int* x, int* y, int* w, int* h, unsigned* buttons, int*
+     SDL_GetWindowSize(win, w, h);
+ }
+ 
++/* Motion that must not turn the view: what SDL counted while the window was
++ * out of focus (the pointer crossing it, or arriving from another monitor),
++ * the moment relative mode is turned on again (the next poll's delta is
++ * dropped too, for a warp that lands after the call), and counts the title
++ * did not take before a menu came up. Delivered later, any of them is a
++ * sudden turn in play (port issue #121: "the mouse flicks"). */
++static int s_mouse_skip;
++static void pad_mouse_drop(void)
++{
++    SDL_GetRelativeMouseState(NULL, NULL);
++    __atomic_store_n(&s_mouse_dx, 0, __ATOMIC_RELEASE);
++    __atomic_store_n(&s_mouse_dy, 0, __ATOMIC_RELEASE);
++    s_mouse_skip = 2;   /* this poll and the next */
++}
++
+ static void pad_poll_mouse(PadHostState* hs)
+ {
+     static int off = -1;
+@@ -1175,23 +1190,26 @@ static void pad_poll_mouse(PadHostState* hs)
+         if (b || (lx >= 0 && (abs(x - lx) > 2 || abs(y - ly) > 2))) pad_set_active(PAD_DEV_KEYBOARD);
+         lx = x; ly = y;
+         was_ui = 1; sx = sy = 0;
++        __atomic_store_n(&s_mouse_dx, 0, __ATOMIC_RELEASE);
++        __atomic_store_n(&s_mouse_dy, 0, __ATOMIC_RELEASE);
+         return;
+     }
+     if (was_ui) {   /* back in play: capture again, no click needed */
+         was_ui = 0;
+         SDL_SetRelativeMouseMode(SDL_TRUE);
+-        SDL_GetRelativeMouseState(NULL, NULL);
++        pad_mouse_drop();
+     }
+     if (!SDL_GetRelativeMouseMode()) {
+         /* The first click into the window captures the pointer and does not shoot. */
+         if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+             SDL_SetRelativeMouseMode(SDL_TRUE);
+-            SDL_GetRelativeMouseState(NULL, NULL);
++            pad_mouse_drop();
+         }
+         sx = sy = 0;
+         return;
+     }
+     mb = SDL_GetRelativeMouseState(&dx, &dy);
++    if (s_mouse_skip) { s_mouse_skip--; dx = dy = 0; }
+     if (dx || dy || mb) pad_set_active(PAD_DEV_KEYBOARD);
+     if (g_pad_mouse_direct) {
+         __atomic_add_fetch(&s_mouse_dx, dx, __ATOMIC_ACQ_REL);
+@@ -1358,7 +1376,10 @@ static void pad_poll_backend(void)
+ #if PAD_BACKEND_SDL2
+     if (s_nbinds < 0) pad_keymap_load();
+     /* With a controller too: the mouse adds to whatever drives port 0. */
+-    if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus()) pad_poll_mouse(&s_host_state[0]);
++    { static int had_focus;
++      const int focus = SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetKeyboardFocus();
++      if (focus) { if (!had_focus) pad_mouse_drop(); pad_poll_mouse(&s_host_state[0]); }
++      had_focus = focus; }
+ #endif
+     pad_track_assign();
+     pad_unlock();

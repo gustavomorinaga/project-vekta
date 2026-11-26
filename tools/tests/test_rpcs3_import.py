@@ -9,6 +9,7 @@ import hashlib
 import io
 import os
 import pathlib
+import shutil
 import sys
 import tempfile
 import time
@@ -365,6 +366,48 @@ with tempfile.TemporaryDirectory() as tmp:
               f"a folder that is neither RPCS3 nor a game folder is refused, not swapped for another RPCS3: {r}")
     finally:
         ri.nested_portables = real_nested
+
+# The EU edition (NPEA00418): found when it is the RPCS3's only Killzone HD, its own licence copied, its files checked
+# against its own hashes (edition_map.EDITIONS), the US one taken first when RPCS3 has both
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = pathlib.Path(tmp)
+    rp3 = tmp / "RPCS3"
+    (rp3 / "config").mkdir(parents=True)
+    (rp3 / "config" / "vfs.yml").write_text("/dev_hdd0/: $(EmulatorDir)dev_hdd0/\n/dev_flash/: $(EmulatorDir)dev_flash/\n")
+    (rp3 / "config" / "games.yml").write_text("")
+    eu = rp3 / "dev_hdd0" / "game" / "NPEA00418"
+    (eu / "USRDIR").mkdir(parents=True)
+    (eu / "PARAM.SFO").write_bytes(fake_game_files.sfo({"APP_VER": "01.00", "CATEGORY": "HG", "TITLE_ID": "NPEA00418"}))
+    (eu / "USRDIR" / "EBOOT.BIN").write_bytes(b"SCE\0 encrypted eboot")
+    (eu / "USRDIR" / "data_ps3.psarc.edat").write_bytes(b"NPD\0\0\0\0\0\0\0\0\2 archive")   # licence type 2: a PSN copy
+    ex3 = rp3 / "dev_hdd0" / "home" / "00000001" / "exdata"
+    ex3.mkdir(parents=True)
+    (ex3 / "EP9000-NPEA00418_00-NOTAREALLICENCE.rap").write_bytes(b"z" * 16)
+    exe3 = rp3 / "rpcs3"
+    exe3.write_text(FAKE)
+    exe3.chmod(0o755)
+    flog3 = tmp / "fake.log"
+    os.environ["FAKE_LOG"] = str(flog3)
+    r = ri.resolve(str(rp3))
+    check(r["status"] == "ok" and r.get("title") == "NPEA00418" and r["game"] == str(eu)
+          and "title=NPEA00418" in ri.lines(r), f"resolve finds the EU edition: {r}")
+    check(ri.files_for("NPEA00418")[0][2:] == ri.edition_map.EDITIONS["EU"]["eboot"]
+          and ri.files_for("NPEA00418")[1][2:] == ri.edition_map.EDITIONS["EU"]["psarc"],
+          "the EU edition's EBOOT.elf and data_ps3.psarc are checked against its own sizes and hashes")
+    said = []
+    p = ri.prepare(str(tmp / "work"), str(rp3), log=said.append)
+    call = flog3.read_text().splitlines() if flog3.exists() else []
+    check(len(call) == 2 and all(c.endswith("|EP9000-NPEA00418_00-NOTAREALLICENCE.rap") for c in call)
+          and call[1].split("|")[3].endswith("data_ps3.psarc.edat"),
+          f"prepare: the EBOOT and the PSN .edat to RPCS3, with the EU licence: {call}")
+    check(any(x.startswith("rpcs3: 1 licence file(s) for NPEA00418 found in") for x in said), f"the log names it: {said}")
+    check(p["status"] == "failed" and {q["code"] for q in p["problems"]} == {"wrong_file"}
+          and "NPEA00418" in p["problems"][0]["text"],
+          f"a stand-in's output is not the EU edition's tested file: {p['problems']}")
+    us = rp3 / "dev_hdd0" / "game" / "NPUA80856"
+    shutil.copytree(eu, us)
+    (us / "PARAM.SFO").write_bytes(fake_game_files.sfo({"APP_VER": "01.00", "CATEGORY": "HG", "TITLE_ID": "NPUA80856"}))
+    check(ri.resolve(str(rp3)).get("title") == "NPUA80856", "with both installed, the US edition")
 
 print("test_rpcs3_import:", "FAIL" if fails else "ok")
 sys.exit(1 if fails else 0)

@@ -20,6 +20,7 @@
 #define KZ_CROSSHAIR_H
 #include <math.h>
 #include <stdint.h>
+#include "../edition.h"   /* KZ_GA */
 
 /* The setting's range: the slider's ends. The middle of the slider is the
  * game's size (1). Chosen from captures of Level 1 (2026-11-12) at 1280x720,
@@ -34,7 +35,7 @@
 static inline int crosshair_site(uint32_t ret)
 {
     switch (ret) {
-    case 0x004CBBB4:   /* func_004CB798: the ring, then the middle */
+    case KZ_GA(0x004CBBB4):   /* func_004CB798: the ring, then the middle */
         return 1;
     default:
         return 0;

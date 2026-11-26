@@ -28,6 +28,7 @@ void     cellGcmHleSetIsrThread(int on);
 
 void kz_pc_options_register(void);   /* pcoptions.cpp: mouse look, PC options */
 #include "route.h"
+#include "edition.h"   /* KZ_GA: guest addresses in this build's edition */
 extern "C" void spu_begin_image(int image_id);
 extern "C" void spu_register_function(uint32_t addr, void (*fn)(spu_context*));
 extern "C" void kz_flashmp3_entry(spu_context* ctx);              /* native/flashmp3.c */
@@ -71,13 +72,13 @@ extern "C" void ps3_load_prx_modules(void)
     /* KZ_UNLOCK_LEVELS=1 (testing): every level selectable. The chapter
      * select asks IsLevelUnlocked (func_00298578) through its script binding,
      * an indirect call, which this replaces. */
-    if (getenv("KZ_UNLOCK_LEVELS")) ppu_register_function(0x00298578, level_unlocked);
+    if (getenv("KZ_UNLOCK_LEVELS")) ppu_register_function(KZ_GA(0x00298578), level_unlocked);
     /* KZ_DEBUG_MENU=1 (testing): the pause menu's own Debug Options (God
      * Mode, Victory Status, Hit Info, the lock and spread circles), which it
      * offers when the build is not a submission one. IsSubmission's script
      * binding is the member function 0x002AE1C4 (return 1; IsCDBuild beside it
      * returns 0), reached through its pointer at 0x00549BC0. */
-    if (getenv("KZ_DEBUG_MENU")) ppu_register_function(0x002AE1C4, not_submission);
+    if (getenv("KZ_DEBUG_MENU")) ppu_register_function(KZ_GA(0x002AE1C4), not_submission);
     kz_pc_options_register();
     kz_route_register();   /* route.cpp: KZ_ROUTE_REC / KZ_ROUTE_PLAY */
     /* MultiStream (SPU image 3) decodes the music with the system software's MP3
