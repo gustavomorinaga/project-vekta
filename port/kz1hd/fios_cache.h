@@ -1,6 +1,10 @@
 /*
- * The game's FIOS cache (/dev_hdd1/cache/BCUS98116/fios: cache.dat, a 512-byte
- * file that starts "fioscach", and cache.idx). The game's own FIOS code reads
+ * The game's FIOS cache (/dev_hdd1/cache/<id>/fios: cache.dat, a 512-byte
+ * file that starts "fioscach", and cache.idx). The id is the TITLE_ID of the
+ * PARAM.SFO the game runs from, read at run time (no edition's id is in the
+ * EBOOT): BCUS98116 for the US edition, BCES01743 for the European disc
+ * (SysCacheMount in the logs, 2026-11-26). The PlayStation Store copies run
+ * from /dev_hdd0 and mount no cache. The game's own FIOS code reads
  * the header at start; a cache.dat cut short (empty when the first run was
  * killed while writing it) is never rewritten: FIOS reopens both files about
  * 6,000 times a second, logs "failed reading cache header" and the game never
@@ -14,6 +18,7 @@
  */
 #ifndef KZ_FIOS_CACHE_H
 #define KZ_FIOS_CACHE_H
+#include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -44,5 +49,23 @@ static inline int kz_fios_cache_check(const char* dir)
     remove(dat);
     remove(idx);
     return 0;
+}
+
+/* kz_fios_cache_check on every <root>/<id>/fios, root being /dev_hdd1/cache,
+ * so whichever id the edition mounts is covered. Returns how many were removed;
+ * each one's folder is passed to `said` (may be NULL). */
+static inline int kz_fios_cache_check_all(const char* root, void (*said)(const char* dir))
+{
+    DIR* d = opendir(root);
+    if (!d) return 0;
+    int n = 0;
+    char dir[1000];   /* room for "/cache.dat" in kz_fios_cache_check's 1024 */
+    for (struct dirent* e; (e = readdir(d));) {
+        if (e->d_name[0] == '.') continue;
+        snprintf(dir, sizeof dir, "%s/%s/fios", root, e->d_name);
+        if (!kz_fios_cache_check(dir)) { n++; if (said) said(dir); }
+    }
+    closedir(d);
+    return n;
 }
 #endif
