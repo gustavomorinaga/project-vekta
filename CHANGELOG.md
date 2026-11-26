@@ -38,6 +38,9 @@ program and folder that build it. Until a release that calls itself playable
   at 120).
 
 ### Fixed
+- Closing the game's window now ends the game also when the game has stopped responding (it showed no new frames):
+  after 2 s the game quits as Quit Game does. On Windows such a game could not be closed at all, only from the Task
+  Manager (ps3recomp patch 2090: the window has a thread of its own).
 - RecompLauncher: the game is "Easy Setup" again, as in 0.6.0. Since 0.7.0 the game folder and the disc were two
   optional boxes, and RecompLauncher counts Easy Setup only for a required one; now one box takes the installed
   folder, the disc's folder or its DATA000.PKG.

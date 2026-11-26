@@ -170,3 +170,4 @@
 4018-cellPad-a-hook-s-injected-press-ends-after-100-ms-re.patch
 4017-cellPad-mouse-motion-that-must-not-turn-the-view-is-.patch
 3038-ppu_lifter-func-names-names-functions-from-a-file-di.patch
+2090-Vulkan-window-its-own-thread-so-closing-it-works-whi.patch
