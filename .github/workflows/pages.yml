@@ -1,12 +1,14 @@
-# GitHub Pages: publishes site/ and the images it loads from assets/ and docs/screenshots/. Dormant until the
-# maintainer sets the repository variable PAGES_ENABLED to "true" (Settings, Secrets and variables, Actions,
-# Variables) and Settings, Pages, Source to "GitHub Actions"; without the variable the jobs are skipped. (After
+# GitHub Pages: publishes site/ at the root of the address, with the images it loads from assets/ and
+# docs/screenshots/ (tools/release/stage_site.py). Dormant until the maintainer sets the repository variable
+# PAGES_ENABLED to "true" (Settings, Secrets and variables, Actions, Variables) and Settings, Pages, Source to
+# "GitHub Actions"; without the variable the jobs are skipped. (After
 # Project Pyrrhus's pages.yml, MIT.)
 name: pages
 on:
   push:
     branches: [main]
-    paths: ["site/**", "assets/**", "docs/screenshots/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "assets/**", "docs/screenshots/**", "tools/release/stage_site.py", "tools/release/check_site.py",
+            ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions: {}
 concurrency:
@@ -27,17 +29,11 @@ jobs:
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
       - name: The page is what its sources give (tools/website.py)
         run: python3 tools/website.py --check
-      - name: Stage _site/
-        run: |
-          set -euo pipefail
-          # The page loads ../assets/ and ../docs/screenshots/, as it does from a checkout, so the layout is kept.
-          mkdir -p _site/site _site/assets _site/docs
-          cp -a site/. _site/site/
-          cp -a assets/banner.png assets/banner@2x.png assets/social-preview.png assets/icon.png assets/press _site/assets/
-          cp -a docs/screenshots _site/docs/
-          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=site/"><title>Project Vekta</title><a href="site/">Project Vekta</a>\n' > _site/index.html
+      - name: Stage _site/ (tools/release/stage_site.py)
+        # site/ is the root of the published address; site/ there only sends the old address on to it.
+        run: python3 tools/release/stage_site.py _site
       - name: The staged site is whole (tools/release/check_site.py)
-        run: python3 tools/release/check_site.py _site/site
+        run: python3 tools/release/check_site.py --staged _site
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
         with:
           path: _site

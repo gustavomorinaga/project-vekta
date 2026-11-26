@@ -51,6 +51,7 @@
 #define EbootSize "19706080"
 #define PsarcSize "3147174243"
 #define TitleId "NPUA80856"
+#define EuTitleId "NPEA00418"   ; the European edition (docs/GETTING-FILES.md)
 #define FilesDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md"
 #define InstallDoc "https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md"
 #define LauncherExe "Project Vekta.exe"
@@ -145,6 +146,8 @@ Source: "{#Payload}\{#LauncherExe}"; DestDir: "{tmp}"; Flags: dontcopy
 ; decompressing everything before it, and as the last entries they made the page freeze while ~750 MB was read.
 Source: "{#Payload}\tools\release\rpcs3_import.py"; DestDir: "{tmp}\rp"; Flags: dontcopy
 Source: "{#Payload}\tools\release\rpcs3_locate.py"; DestDir: "{tmp}\rp"; Flags: dontcopy
+; rpcs3_import.py imports edition_map (which edition a PARAM.SFO is)
+Source: "{#Payload}\tools\edition_map.py"; DestDir: "{tmp}\rp"; Flags: dontcopy
 Source: "{#Payload}\work\toolchain-cache\python\*"; DestDir: "{tmp}\rp\python"; Flags: dontcopy recursesubdirs
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs solidbreak
 ; Named again: a wildcard skips hidden files, and Wine shows a name that starts with a dot as hidden (firstrun.py
@@ -341,13 +344,17 @@ begin
   end;
 end;
 
-{ The folder that holds PARAM.SFO, whichever level was picked: NPUA80856 itself, or the folder it is in }
+{ The folder that holds PARAM.SFO, whichever level was picked: NPUA80856 (or NPEA00418) itself, or the folder it is
+  in }
 function ResolveGame(Dir: String): String;
 begin
   Result := RemoveBackslashUnlessRoot(Dir);
   if (not FileExists(AddBackslash(Result) + 'PARAM.SFO')) and
      FileExists(AddBackslash(Result) + '{#TitleId}\PARAM.SFO') then
-    Result := AddBackslash(Result) + '{#TitleId}';
+    Result := AddBackslash(Result) + '{#TitleId}'
+  else if (not FileExists(AddBackslash(Result) + 'PARAM.SFO')) and
+     FileExists(AddBackslash(Result) + '{#EuTitleId}\PARAM.SFO') then
+    Result := AddBackslash(Result) + '{#EuTitleId}';
 end;
 
 function GameProblem(Dir: String): String;
@@ -362,9 +369,9 @@ begin
     Exit;
   end;
   Id := SfoField(AddBackslash(Dir) + 'PARAM.SFO', 'TITLE_ID');
-  if Id <> '{#TitleId}' then
+  if (Id <> '{#TitleId}') and (Id <> '{#EuTitleId}') then
     Result := 'This is not Killzone HD: its PARAM.SFO says title ' + Id + ', the port needs {#TitleId} ' +
-      '(the Killzone HD package of the Killzone Trilogy disc).';
+      '(the Killzone HD package of the Killzone Trilogy disc) or {#EuTitleId} (the European edition).';
 end;
 
 { '' when Path looks like the tested file (its kind by the first bytes, its size), else what is wrong. The build's
@@ -554,7 +561,7 @@ begin
   WizardForm.PageDescriptionLabel.Width := WizardForm.PageDescriptionLabel.Width - ScaleX(8);
   SourcePage := CreateInputOptionPage(wpSelectTasks, 'Your game',
     'From your RPCS3, your Killzone Trilogy disc, or files you pick.',
-    'Setup looks for RPCS3 with Killzone HD ({#TitleId}) installed. With it, your RPCS3 ' +
+    'Setup looks for RPCS3 with Killzone HD ({#TitleId}, or NPEA00418 in Europe) installed. With it, your RPCS3 ' +
     'decrypts a copy of the game''s EBOOT into the install folder during the build, and nothing needs preparing by ' +
     'hand. Your game, disc and RPCS3 folders are only read.', True, False);
   SourcePage.Add('Use my RPCS3 install');
@@ -589,14 +596,15 @@ begin
   RpcsNote.Caption := '';
   DiscPage := CreateInputDirPage(SourcePage.ID, 'Your game',
     'Your Killzone Trilogy disc, copied to this PC.',
-    'Pick the copied disc''s folder: it holds PS3_GAME and PS3_EXTRA (a disc image, .iso, must be opened first: ' +
-    'double-click it and pick the drive it opens as). Setup only reads it. The build downloads the official RPCS3 ' +
+    'Pick the copied disc''s folder: it holds PS3_GAME and PS3_EXTRA, or only PS3_GAME for the European Killzone ' +
+    'disc (BCES-01743). A disc image (.iso) must be opened first: ' +
+    'double-click it and pick the drive it opens as. Setup only reads it. The build downloads the official RPCS3 ' +
     '(about 37 MB, from RPCS3''s own GitHub releases), which installs the Killzone HD package into the install ' +
     'folder with no window and decrypts a copy of its EBOOT there: about 4 GB more disk. On Windows 10, install ' +
     '7-Zip first (https://www.7-zip.org) to unpack it.', False, '');
   DiscPage.Add('Killzone Trilogy disc folder:');
   GamePage := CreateInputDirPage(DiscPage.ID, 'Your game',
-    'The installed Killzone HD ({#TitleId}), from your own Killzone Trilogy disc or PlayStation Store copy.',
+    'The installed Killzone HD ({#TitleId}, or NPEA00418 in Europe), from your own Killzone Trilogy disc or PlayStation Store copy.',
     'Pick the installed game folder: it holds PARAM.SFO, TROPDIR and USRDIR (in RPCS3: dev_hdd0\game\{#TitleId}; ' +
     'picking the folder it is in also works). Setup only reads it.', False, '');
   GamePage.Add('Installed game folder ({#TitleId}):');
@@ -725,19 +733,24 @@ begin
   Result := SourcePage.SelectedValueIndex = 2;
 end;
 
-{ '' when Dir can be the disc's folder, else why not; firstrun.py --disc then finds and checks the package itself }
+{ '' when Dir can be the disc's folder, else why not; firstrun.py --disc then finds and checks the package (or the
+  European disc's PS3_GAME files) itself }
 function DiscProblem(Dir: String): String;
 begin
   Result := '';
   if Dir = '' then
-    Result := 'Pick the folder of your copied Killzone Trilogy disc (it holds PS3_GAME and PS3_EXTRA).'
+    Result := 'Pick the folder of your copied Killzone Trilogy disc (it holds PS3_GAME and PS3_EXTRA) or European ' +
+      'Killzone disc (it holds PS3_GAME).'
   else if not DirExists(Dir) then
     Result := 'There is no folder ' + Dir + '. Pick the folder of your copied Killzone Trilogy disc (it holds ' +
-      'PS3_GAME and PS3_EXTRA); a disc image (.iso) must be opened first.'
+      'PS3_GAME and PS3_EXTRA) or European Killzone disc (it holds PS3_GAME); a disc image (.iso) must be opened first.'
   else if not DirExists(AddBackslash(Dir) + 'PS3_EXTRA') and
-          (CompareText(ExtractFileName(RemoveBackslashUnlessRoot(Dir)), 'PS3_EXTRA') <> 0) then
-    Result := 'No PS3_EXTRA folder in ' + Dir + '. Pick the folder of your copied Killzone Trilogy disc (it holds ' +
-      'PS3_GAME and PS3_EXTRA, where the Killzone HD package is).';
+          (CompareText(ExtractFileName(RemoveBackslashUnlessRoot(Dir)), 'PS3_EXTRA') <> 0) and
+          not FileExists(AddBackslash(Dir) + 'PS3_GAME\PARAM.SFO') and
+          not FileExists(AddBackslash(Dir) + 'PARAM.SFO') then
+    Result := 'No PS3_EXTRA or PS3_GAME folder in ' + Dir + '. Pick the folder of your copied Killzone Trilogy ' +
+      'disc (it holds PS3_GAME and PS3_EXTRA, where the Killzone HD package is) or European Killzone disc (it ' +
+      'holds PS3_GAME).';
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -833,12 +846,12 @@ begin
   end else if (CurPageID = SourcePage.ID) and (SourcePage.SelectedValueIndex = 3) then begin
     { "Show me how": the steps (the same as firstrun.py's SHOW_ME_HOW), then the page again }
     MsgBox('The easy way, through RPCS3:' + #13#10 +
-      '1. In RPCS3, install Killzone HD ({#TitleId}) from your own Killzone Trilogy disc, or your PlayStation Store ' +
+      '1. In RPCS3, install Killzone HD ({#TitleId}, or NPEA00418 in Europe) from your own Killzone Trilogy disc, or your PlayStation Store ' +
       'copy with its licence.' + #13#10 +
       '2. Run this setup again and choose "Use my RPCS3 install": your RPCS3 makes the copies the port needs, in ' +
       'the install folder. Nothing is written into the game''s or RPCS3''s folders.' + #13#10#13#10 +
-      'Or, with no RPCS3: copy your Killzone Trilogy disc to this PC and choose "From my Killzone Trilogy disc": ' +
-      'the official RPCS3 is downloaded and installs the game into the install folder.' + #13#10#13#10 +
+      'Or, with no RPCS3: copy your Killzone Trilogy disc (or European Killzone disc) to this PC and choose "From ' +
+      'my Killzone Trilogy disc": the official RPCS3 is downloaded and makes the copies in the install folder.' + #13#10#13#10 +
       'Or, with the decrypted files you already have: choose "I will pick the game folder and the decrypted files ' +
       'myself" and give the installed game folder and EBOOT.elf.' + #13#10#13#10 +
       'Every step: {#InstallDoc}' + #13#10 + 'What each file must be: {#FilesDoc}', mbInformation, MB_OK);

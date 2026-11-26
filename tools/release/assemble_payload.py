@@ -8,11 +8,11 @@ with an allowlist, a scrub and a manifest:
 The payload keeps the repository's own layout, so tools/kzbuild.py and tools/release/firstrun.py run in it as they
 run in a clone (the player's files, the lift and the build go to its work/ like in a clone):
 
-  tools/          kzbuild.py, check-game-files.py, psarc_ls.py, extract_spu_modules.py and, in tools/release/,
+  tools/          kzbuild.py, check-game-files.py, edition_map.py, psarc_ls.py, extract_spu_modules.py and, in tools/release/,
                   firstrun.py, launch.py, rpcs3_import.py, rpcs3_locate.py, rpcs3_disc.py, version_check.py, support.py, sessions.py,
                   symbols.py, fetch_toolchain.py,
                   build_win_deps.py, toolchain.json
-  re/             function_seeds.txt (the lift's seeds)
+  re/             function_seeds.txt (the lift's seeds), eu/address_map.tsv (the EU edition's addresses)
   port/           port/kz1hd (its sources, no tests) and port/cmake/*.cmake
   third_party/minimp3/  minimp3 (CC0), the MP3 decoder native/flashmp3.c is compiled with
   third_party/fidelityfx-fsr3/  AMD FSR 3.1's vendored sources (MIT), which the build compiles, and in tools/ffx/
@@ -93,6 +93,8 @@ RULES = [
     ("tools/release/build_win_deps.py", "tools/release/build_win_deps.py", "file", {}),
     ("tools/release/toolchain.json", "tools/release/toolchain.json", "file", {}),
     ("re/function_seeds.txt", "re/function_seeds.txt", "file", {}),
+    ("re/eu/address_map.tsv", "re/eu/address_map.tsv", "file", {}),
+    ("tools/edition_map.py", "tools/edition_map.py", "file", {}),
     ("port/kz1hd", "port/kz1hd", "tree", {"exclude_dirs": ["tests"]}),
     ("installer/art/vekta.ico", "installer/art/vekta.ico", "file", {}),   # KZ1HD.exe's icon (port/kz1hd/app.rc)
     ("port/cmake", "port/cmake", "tree", {"include": ["*.cmake"]}),

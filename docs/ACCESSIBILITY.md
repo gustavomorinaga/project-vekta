@@ -39,6 +39,25 @@ PlayStation or Nintendo.
 
 - The release folders and launchers can build with no window or question (`--prepare`), and each failure has its own
   exit code and fix text ([TROUBLESHOOTING.md](TROUBLESHOOTING.md)).
-- The project site has a plain page with no script, no web fonts and no animation (`site/plain.html`).
+
+## The project website
+
+The site aims at [WCAG 2.2](https://www.w3.org/TR/WCAG22/) level AA, in the light and the dark theme. Checked on
+every change by axe-core in Chromium at a desktop, a short desktop and a phone size, and by the checks of the page
+files (headings, tables, colour contrast); checked by hand with a keyboard, screen readers and game pads before a
+release ([dev/website.md](dev/website.md#manual-checks)).
+
+- **Keyboard:** everything works without a mouse. The menu takes the arrows, the digits 1 to 0, Home, End and the
+  page keys; Enter opens a section and moves to its title; the focus is always visible. The **Controls** button in
+  the footer lists every key and button.
+- **Game pad:** Xbox, PlayStation, Nintendo and generic pads move through the menu and every link and screenshot in
+  reading order, with the pad's own button pictures in the footer and the Controls list.
+- **Screen readers:** the section's title is read when it opens and the tab title names the section; tables have
+  captions and named headers; the screenshot viewer says which screenshot of how many is shown.
+- **Your settings are followed:** light or dark theme, reduced motion (no fades), high-contrast modes, text zoom to
+  200 % and page zoom to 400 %.
+- **Find in page** (Chrome and Edge) reaches the text of sections that are not shown and opens them.
+- **Print** gives every section, in light colours, with the address after each outside link.
+- **The plain page** (`plain.html`) has every section on one page with no script, no web font and no animation.
 
 Missing something you need? [Open an issue](https://github.com/gustavomorinaga/project-vekta/issues/new/choose).

@@ -35,8 +35,9 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
   `releaseAssetFilter`, one filter for every system's files): after the first `.tar.xz` release, see that both
   launchers offer it on Linux.
 - **`recomplauncher.json`** at the top of both folders (`tools/release/recomplauncher.py`, from
-  `installer/recomplauncher.json`): the same contract in RecompLauncher's format 1. Its inputs are the game folder
-  or the disc (role `disc`, `--disc={input:disc}`), both optional, and the decrypted EBOOT.
+  `installer/recomplauncher.json`): the same contract in RecompLauncher's format 1. Its inputs are the game (one
+  required box: the installed folder, the disc's folder or its package, which `launch.py` sends the `--disc` way;
+  a required game input is what RecompLauncher counts as Easy Setup) and the optional decrypted EBOOT.
 - **How it was started:** the launcher tells the game `KZ_STARTED_BY` (the game's log has it as
   `[kz-sys] started-by:`, and the support package and the bug form take it from there): `recomplauncher` when
   `RECOMPLAUNCHER` or any `RECOMPLAUNCHER_*` variable is set (RecompLauncher sets `RECOMPLAUNCHER=1`,

@@ -1,6 +1,6 @@
 # CodeQL code scanning: the Python tools, the port's C and C++ (without a build: the lifted code needs the player's
-# game), and the workflows. Pushes and pull requests that change only docs, the site or images skip it; the weekly
-# run covers the whole tree. (After Project Helghast's codeql.yml, MIT.)
+# game), the workflows, and the site's script and browser tests (site/site.js, tools/site-tests/). Pushes and pull
+# requests that change only docs, the site or images skip it; the weekly run covers the whole tree. (After Project Helghast's codeql.yml, MIT.)
 name: CodeQL
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [python, c-cpp, actions]
+        language: [python, c-cpp, actions, javascript-typescript]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

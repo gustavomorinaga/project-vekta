@@ -33,8 +33,9 @@ GitHub sees that visit like any other; nothing is sent until you attach the zip 
 A game launcher that installs the port (RecompLauncher, Quiver Launcher) makes its own connections under its own
 rules; the port adds none to them.
 
-**Project website** (`site/`): viewing the main page loads the Rajdhani font from Google Fonts, which sees your
-visit. The plain page (`site/plain.html`) loads no fonts. The repository, the setup and the game do not.
+**Project website** (`site/`): loads nothing from other servers. Its font, images and script are served with the
+page from GitHub Pages, which, like any web host, receives your visit; the site itself sets no cookies, stores
+nothing in your browser and keeps no statistics.
 
 ## Where your data goes
 

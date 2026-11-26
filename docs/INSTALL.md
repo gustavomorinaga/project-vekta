@@ -15,7 +15,9 @@ You need these files from your own game. No PS3 system software (firmware) is ne
 - The installed game folder of **Killzone HD** (NPUA80856, the US edition), from the **Killzone Trilogy** disc or
   bought on the PlayStation Store. It holds `PARAM.SFO`, `TROPDIR` and `USRDIR`. In RPCS3 it is
   `dev_hdd0\game\NPUA80856`. The Store copy's data archive is bound to your licence: use "Use my RPCS3 install",
-  which has your RPCS3 open it (with the `.rap` it already uses for the game) into `data_ps3.psarc`.
+  which has your RPCS3 open it (with the `.rap` it already uses for the game) into `data_ps3.psarc`. The European
+  edition (NPEA00418, `dev_hdd0\game\NPEA00418`, from the European PlayStation Store) works the same way, through
+  "Use my RPCS3 install".
 - `EBOOT.elf`: the game's executable, decrypted. Not `EBOOT.BIN`.
 - Optional: `data_ps3.psarc`, the data archive, decrypted, about 3 GB. Without it the port reads the game folder's
   own `USRDIR\data_ps3.psarc.edat`, once, after the build: about a minute more, and 3.1 GB more disk in `work`.
@@ -34,7 +36,7 @@ unpack; see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 **No RPCS3? Straight from the disc.** With the Killzone Trilogy disc copied to your PC (its folder, with
 `PS3_EXTRA` in it, or just the package `PS3_EXTRA\...\DATA000.PKG`), `Project Vekta.exe --disc FOLDER`,
 `./project-vekta --disc FOLDER`, `scripts/prepare.sh --disc FOLDER`, the setup's "Your game" page ("From my Killzone
-Trilogy disc") and RecompLauncher's disc field download the official RPCS3 (version
+Trilogy disc") and RecompLauncher's game box (given the disc's folder or the package) download the official RPCS3 (version
 0.0.43-20640 from RPCS3's own GitHub releases, about 37 MB on Windows and 83 MB on Linux, checked by SHA-256) into
 the port's `work\toolchain-cache\rpcs3`. It installs the package into `work\prep\disc`, with no window and none of
 your settings, and decrypts a copy of `EBOOT.BIN` into `work\prep`. About 4 GB more disk is used; a minute or less
