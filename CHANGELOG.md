@@ -7,6 +7,13 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+### Changed
+- F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
+  every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
+  (ps3recomp patch 2089).
+- Known issues: how fast each multiplayer map runs with the most bots, and what a wide field of view costs (9-12 %
+  at 120).
+
 ### Fixed
 - Extras > Game Intro plays the whole opening movie again with "Opening Movie" off. The option skipped every
   showing of the movie, so Extras showed a black frame and went back to the menu; now it only skips the one at
@@ -16,6 +23,17 @@ program and folder that build it. Until a release that calls itself playable
   reached the rows past the frame; at 1x nothing changes.
 - Extras > War Scenes picked with the mouse plays its bot battle instead of going straight back to the menu. The
   click's press lasted past the loading screen, and any button ends War Scenes, as on the PS3.
+- At 144 fps a few game clock ticks (15 every 5 seconds) came 1 ms late, a slightly longer frame between two short
+  ones: the 144 Hz rate is now stored a hair above 0.144 ticks per ms, as the game stores its own 30 Hz one.
+- The game no longer stays on a black window forever after an earlier first run was stopped while it was writing
+  its file cache (an empty or missing `cache.dat` under `work/vfs/cache/BCUS98116/fios`): at start the port removes
+  a cut-short cache, and the game makes a new one, the same bytes, as on a first run.
+- The launcher no longer calls a session "hang-killed" when the game stopped showing frames for a while, recovered
+  and was then quit normally (it showed "exit 0: ok (hang-killed)"): a hang counts only when the game was still
+  stuck at the end.
+- Level Select's SELECT CHARACTER: the mouse no longer picks a character the level cannot be played with (the
+  greyed rows). Hovering one selected it, and Select then started the level as that character; now the mouse, like
+  the pad, leaves greyed rows alone.
 
 ## [0.7.0] - 2026-11-23 (pre-release)
 

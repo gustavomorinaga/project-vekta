@@ -49,10 +49,12 @@
 #include "pgo_write.h"   /* KZ_PGO_GEN builds: the profile at quit and on the KZ_PGO_DUMP timer */
 #include "../libs/filesystem/edat.h"   /* via the include directory: the EDAT cache folder (patch 4014) */
 #include "window_icon.h" /* the window's icon, from installer/art/vekta.ico (tools/icon_header.py) */
+#include "tick_rate.h"     /* the game clock's ticks per ms for KZ_TICK_HZ */
 #include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
 #include "crash_report.h" /* [kz-crash], [kz-hang], KZ_CRASH_TEST */
+#include "fios_cache.h"   /* a cut-short FIOS cache.dat is removed before the game reads it */
 #include "sys_info.h"     /* [kz-sys], the session header */
 #if __has_include("eboot_id.h")
 #include "eboot_id.h"    /* KZ_EBOOT_SHA256, KZ_EBOOT_SIZE: written into the lift's gen/ by tools/kzbuild.py */
@@ -287,7 +289,7 @@ static void kz_tick_rate(void)
         applied = 30;
         if (hz == 30) return;
     } else if (applied == 30 || v != cur_bits || hz == applied) return;   /* not ours, or in force */
-    { const double d = hz == 30 ? ms30 : hz / 1000.0; uint64_t u; memcpy(&u, &d, 8); u = __builtin_bswap64(u);
+    { const double d = hz == 30 ? ms30 : kz_tick_factor(hz); uint64_t u;   /* tick_rate.h: a hair above hz / 1000 */ memcpy(&u, &d, 8); u = __builtin_bswap64(u);
       memcpy(vm_base + 0x21C0F0u, &u, 8); }
     const float f = 1.0f / (float)hz; memcpy(&v, &f, 4); v = __builtin_bswap32(v);
     memcpy(vm_base + p + 0x54, &v, 4);
@@ -881,6 +883,13 @@ int main(int argc, char** argv)
     derive_vfs_root(argv[1]);
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
     set_edat_cache();
+    {   /* the FIOS cache: /dev_hdd1 is $PS3_HDD1_ROOT, else <VFS root>/cache (ps3recomp's ppu_fs.cpp) */
+        const char* h1 = getenv("PS3_HDD1_ROOT");
+        const std::string fios = ((h1 && *h1) ? std::string(h1) : std::string(ppu_vfs_root) + "/cache") + "/BCUS98116/fios";
+        if (!kz_fios_cache_check(fios.c_str()))
+            fprintf(stderr, "[kz] FIOS cache: %s/cache.dat was missing or cut short (an earlier run stopped while writing it); "
+                            "removed with cache.idx, the game makes a new one\n", fios.c_str());
+    }
     /* The window's icon and application id (ps3recomp patch 2081): "project-vekta" is also the name of the Linux menu
      * entry (tools/release/firstrun.py desktop_entry), where a Wayland desktop takes the icon from. */
     rsx_vulkan_set_window_identity("project-vekta", reinterpret_cast<const uint32_t*>(kz_window_icon),
