@@ -217,8 +217,8 @@
 <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Feature</th><th role="columnheader" scope="col">Default</th><th role="columnheader" scope="col">Where it is set</th></tr></thead>
 <tbody role="rowgroup">
 <tr role="row"><th role="rowheader" scope="row">Display mode: window, borderless, fullscreen; Alt+Enter</th><td role="cell" data-label="Default">window</td><td role="cell" data-label="Where it is set"><code>display</code>; <code>KZ_FULLSCREEN=1</code> in <code>tools/play.sh</code></td></tr>
-<tr role="row"><th role="rowheader" scope="row">Output resolution and refresh rate</th><td role="cell" data-label="Default">1280x720, the monitor&#x27;s rate</td><td role="cell" data-label="Where it is set"><code>resolution</code>, <code>refresh</code>; resizable window, aspect kept; a new size is drawn at full detail from the next start</td></tr>
-<tr role="row"><th role="rowheader" scope="row">Internal resolution scale, 50 % to 200 %</th><td role="cell" data-label="Default">100 %</td><td role="cell" data-label="Where it is set"><code>scale</code>; applies on the next start</td></tr>
+<tr role="row"><th role="rowheader" scope="row">Output resolution and refresh rate</th><td role="cell" data-label="Default">1280x720, the monitor&#x27;s rate</td><td role="cell" data-label="Where it is set"><code>resolution</code>, <code>refresh</code>; resizable window, aspect kept; a new size or display mode is drawn at its full detail at once (ps3recomp patch 2093; Level 1, 2026-11-26)</td></tr>
+<tr role="row"><th role="rowheader" scope="row">Internal resolution scale, 50 % to 200 %</th><td role="cell" data-label="Default">100 %</td><td role="cell" data-label="Where it is set"><code>scale</code>; applies at once, with FSR 3.1 too (ps3recomp patch 2093; Level 1, 2026-11-26; DLSS takes the same path, not yet run)</td></tr>
 <tr role="row"><th role="rowheader" scope="row">V-Sync on, off, adaptive; VRR</th><td role="cell" data-label="Default">on</td><td role="cell" data-label="Where it is set"><code>vsync</code></td></tr>
 <tr role="row"><th role="rowheader" scope="row">NVIDIA Reflex: off, on, on + boost (<code>VK_NV_low_latency2</code>)</th><td role="cell" data-label="Default">off</td><td role="cell" data-label="Where it is set"><code>reflex</code>; &quot;not available&quot; without the extension; no measured fps or latency change in Level 7</td></tr>
 <tr role="row"><th role="rowheader" scope="row">Frame-rate limit 30, 60, 144 (the game clock follows)</th><td role="cell" data-label="Default">60</td><td role="cell" data-label="Where it is set"><code>fps_limit</code>; 30 is the PS3&#x27;s</td></tr>
@@ -273,7 +273,7 @@
 <li><span class="kind">Changed</span>The project site is lighter, faster and usable by everyone: screenshots as small WebP copies (the full PNG one click away), its own font file instead of Google Fonts, no layout jumps while it loads, and the whole site checked against WCAG 2.2 AA in both themes (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ACCESSIBILITY.md#the-project-website">docs/ACCESSIBILITY.md</a>).</li>
 <li><span class="kind">Changed</span>The site works with a keyboard alone and with a game pad (Xbox, PlayStation, Nintendo or generic), with the pad&#x27;s button pictures in the footer and a <strong>Controls</strong> list of every key and button.</li>
 </ul>
-<p class="small">And 16 more items in <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
+<p class="small">And 17 more items in <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </article>
 <article class="rel">
 <h3>0.7.0</h3>
@@ -424,8 +424,8 @@ tools/install.sh</pre>
 <section id="about" class="sec" aria-labelledby="h-about">
 <h2 id="h-about">About</h2>
 <p class="lede">Built on ps3recomp v0.19.0: PPU and SPU code lifted to C++, the RSX command stream replayed on Vulkan.</p>
-<p class="meta">how it works · ps3recomp v0.19.0 · 173 patches</p>
-<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 173 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
+<p class="meta">how it works · ps3recomp v0.19.0 · 174 patches</p>
+<p>The port is built on <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> (MIT), pinned at v0.19.0 with 174 patches of this project: the PPU code and the game's SPU programs are lifted to C++, the PS3 system libraries the game calls are reimplemented, and the game's RSX command stream is replayed on Vulkan. It builds natively on Linux, and on Linux for Windows; the Windows build is tested under Wine, Proton and on Windows.</p>
 <p>It follows <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> and <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a>, the same method applied to Killzone 3 and Killzone 2, and reuses their general runtime work. About <strong>65 %</strong> of Killzone HD is done, and 43 % of the whole trilogy plan; what comes next: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">the roadmap</a>.</p>
 <p class="more"><a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">The technical overview<span aria-hidden="true"> &gt;</span></a></p>
 </section>

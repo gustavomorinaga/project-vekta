@@ -18,9 +18,10 @@ has, for the PC menu), 2050 (per-object motion pairs, on by default), 2051 (FSR 
 | `PS3RECOMP_TEMPORAL_DUMP` | writes each frame's colour, depth, camera, motion and velocity, for offline checks |
 
 In the game the choice is PC > "Temporal Upscaler (on restart)" (the `temporal` key of `kz1hd_pc.ini`: `off`,
-`fsr3-<mode>` or `dlss-<mode>`); an upscaler the build does not have shows as "(not built)". Like the internal scale,
-it takes effect at the next start, and a window or display-mode change during play also changes the scene resolution
-only at the next start.
+`fsr3-<mode>` or `dlss-<mode>`); an upscaler the build does not have shows as "(not built)". It takes effect at the
+next start. A window, resolution, display-mode or internal-scale change during play applies at once (ps3recomp patch
+2093): the output becomes the new frame size, the scene the upscaler's render size for it, DLSS's feature or FSR 3.1's
+context is made again and the history starts over.
 
 The output is the size the scaling already gave: the window's with `PS3RECOMP_VK_SCALE_FIT`, or
 `PS3RECOMP_VK_SCALE` times 1280x720. The scene is drawn at the size the upscaler asks for that output; Quality at

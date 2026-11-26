@@ -56,6 +56,25 @@ int main(void)
     rsx_present_size(3440, 1440, 0.0f, 0, 1280, 720, &dw, &dh); EXPECT(dw == 2560 && dh == 1440);
     rsx_present_size(1440, 1080, 0.0f, 0, 1280, 720, &dw, &dh); EXPECT(dw == 1440 && dh == 810);
     rsx_present_size(1920, 1080, 0.0f, 0, 1280, 720, &dw, &dh); EXPECT(dw == 1920 && dh == 1080);
+    /* patch 2093: the same scale at start and while running (rsx_fit_scale), from the window's size: a window made
+     * 3440x1440 from 1280x720 draws the frame at 3440x1440 (fill), 2560x1440 (fit), and at half or twice that */
+    rsx_fit_scale(1280, 720, 0.0f, 1280, 720, 1.0f, 1, 16384, &sx, &sy); EXPECT(sx == 1.0f && sy == 1.0f);
+    rsx_fit_scale(3440, 1440, 0.0f, 1280, 720, 1.0f, 1, 16384, &sx, &sy);
+    EXPECT(rsx_scale_dim(1280, sx) == 3440 && rsx_scale_dim(720, sy) == 1440);
+    rsx_fit_scale(3440, 1440, 0.0f, 1280, 720, 1.0f, 0, 16384, &sx, &sy);
+    EXPECT(rsx_scale_dim(1280, sx) == 2560 && rsx_scale_dim(720, sy) == 1440);
+    rsx_fit_scale(3440, 1440, 0.0f, 1280, 720, 0.5f, 1, 16384, &sx, &sy);
+    EXPECT(rsx_scale_dim(1280, sx) == 1720 && rsx_scale_dim(720, sy) == 720);
+    rsx_fit_scale(3440, 1440, 0.0f, 1280, 720, 2.0f, 1, 16384, &sx, &sy);
+    EXPECT(rsx_scale_dim(1280, sx) == 6880 && rsx_scale_dim(720, sy) == 2880);
+    /* a forced 16:9 in that window: its 2560x1440 box */
+    rsx_fit_scale(3440, 1440, 16.0f / 9.0f, 1280, 720, 1.0f, 1, 16384, &sx, &sy);
+    EXPECT(rsx_scale_dim(1280, sx) == 2560 && rsx_scale_dim(720, sy) == 1440);
+    /* the device's largest image: 10 % smaller at a time until the frame fits (6880 > 4096) */
+    rsx_fit_scale(3440, 1440, 0.0f, 1280, 720, 2.0f, 1, 4096, &sx, &sy);
+    EXPECT(rsx_scale_dim(1280, sx) <= 4096 && rsx_scale_dim(1280, sx) > 4096 * 9 / 10 - 1);
+    /* never 0 */
+    EXPECT(rsx_scale_dim(1, 0.25f) == 1 && rsx_scale_dim(0, 2.0f) == 1);
     if (fails) return 1;
     puts("test_fit_scale: ok");
     return 0;

@@ -58,12 +58,7 @@ are linked.
 - **The sprint motion blur is stretched outside 16:9** (2026-11-12): the game draws it for a 16:9 screen (its taps
   across are 16/9 of those down, `mb_ref.c`) on the anamorphic frame, so on 21:9 it reaches further at the sides and
   on 4:3 less far; on 4:3 that is what the PS3 showed in its own 4:3 mode on a 4:3 TV. Off with `motion_blur = off`.
-- **The aspect setting applies on the next start**, as the internal resolution does.
-- **The internal resolution scale applies on the next start**, not at once.
-- **A new resolution or display mode is drawn at its full detail from the next start** (2026-11-13): the window or the
-  fullscreen mode changes at once, but the frame keeps the size it was made at when the game started and is scaled to
-  the new one until then (1720×720 to 1280×960 in Level 8: the picture right, softer up and down). The PC page says
-  "(detail on restart)".
+- **The aspect setting applies on the next start.**
 - **Surround sound** (5.1, 7.1) was checked channel by channel, not yet heard on a real surround system.
 - **A Vulkan validation error after turning DLSS or FSR 3.1 off** (2026-11-09): the next start built the upscaler's
   pipelines ahead from the pipeline list on disk, on a device created without `independentBlend`, which the

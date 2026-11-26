@@ -20,8 +20,8 @@ ps3	Trophies	Trophy unlocks	PSN trophies	partial	: unlocked and logged locally w
 ps3	Multiplayer	"One / Two Player" in the menu	local	not yet	 checked		
 ps3	Online	PSN	sign-in, trophies sync	n/a		no network is used	
 pc		Display mode: window, borderless, fullscreen; Alt+Enter		window		`display`; `KZ_FULLSCREEN=1` in `tools/play.sh`	Window, borderless or fullscreen; any resolution; internal resolution scale
-pc		Output resolution and refresh rate		1280x720, the monitor's rate		`resolution`, `refresh`; resizable window, aspect kept; a new size is drawn at full detail from the next start	
-pc		Internal resolution scale, 50 % to 200 %		100 %		`scale`; applies on the next start	
+pc		Output resolution and refresh rate		1280x720, the monitor's rate		`resolution`, `refresh`; resizable window, aspect kept; a new size or display mode is drawn at its full detail at once (ps3recomp patch 2093; Level 1, 2026-11-26)	
+pc		Internal resolution scale, 50 % to 200 %		100 %		`scale`; applies at once, with FSR 3.1 too (ps3recomp patch 2093; Level 1, 2026-11-26; DLSS takes the same path, not yet run)	
 pc		V-Sync on, off, adaptive; VRR		on		`vsync`	V-Sync, VRR and a 30, 60 or 144 fps limit (the game clock follows)
 pc		NVIDIA Reflex: off, on, on + boost (`VK_NV_low_latency2`)		off		`reflex`; "not available" without the extension; no measured fps or latency change in Level 7	
 pc		Frame-rate limit 30, 60, 144 (the game clock follows)		60		`fps_limit`; 30 is the PS3's	

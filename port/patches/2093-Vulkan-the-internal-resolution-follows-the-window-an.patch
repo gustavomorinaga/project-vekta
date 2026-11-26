@@ -1,0 +1,613 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 26 Nov 2026 11:44:40 -0300
+Subject: [PATCH] Vulkan: the internal resolution follows the window and the
+ scale setting while running
+
+Symptom: the frame stayed at the size the first window gave. A game started in a 1280x720 window and switched to
+3440x1440, borderless or fullscreen on the PC page drew its scene at 1280x720 and stretched it; the Internal
+Resolution setting changed nothing until the next start. The same for Alt+Enter and a window resized by hand.
+
+Cause: vk_fit_scale ran once, after the device was made. vk_apply_display (on the window's thread) only resizes
+the window, and the present only remakes the swapchain: the scale (s_rscale_x/y), the display image, its depth
+and readback, every engine colour and depth target, and the pixel programs that read the window position (their
+1/scale baked in at vk_eng_pipeline_create) kept the start's size.
+
+Fix: at the end of each present (vk_cb_present, after the window's present) vk_rescale_check works out the size
+wanted now: with PS3RECOMP_VK_SCALE_FIT, rsx_fit_scale (the arithmetic vk_fit_scale used, now shared and
+host-tested in rsx_fit_scale.h) on the swapchain's extent, times the scale setting; without it, the scale set by
+the new rsx_vulkan_set_scale (any thread). When that differs from the frame's size and was the same at the last
+present (a window dragged larger is not remade at every one), vk_rescale, with the device idle:
+
+- makes every engine colour and depth target again at the new scale under the same handle, the old picture
+  blitted into it (linear for colour; depth blitted where its format allows, else cleared to the far plane), and
+  the views of it again (vk_eng_surface_view); copies the engine owns (colour snapshots, depth as colour) that
+  are free go, one in use keeps its size until it is given back; the depth-as-colour descriptor sets are written
+  again at their next use (a generation count), and grow their buffer instead of failing;
+- makes the display image, its depth, the readback buffer and the vtable path's framebuffer again;
+- drops the framebuffers and the scratch depth, and the VkPipelines and pixel modules of the pipelines whose
+  pixel program reads the window position: those keep their source (wpos_ps) and get their modules again at
+  their next draw (vk_eng_pipe_wpos), the velocity variant's too. The SPIR-V and pipeline caches are keyed on
+  the program text, so a scale already met is read from disk;
+- under a temporal upscaler (DLSS, FSR 3.1): the output is the new frame size and the scene the upscaler's render
+  size for it; the display buffers get their own images back, the outputs, descriptor caches and depth views go,
+  the history starts over, rsx_temporal_config takes the new scale, and DLSS's feature or FSR 3.1's context is
+  released (rsx_dlss_drop, rsx_fsr3_drop) to be made again at the next evaluate. Its motion and depth images, the
+  velocity target, MLAA's buffers and FSR 1's images already followed the drawn size.
+
+The log gets "window WxH: frame rendered at WxH (rescaled: N targets, M pipelines)" and, with an upscaler, the
+"temporal: ... scene drawn at" line again.
+
+ENHANCEMENT: the PS3 game has one output size. Written from this backend's own code; nothing taken from another
+project.
+---
+ libs/video/rsx_fit_scale.h      |  16 ++
+ libs/video/rsx_vk_dlss.cpp      |   7 +
+ libs/video/rsx_vk_dlss.h        |   3 +
+ libs/video/rsx_vk_fsr3.cpp      |   7 +
+ libs/video/rsx_vk_fsr3.h        |   2 +
+ libs/video/rsx_vulkan_backend.c | 326 ++++++++++++++++++++++++++++----
+ libs/video/rsx_vulkan_backend.h |   4 +
+ 7 files changed, 326 insertions(+), 39 deletions(-)
+
+diff --git a/libs/video/rsx_fit_scale.h b/libs/video/rsx_fit_scale.h
+index 07a7826..f177dad 100644
+--- a/libs/video/rsx_fit_scale.h
++++ b/libs/video/rsx_fit_scale.h
+@@ -38,6 +38,22 @@ static inline void rsx_fit_axes(int w, int h, unsigned gw, unsigned gh, float k,
+     *sy = (float)h / (float)gh * k;
+     if (!fill) *sx = *sy = *sx < *sy ? *sx : *sy;
+ }
++/* The scale a window gives (PS3RECOMP_VK_SCALE_FIT): the forced aspect's box (0: the window), fit or fill
++ * times k, then 10 % smaller at a time until a gw x gh frame fits max_dim, the device's largest image. At
++ * start (from the window) and again whenever the window's size or k changes (from the swapchain). */
++static inline void rsx_fit_scale(int w, int h, float aspect, unsigned gw, unsigned gh, float k, int fill,
++                                 unsigned max_dim, float* sx, float* sy)
++{
++    rsx_aspect_box(w, h, aspect, &w, &h);
++    rsx_fit_axes(w, h, gw, gh, k, fill, sx, sy);
++    while ((float)gw * *sx > (float)max_dim || (float)gh * *sy > (float)max_dim) { *sx *= 0.9f; *sy *= 0.9f; }
++}
++/* A guest size v at scale s: the side of the image a target of v is drawn in, at least 1. */
++static inline unsigned rsx_scale_dim(unsigned v, float s)
++{
++    const unsigned r = (unsigned)((float)v * s + 0.5f);
++    return r ? r : 1u;
++}
+ /* The picture's size in a w x h window: the forced aspect's box (or the
+  * window) first; a stretched frame fills it, any other keeps the guest
+  * frame's gw x gh shape inside it (a 2D screen, 16:9 with bars, stays in
+diff --git a/libs/video/rsx_vk_dlss.cpp b/libs/video/rsx_vk_dlss.cpp
+index 133b96d..f9b61fc 100644
+--- a/libs/video/rsx_vk_dlss.cpp
++++ b/libs/video/rsx_vk_dlss.cpp
+@@ -13,6 +13,7 @@ int rsx_dlss_init(VkInstance, VkPhysicalDevice, VkDevice, PFN_vkGetInstanceProcA
+ int rsx_dlss_render_size(int, uint32_t, uint32_t, uint32_t*, uint32_t*) { return -1; }
+ int rsx_dlss_evaluate(VkCommandBuffer, int, const rsx_dlss_frame*) { return -1; }
+ void rsx_dlss_shutdown(void) {}
++void rsx_dlss_drop(void) {}
+ }
+ 
+ #else
+@@ -159,6 +160,12 @@ int rsx_dlss_evaluate(VkCommandBuffer cmd, int mode, const rsx_dlss_frame* f)
+     return 0;
+ }
+ 
++void rsx_dlss_drop(void)
++{
++    if (s.feature) NVSDK_NGX_VULKAN_ReleaseFeature(s.feature);
++    s.feature = nullptr;
++}
++
+ void rsx_dlss_shutdown(void)
+ {
+     if (s.feature) NVSDK_NGX_VULKAN_ReleaseFeature(s.feature);
+diff --git a/libs/video/rsx_vk_dlss.h b/libs/video/rsx_vk_dlss.h
+index eac2f84..4bb78b1 100644
+--- a/libs/video/rsx_vk_dlss.h
++++ b/libs/video/rsx_vk_dlss.h
+@@ -55,6 +55,9 @@ int rsx_dlss_evaluate(VkCommandBuffer cmd, int mode, const rsx_dlss_frame* f);
+ 
+ /* Device idle. */
+ void rsx_dlss_shutdown(void);
++/* The feature released (the device idle): the next evaluate makes it again, for an output
++ * size that changed while running (vk_rescale). */
++void rsx_dlss_drop(void);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/libs/video/rsx_vk_fsr3.cpp b/libs/video/rsx_vk_fsr3.cpp
+index 791bec7..7912cdb 100644
+--- a/libs/video/rsx_vk_fsr3.cpp
++++ b/libs/video/rsx_vk_fsr3.cpp
+@@ -12,6 +12,7 @@ int rsx_fsr3_init(VkInstance, VkPhysicalDevice, VkDevice, PFN_vkGetInstanceProcA
+ int rsx_fsr3_render_size(int, uint32_t, uint32_t, uint32_t*, uint32_t*) { return -1; }
+ int rsx_fsr3_evaluate(VkCommandBuffer, const rsx_dlss_frame*) { return -1; }
+ void rsx_fsr3_shutdown(void) {}
++void rsx_fsr3_drop(void) {}
+ }
+ 
+ #else
+@@ -202,6 +203,12 @@ int rsx_fsr3_evaluate(VkCommandBuffer cmd, const rsx_dlss_frame* f)
+     return 0;
+ }
+ 
++void rsx_fsr3_drop(void)
++{
++    if (s.have_ctx) ffxFsr3UpscalerContextDestroy(&s.ctx);
++    s.have_ctx = false;
++}
++
+ void rsx_fsr3_shutdown(void)
+ {
+     if (s.have_ctx) ffxFsr3UpscalerContextDestroy(&s.ctx);
+diff --git a/libs/video/rsx_vk_fsr3.h b/libs/video/rsx_vk_fsr3.h
+index e05ca37..852802f 100644
+--- a/libs/video/rsx_vk_fsr3.h
++++ b/libs/video/rsx_vk_fsr3.h
+@@ -27,6 +27,8 @@ int rsx_fsr3_render_size(int mode, uint32_t out_w, uint32_t out_h, uint32_t* w,
+  * and is left there. 0 on success. */
+ int rsx_fsr3_evaluate(VkCommandBuffer cmd, const rsx_dlss_frame* f);
+ void rsx_fsr3_shutdown(void);
++/* The context destroyed (the device idle): the next evaluate makes it again (vk_rescale). */
++void rsx_fsr3_drop(void);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 4c269b8..9d016f9 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -3249,6 +3249,7 @@ static int vk_dump_decide(void)
+     return 1;
+ }
+ 
++static void vk_rescale_check(void);   /* the internal resolution while running, with the engine's objects */
+ static void vk_cb_present(void* ud, u32 buffer_id)
+ {
+     (void)ud; (void)buffer_id;
+@@ -3268,6 +3269,7 @@ static void vk_cb_present(void* ud, u32 buffer_id)
+         s_g.last_draws = s_g.draws;
+         s_g.draws = 0;
+         vk_present_window();
++        vk_rescale_check();
+         return;
+     }
+     if (vk_begin()) return;
+@@ -3297,6 +3299,7 @@ static void vk_cb_present(void* ud, u32 buffer_id)
+     s_g.draws = 0;
+     if (s_dump_now) vk_dump_ppm(px);
+     vk_present_window();
++    vk_rescale_check();
+ }
+ 
+ /* ---------------------------------------------------------------------------
+@@ -3478,24 +3481,33 @@ static int vk_eng_make_view(VkImage img, VkFormat fmt, u32 levels, VkComponentMa
+  * a fragment program's window position (WPOS) scaled back, so the guest sees
+  * its own pixel grid. Bytes crossing to or from guest memory (seeds, 2D
+  * transfers, readbacks) are resampled to the guest's size on the CPU, nearest
+- * texel. Read once, when the engine starts.
++ * texel. Read when the engine starts; rsx_vulkan_set_scale changes it while
++ * running (vk_rescale, at the next frame's start).
+  *
+  * PS3RECOMP_VK_SCALE_XY=<x>,<y> scales the two axes apart: a title whose
+  * cameras were widened renders its 16:9 frame anamorphic, and the frame then
+  * fills a wider window (PS3RECOMP_VK_STRETCH) with every pixel its own. */
+ static float s_rscale_x = 1.0f, s_rscale_y = 1.0f;
+-static u32 vk_scx(u32 v) { const u32 r = (u32)((float)v * s_rscale_x + 0.5f); return r ? r : 1u; }
+-static u32 vk_scy(u32 v) { const u32 r = (u32)((float)v * s_rscale_y + 0.5f); return r ? r : 1u; }
++static u32 vk_scx(u32 v) { return rsx_scale_dim(v, s_rscale_x); }
++static u32 vk_scy(u32 v) { return rsx_scale_dim(v, s_rscale_y); }
+ static int vk_scaled(void) { return s_rscale_x != 1.0f || s_rscale_y != 1.0f; }
+ /* The internal resolution scale now (1 x 1 when frames are drawn at the guest's
+  * size), for a title's own code that has to know whether texels land on pixel
+  * centres. */
+ void rsx_vulkan_render_scale(float* x, float* y) { *x = s_rscale_x; *y = s_rscale_y; }
+-static void vk_read_scale(void)
++/* The scale setting: rsx_vulkan_set_scale's (any thread) once called, else PS3RECOMP_VK_SCALE. */
++static volatile float s_scale_k;
++void rsx_vulkan_set_scale(float k) { s_scale_k = k >= 0.25f && k <= 4.0f ? k : 1.0f; }
++static float vk_scale_k(void)
+ {
++    if (s_scale_k > 0.0f) return s_scale_k;
+     const char* e = getenv("PS3RECOMP_VK_SCALE");
+     const float f = e ? (float)atof(e) : 1.0f;
+-    s_rscale_x = s_rscale_y = f >= 0.25f && f <= 4.0f ? f : 1.0f;
++    return f >= 0.25f && f <= 4.0f ? f : 1.0f;
++}
++static void vk_read_scale(void)
++{
++    s_rscale_x = s_rscale_y = vk_scale_k();
+     float x, y;
+     const char* xy = getenv("PS3RECOMP_VK_SCALE_XY");
+     if (xy && sscanf(xy, "%f,%f", &x, &y) == 2 && x >= 0.25f && x <= 6.0f && y >= 0.25f && y <= 6.0f) {
+@@ -3535,15 +3547,9 @@ static void vk_fit_scale(void)
+     }
+     if (w <= 0 || h <= 0) SDL_Vulkan_GetDrawableSize(s_vk.window, &w, &h);
+     if (w <= 0 || h <= 0 || !s_guest_w || !s_guest_h) return;
+-    const char* f = getenv("PS3RECOMP_VK_SCALE");
+-    const float k = f && atof(f) >= 0.25 && atof(f) <= 4.0 ? (float)atof(f) : 1.0f;
+     /* a forced display aspect: the frame fills its box, not the window */
+-    rsx_aspect_box(w, h, vk_forced_aspect(), &w, &h);
+     float sx, sy;
+-    rsx_fit_axes(w, h, s_guest_w, s_guest_h, k, !strcmp(e, "fill"), &sx, &sy);
+-    while (vk_scx(s_guest_w) && ((float)s_guest_w * sx > (float)vk_max_dim() || (float)s_guest_h * sy > (float)vk_max_dim())) {
+-        sx *= 0.9f; sy *= 0.9f;
+-    }
++    rsx_fit_scale(w, h, vk_forced_aspect(), s_guest_w, s_guest_h, vk_scale_k(), !strcmp(e, "fill"), vk_max_dim(), &sx, &sy);
+     s_rscale_x = sx; s_rscale_y = sy;
+     s_vk.width = vk_scx(s_guest_w); s_vk.height = vk_scy(s_guest_h);
+     VK_LOG("window %dx%d: frame rendered at %ux%u (%s)\n", w, h, s_vk.width, s_vk.height, e);
+@@ -5590,7 +5596,8 @@ static int vk_tm_scene_end(void* user, u32 surface, u32 field)
+  * object the engine owns (rsx_vk_depth_pack.comp writes exactly the texels
+  * the store through guest memory and the decode would give). Each object
+  * keeps its own staging buffer and descriptor set while it is pooled. */
+-static struct { vk_buffer buf; VkDescriptorSet set; } s_dac[VK_ENG_MAX_OBJ];
++static struct { vk_buffer buf; VkDescriptorSet set; u32 gen; } s_dac[VK_ENG_MAX_OBJ];
++static u32 s_rs_gen;   /* counts vk_rescale's: a set written before the last one names images made again since */
+ static u32 vk_eng_depth_as_color(void* user, u32 depth, u32 w, u32 h, u32 rsx_fmt)
+ {
+     (void)user;
+@@ -5609,16 +5616,21 @@ static u32 vk_eng_depth_as_color(void* user, u32 depth, u32 w, u32 h, u32 rsx_fm
+     z = vk_eng_get(depth, VK_ENG_DEPTH);
+     vk_eng_obj* t = &s_eobj[hd];
+     const VkDeviceSize need = vk_pack_size(z->w, z->h);
+-    if (!s_dac[hd].set || s_dac[hd].buf.size < need) {
+-        if (s_dac[hd].set) { t->pooled = 1; return 0; }   /* a bigger target than this object's buffer */
++    if (!s_dac[hd].set || s_dac[hd].buf.size < need || s_dac[hd].gen != s_rs_gen) {
++        /* written again (a bigger target than this object's buffer, or images made again at another internal
++         * scale since, vk_rescale): no submission may still read the set */
++        if (s_dac[hd].set) vk_flush();
+         VkDescriptorSetAllocateInfo ai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                            .descriptorPool = s_pack.pool, .descriptorSetCount = 1,
+                                            .pSetLayouts = &s_pack.dsl };
+-        if (vk_create_device_buffer(&s_dac[hd].buf, need,
+-                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT) ||
+-            pvkAllocateDescriptorSets(s_vk.device, &ai, &s_dac[hd].set) != VK_SUCCESS) {
+-            s_dac[hd].set = VK_NULL_HANDLE; t->pooled = 1; return 0;
++        if (s_dac[hd].buf.size < need) vk_destroy_buffer(&s_dac[hd].buf);
++        if ((!s_dac[hd].buf.buf && vk_create_device_buffer(&s_dac[hd].buf, need,
++                                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) ||
++            (!s_dac[hd].set && pvkAllocateDescriptorSets(s_vk.device, &ai, &s_dac[hd].set) != VK_SUCCESS)) {
++            if (!s_dac[hd].buf.buf) memset(&s_dac[hd].buf, 0, sizeof s_dac[hd].buf);
++            t->pooled = 1; return 0;
+         }
++        s_dac[hd].gen = s_rs_gen;
+         VkDescriptorBufferInfo dbi = { s_dac[hd].buf.buf, 0, VK_WHOLE_SIZE };
+         VkDescriptorImageInfo dii = { VK_NULL_HANDLE, t->im.view, VK_IMAGE_LAYOUT_GENERAL };
+         VkWriteDescriptorSet wr[2] = {
+@@ -5740,6 +5752,10 @@ typedef struct vk_eng_pipe {
+     u64                 vsv_h, psv_h;
+     u32                 vrows[RSX_MAX_VERTEX_CONSTANTS / 32];   /* the constant rows its program names (pairing) */
+     VkPipeline          variantv[VK_ENG_TOPOLOGIES];
++    /* a pixel program that reads the window position: its source, and the
++     * scale its fs (and fsv) were made for (vk_eng_pipe_wpos) */
++    char*               wpos_ps;
++    float               wsx, wsy;
+ } vk_eng_pipe;
+ 
+ static vk_eng_pipe s_epipe[VK_ENG_MAX_PIPE];
+@@ -6220,6 +6236,49 @@ static char* vk_tm_vel_ps(const char* ps, u32 rt_count)
+     return out;
+ }
+ 
++/* A pixel program reading the window position (WPOS) with it in the guest's
++ * pixels: the target is s_rscale_x by s_rscale_y times larger. NULL (nothing
++ * to change) unscaled or without one; else malloc'd. */
++static char* vk_eng_wpos_scaled(const char* ps_hlsl)
++{
++    if (!vk_scaled() || !strstr(ps_hlsl, "input.position")) return NULL;
++    char with[128];
++    snprintf(with, sizeof with, "float4(input.position.xy * float2(%.9g, %.9g), input.position.zw)",
++             1.0 / s_rscale_x, 1.0 / s_rscale_y);
++    size_t n = 0; for (const char* q = ps_hlsl; (q = strstr(q, "input.position")); q += 14) n++;
++    char* scaled_ps = (char*)malloc(strlen(ps_hlsl) + n * strlen(with) + 1);
++    if (!scaled_ps) return NULL;
++    char* d = scaled_ps; const char* q = ps_hlsl; const char* hit;
++    while ((hit = strstr(q, "input.position"))) {
++        memcpy(d, q, (size_t)(hit - q)); d += hit - q;
++        strcpy(d, with); d += strlen(with); q = hit + 14;
++    }
++    strcpy(d, q);
++    return scaled_ps;
++}
++
++/* A pipeline whose pixel program reads WPOS, made at another scale than now
++ * (vk_rescale dropped its fs, fsv and VkPipelines with the device idle): its
++ * pixel modules again, at this scale. 0 when its fs is usable. */
++static int vk_eng_pipe_wpos(vk_eng_pipe* P)
++{
++    if (!P->wpos_ps || (P->wsx == s_rscale_x && P->wsy == s_rscale_y)) return P->fs ? 0 : -1;
++    P->wsx = s_rscale_x; P->wsy = s_rscale_y;   /* one try per scale */
++    char* sp = vk_eng_wpos_scaled(P->wpos_ps);
++    const char* ps = sp ? sp : P->wpos_ps;
++    if (vk_eng_translate(ps, RSX_SHADER_STAGE_FRAGMENT, &P->fs, &P->ps_h)) { P->fs = VK_NULL_HANDLE; free(sp); return -1; }
++    if (P->vsv) {   /* its velocity variant's pixel program comes from the same source */
++        char* pv = vk_tm_vel_ps(ps, P->rt_count);
++        if (!pv || vk_eng_translate(pv, RSX_SHADER_STAGE_FRAGMENT, &P->fsv, &P->psv_h)) {
++            pvkDestroyShaderModule(s_vk.device, P->vsv, NULL);
++            P->vsv = P->fsv = VK_NULL_HANDLE;
++        }
++        free(pv);
++    }
++    free(sp);
++    return 0;
++}
++
+ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_hlsl,
+                                   const rsx_be_render_state* rs, const rsx_vertex_layout_plan* layout,
+                                   u32 vertex_stride, rsx_be_format rt_fmt, u32 rt_count)
+@@ -6241,27 +6300,13 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
+     vk_eng_pipe* P = &s_epipe[slot];
+     memset(P, 0, sizeof *P);
+     if (vk_eng_translate(vs_hlsl, RSX_SHADER_STAGE_VERTEX, &P->vs, &P->vs_h)) return 0;
+-    char* scaled_ps = NULL;
+-    if (vk_scaled() && strstr(ps_hlsl, "input.position")) {
+-        /* WPOS in the guest's pixels: the target is s_rscale_x by s_rscale_y times larger. */
+-        char with[128];
+-        snprintf(with, sizeof with, "float4(input.position.xy * float2(%.9g, %.9g), input.position.zw)",
+-                 1.0 / s_rscale_x, 1.0 / s_rscale_y);
+-        size_t n = 0; for (const char* q = ps_hlsl; (q = strstr(q, "input.position")); q += 14) n++;
+-        scaled_ps = (char*)malloc(strlen(ps_hlsl) + n * strlen(with) + 1);
+-        if (scaled_ps) {
+-            char* d = scaled_ps; const char* q = ps_hlsl; const char* hit;
+-            while ((hit = strstr(q, "input.position"))) {
+-                memcpy(d, q, (size_t)(hit - q)); d += hit - q;
+-                strcpy(d, with); d += strlen(with); q = hit + 14;
+-            }
+-            strcpy(d, q);
+-            ps_hlsl = scaled_ps;
+-        }
+-    }
++    /* kept to be made again at another scale (vk_rescale) */
++    if (strstr(ps_hlsl, "input.position")) { P->wpos_ps = strdup(ps_hlsl); P->wsx = s_rscale_x; P->wsy = s_rscale_y; }
++    char* scaled_ps = vk_eng_wpos_scaled(ps_hlsl);
++    if (scaled_ps) ps_hlsl = scaled_ps;
+     const int ps_bad = vk_eng_translate(ps_hlsl, RSX_SHADER_STAGE_FRAGMENT, &P->fs, &P->ps_h);
+     if (ps_bad) {
+-        free(scaled_ps);
++        free(scaled_ps); free(P->wpos_ps);
+         pvkDestroyShaderModule(s_vk.device, P->vs, NULL); memset(P, 0, sizeof *P); return 0;
+     }
+     P->rs = *rs;
+@@ -6309,6 +6354,7 @@ static void vk_eng_pipeline_release(void* user, u32 pipeline)
+     if (P->fs) pvkDestroyShaderModule(s_vk.device, P->fs, NULL);
+     if (P->vsv) pvkDestroyShaderModule(s_vk.device, P->vsv, NULL);
+     if (P->fsv) pvkDestroyShaderModule(s_vk.device, P->fsv, NULL);
++    free(P->wpos_ps);
+     memset(P, 0, sizeof *P);
+     if (s_e2.pipeline == pipeline) s_e2.pipeline = 0;
+ }
+@@ -7200,7 +7246,7 @@ static void vk_eng_draw_body(void* user, rsx_topology topology, const void* vert
+     if (!s_e2.pipeline || !(vertices || cached) || !vertex_count || !stride) { vk_draw_why(1); return; }
+     if (topology < RSX_TOPOLOGY_POINTS || topology > RSX_TOPOLOGY_TRIANGLE_STRIP) { vk_draw_why(2); return; }
+     vk_eng_pipe* P = &s_epipe[s_e2.pipeline - 1];
+-    if (!P->used || stride != P->stride) { vk_draw_why(3); return; }
++    if (!P->used || stride != P->stride || vk_eng_pipe_wpos(P)) { vk_draw_why(3); return; }
+ 
+     /* Targets: every member of a set is target A's size (engine contract). */
+     const u32 n = s_eng_bound.nrt;
+@@ -7460,6 +7506,208 @@ static rsx_backend s_vulkan_backend = {
+ /* ---------------------------------------------------------------------------
+  * Public entry points
+  * -------------------------------------------------------------------------*/
++/* ---- the internal resolution while running ---------------------------------
++ * The frame's size follows the window (PS3RECOMP_VK_SCALE_FIT: its swapchain)
++ * and the scale setting (rsx_vulkan_set_scale) instead of staying at the size
++ * the first window gave: at a frame's end, when the size wanted has changed
++ * and stayed the same for two presents (a window being dragged larger is not
++ * remade on every one), with the device idle, every image drawn at the
++ * internal scale is made again at the new one under the same engine handle
++ * (colour blitted, depth blitted where the format allows, else at the far
++ * plane), with the views of it; the display image, its depth and readback;
++ * the pipelines whose pixel program reads the window position get their
++ * modules again at their next draw (vk_eng_pipe_wpos). MLAA, FSR 1, the
++ * velocity target and the temporal pass's own images follow the drawn size
++ * by themselves. Under a temporal upscaler the new output is the window's
++ * share and the scene its render size for it; the upscaler's feature or
++ * context is made again and its history starts over. */
++static struct { u32 w, h; } s_rs_want;   /* the size wanted at the last present */
++
++/* The frame size and scale wanted now; -1: keep what there is (no window to
++ * follow and no scale set while running, or no swapchain yet). */
++static int vk_rescale_target(u32* ow, u32* oh, float* sx, float* sy)
++{
++    static const char* fit = (const char*)-1;
++    if (fit == (const char*)-1) { fit = getenv("PS3RECOMP_VK_SCALE_FIT"); if (fit && !*fit) fit = NULL; }
++    if (!s_guest_w || !s_guest_h) return -1;
++    if (fit && s_vk.window) {
++        if (!s_vk.swapchain || s_vk.no_area || !s_vk.sc_extent.width || !s_vk.sc_extent.height) return -1;
++        rsx_fit_scale((int)s_vk.sc_extent.width, (int)s_vk.sc_extent.height, vk_forced_aspect(), s_guest_w, s_guest_h,
++                      vk_scale_k(), !strcmp(fit, "fill"), vk_max_dim(), sx, sy);
++    } else if (s_scale_k > 0.0f) {
++        *sx = *sy = s_scale_k;
++    } else return -1;
++    *ow = rsx_scale_dim(s_guest_w, *sx); *oh = rsx_scale_dim(s_guest_h, *sy);
++    return 0;
++}
++
++/* One engine colour or depth object at the scale now (the device idle). */
++static void vk_rescale_obj(u32 i, int zblit)
++{
++    vk_eng_obj* o = &s_eobj[i];
++    const u32 w = vk_scx(o->lw), h = vk_scy(o->lh);
++    if ((w == o->w && h == o->h) || w > vk_max_dim() || h > vk_max_dim()) return;
++    const int depth = o->kind == VK_ENG_DEPTH;
++    /* the usage each was made with (vk_eng_color_target_create, vk_eng_depth_target_create) */
++    const VkImageUsageFlags use = depth
++        ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
++          (s_tmz.capture ? VK_IMAGE_USAGE_SAMPLED_BIT : 0u)
++        : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
++          VK_IMAGE_USAGE_TRANSFER_DST_BIT;
++    const VkImageAspectFlags aspect = depth ? s_vk.depth_aspect : VK_IMAGE_ASPECT_COLOR_BIT;
++    vk_image n;
++    memset(&n, 0, sizeof n);
++    if (vk_create_image(&n, o->fmt, w, h, use, aspect) || vk_begin()) {
++        vk_destroy_image(&n);
++        VK_LOG("rescale: engine object %u at %ux%u failed, kept at %ux%u\n", i, w, h, o->w, o->h);
++        return;
++    }
++    vk_barrier_image(n.img, aspect, VK_IMAGE_LAYOUT_UNDEFINED);
++    vk_barrier_image(o->im.img, aspect, VK_IMAGE_LAYOUT_GENERAL);
++    if (!depth || zblit) {
++        VkImageBlit b = { .srcSubresource = { aspect, 0, 0, 1 },
++                          .srcOffsets = { { 0, 0, 0 }, { (int32_t)o->w, (int32_t)o->h, 1 } },
++                          .dstSubresource = { aspect, 0, 0, 1 },
++                          .dstOffsets = { { 0, 0, 0 }, { (int32_t)w, (int32_t)h, 1 } } };
++        pvkCmdBlitImage(s_vk.cmd, o->im.img, VK_IMAGE_LAYOUT_GENERAL, n.img, VK_IMAGE_LAYOUT_GENERAL, 1, &b,
++                        depth ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
++    } else {
++        VkClearDepthStencilValue far_plane = { 1.0f, 0 };
++        VkImageSubresourceRange r = { aspect, 0, 1, 0, 1 };
++        pvkCmdClearDepthStencilImage(s_vk.cmd, n.img, VK_IMAGE_LAYOUT_GENERAL, &far_plane, 1, &r);
++    }
++    vk_barrier_image(n.img, aspect, VK_IMAGE_LAYOUT_GENERAL);
++    if (vk_submit_and_wait()) { vk_destroy_image(&n); return; }
++    vk_destroy_image(&o->im);
++    o->im = n; o->w = w; o->h = h;
++    for (u32 j = 1; j < VK_ENG_MAX_OBJ; j++) {   /* its views (vk_eng_surface_view) */
++        vk_eng_obj* v = &s_eobj[j];
++        if (v->kind != VK_ENG_VIEW || v->surface != i) continue;
++        pvkDestroyImageView(s_vk.device, v->im.view, NULL);
++        v->im.view = VK_NULL_HANDLE;
++        if (vk_eng_make_view(o->im.img, o->fmt, 1, vk_remap(v->remap, v->rsx_fmt), 0, &v->im.view)) v->im.view = VK_NULL_HANDLE;
++        v->w = w; v->h = h;
++    }
++}
++
++static void vk_rescale(u32 ow, u32 oh, float sx, float sy)
++{
++    vk_flush();
++    pvkDeviceWaitIdle(s_vk.device);
++    if (s_tm.ok) {   /* the scene at the upscaler's render size for the new output */
++        u32 rw, rh;
++        if ((s_tm.want == 2 ? rsx_fsr3_render_size : rsx_dlss_render_size)(s_tm.mode, ow, oh, &rw, &rh)) {
++            VK_LOG("rescale: temporal: no render size for %ux%u, kept at %ux%u\n", ow, oh, s_vk.width, s_vk.height);
++            return;
++        }
++        sx = (float)rw / (float)s_guest_w; sy = (float)rh / (float)s_guest_h;
++    }
++    /* every display buffer gets its own image back, and the outputs go (made again at the new size) */
++    for (int i = 0; i < VK_TM_SWAPS; i++) {
++        if (s_tm.sw[i].swapped) vk_tm_unswap(s_tm.sw[i].surface);
++        vk_destroy_image(&s_tm.sw[i].out);
++        s_tm.sw[i].w = s_tm.sw[i].h = 0;
++    }
++    for (int i = 0; i < 5; i++) s_mb.oset_for[i] = s_glow.oset_for[i] = VK_NULL_HANDLE;
++    memset(s_tm.set_for, 0, sizeof s_tm.set_for);
++    for (int i = 0; i < 2; i++) {
++        if (s_tm.zview[i]) pvkDestroyImageView(s_vk.device, s_tm.zview[i], NULL);
++        s_tm.zview[i] = VK_NULL_HANDLE; s_tm.zview_of[i] = VK_NULL_HANDLE;
++    }
++    if (s_tm.ok) {
++        s_tm.out_w = ow; s_tm.out_h = oh;
++        s_tm.have_prev = 0;   /* the history starts over */
++        if (s_tm.want == 2) rsx_fsr3_drop(); else rsx_dlss_drop();
++        rsx_temporal_config(1, sx);
++    }
++    s_rscale_x = sx; s_rscale_y = sy;
++
++    /* the display image, its depth and readback (and the vtable path's framebuffer) */
++    vk_destroy_image(&s_vk.color); vk_destroy_image(&s_vk.depth); vk_destroy_buffer(&s_vk.readback);
++    if (s_vk.framebuffer) { pvkDestroyFramebuffer(s_vk.device, s_vk.framebuffer, NULL); s_vk.framebuffer = VK_NULL_HANDLE; }
++    s_vk.width = ow; s_vk.height = oh;
++    if (vk_create_image(&s_vk.color, VK_FORMAT_R8G8B8A8_UNORM, ow, oh,
++                        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
++                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT) ||
++        vk_create_image(&s_vk.depth, s_vk.depth_format, ow, oh,
++                        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, s_vk.depth_aspect) ||
++        vk_create_host_buffer(&s_vk.readback, (VkDeviceSize)ow * oh * 4u, VK_BUFFER_USAGE_TRANSFER_DST_BIT) || vk_begin()) {
++        VK_LOG("rescale: the %ux%u display image failed\n", ow, oh);   /* as an allocation failure at start: fatal soon */
++        return;
++    }
++    vk_barrier_image(s_vk.color.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED);
++    vk_barrier_image(s_vk.depth.img, s_vk.depth_aspect, VK_IMAGE_LAYOUT_UNDEFINED);
++    { VkClearColorValue black = { .float32 = { 0.0f, 0.0f, 0.0f, 1.0f } };
++      VkClearDepthStencilValue far_plane = { 1.0f, 0 };
++      VkImageSubresourceRange cr = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, dr = { s_vk.depth_aspect, 0, 1, 0, 1 };
++      pvkCmdClearColorImage(s_vk.cmd, s_vk.color.img, VK_IMAGE_LAYOUT_GENERAL, &black, 1, &cr);
++      pvkCmdClearDepthStencilImage(s_vk.cmd, s_vk.depth.img, VK_IMAGE_LAYOUT_GENERAL, &far_plane, 1, &dr); }
++    if (vk_submit_and_wait()) return;
++    if (s_vk.render_pass) {
++        VkImageView views[2] = { s_vk.color.view, s_vk.depth.view };
++        VkFramebufferCreateInfo fci = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
++                                        .renderPass = s_vk.render_pass, .attachmentCount = 2, .pAttachments = views,
++                                        .width = ow, .height = oh, .layers = 1 };
++        if (pvkCreateFramebuffer(s_vk.device, &fci, NULL, &s_vk.framebuffer) != VK_SUCCESS) s_vk.framebuffer = VK_NULL_HANDLE;
++    }
++
++    /* the engine's targets, at the new scale under the same handles */
++    vk_eng_drop_framebuffers();
++    vk_destroy_image(&s_e2.scratch_depth);
++    s_e2.scratch_w = s_e2.scratch_h = 0;
++    VkFormatProperties zp;
++    pvkGetPhysicalDeviceFormatProperties(s_vk.phys, s_vk.depth_format, &zp);
++    const VkFormatFeatureFlags zb = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
++    const int zblit = (zp.optimalTilingFeatures & zb) == zb;
++    u32 made = 0;
++    for (u32 i = 1; i < VK_ENG_MAX_OBJ; i++) {
++        vk_eng_obj* o = &s_eobj[i];
++        if ((o->kind != VK_ENG_COLOR && o->kind != VK_ENG_DEPTH) || !o->lw || !o->lh) continue;
++        if (o->recyc) {
++            /* a copy the engine owns: free ones go (their shape is gone); one in use is refilled before it is
++             * read and sampled normalized, so it keeps its size until it is given back */
++            if (o->pooled) { s_eng_closing = 1; vk_eng_release(NULL, i); s_eng_closing = 0; }
++            continue;
++        }
++        const u32 w0 = o->w, h0 = o->h;
++        vk_rescale_obj(i, zblit);
++        made += o->w != w0 || o->h != h0;
++    }
++    /* the pipelines whose pixel program reads the window position: made again at their next draw */
++    u32 wpos = 0;
++    for (u32 i = 0; i < VK_ENG_MAX_PIPE; i++) {
++        vk_eng_pipe* P = &s_epipe[i];
++        if (!P->used || !P->wpos_ps || (P->wsx == s_rscale_x && P->wsy == s_rscale_y)) continue;
++        for (u32 t = 0; t < VK_ENG_TOPOLOGIES; t++) {
++            if (P->variant[t]) pvkDestroyPipeline(s_vk.device, P->variant[t], NULL);
++            if (P->variantv[t]) pvkDestroyPipeline(s_vk.device, P->variantv[t], NULL);
++            P->variant[t] = P->variantv[t] = VK_NULL_HANDLE;
++        }
++        if (P->fs) pvkDestroyShaderModule(s_vk.device, P->fs, NULL);
++        if (P->fsv) pvkDestroyShaderModule(s_vk.device, P->fsv, NULL);
++        P->fs = P->fsv = VK_NULL_HANDLE;
++        P->wsx = P->wsy = 0.0f;   /* vk_eng_pipe_wpos: not this scale */
++        wpos++;
++    }
++    s_rs_gen++;
++    VK_LOG("window %ux%u: frame rendered at %ux%u (rescaled: %u targets, %u pipelines)\n",
++           s_vk.sc_extent.width, s_vk.sc_extent.height, ow, oh, made, wpos);
++    if (s_tm.ok)
++        VK_LOG("temporal: %s mode %d, scene drawn at %ux%u for %ux%u\n", s_tm.want == 2 ? "FSR 3" : "DLSS", s_tm.mode,
++               vk_scx(s_guest_w), vk_scy(s_guest_h), ow, oh);
++}
++
++/* At a frame's end (vk_cb_present, after the window's present). */
++static void vk_rescale_check(void)
++{
++    u32 ow, oh;
++    float sx, sy;
++    if (vk_rescale_target(&ow, &oh, &sx, &sy)) return;
++    const int stable = ow == s_rs_want.w && oh == s_rs_want.h;
++    s_rs_want.w = ow; s_rs_want.h = oh;
++    if (stable && (ow != s_vk.width || oh != s_vk.height)) vk_rescale(ow, oh, sx, sy);
++}
++
+ static int vk_init_all(u32 width, u32 height, const char* title)
+ {
+     s_vk.width  = width  ? width  : 1280;
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 547d052..3b2a186 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -137,6 +137,10 @@ void rsx_vulkan_latency_sleep(void);   /* the game's thread, after a flip */
+ void rsx_vulkan_set_crop(float f);
+ int  rsx_vulkan_output_size(int* w, int* h);
+ void rsx_vulkan_render_scale(float* x, float* y);   /* the internal resolution scale (1 x 1: the guest's size) */
++/* The internal resolution setting (as PS3RECOMP_VK_SCALE, 0.25-4), from any thread: the frame is drawn at that
++ * multiple of the window's share (PS3RECOMP_VK_SCALE_FIT) or of the guest's size from the next frame but one. The
++ * frame also follows the window's size, its display mode and Alt+Enter by itself. */
++void rsx_vulkan_set_scale(float k);
+ 
+ /* Read the frame back to host memory (and to PS3RECOMP_VK_DUMP if set), and
+  * show it in the window if there is one. Same as _present_begin() followed

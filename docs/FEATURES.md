@@ -45,8 +45,8 @@ are off by default; display and input improvements may be on.
 | Feature | Default | `kz1hd_pc.ini`, switches, notes |
 |---|---|---|
 | Display mode: window, borderless, fullscreen; Alt+Enter | window | `display`; `KZ_FULLSCREEN=1` in `tools/play.sh` |
-| Output resolution and refresh rate | 1280x720, the monitor's rate | `resolution`, `refresh`; resizable window, aspect kept; a new size is drawn at full detail from the next start |
-| Internal resolution scale, 50 % to 200 % | 100 % | `scale`; applies on the next start |
+| Output resolution and refresh rate | 1280x720, the monitor's rate | `resolution`, `refresh`; resizable window, aspect kept; a new size or display mode is drawn at its full detail at once (ps3recomp patch 2093; Level 1, 2026-11-26) |
+| Internal resolution scale, 50 % to 200 % | 100 % | `scale`; applies at once, with FSR 3.1 too (ps3recomp patch 2093; Level 1, 2026-11-26; DLSS takes the same path, not yet run) |
 | V-Sync on, off, adaptive; VRR | on | `vsync` |
 | NVIDIA Reflex: off, on, on + boost (`VK_NV_low_latency2`) | off | `reflex`; "not available" without the extension; no measured fps or latency change in Level 7 |
 | Frame-rate limit 30, 60, 144 (the game clock follows) | 60 | `fps_limit`; 30 is the PS3's |

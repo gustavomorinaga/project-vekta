@@ -58,6 +58,7 @@
 #include "pc_deps.h"     /* which rows are in use */
 #include "res_list.h"    /* the sizes the Resolution row offers */
 #include "sys_info.h"    /* kz_sys_pair: the session header's settings line */
+#include "display_seq.h" /* KZ_TEST_DISPLAY_SEQ */
 
 extern "C" {
 extern uint8_t* vm_base;
@@ -140,8 +141,10 @@ static void ini_save(void)
  *   fps_limit  = 30 | 60 | 144   (the game clock: 30 is the original; 144 runs
  *                                 ~67-80 fps, the PPU's limit)
  *   controllers = merged | separate   (merged: any controller plays as player 1)
- *   scale      = 50 | 75 | 100 | 150 | 200   (internal resolution, % of the window's; at the
- *                                             next start)
+ *   scale      = 50 | 75 | 100 | 150 | 200   (internal resolution, % of the window's; applied at
+ *                                             once, rsx_vulkan_set_scale. The frame also follows
+ *                                             the display mode and resolution while running,
+ *                                             ps3recomp patch 2093)
  *   widescreen = on | off   (on: the picture takes the window's aspect, the 2D in the
  *                            16:9 middle; off: a 16:9 picture with bars)
  *   aspect     = auto | 4:3 | 16:10 | 16:9 | 21:9 | 32:9   (with widescreen on: the picture's
@@ -272,6 +275,7 @@ static void post_load(void)
  * aspect setting's (fixed at start, as the frame's size is). Within 0.01 of
  * 16:9 it is the game's own, so a 16:9 picture is the game's exactly. */
 static long long now_ms(void);
+static void display_seq_tick(long long t);   /* KZ_TEST_DISPLAY_SEQ, below */
 extern "C" void kz_view_update(void)
 {
     int w, h;
@@ -283,6 +287,7 @@ extern "C" void kz_view_update(void)
      * gameplay is not one (view_flat.h). */
     static struct view_flat vf;
     const long long t = now_ms();
+    display_seq_tick(t);
     static int log = getenv("KZ_CAM_LOG") ? 1 : 0; static long long next_log;
     if (log && t >= next_log) { next_log = t + 5000; fprintf(stderr, "[kz-view] 3d %u menu %u\n", kz_view_3d, kz_view_menu); }
     const bool flat = view_flat_update(&vf, t, kz_view_3d, kz_view_menu, cellGcm_flip_request_count()) != 0;
@@ -456,6 +461,7 @@ extern "C" {
 void rsx_vulkan_set_display(const char* mode, int w, int h, int hz);
 void rsx_vulkan_set_present(const char* mode);
 int  rsx_vulkan_display_sizes(int (*out)[2], int max);
+void rsx_vulkan_set_scale(float k);   /* ps3recomp patch 2093 */
 void pad_set_merge(int on);
 void pad_set_players(int n);
 void rsx_temporal_hold(int held);   /* ps3recomp patch 2092 */
@@ -563,12 +569,39 @@ static void set_fps(ppu_context* c) { attr_log("set_fps", c); if ((int32_t)c->gp
     const int f = kFps[std::clamp((int)lroundf(in_f(c)), 0, 2)];
     s_ini["fps_limit"] = std::to_string(f); ini_write(); apply_fps(f); }
 static const int kScales[] = { 50, 75, 100, 150, 200 };
+static void scale_apply(void) { rsx_vulkan_set_scale((float)atoi(s_ini["scale"].c_str()) / 100.0f); }
 static void get_scale(ppu_context* c) { attr_log("get_scale", c);
     const int v = atoi(s_ini["scale"].c_str()); int i = 2;
     for (int k = 0; k < 5; k++) if (kScales[k] == v) i = k;
     wrf((uint32_t)c->gpr[4], (float)i); }
 static void set_scale(ppu_context* c) { attr_log("set_scale", c); if ((int32_t)c->gpr[5] != 2) return;
-    s_ini["scale"] = std::to_string(kScales[std::clamp((int)lroundf(in_f(c)), 0, 4)]); ini_write(); }
+    s_ini["scale"] = std::to_string(kScales[std::clamp((int)lroundf(in_f(c)), 0, 4)]); ini_write(); scale_apply(); }
+/* KZ_TEST_DISPLAY_SEQ (testing, display_seq.h): the steps at their times from the first frame, as the PC page
+ * applies them; the ini is not written. */
+static void display_seq_tick(long long t)
+{
+    static struct display_step st[DISPLAY_SEQ_MAX];
+    static int n = -2, next;
+    static long long t0;
+    static int w, h;
+    static std::string mode;
+    if (n == -2) {
+        const char* e = getenv("KZ_TEST_DISPLAY_SEQ");
+        n = e ? display_seq_parse(e, st, DISPLAY_SEQ_MAX) : 0;
+        if (n < 0) fprintf(stderr, "[kz-test] KZ_TEST_DISPLAY_SEQ=%s not understood, ignored\n", e);
+        t0 = t; mode = s_ini["display"];
+        if (sscanf(s_ini["resolution"].c_str(), "%dx%d", &w, &h) != 2) { w = 1280; h = 720; }
+    }
+    for (; next < n && t - t0 >= (long long)(st[next].at * 1000.0); next++) {
+        const display_step& d = st[next];
+        if (d.mode[0]) mode = d.mode;
+        if (d.w) { w = d.w; h = d.h; }
+        if (d.mode[0] || d.w) rsx_vulkan_set_display(mode.c_str(), w, h, atoi(s_ini["refresh"].c_str()));
+        if (d.scale) rsx_vulkan_set_scale((float)d.scale / 100.0f);
+        fprintf(stderr, "[kz-test] display step %d at %.1f s: %s %dx%d scale %d%%\n", next + 1,
+                (double)(t - t0) / 1000.0, mode.c_str(), w, h, d.scale);
+    }
+}
 static void get_overlay(ppu_context* c) { attr_log("get_overlay", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["overlay"] == "mangohud"; }
 static void set_overlay(ppu_context* c) { attr_log("set_overlay", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["overlay"] = vm_base[(uint32_t)c->gpr[4]] ? "mangohud" : "off"; ini_write(); }
@@ -616,8 +649,8 @@ static void get_reflex(ppu_context* c) { attr_log("get_reflex", c); int i = 0;
 static void set_reflex(ppu_context* c) { attr_log("set_reflex", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_REFLEX)) return;
     const int i = std::clamp((int)lroundf(in_f(c)), 0, 2);
     s_ini["reflex"] = kReflex[i]; ini_write(); rsx_vulkan_set_reflex(i); }
-/* Presets: a set of the options above, written at once (internal resolution,
- * anisotropy and the temporal upscaler at the next start, the rest at once;
+/* Presets: a set of the options above, written at once (anisotropy and the
+ * temporal upscaler at the next start, the rest at once;
  * the screen's rows follow at once). Custom: whatever does not match one.
  * Original is the PS3's: 30 fps, 16:9 with bars, its FOV and weapon FOV, HUD
  * and crosshair, its post-processing, no upscaler; the others keep the
@@ -651,6 +684,7 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
     view_load();
     post_apply();
     fsr_apply();
+    scale_apply();
     s_deps_dirty = true; }
 static void get_intro(ppu_context* c) { attr_log("get_intro", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["intro"] != "off"; }
 static void set_intro(ppu_context* c) { attr_log("set_intro", c); if ((int32_t)c->gpr[5] != 2) return;
@@ -882,8 +916,8 @@ static std::string kz_lua(void)
     "  KZPCB = b KZPCW = {}\n"
     "  local p = gGameSystem\n"
     "  KZPCR(0, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Preset|0.0;1.0;2.0;3.0;4.0|Custom;Original (PS3);Performance;Balanced;Quality', 'Preset'))\n"
-    "  KZPCR(1, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Display|0.0;1.0;2.0|Window;Borderless;Fullscreen', 'Display Mode (detail on restart)'))\n"
-    "  KZPCR(2, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Resolution|" + rv + "|" + rl + "', 'Resolution (detail on restart)'))\n"
+    "  KZPCR(1, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Display|0.0;1.0;2.0|Window;Borderless;Fullscreen', 'Display Mode'))\n"
+    "  KZPCR(2, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Resolution|" + rv + "|" + rl + "', 'Resolution'))\n"
     "  KZPCR(3, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Widescreen|true;false|$Conditions.On$;$Conditions.Off$', 'Widescreen'))\n"
     "  KZPCR(4, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Aspect|0.0;1.0;2.0;3.0;4.0;5.0|Auto (Window);4:3;16:10;16:9;21:9;32:9', 'Aspect Ratio (on restart)'))\n"
     "  KZPCR(5, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.FOV|0.0;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0|87 (Original);70;75;80;85;90;95;100;105;110;115;120', 'Field of View'))\n"
@@ -896,7 +930,7 @@ static std::string kz_lua(void)
     "  KZPCR(12, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Reflex|0.0;1.0;2.0|$Conditions.Off$;$Conditions.On$;On + Boost', '" +
         std::string(rsx_vulkan_reflex_available() ? "NVIDIA Reflex" : "NVIDIA Reflex (not available)") + "'))\n"
     "  KZPCR(13, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Controllers|0.0;1.0|Any is Player 1;One per Player', 'Controllers'))\n"
-    "  KZPCR(14, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution (on restart)'))\n"
+    "  KZPCR(14, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Scale|0.0;1.0;2.0;3.0;4.0|50%;75%;100%;150%;200%', 'Internal Resolution'))\n"
     "  KZPCR(15, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Anisotropic|0.0;1.0;2.0;3.0;4.0;5.0|Original;Off;2x;4x;8x;16x', 'Anisotropic Filtering (on restart)'))\n"
     "  KZPCR(16, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Upscaler|0.0;1.0|Bilinear;AMD FSR 1', 'Upscaling'))\n"
     "  KZPCR(17, gMenu:AddAttributeSliderHD(0, 0, 0, 0, 5, 0.5, p, 'PC settings.Sharpness', 'FSR Sharpness'))\n"
