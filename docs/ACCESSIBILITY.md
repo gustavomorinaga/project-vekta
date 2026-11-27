@@ -14,6 +14,8 @@ game's Options and Pause menus, kept in `kz1hd_pc.ini`.
 - **Remapping keys:** edit `kz1hd_keys.ini` (written on the first run). There is no in-game remapping page yet; it is
   planned.
 - `PAD_MOUSE_STICK=1` puts the mouse on the right stick instead of direct mouse look.
+- **Two players on one PC** (split screen): with one controller, player 1 uses the keyboard and mouse and player 2
+  the controller; with two, each has a controller. The mouse turns only player 1's view.
 
 ## Button prompts
 
@@ -32,7 +34,10 @@ PlayStation or Nintendo.
 
 ## Text and language
 
-- Voice, subtitles and menus in English, French or Spanish, chosen on the PC page.
+- Voice, subtitles and menus in English, French or Spanish, chosen on the PC page. The European edition also has
+  German, Italian and Dutch, which follow your system's language.
+- The trophy notice and the Trophies page are in the game's language; the notice and its sound can each be turned
+  off on the PC page.
 - The game's subtitles and fonts are drawn as shipped; their size cannot be changed yet.
 
 ## Install and launch

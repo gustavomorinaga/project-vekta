@@ -1,7 +1,7 @@
 # Known issues
 
-Last checked 2026-11-11. Each item says what happens, where, and what to do about it today. Details for developers
-are linked.
+Last checked 2026-11-27, for 0.8.0. Each item says what happens, where, and what to do about it today. Details for
+developers are linked.
 
 ## Game
 
@@ -61,6 +61,15 @@ are linked.
 - **Film grain fades out in chapter 1's fourth part** (`1.HQGrounds`, 2026-11-16). Not a fault of the port: the game
   takes its grain from 0.15 to 0 in about 30 seconds there, the same in RPCS3, so the PC page's Film Grain has nothing
   to scale. The glow likewise shows only where the game draws its source (some spots of Level 11).
+- **Two players in split screen were checked with scripted input only (2026-11-26).** Game > Battlefields > Two
+  Players ran on Linux with player 2 on a virtual controller (every mode and map, 37 of 37 cells), not yet with two
+  people, a real second controller or on Windows. Taking player 2's controller out pauses the match; putting it back
+  resumes it. While two play, AMD FSR 3.1 and NVIDIA DLSS rest and the picture is stretched from their render size,
+  as with a lower Internal Resolution. Reports are welcome.
+- **The European edition is not yet played through (2026-11-25).** Every level of NPEA00418 and of the European
+  disc loads and reaches play on Linux, the German and Italian menus were seen, and on Windows the setup built both
+  and reached the menu (a virtual machine). Not yet checked: play past each level's start, saves loaded back, and
+  its Dutch, French and Spanish ([dev/editions.md](dev/editions.md)).
 - **Trophies (2026-11-27).** The notice, its sound and the Trophies page were checked on Linux only, not yet on
   Windows, and no trophy has yet been earned live with RecompLauncher itself (its channel was checked with a stand-in
   launcher). Without the game's trophy set (`TROPDIR` in the game folder, [GETTING-FILES.md](GETTING-FILES.md)),
@@ -89,7 +98,7 @@ are linked.
 - **Windows, AMD RX 5000/6000: the game closed a few seconds into level 1 in 0.6.0 (#129).** AMD's Vulkan driver
   (26.10.1, RX 6600) closed the game while compiling the MLAA pass (the game's anti-aliasing as a GPU shader). A test
   build with a second form of that shader, without the 64-bit integers the driver choked on, played level 1 through
-  on the same card with the MLAA on; the next release uses that form on AMD's Windows driver. If a driver still
+  on the same card with the MLAA on; since 0.7.0 that form is used on AMD's Windows driver. If a driver still
   closes the game in that compile, the next start leaves the MLAA out on it (the glow and motion blur stay). If it
   still happens to you, attach the support package to #129.
 - **The game's `.edat` on another drive is copied** (not tried on Windows yet, 2026-11-15): without a decrypted
@@ -120,6 +129,12 @@ are linked.
   2026-10-28). On a real Windows, a 7-minute session held 140 to 144 fps most of the time with drops to 100 to 120.
 - **No MangoHUD row** on the PC page of the Windows exe (MangoHUD is a Linux Vulkan layer; under Proton use it from
   the Linux side).
+- **The shader cache on Windows is new in 0.8.0 and was run under Wine only (2026-11-27).** The game now keeps its
+  compiled shaders and pipelines in the install's `work\vk-cache`, so a second run does not stutter where the first
+  one compiled them; `play.log` names the folder in a `shader cache:` line. Not yet run on a real Windows.
+- **Changing Internal Resolution while playing with NVIDIA DLSS was not run** (2026-11-26; no DLSS on the test
+  machine): it takes the path checked with AMD FSR 3.1. Choosing DLSS in a game started without it still needs a
+  restart, and its choices say so.
 - **The setup program was tried on one real Windows** (the maintainer's, 2026-10-31: the first build took about four
   minutes, then the game held 60 fps; 0.3.0's installed over 0.2.0 there on 2026-11-06 and played; 0.5.0's test
   setup on 2026-11-16, and the whole campaign played there), not yet on a clean Windows machine.
@@ -128,7 +143,8 @@ are linked.
 
 ## Building
 
-- Only the tested EBOOT works: the lift has its addresses built in ([GETTING-FILES.md](GETTING-FILES.md)).
+- Only the two tested EBOOTs work, the US edition's and the European edition's, both version 01.00: the lift has
+  their addresses built in ([GETTING-FILES.md](GETTING-FILES.md)).
 - On Windows the build runs only from the release folder or the setup program (`Project Vekta.exe`, `scripts\run.cmd`), not from a Git
   clone;
   macOS is not supported.

@@ -3,7 +3,7 @@
 
 What the PS3 version of Killzone HD does and how far the port reproduces it (section 1), and what the port adds
 (section 2). Every status comes from a dated run on the maintainer's machine (Linux, RTX 3070 Ti) unless it says
-otherwise. Last checked 2026-10-30.
+otherwise. Last checked 2026-11-27.
 
 | Status | Meaning |
 |---|---|
@@ -31,9 +31,9 @@ otherwise. Last checked 2026-10-30.
 | Graphics | HUD, menus, fonts | as shipped | **works** | |
 | Sound | Music, effects, dialogue | MultiStream on the SPUs, MP3 streams | **works** | decoded by minimp3 in place of the firmware's decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md) |
 | Sound | Surround | the console's output setting | **works**: stereo, 5.1, 7.1 | per channel on Linux; 6 and 8 channels through WASAPI under Wine |
-| Languages | Voice, subtitles, menus | English, French, Spanish (by console language) | **works**, chosen on the PC page | |
+| Languages | Voice, subtitles, menus | English, French, Spanish in the US edition; the European edition adds German, Italian and Dutch (by console language) | **works**, chosen on the PC page (English, French, Spanish) or by the system's language | the European edition's German and Italian front ends, 2026-11-24/25 ([dev/editions.md](dev/editions.md)); its Dutch, French and Spanish not yet run |
 | Trophies | Trophy unlocks | PSN trophies | **works** on Linux: unlocked and kept locally with names, grades and platinum, with an on-screen notice and its sound (the port's own), a Trophies page in the pause menu and in Extras, and RecompLauncher's own toast in their place when RecompLauncher starts the game; not yet run on Windows | `gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse); RecompLauncher's channel 2026-11-27 with a stand-in launcher (a live unlock through RecompLauncher itself not yet run); [KNOWN_ISSUES.md](KNOWN_ISSUES.md) |
-| Multiplayer | "One / Two Player" in the menu | local | **not yet** checked | |
+| Multiplayer | Battlefields: one player against bots, two players in split screen | local | **works** on Linux with scripted input: two players share one PC, the keyboard and mouse and a controller or two controllers; not yet played by two people, with a real second controller or on Windows | one player with 13 bots on the 8 maps, Team Deathmatch, 2026-11-25 ([dev/performance.md](dev/performance.md)); two players, player 2 on a virtual pad: 37 of 37 mode and map cells, and Canyon Crossing for 64 s at 59.6 fps with both HUDs right, US and European editions, 2026-11-25/26; [KNOWN_ISSUES.md](KNOWN_ISSUES.md) |
 | Online | PSN | sign-in, trophies sync | **n/a** | no network is used |
 
 ## 2. Features the PS3 version does not have
@@ -63,7 +63,7 @@ are off by default; display and input improvements may be on.
 | Controllers through SDL, with keyboard and mouse at the same time | merged | `controllers`; `PAD_MOUSE_STICK=1` puts the mouse on the right stick instead |
 | Button prompts and the Controls picture follow the device (keyboard and mouse, Xbox, PlayStation, Nintendo) | auto | |
 | Sound output: stereo, 5.1, 7.1 | stereo | `speakers` |
-| Language: system, English (US, UK), French, Spanish | system | `language` |
+| Language: system, English (US, UK), French, Spanish | system | `language`; system follows the PC's language, also to the European edition's German, Italian and Dutch |
 | Skip the opening movie (the logos stay) | off | `intro = off`, `KZ_SKIP_INTRO=1` |
 | Statistics overlay (MangoHUD, Linux) | off | `overlay = mangohud`, `KZ_MANGOHUD=1` |
 | Quit Game in the Options sub-menu; closing the window waits for a save in progress | on | |
@@ -82,6 +82,7 @@ How it is built, how fast it runs and how it reaches players.
 | Item | State | Evidence |
 |---|---|---|
 | Linux x64 build | **works** | built and played on the maintainer's machine; [BUILDING.md](BUILDING.md) |
+| The European edition (NPEA00418 from the PlayStation Store, BCES-01743 from the disc) | **works**: lifted with its own addresses and built like the US edition; every level loads on Linux; not yet played past each level's start | 2026-11-24/25, Linux: the 11 levels loaded, the German and Italian front ends, Level 1's start set beside a PS3 longplay ([dev/editions.md](dev/editions.md)); 2026-11-25, a Windows 11 virtual machine: the setup built it from a copy of the disc and from the Store copy in RPCS3, and each reached the menu; 2026-11-26: a split-screen match on the disc's copy |
 | Windows x64 exe (cross-built on Linux) | **works**: runs under Wine, Proton and on Windows; the whole campaign played there | `tools/wine-test.sh` passes under Wine and GE-Proton 11 (2026-10-30); [KNOWN_ISSUES.md](KNOWN_ISSUES.md); the whole campaign played on a real Windows (the maintainer, reported 2026-11-16) |
 | Frame rate | **works**: a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps | Level 1 and Level 7 on Linux, RTX 3070 Ti; [dev/performance.md](dev/performance.md) |
 | Installer that builds the port on the player's PC | **works**: `tools/install.sh` on Linux; on Windows a release folder (`tools/release/assemble_payload.py`, `Project Vekta.exe`) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0 | [ROADMAP.md](ROADMAP.md), phase 11; the 0.5.0 install (from the player's RPCS3 or from prepared files, "Show me how") installed, built and played on Windows and Linux (the maintainer, reported 2026-11-16) |

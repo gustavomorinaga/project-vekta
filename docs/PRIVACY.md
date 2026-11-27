@@ -58,6 +58,7 @@ Everything stays in the folder the game runs from, `work/vfs/` (made by `tools/s
 | Earlier game logs (five, and three that ended in a crash) | `work/logs/play-*.log` |
 | How each session ended | `work/logs/sessions.jsonl` |
 | Crash and hang reports (where in the program it stopped, no game data) | `work/crash/` |
+| Compiled shaders and pipelines (made by your graphics driver from the game's shaders; safe to delete) | Windows: `work\vk-cache`; Linux: `~/.cache/ps3recomp-vk` |
 
 The launcher writes your home folder as `~` in `work/play.log` after each session.
 
@@ -71,6 +72,7 @@ driver sources), read with Windows' own `wevtutil`; on Linux, the GPU lines of t
 Computer and User lines are taken out, and it never holds saves, game files or `work/paths.env` (where your game
 files are). [TROUBLESHOOTING.md](TROUBLESHOOTING.md#where-the-logs-are) lists its contents.
 
-Nothing is written outside the install's `work/` folder (but the support package on your Desktop), and nothing is written into your game files or your RPCS3
-folders. The Windows setup program is the one exception: unless you pick its "Portable" option, the settings and
-saves go to `%APPDATA%\Project Vekta` instead (`scripts\play.cmd --move-data portable` or `--move-data appdata` moves them later, [INSTALL.md](INSTALL.md)).
+Nothing is written outside the install's `work/` folder (but the support package on your Desktop, the shader
+cache on Linux and, when you accept it, the applications-menu entry there), and nothing is written into your game
+files or your RPCS3 folders. The Windows setup program is the one exception: unless you pick its "Portable" option,
+the settings and saves go to `%APPDATA%\Project Vekta` instead (`scripts\play.cmd --move-data portable` or `--move-data appdata` moves them later, [INSTALL.md](INSTALL.md)).

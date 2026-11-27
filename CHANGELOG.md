@@ -63,6 +63,10 @@ program and folder that build it. Until a release that calls itself playable
   at 120).
 - The site's News shows the first 8 items of each release and links the rest in the changelog, so the home view
   stays within its weight budget as a release grows.
+- The docs are brought up to this release: the install, FAQ, status and troubleshooting pages name the European
+  disc, split screen and the trophies; the privacy page says where the compiled shaders are kept; the known issues
+  say what was not yet run (split screen with two people, the European edition past each level's start, the
+  Windows shader cache on a real Windows).
 
 ### Fixed
 - Windows: the shader and pipeline caches were off, so every run compiled the game's shaders again and stuttered
@@ -110,8 +114,9 @@ program and folder that build it. Until a release that calls itself playable
   the pad, leaves greyed rows alone.
 - Mouse look (#121): looking up and down now turns the same amount per mouse movement as turning left and right, at
   the same slider value; before, vertical look was about a quarter as fast. Horizontal look is unchanged.
-- Frame pacing at the 60 and 30 fps limits (#121): every frame is now shown for the same time in every V-Sync mode.
-  Before, at 60 fps the frames alternated between about 14 and 21 ms unless V-Sync was set to the VRR mode.
+- Frame pacing at the 60 fps limit (#121): every frame is now shown for the same time in every V-Sync mode.
+  Before, the frames alternated between about 14 and 21 ms unless V-Sync was set to the VRR mode. The 30 fps limit
+  follows the same 59.94 Hz clock and is still uneven ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 - Mouse look (#121): mouse movement made while the game window was out of focus, just before a menu opened or as
   the pointer was captured again no longer turns the view all at once afterwards (a sudden jump or flick).
 - Mouse look (#121): a frame that runs slow no longer turns the view twice as far for the same mouse movement (most

@@ -238,8 +238,8 @@ their usual places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR`.
   folder to ask for (and an optional decrypted `EBOOT.elf`), the prepare step with its DLSS tick (the licence is the
   player's to accept), the program to start, the saves, the log folders and the exit codes below. It also lists the
   PC page's settings (`config` and `settings`: `kz1hd_pc.ini`, so the launcher's game page shows and edits the same
-  values, greyed out where the PC page greys them) and the size and CRC32 of the US PlayStation Store package and the
-  decrypted EBOOT (`dumps`: a copy that matches gets the launcher's "verified" badge). It is written by
+  values, greyed out where the PC page greys them) and the size and CRC32 of the US PlayStation Store package and of
+  each edition's decrypted EBOOT (`dumps`: a copy that matches gets the launcher's "verified" badge). It is written by
   `tools/release/recomplauncher.py` from `installer/recomplauncher.json`, with `prepare.version` set to `VERSION` and
   the exit codes taken from `kz_exit.h`. The tests check it against `tools/release/recomplauncher.schema.json`, the
   part of the format this project uses, written here.
@@ -279,8 +279,8 @@ tools/release/build_setup.py --payload work/release/payload   # work/release/pro
 
 `build_setup.py` compiles `installer/vekta.iss` with the pinned Inno Setup (installed on the first run, checked by
 SHA-256; under Wine on Linux). The setup program installs per user into `%LOCALAPPDATA%\Programs\ProjectVekta`. It
-asks where your files are, on pages of its own: the installed game folder (NPUA80856), the decrypted `EBOOT.elf`,
-and `data_ps3.psarc` (optional: empty, the game folder's own `.edat` is read). It checks their kind and size before copying
+asks where your files are, on pages of its own: the installed game folder (NPUA80856 or NPEA00418), the decrypted
+`EBOOT.elf`, and `data_ps3.psarc` (optional: empty, the game folder's own `.edat` is read). It checks their kind and size before copying
 anything and keeps them in `work\paths.env`. Then it builds the port in the wizard, with a progress bar and a Stop
 button; the build's first step checks the files' SHA-256, and when it stops the wizard says why and opens its log. The
 launcher (`Project Vekta.exe`) builds on its first start when that did not happen, then starts the game. A silent

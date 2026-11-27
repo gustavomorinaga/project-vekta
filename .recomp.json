@@ -21,5 +21,5 @@
   ],
   "help": ["Testing on other GPUs (AMD, Intel) and CPUs", "Testing on a clean Windows machine", "Comparing each level with the PS3 game"],
   "tags": ["cell", "spurs", "vulkan", "linux"],
-  "notes": "Needs your own copy of the game (the US Killzone HD, from the Killzone Trilogy disc or the PlayStation Store; your RPCS3 install or the decrypted EBOOT; no firmware); the build happens on your PC. Playable: the whole campaign, levels 1 to 11, played from start to end on Linux and on Windows; 60 fps by default, an optional 144 Hz mode."
+  "notes": "Needs your own copy of the game (the US Killzone HD, from the Killzone Trilogy disc or the PlayStation Store, or the European edition, NPEA00418 or BCES-01743; your RPCS3 install or the decrypted EBOOT; no firmware); the build happens on your PC. Playable: the whole campaign, levels 1 to 11, played from start to end on Linux and on Windows; 60 fps by default, an optional 144 Hz mode."
 }

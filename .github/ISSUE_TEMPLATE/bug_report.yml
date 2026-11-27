@@ -26,7 +26,7 @@ body:
     id: version
     attributes:
       label: Port build
-      description: "The version, for example 0.7.0: the first line of `work/play.log`, or \"Port version\" in the package's facts.txt. From source: the commit too (`git rev-parse --short HEAD`)."
+      description: "The version, for example 0.8.0: the first line of `work/play.log`, or \"Port version\" in the package's facts.txt. From source: the commit too (`git rev-parse --short HEAD`)."
     validations:
       required: true
   - type: dropdown
@@ -54,7 +54,7 @@ body:
     id: settings
     attributes:
       label: Settings
-      description: "Frame-rate limit (30, 60, 144) and anything changed on the PC page or by environment variables."
+      description: "Frame-rate limit (30, 60, 120, 144, 165, 240, Unlimited) and anything changed on the PC page or by environment variables."
   - type: input
     id: level
     attributes:

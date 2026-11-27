@@ -1,4 +1,4 @@
-# checked	2026-10-30
+# checked	2026-11-27
 kind	area	feature	ps3	status	detail	evidence	site
 ps3	Boot and menus	Logos, opening movie, front end, options, pause menu	as shipped	works		every run since 2026-10-14	Boot and menus
 ps3	Campaign	Level 1	first level	works		played by hand from start to end	Level 1
@@ -15,14 +15,14 @@ ps3	Graphics	Glow and motion blur (`jm_post`)	event-driven SPU jobs	works	: on t
 ps3	Graphics	HUD, menus, fonts	as shipped	works			
 ps3	Sound	Music, effects, dialogue	MultiStream on the SPUs, MP3 streams	works		decoded by minimp3 in place of the firmware's decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md)	Sound
 ps3	Sound	Surround	the console's output setting	works	: stereo, 5.1, 7.1	per channel on Linux; 6 and 8 channels through WASAPI under Wine	
-ps3	Languages	Voice, subtitles, menus	English, French, Spanish (by console language)	works	, chosen on the PC page		
+ps3	Languages	Voice, subtitles, menus	English, French, Spanish in the US edition; the European edition adds German, Italian and Dutch (by console language)	works	, chosen on the PC page (English, French, Spanish) or by the system's language	the European edition's German and Italian front ends, 2026-11-24/25 ([dev/editions.md](dev/editions.md)); its Dutch, French and Spanish not yet run	
 ps3	Trophies	Trophy unlocks	PSN trophies	works	 on Linux: unlocked and kept locally with names, grades and platinum, with an on-screen notice and its sound (the port's own), a Trophies page in the pause menu and in Extras, and RecompLauncher's own toast in their place when RecompLauncher starts the game; not yet run on Windows	`gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse); RecompLauncher's channel 2026-11-27 with a stand-in launcher (a live unlock through RecompLauncher itself not yet run); [KNOWN_ISSUES.md](KNOWN_ISSUES.md)	Trophies
-ps3	Multiplayer	"One / Two Player" in the menu	local	not yet	 checked		
+ps3	Multiplayer	Battlefields: one player against bots, two players in split screen	local	works	 on Linux with scripted input: two players share one PC, the keyboard and mouse and a controller or two controllers; not yet played by two people, with a real second controller or on Windows	one player with 13 bots on the 8 maps, Team Deathmatch, 2026-11-25 ([dev/performance.md](dev/performance.md)); two players, player 2 on a virtual pad: 37 of 37 mode and map cells, and Canyon Crossing for 64 s at 59.6 fps with both HUDs right, US and European editions, 2026-11-25/26; [KNOWN_ISSUES.md](KNOWN_ISSUES.md)	Battlefields and split screen
 ps3	Online	PSN	sign-in, trophies sync	n/a		no network is used	
 pc		Display mode: window, borderless, fullscreen; Alt+Enter		window		`display`; `KZ_FULLSCREEN=1` in `tools/play.sh`	Window, borderless or fullscreen; any resolution; internal resolution scale
 pc		Output resolution and refresh rate		1280x720, the monitor's rate		`resolution`, `refresh`; resizable window, aspect kept; a new size or display mode is drawn at its full detail at once (ps3recomp patch 2093; Level 1, 2026-11-26)	
 pc		Internal resolution scale, 50 % to 200 %		100 %		`scale`; applies at once, with FSR 3.1 too (ps3recomp patch 2093; Level 1, 2026-11-26; DLSS takes the same path, not yet run)	
-pc		V-Sync on, off, adaptive; VRR		on		`vsync`	V-Sync, VRR and a 30, 60 or 144 fps limit (the game clock follows)
+pc		V-Sync on, off, adaptive; VRR		on		`vsync`	V-Sync, VRR and a frame-rate limit from 30 fps to Unlimited (the game clock follows; 120 and up experimental)
 pc		NVIDIA Reflex: off, on, on + boost (`VK_NV_low_latency2`)		off		`reflex`; "not available" without the extension; no measured fps or latency change in Level 7	
 pc		Frame-rate limit 30, 60, 120, 144, 165, 240 or Unlimited (the game clock follows)		60		`fps_limit` (`0` = Unlimited, a 1000 Hz game clock); 30 is the PS3's; 120 and up are EXPERIMENTAL: the frame rate is the PC's below the limit, with the 144 Hz mode's known problems ([KNOWN_ISSUES.md](KNOWN_ISSUES.md))	
 pc		AMD FSR 1 upscaling and RCAS sharpening		bilinear		`upscaler`, `sharpness`	AMD FSR 1 upscaling with RCAS sharpening; anisotropic filtering up to 16x
@@ -38,7 +38,7 @@ pc		Keyboard and mouse: direct mouse look with its own sensitivity and invert, m
 pc		Controllers through SDL, with keyboard and mouse at the same time		merged		`controllers`; `PAD_MOUSE_STICK=1` puts the mouse on the right stick instead	
 pc		Button prompts and the Controls picture follow the device (keyboard and mouse, Xbox, PlayStation, Nintendo)		auto			Xbox, PlayStation, Nintendo and generic controllers, with button prompts that follow the device
 pc		Sound output: stereo, 5.1, 7.1		stereo		`speakers`	Stereo, 5.1 or 7.1 sound; game language; skip the opening movie
-pc		Language: system, English (US, UK), French, Spanish		system		`language`	
+pc		Language: system, English (US, UK), French, Spanish		system		`language`; system follows the PC's language, also to the European edition's German, Italian and Dutch	
 pc		Skip the opening movie (the logos stay)		off		`intro = off`, `KZ_SKIP_INTRO=1`	
 pc		Statistics overlay (MangoHUD, Linux)		off		`overlay = mangohud`, `KZ_MANGOHUD=1`	
 pc		Quit Game in the Options sub-menu; closing the window waits for a save in progress		on			
@@ -47,6 +47,7 @@ pc		All 11 levels selectable in the campaign menu		off		`KZ_UNLOCK_LEVELS=1`
 pc		Local trophies from the game's own trophy set: a notice with its sound, a Trophies page		on		`trophy_notices`, `trophy_sound`; needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`)	Local trophies, read from the game's own trophy set
 pc		Trophies reported to RecompLauncher when it starts the game		on		`KZ_RL_ACH=0` turns it off ([PRIVACY.md](PRIVACY.md))	
 port		Linux x64 build		works		built and played on the maintainer's machine; [BUILDING.md](BUILDING.md)	Linux build
+port		The European edition (NPEA00418 from the PlayStation Store, BCES-01743 from the disc)		works	: lifted with its own addresses and built like the US edition; every level loads on Linux; not yet played past each level's start	2026-11-24/25, Linux: the 11 levels loaded, the German and Italian front ends, Level 1's start set beside a PS3 longplay ([dev/editions.md](dev/editions.md)); 2026-11-25, a Windows 11 virtual machine: the setup built it from a copy of the disc and from the Store copy in RPCS3, and each reached the menu; 2026-11-26: a split-screen match on the disc's copy	European edition
 port		Windows x64 exe (cross-built on Linux)		works	: runs under Wine, Proton and on Windows; the whole campaign played there	`tools/wine-test.sh` passes under Wine and GE-Proton 11 (2026-10-30); [KNOWN_ISSUES.md](KNOWN_ISSUES.md); the whole campaign played on a real Windows (the maintainer, reported 2026-11-16)	Windows
 port		Frame rate		works	: a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps	Level 1 and Level 7 on Linux, RTX 3070 Ti; [dev/performance.md](dev/performance.md)	Frame rate
 port		Installer that builds the port on the player's PC		works	: `tools/install.sh` on Linux; on Windows a release folder (`tools/release/assemble_payload.py`, `Project Vekta.exe`) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0	[ROADMAP.md](ROADMAP.md), phase 11; the 0.5.0 install (from the player's RPCS3 or from prepared files, "Show me how") installed, built and played on Windows and Linux (the maintainer, reported 2026-11-16)	Installer

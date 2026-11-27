@@ -109,18 +109,20 @@ Checked 2026-11-24 on Linux (RTX 3070 Ti):
 hashes; its results add `title=`. The Windows setup (`installer/vekta.iss`) takes a game folder whose PARAM.SFO says
 either title. The disc route (`tools/release/rpcs3_disc.py`) installs only the US disc's package: an EU package
 (content ID `EP9000-NPEA00418_00-GKILLZONE1000001`, the Store's) is named and sent to "Use my RPCS3 install"
-(`eu_pkg`, exit code 71). The European disc (BCES-01743) was not available: ASSUMPTION that its `PS3_EXTRA` package
-names the same content ID; its installed files are not measured, so a copy of it is taken only if they match the
-Store copy's.
+(`eu_pkg`, exit code 71).
 
-`installer/recomplauncher.json` (the RecompLauncher manifest) still describes the US edition; the values an EU line
-would need, for whoever changes it next: title NPEA00418, version 01.00, `EBOOT.elf` 19,706,080 bytes, SHA-256
-`e4fc4f13b1bd940f52c5df16f4cc4bf0af88e17f4c1d2276b877a62490c57f52`; `data_ps3.psarc` 3,416,897,765 bytes, SHA-256
-`a6ca5f9ad6d2d27d90d9c1d539f3f3d95e4b6ed70639d44bbcde4247ea65b79d`; `PARAM.SFO` SHA-256
-`039e155c9de824d8b8f73eb8c4cac7d84ebac395be8e7d51e47dd9a338ac02ea`.
+The European disc (BCES-01743, measured 2026-11-25) holds the game itself, not a package: a folder copy of it has
+the European edition's program and archive, byte for byte (sizes and SHA-256 in
+[GETTING-FILES.md](../GETTING-FILES.md)). The disc route takes that folder (`find_eu_disc`, `prepare_eu_disc`):
+nothing is installed, the official RPCS3 decrypts a copy of `EBOOT.BIN` into `work/prep`, and the archive is read
+where it is. A copy whose files are still encrypted as on the disc is named and refused (`eu_disc_raw`), and one
+with other files too (`eu_disc_files`). Its FIOS cache folder is named by its title id, BCES01743.
+
+The release notes (`tools/release/release_notes.py`) and `installer/recomplauncher.json` (the RecompLauncher
+manifest) name both editions since 0.8.0: the game box takes either edition's installed folder or a disc copy, and
+`dumps` lists each edition's decrypted `EBOOT.elf`.
 
 ## What the EU edition still needs
 
-- The release notes (`tools/release/release_notes.py`) and `installer/recomplauncher.json` name only NPUA80856.
-- The European disc (BCES-01743): its package and installed files.
+- Play past each level's start, saves loaded back, and its Dutch, French and Spanish (not checked).
 - What the 11 changed functions do differently in the game was not looked at.
