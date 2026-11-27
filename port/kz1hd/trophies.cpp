@@ -87,7 +87,11 @@ extern "C" void kz_trophies_pump(void)
         std::lock_guard<std::mutex> g(s_lock);
         for (; s_count; s_count--, s_head = (s_head + 1) % kRing) got[n++] = s_ring[s_head];
     }
-    if (n) s_gen++;
+    // the set's size too (the frame loop, never a guest call that may hold the HLE's store): the HLE reads the TRP when
+    // the game makes its context, so a state that got the page before that gets it again
+    static int s_count = -1;
+    const int count = ps3_trophy_count();
+    if (n || count != s_count) { s_count = count; s_gen++; }
     for (unsigned i = 0; i < n; i++) {
         std::fprintf(stderr, "[trophy] unlocked %d %s (%s)\n", got[i].id, got[i].name, grade_name(got[i].grade));
         kz_notice_add(got[i].id, got[i].grade, got[i].name, got[i].have, got[i].total);

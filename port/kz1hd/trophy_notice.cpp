@@ -427,6 +427,7 @@ extern "C" void kz_notice_options(int notices, int sound)
 
 extern "C" void kz_trophy_page_ping(void)
 {
+    if (ps3_trophy_count() == 0) return;   // no trophy set: the page says so, no "0 / 0" card
     std::lock_guard<std::mutex> g(s_mu);
     if (!s_head) {   // the page opened: its count now
         auto c = std::make_shared<Card>();

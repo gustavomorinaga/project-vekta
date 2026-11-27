@@ -19,7 +19,8 @@ void kz_notice_add(int id, int grade, const char* name, int got, int total);
 // and its bar) in the notices' place, the notices under it.
 void kz_trophy_page_ping(void);
 
-// The Trophies page: how many unlock reports the frame loop has taken (its data is made again when this moves).
+// The Trophies page: moves when the frame loop takes an unlock report or the set's size changes (its data is made
+// again then).
 unsigned kz_trophy_gen(void);
 
 #ifdef __cplusplus

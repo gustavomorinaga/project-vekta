@@ -18,21 +18,27 @@ enum { kPlatinum = 1, kGold = 2, kSilver = 3, kBronze = 4 };
 // or its code, as sceNpTrophy picks the TRP's names), English for the others. Escapes keep the source ASCII.
 struct Words {
     const char *trophy, *trophies, *grade[4];   // grade: bronze, silver, gold, platinum
-    const char *locked, *hidden, *page;   // page: the pause menu's item
+    const char *locked, *hidden, *page;   // page: the menus' item
+    const char* missing;   // the page without a trophy set (no TROPHY.TRP; docs/GETTING-FILES.md)
 };
 
 inline const Words& words_for(const char* lang)
 {
     static const Words en = { "TROPHY", "TROPHIES", { "BRONZE", "SILVER", "GOLD", "PLATINUM" }, "Locked",
-                              "Hidden trophy", "Trophies" },
+                              "Hidden trophy", "Trophies", "Trophy set not found: see GETTING-FILES" },
         fr = { "TROPH\xC3\x89""E", "TROPH\xC3\x89""ES", { "BRONZE", "ARGENT", "OR", "PLATINE" },
-               "Verrouill\xC3\xA9", "Troph\xC3\xA9""e cach\xC3\xA9""e", "Troph\xC3\xA9""es" },
-        es = { "TROFEO", "TROFEOS", { "BRONCE", "PLATA", "ORO", "PLATINO" }, "Bloqueado", "Trofeo oculto", "Trofeos" },
+               "Verrouill\xC3\xA9", "Troph\xC3\xA9""e cach\xC3\xA9""e", "Troph\xC3\xA9""es",
+               "Liste des troph\xC3\xA9""es introuvable : voir GETTING-FILES" },
+        es = { "TROFEO", "TROFEOS", { "BRONCE", "PLATA", "ORO", "PLATINO" }, "Bloqueado", "Trofeo oculto", "Trofeos",
+               "No se encontr\xC3\xB3 la lista de trofeos: ver GETTING-FILES" },
         de = { "TROPH\xC3\x84""E", "TROPH\xC3\x84""EN", { "BRONZE", "SILBER", "GOLD", "PLATIN" }, "Gesperrt",
-               "Versteckte Troph\xC3\xA4""e", "Troph\xC3\xA4""en" },
-        it = { "TROFEO", "TROFEI", { "BRONZO", "ARGENTO", "ORO", "PLATINO" }, "Bloccato", "Trofeo nascosto", "Trofei" },
+               "Versteckte Troph\xC3\xA4""e", "Troph\xC3\xA4""en",
+               "Troph\xC3\xA4""enliste nicht gefunden: siehe GETTING-FILES" },
+        it = { "TROFEO", "TROFEI", { "BRONZO", "ARGENTO", "ORO", "PLATINO" }, "Bloccato", "Trofeo nascosto", "Trofei",
+               "Elenco dei trofei non trovato: vedi GETTING-FILES" },
         nl = { "TROFEE", "TROFEE\xC3\x8BN", { "BRONS", "ZILVER", "GOUD", "PLATINA" }, "Vergrendeld",
-               "Verborgen trofee", "Trofee\xC3\xABn" };
+               "Verborgen trofee", "Trofee\xC3\xABn",
+               "Trofee\xC3\xABnlijst niet gevonden: zie GETTING-FILES" };
     static const Words* const by_id[7] = { &en, &en, &fr, &es, &de, &it, &nl };   // 2 fr ... 6 nl
     static const char* const codes[7] = { "ja", "en", "fr", "es", "de", "it", "nl" };
     if (!lang || !*lang) return en;
@@ -109,15 +115,14 @@ inline std::string latin1(const std::string& s)
     return o;
 }
 
-// A Lua string literal between single quotes, in Latin-1 (latin1). The option list of a row splits on '|' and ';', so those become ','.
-inline std::string lua_str(const std::string& s, bool option = false)
+// A Lua string literal between single quotes, in Latin-1 (latin1).
+inline std::string lua_str(const std::string& s)
 {
     std::string o = "'";
     for (char c : latin1(s)) {
         if (c == '\\' || c == '\'') { o += '\\'; o += c; }
         else if (c == '\n') o += "\\n";
         else if (c == '\r') {}
-        else if (option && (c == '|' || c == ';')) o += ',';
         else o += c;
     }
     return o + "'";
@@ -125,20 +130,41 @@ inline std::string lua_str(const std::string& s, bool option = false)
 
 // The Lua that hands the page to a state: KZTRDATA = { n, got, title, [i] = { l, v, d } }, in pieces of at most
 // max_bytes (the port runs each from a hook, on the guest's stack). The page's own script (pcoptions.cpp) reads it.
+// With no trophy set (no rows) the title has no count and KZTRDATA.missing says why, in place of "0 / 0".
 inline std::vector<std::string> lua_chunks(const Page& p, const Words& w, size_t max_bytes)
 {
     std::vector<std::string> out;
     std::string cur = "KZTRDATA = { n = " + std::to_string(p.rows.size()) + ", got = " + std::to_string(p.got) +
-                      ", title = " + lua_str(std::string(w.trophies) + "  " + std::to_string(p.got) + " / " +
-                                             std::to_string(p.total)) + " }\n";
+                      (p.total ? ", title = " + lua_str(std::string(w.trophies) + "  " + std::to_string(p.got) + " / " +
+                                                        std::to_string(p.total))
+                               : ", title = " + lua_str(w.trophies) + ", missing = " + lua_str(w.missing)) + " }\n";
     for (size_t i = 0; i < p.rows.size(); i++) {
         const Row& r = p.rows[i];
-        const std::string line = "KZTRDATA[" + std::to_string(i + 1) + "] = { l = " + lua_str(r.label, true) +
-                                 ", v = " + lua_str(r.value, true) + ", d = " + lua_str(r.detail) + " }\n";
+        const std::string line = "KZTRDATA[" + std::to_string(i + 1) + "] = { l = " + lua_str(r.label) +
+                                 ", v = " + lua_str(r.value) + ", d = " + lua_str(r.detail) + " }\n";
         if (cur.size() + line.size() > max_bytes) { out.push_back(cur); cur.clear(); }
         cur += line;
     }
     out.push_back(cur);
+    return out;
+}
+
+// The port's menu script (pcoptions.cpp, kz_lua) in pieces of whole top-level blocks (each starts "if " at a line's
+// start) of at most max_bytes, a longer block alone: lua_run copies its text into the 15 KB between the hook's frame
+// and the callee's stack, and the script outgrew that (17 KB copied over the hook's frame and hung the boot).
+inline std::vector<std::string> lua_blocks(const std::string& src, size_t max_bytes)
+{
+    std::vector<std::string> out;
+    for (size_t a = 0; a < src.size();) {
+        size_t b = src.size();
+        if (b - a > max_bytes) {
+            const size_t cut = src.rfind("\nif ", a + max_bytes - 1);   // the piece ends with that line break
+            b = cut != std::string::npos && cut + 1 > a ? cut + 1 : src.find("\nif ", a + 1);
+            b = b == std::string::npos ? src.size() : b + (src[b] == '\n');
+        }
+        out.push_back(src.substr(a, b - a));
+        a = b;
+    }
     return out;
 }
 

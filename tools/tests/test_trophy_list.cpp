@@ -1,6 +1,6 @@
 // The Trophies page's data (port/kz1hd/trophy_list.h): the rows in the TRP's order, grade and state words, the
 // count, a hidden trophy kept hidden until unlocked, the words in each language, and the Lua that carries them
-// (quotes escaped, the option separators kept out of the row's value list, cut in pieces that fit).
+// (quotes escaped, cut in pieces that fit); with no trophy set, a title without "0 / 0" and the message that says so.
 #include <cstdio>
 #include <ctime>
 #include <string>
@@ -62,7 +62,6 @@ int main()
     EXPECT(tl::lua_str("They're \\ on") == "'They\\'re \\\\ on'", "quotes and backslashes escaped");
     EXPECT(tl::lua_str("a\nb") == "'a\\nb'", "a new line escaped");
     EXPECT(tl::latin1("Verrouill\xC3\xA9 \xC2\xB7 \xE2\x80\xA6") == "Verrouill\xE9 \xB7 ?", "UTF-8 to Latin-1, the rest '?'");
-    EXPECT(tl::lua_str("A|B;C", true) == "'A,B,C'", "no option separators in a row's words");
 
     const std::vector<std::string> c = tl::lua_chunks(p, en, 1200);
     std::string all;
@@ -73,9 +72,38 @@ int main()
     EXPECT(all.rfind("KZTRDATA = { n = 59, got = 3, title = 'TROPHIES  3 / 59' }\n", 0) == 0, "the header first");
     EXPECT(all.find("KZTRDATA[35] = { l = 'BRONZE   They\\'re On Our Side Now', v = '2026-11-26', d = 'Detail 34' }\n") !=
            std::string::npos, "row 35 (id 34), escaped");
-    EXPECT(all.find("l = 'BRONZE   A,B,C'") != std::string::npos, "the separators replaced in the label");
+    EXPECT(all.find("l = 'BRONZE   A|B;C'") != std::string::npos, "a row is text: its words kept as they are");
     EXPECT(all.find("KZTRDATA[59] = ") != std::string::npos && all.find("KZTRDATA[60]") == std::string::npos,
            "every row, once");
+
+    const tl::Page none = tl::build({}, en, utc_day);
+    const std::vector<std::string> cn = tl::lua_chunks(none, en, 1200);
+    EXPECT(cn.size() == 1 && cn[0] == "KZTRDATA = { n = 0, got = 0, title = 'TROPHIES', missing = 'Trophy set not found: "
+                                      "see GETTING-FILES' }\n", "no trophy set: no count, the message");
+    const std::vector<std::string> cf = tl::lua_chunks(none, fr, 1200);
+    EXPECT(cf[0].find("missing = 'Liste des troph\xE9""es introuvable : voir GETTING-FILES'") != std::string::npos,
+           "the message in the game's language, in Latin-1");
+    bool all_missing = true;
+    for (const char* l : { "en", "fr", "es", "de", "it", "nl" }) all_missing = all_missing && tl::words_for(l).missing;
+    EXPECT(all_missing, "the message in every language");
+    EXPECT(all.find("missing") == std::string::npos, "a set with rows has no message");
+
+    // the menu script in whole blocks: nothing lost, every piece fits, each starts a block
+    std::string script;
+    for (int k = 0; k < 40; k++)
+        script += "if not KZ" + std::to_string(k) + " then\n KZ" + std::to_string(k) + " = 1\n if x then y() end\n" +
+                  std::string(k == 7 ? 900 : 150, ' ') + "\nend\n";
+    const std::vector<std::string> bl = tl::lua_blocks(script, 600);
+    std::string back;
+    bool fits = true, starts = true;
+    for (const std::string& s : bl) {
+        back += s;
+        fits = fits && (s.size() <= 600 || s.find("\nif ", 1) == std::string::npos);
+        starts = starts && s.rfind("if not KZ", 0) == 0;
+    }
+    EXPECT(back == script && bl.size() > 5, "the script's pieces add up to it");
+    EXPECT(fits && starts, "each piece is whole blocks that fit (a longer block alone)");
+    EXPECT(tl::lua_blocks("if a then end\n", 4096).size() == 1, "a short script is one piece");
 
     if (fails) return 1;
     std::puts("test_trophy_list: ok");

@@ -16,7 +16,7 @@ ps3	Graphics	HUD, menus, fonts	as shipped	works
 ps3	Sound	Music, effects, dialogue	MultiStream on the SPUs, MP3 streams	works		decoded by minimp3 in place of the firmware's decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md)	Sound
 ps3	Sound	Surround	the console's output setting	works	: stereo, 5.1, 7.1	per channel on Linux; 6 and 8 channels through WASAPI under Wine	
 ps3	Languages	Voice, subtitles, menus	English, French, Spanish (by console language)	works	, chosen on the PC page		
-ps3	Trophies	Trophy unlocks	PSN trophies	partial	: unlocked and logged locally with names, grades and platinum, with an on-screen notice and its sound (the port's own) and a Trophies page in the pause menu	`gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse)	Trophies
+ps3	Trophies	Trophy unlocks	PSN trophies	partial	: unlocked and logged locally with names, grades and platinum, with an on-screen notice and its sound (the port's own) and a Trophies page in the pause menu and in Extras	`gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse)	Trophies
 ps3	Multiplayer	"One / Two Player" in the menu	local	not yet	 checked		
 ps3	Online	PSN	sign-in, trophies sync	n/a		no network is used	
 pc		Display mode: window, borderless, fullscreen; Alt+Enter		window		`display`; `KZ_FULLSCREEN=1` in `tools/play.sh`	Window, borderless or fullscreen; any resolution; internal resolution scale
