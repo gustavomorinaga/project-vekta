@@ -7,6 +7,8 @@ program and folder that build it. Until a release that calls itself playable
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-27 (pre-release)
+
 ### Added
 - Trophies in the game (#180, #181): when you earn one, a card slides in at the top right with the trophy's picture
   from your game's trophy set, its name, its grade and how many of the 59 you have, with a short sound made for
