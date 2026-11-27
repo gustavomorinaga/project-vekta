@@ -14,7 +14,9 @@ white and VEKTA in the accent, "BUILT ON YOUR PC / FROM YOUR OWN GAME", a motif 
 tiles lettered KZ1 over a PC bar. The layout, the image set, the sizes, the icon's size rules and the art.json/--check
 scheme follow their tools/release/installer_art.py and draw_dividers.py; the drawing code, the palette (steel blue,
 site/style.css), the V chevron emblem and the ridge line are this project's. Nothing here is game art: shapes,
-stripes and text only. The fonts are not committed or shipped, only these images (NOTICE.md lists them).
+stripes and text only. The images carry no font file (NOTICE.md lists the fonts). The same two Rajdhani files, at
+the pins in FONTS, are committed in port/kz1hd/assets/ for the trophy notice (port/kz1hd/trophy_notice.cpp), so
+--fonts port/kz1hd/assets renders without --fetch-fonts.
 
 Outputs, installer/art/: wizard-{100,125,150,200}.bmp (Welcome and Finish pages, 24-bit), header-{...}.bmp (the small
 image at the top right of the other pages), vekta.ico (the launcher's and KZ1HD.exe's), vekta-setup.ico (with an

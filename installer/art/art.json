@@ -1,6 +1,6 @@
 {
  "about": "tools/release/installer_art.py's outputs; --check compares against this file",
- "script": "29181ac2d1eea83a669b4b7753eeceae98b73ff7b2d121f2f275d9803090dc50",
+ "script": "619154d747defee313394aa90a082797934fa58f8bc4e4dd8f0db4c8cfe65ce0",
  "pillow": "12.3.0",
  "freetype": "2.14.3",
  "fonts": {
