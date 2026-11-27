@@ -182,3 +182,4 @@
 5002-sceNpTrophy-a-host-API-notices-queries-icons-the-tit.patch
 2097-Vulkan-a-host-overlay-over-the-window-copied-after-t.patch
 3039-cellAudio-the-host-s-own-sounds-added-into-every-mix.patch
+2098-Vulkan-the-host-overlay-is-blended-over-the-window-n.patch

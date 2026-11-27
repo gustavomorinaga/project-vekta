@@ -4,8 +4,8 @@
 //
 // kz_notice_add (the frame loop, trophies.cpp) reads the trophy's icon from the player's TRP and queues the card.
 // The Vulkan backend's overlay hook (ps3recomp patch 2097) runs on the presenting thread once per present: the queue
-// steps (trophy_notice.h), each card is drawn on the CPU once at the window's scale and copied over the window's
-// image as opaque rows without the cut corners. Under every upscaler and while the game loads, plays a movie or is
+// steps (trophy_notice.h), each card is drawn on the CPU once at the window's scale (premultiplied alpha: the panel
+// at 90-94 %, its border, words and icon solid, the cut corners clear) and blended over the window's image. Under every upscaler and while the game loads, plays a movie or is
 // paused: the window presents at all of those times. When a card appears, its sound is added into the game's mix on
 // the mixing thread (ps3recomp patch 3039), without a lock.
 //
@@ -98,15 +98,19 @@ int grade_index(int g)
 
 // ---- the card on the CPU --------------------------------------------------------------------------------------
 
+// premultiplied colour (px) and alpha (al); blend puts c at coverage a over what is there
 struct Canvas {
     int w, h;
     std::vector<Rgb> px;
+    std::vector<float> al;
     void blend(int x, int y, Rgb c, float a)
     {
         if (x < 0 || y < 0 || x >= w || y >= h || a <= 0) return;
-        Rgb& d = px[(size_t)y * w + x];
+        const size_t i = (size_t)y * w + x;
+        Rgb& d = px[i];
         a = std::min(a, 1.0f);
-        d = { d.r + (c.r - d.r) * a, d.g + (c.g - d.g) * a, d.b + (c.b - d.b) * a };
+        d = { c.r * a + d.r * (1 - a), c.g * a + d.g * (1 - a), c.b * a + d.b * (1 - a) };
+        al[i] = a + al[i] * (1 - a);
     }
 };
 
@@ -202,7 +206,7 @@ struct Card {
 
 void draw(Card& c, int w, int h, double s, int bgra)
 {
-    Canvas cv{ w, h, std::vector<Rgb>((size_t)w * h, Rgb{ 0, 0, 0 }) };
+    Canvas cv{ w, h, std::vector<Rgb>((size_t)w * h, Rgb{ 0, 0, 0 }), std::vector<float>((size_t)w * h, 0.0f) };
     const float cut = (float)tn::px(tn::kCut, s), b = (float)std::max(1, tn::px(1, s));
     const float fw = (float)w, fh = (float)h;
     auto outer = [&](float x, float y) { return x + y >= cut && (fw - x) + (fh - y) >= cut; };
@@ -210,8 +214,8 @@ void draw(Card& c, int w, int h, double s, int bgra)
         const float d = cut + b * 1.41421356f;
         return x >= b && y >= b && x <= fw - b && y <= fh - b && x + y >= d && (fw - x) + (fh - y) >= d;
     };
-    // the panel: a 100-degree gradient, faint scanlines every 3 pixels from the bottom, the 1-pixel border.
-    // shortcut: opaque (the mockup's 90-94 % alpha is not blended: the hook copies), a blend needs a pipeline.
+    // the panel: a 100-degree gradient from 94 % to 90 % alpha, faint scanlines every 3 pixels from the bottom, the
+    // solid 1-pixel border; outside the cut corners nothing.
     const float dx = std::sin(100 * 3.14159265f / 180), dy = -std::cos(100 * 3.14159265f / 180);
     const float len = std::fabs(fw * dx) + std::fabs(fh * dy);
     const int period = std::max(3, tn::px(3, s)), line = std::max(1, tn::px(1, s));
@@ -221,13 +225,18 @@ void draw(Card& c, int w, int h, double s, int bgra)
             const float t = std::clamp(0.5f + ((x + 0.5f - fw / 2) * dx + (y + 0.5f - fh / 2) * dy) / len, 0.0f, 1.0f);
             Rgb p = { kPanelA.r + (kPanelB.r - kPanelA.r) * t, kPanelA.g + (kPanelB.g - kPanelA.g) * t,
                       kPanelA.b + (kPanelB.b - kPanelA.b) * t };
-            if ((h - 1 - y) % period < line) p = { p.r + (1 - p.r) * 0.018f, p.g + (1 - p.g) * 0.018f, p.b + (1 - p.b) * 0.018f };
-            cv.px[(size_t)y * w + x] = { p.r * ci + kLine.r * (co - ci), p.g * ci + kLine.g * (co - ci),
-                                         p.b * ci + kLine.b * (co - ci) };
+            float pa = 0.94f + (0.90f - 0.94f) * t;
+            p = { p.r * pa, p.g * pa, p.b * pa };   // premultiplied
+            if ((h - 1 - y) % period < line) {      // a white line at 1.8 % over the panel
+                constexpr float k = 0.018f;
+                p = { k + p.r * (1 - k), k + p.g * (1 - k), k + p.b * (1 - k) };
+                pa = k + pa * (1 - k);
+            }
+            const size_t i = (size_t)y * w + x;
+            cv.px[i] = { p.r * ci + kLine.r * (co - ci), p.g * ci + kLine.g * (co - ci), p.b * ci + kLine.b * (co - ci) };
+            cv.al[i] = pa * ci + (co - ci);
         }
     const Rgb gc = grade_colour(c.grade);
-    for (int y = (int)cut; y < h; y++)   // the grade stripe, 4 px, below the top cut
-        for (int x = 0; x < std::max(1, tn::px(4, s)); x++) cv.blend(x, y, gc, cover(x, y, outer));
 
     // the icon: the trophy's own picture from the player's TRP, 68 px, corners cut 8 px
     const int is = tn::px(68, s), ix = tn::px(18, s), iy = (h - is) / 2;
@@ -332,7 +341,8 @@ void draw(Card& c, int w, int h, double s, int bgra)
         const uint8_t g = (uint8_t)std::lround(std::clamp(cv.px[i].g, 0.0f, 1.0f) * 255);
         const uint8_t bl = (uint8_t)std::lround(std::clamp(cv.px[i].b, 0.0f, 1.0f) * 255);
         uint8_t* d = &c.pixels[i * 4];
-        d[0] = bgra ? bl : r; d[1] = g; d[2] = bgra ? r : bl; d[3] = 255;
+        d[0] = bgra ? bl : r; d[1] = g; d[2] = bgra ? r : bl;
+        d[3] = (uint8_t)std::lround(std::clamp(cv.al[i], 0.0f, 1.0f) * 255);
     }
     c.pw = w; c.ph = h; c.bgra = bgra;
 }
@@ -405,17 +415,7 @@ int overlay(uint32_t ww, uint32_t wh, int bgra, const void** pixels, size_t* byt
         if (c.pixels.empty()) continue;
         const uint32_t off = (uint32_t)s_out.size();
         s_out.insert(s_out.end(), c.pixels.begin(), c.pixels.end());
-        const int cut = tn::px(tn::kCut, s);
-        auto rect = [&](int y0, int y1) {   // rows y0..y1-1 of one span
-            int x0, x1;
-            tn::row_span(y0, c.pw, c.ph, cut, &x0, &x1);
-            if (n < max && x1 > x0)
-                r[n++] = { p[k].x + x0, p[k].y + y0, (uint32_t)(x1 - x0), (uint32_t)(y1 - y0),
-                           off + (uint32_t)(y0 * c.pw + x0) * 4, (uint32_t)c.pw };
-        };
-        for (int y = 0; y < cut; y++) rect(y, y + 1);
-        rect(cut, c.ph - cut);
-        for (int y = c.ph - cut; y < c.ph; y++) rect(y, y + 1);
+        if (n < max) r[n++] = { p[k].x, p[k].y, (uint32_t)c.pw, (uint32_t)c.ph, off, (uint32_t)c.pw };
     }
     *pixels = s_out.data();
     *bytes = s_out.size();

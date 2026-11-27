@@ -1,0 +1,373 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 26 Nov 2026 20:48:48 -0300
+Subject: [PATCH] Vulkan: the host overlay is blended over the window, not
+ copied
+
+Patch 2097's overlay copied its pixels over the window's image as they were, so a port's notice was opaque: Project
+Vekta's trophy card, drawn at 90-94 % alpha in its design, hid the frame under it, and its cut corners had to be left
+out as rows of rects.
+
+Fix: the overlay's pixels carry premultiplied alpha in their fourth byte and are blended, colour + frame * (1 - alpha).
+The pass works on buffers, so the swap chain still needs no colour-attachment or storage use, no render pass and no
+graphics pipeline: after the blit the pixels under the rects are copied out of the swap chain image (in GENERAL
+layout) into a second host buffer in the overlay's own layout, one compute dispatch (vulkan/rsx_vk_overlay.comp, the
+byte order the window's, only the fourth byte alpha) blends them there, and they are copied back; the image goes back
+to TRANSFER_DST_OPTIMAL for what follows. The swap chain asks for TRANSFER_SRC whenever the surface allows it (it was
+asked only for PS3RECOMP_VK_DUMP_PRESENT); without it, or if the pass cannot be made, the pixels are copied as before.
+
+ENHANCEMENT: the PS3 game has no such overlay.
+---
+ libs/video/rsx_vulkan_backend.c             | 144 +++++++++++++++++---
+ libs/video/rsx_vulkan_backend.h             |   7 +-
+ libs/video/vulkan/rsx_vk_overlay.comp       |  20 +++
+ libs/video/vulkan/rsx_vk_overlay_comp.spv.h |  82 +++++++++++
+ 4 files changed, 232 insertions(+), 21 deletions(-)
+ create mode 100644 libs/video/vulkan/rsx_vk_overlay.comp
+ create mode 100644 libs/video/vulkan/rsx_vk_overlay_comp.spv.h
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index ca3eeab..a5b7ee3 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -69,6 +69,7 @@ static float vk_forced_aspect(void);   /* PS3RECOMP_VK_ASPECT, at vk_fit_scale *
+ #include "vulkan/rsx_vk_glow_comp.spv.h"
+ #include "vulkan/rsx_vk_fsr1_easu_comp.spv.h"
+ #include "vulkan/rsx_vk_fsr1_rcas_comp.spv.h"
++#include "vulkan/rsx_vk_overlay_comp.spv.h"
+ #include "rsx_swapchain_retry.h"   /* a swapchain not recreated: skip, try again */
+ #include "rsx_vk_driver.h"   /* the GPU and driver lines at start (2082) */
+ #include "rsx_vk_breadcrumbs.h"   /* the last things given to the GPU (2084) */
+@@ -2677,6 +2678,7 @@ static int s_dump_now;
+ static u32 s_dump_tag;
+ static vk_buffer s_present_dump;   /* PS3RECOMP_VK_DUMP_PRESENT: the window's image, read back */
+ static VkFormat s_sc_format;       /* the window's swap chain format (the overlay's byte order) */
++static int s_sc_readable;          /* the swap chain images allow TRANSFER_SRC (the overlay's blend reads them) */
+ static volatile int s_stretch = -1;
+ void rsx_vulkan_set_stretch(int on) { s_stretch = on ? 1 : 0; }
+ /* rsx_vulkan_set_crop(f): show only the middle f (0..1] of the frame's width,
+@@ -2827,8 +2829,10 @@ static int vk_create_swapchain(void)
+         .imageFormat = fmt.format, .imageColorSpace = fmt.colorSpace,
+         .imageExtent = ext, .imageArrayLayers = 1,
+         /* PS3RECOMP_VK_DUMP_PRESENT: the window's image is also read back */
++        /* and the host overlay's blend reads the pixels under it (rsx_vulkan_set_overlay), when the surface allows */
+         .imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+-                      (getenv("PS3RECOMP_VK_DUMP_PRESENT") ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0),
++                      ((getenv("PS3RECOMP_VK_DUMP_PRESENT") ||
++                        (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0),
+         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+         .preTransform = caps.currentTransform, .compositeAlpha = alpha,
+         .presentMode = mode,
+@@ -2864,6 +2868,7 @@ static int vk_create_swapchain(void)
+     s_vk.sc_extent = ext;
+     s_vk.sc_count = n;
+     s_sc_format = fmt.format;
++    s_sc_readable = (sci.imageUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0;
+     if (s_vk.no_area) VK_LOG("window has an area again\n");
+     s_vk.no_area = 0;
+     VK_LOG("window swapchain %ux%u, %u images, format %d\n", ext.width, ext.height, n, (int)fmt.format);
+@@ -3053,16 +3058,71 @@ static void vk_fsr_record(u32 sw, u32 sh)
+     vk_barrier_image(s_fsr.out.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+ }
+ 
+-/* rsx_vulkan_set_overlay: the host's overlay (ENHANCEMENT: a port's own notices), rows of pixels copied over the
+- * window's image after the frame's blit and before the present, so every upscaler path is under it. A copy, not a
+- * draw: the swap chain needs no colour-attachment use, no render pass and no pipeline, and the pixels are opaque. The
+- * hook runs here on the presenting thread, after the previous present's fence: the one staging buffer is free. */
++/* rsx_vulkan_set_overlay: the host's overlay (ENHANCEMENT: a port's own notices), pixels with premultiplied alpha put
++ * over the window's image after the frame's blit and before the present, so every upscaler path is under it. The
++ * blend is one small compute pass on buffers (vulkan/rsx_vk_overlay.comp): the pixels under the rects are copied out
++ * of the swap chain image into s_overlay_fb in the overlay's own layout, blended there and copied back, so the swap
++ * chain needs no colour-attachment or storage use, no render pass and no graphics pipeline (only TRANSFER_SRC, which
++ * nearly every surface allows; without it, or if the pass cannot be made, the pixels are copied as they are). The hook
++ * runs here on the presenting thread, after the previous present's fence: the two buffers are free. */
+ static rsx_overlay_fn s_overlay_fn;
+-static vk_buffer s_overlay_buf;
++static vk_buffer s_overlay_buf, s_overlay_fb;
+ static VkBufferImageCopy s_overlay_copy[RSX_OVERLAY_MAX_RECTS];
+ static int s_overlay_n;
++static u32 s_overlay_words;
++static struct {
++    VkDescriptorSetLayout dsl;
++    VkPipelineLayout      layout;
++    VkPipeline            pipe;
++    VkDescriptorPool      pool;
++    VkDescriptorSet       set;
++    int                   tried, ok;
++} s_ovb;
+ void rsx_vulkan_set_overlay(rsx_overlay_fn fn) { s_overlay_fn = fn; }
+ 
++static int vk_overlay_blend_init(void)
++{
++    if (s_ovb.tried) return s_ovb.ok;
++    s_ovb.tried = 1;
++    VkDescriptorSetLayoutBinding b[2] = {
++        { 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
++        { 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL },
++    };
++    VkDescriptorSetLayoutCreateInfo dci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
++                                            .bindingCount = 2, .pBindings = b };
++    VkPushConstantRange pr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, 4 };
++    VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 };
++    VkDescriptorPoolCreateInfo pi = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
++                                      .maxSets = 1, .poolSizeCount = 1, .pPoolSizes = &ps };
++    VkShaderModuleCreateInfo mci = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
++                                     .codeSize = sizeof rsx_vk_overlay_comp_spv, .pCode = rsx_vk_overlay_comp_spv };
++    VkShaderModule mod = VK_NULL_HANDLE;
++    if (pvkCreateDescriptorSetLayout(s_vk.device, &dci, NULL, &s_ovb.dsl) != VK_SUCCESS) goto fail;
++    VkPipelineLayoutCreateInfo lci = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
++                                       .setLayoutCount = 1, .pSetLayouts = &s_ovb.dsl,
++                                       .pushConstantRangeCount = 1, .pPushConstantRanges = &pr };
++    if (pvkCreatePipelineLayout(s_vk.device, &lci, NULL, &s_ovb.layout) != VK_SUCCESS) goto fail;
++    if (pvkCreateDescriptorPool(s_vk.device, &pi, NULL, &s_ovb.pool) != VK_SUCCESS) goto fail;
++    VkDescriptorSetAllocateInfo ai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
++                                       .descriptorPool = s_ovb.pool, .descriptorSetCount = 1, .pSetLayouts = &s_ovb.dsl };
++    if (pvkAllocateDescriptorSets(s_vk.device, &ai, &s_ovb.set) != VK_SUCCESS) goto fail;
++    if (pvkCreateShaderModule(s_vk.device, &mci, NULL, &mod) != VK_SUCCESS) goto fail;
++    VkComputePipelineCreateInfo pci = {
++        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
++        .stage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
++                   .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = mod, .pName = "main" },
++        .layout = s_ovb.layout,
++    };
++    const VkResult r = pvkCreateComputePipelines(s_vk.device, VK_NULL_HANDLE, 1, &pci, NULL, &s_ovb.pipe);
++    pvkDestroyShaderModule(s_vk.device, mod, NULL);
++    if (r != VK_SUCCESS) goto fail;
++    s_ovb.ok = 1;
++    return 1;
++fail:
++    VK_LOG("overlay: no blend pass, the pixels are copied as they are\n");
++    return 0;
++}
++
+ /* before the present's command buffer is begun (vk_destroy_buffer flushes) */
+ static void vk_overlay_prepare(void)
+ {
+@@ -3078,13 +3138,30 @@ static void vk_overlay_prepare(void)
+     int n = fn((u32)ww, (u32)wh, bgra, &px, &bytes, r, RSX_OVERLAY_MAX_RECTS);
+     if (n <= 0 || !px || bytes < 4) return;
+     if (n > RSX_OVERLAY_MAX_RECTS) n = RSX_OVERLAY_MAX_RECTS;
+-    if (s_overlay_buf.size < bytes) {
++    const int blend = s_sc_readable && vk_overlay_blend_init();
++    if (s_overlay_buf.size < bytes || (blend && s_overlay_fb.size < bytes)) {
++        const VkDeviceSize size = (VkDeviceSize)bytes + bytes / 2;
+         vk_destroy_buffer(&s_overlay_buf);
+-        if (vk_create_host_buffer(&s_overlay_buf, (VkDeviceSize)bytes + bytes / 2, VK_BUFFER_USAGE_TRANSFER_SRC_BIT) ||
+-            !s_overlay_buf.coherent) {   /* no flush here: a coherent type or no overlay */
+-            vk_destroy_buffer(&s_overlay_buf); VK_LOG("overlay: no coherent host buffer\n"); return;
++        vk_destroy_buffer(&s_overlay_fb);
++        const VkBufferUsageFlags st = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
++        if (vk_create_host_buffer(&s_overlay_buf, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | st) ||
++            !s_overlay_buf.coherent ||   /* no flush here: a coherent type or no overlay */
++            (blend && vk_create_host_buffer(&s_overlay_fb, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
++                                            VK_BUFFER_USAGE_TRANSFER_DST_BIT | st))) {
++            vk_destroy_buffer(&s_overlay_buf); vk_destroy_buffer(&s_overlay_fb);
++            VK_LOG("overlay: no coherent host buffer\n"); return;
++        }
++        if (blend) {
++            VkDescriptorBufferInfo bi[2] = { { s_overlay_buf.buf, 0, VK_WHOLE_SIZE }, { s_overlay_fb.buf, 0, VK_WHOLE_SIZE } };
++            VkWriteDescriptorSet w[2];
++            for (int i = 0; i < 2; i++)
++                w[i] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = s_ovb.set,
++                                               .dstBinding = (u32)i, .descriptorCount = 1,
++                                               .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pBufferInfo = &bi[i] };
++            pvkUpdateDescriptorSets(s_vk.device, 2, w, 0, NULL);
+         }
+     }
++    s_overlay_words = blend ? (u32)(bytes / 4) : 0;
+     memcpy(s_overlay_buf.ptr, px, bytes);
+     for (int i = 0; i < n; i++) {   /* clipped to the window; a rect whose rows leave the pixels is dropped */
+         const int32_t x0 = r[i].x > 0 ? r[i].x : 0, y0 = r[i].y > 0 ? r[i].y : 0;
+@@ -3100,21 +3177,52 @@ static void vk_overlay_prepare(void)
+     }
+ }
+ 
+-/* after the blit, the image in TRANSFER_DST_OPTIMAL */
+-static void vk_overlay_record(VkImage img)
++static void vk_overlay_image_barrier(VkImage img, VkImageLayout from, VkImageLayout to, VkAccessFlags src,
++                                     VkAccessFlags dst)
+ {
+-    if (!s_overlay_n) return;
+     VkImageMemoryBarrier b = {
+-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+-        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = src, .dstAccessMask = dst,
++        .oldLayout = from, .newLayout = to,
+         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+         .image = img, .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
+     };
+     pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           0, 0, NULL, 0, NULL, 1, &b);
+-    pvkCmdCopyBufferToImage(s_vk.cmd, s_overlay_buf.buf, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+-                            (u32)s_overlay_n, s_overlay_copy);
++}
++
++static void vk_overlay_buffer_barrier(VkBuffer buf, VkPipelineStageFlags from, VkPipelineStageFlags to,
++                                      VkAccessFlags src, VkAccessFlags dst)
++{
++    VkBufferMemoryBarrier b = { .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER, .srcAccessMask = src,
++                                .dstAccessMask = dst, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
++                                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .buffer = buf, .size = VK_WHOLE_SIZE };
++    pvkCmdPipelineBarrier(s_vk.cmd, from, to, 0, 0, NULL, 1, &b, 0, NULL);
++}
++
++/* after the blit, the image in TRANSFER_DST_OPTIMAL, and left so */
++static void vk_overlay_record(VkImage img)
++{
++    if (!s_overlay_n) return;
++    const VkAccessFlags rw = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
++    vk_overlay_image_barrier(img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
++                             VK_ACCESS_TRANSFER_WRITE_BIT, rw);
++    VkBuffer src = s_overlay_buf.buf;
++    if (s_overlay_words) {   /* the pixels under the rects out, blended, and back */
++        pvkCmdCopyImageToBuffer(s_vk.cmd, img, VK_IMAGE_LAYOUT_GENERAL, s_overlay_fb.buf, (u32)s_overlay_n,
++                                s_overlay_copy);
++        vk_overlay_buffer_barrier(s_overlay_fb.buf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
++                                  VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
++        pvkCmdBindPipeline(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_ovb.pipe);
++        pvkCmdBindDescriptorSets(s_vk.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, s_ovb.layout, 0, 1, &s_ovb.set, 0, NULL);
++        pvkCmdPushConstants(s_vk.cmd, s_ovb.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &s_overlay_words);
++        pvkCmdDispatch(s_vk.cmd, (s_overlay_words + 255) / 256, 1, 1);
++        vk_overlay_buffer_barrier(s_overlay_fb.buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
++                                  VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
++        src = s_overlay_fb.buf;
++    }
++    pvkCmdCopyBufferToImage(s_vk.cmd, src, img, VK_IMAGE_LAYOUT_GENERAL, (u32)s_overlay_n, s_overlay_copy);
++    vk_overlay_image_barrier(img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, rw,
++                             VK_ACCESS_TRANSFER_WRITE_BIT);
+ }
+ 
+ static void vk_present_window_body(void)
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 24fd48f..7e07d9a 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -106,9 +106,10 @@ void rsx_vulkan_set_motion_blur(int on);
+ void rsx_vulkan_set_glow_strength(int strength256);
+ /* A host overlay over the window (ENHANCEMENT: a port's own notices). Once per present, on the presenting thread,
+  * fn gets the window's size and its byte order (bgra: B,G,R,A; else R,G,B,A) and returns how many rects it filled
+- * (up to max), with *pixels and *bytes: the rects' 4-byte pixels, each rect's rows at off, row_px pixels apart. The
+- * pixels are copied over the frame as they are (opaque), clipped to the window; *pixels must stay valid until fn is
+- * called again. NULL turns it off. Not on a window format other than 8-bit BGRA or RGBA. */
++ * (up to max), with *pixels and *bytes: the rects' 4-byte pixels, each rect's rows at off, row_px pixels apart, the
++ * fourth byte alpha and the colour premultiplied by it. They are blended over the frame (colour + frame * (1 - alpha)),
++ * clipped to the window; on a surface whose images cannot be read back they are copied as they are. *pixels must stay
++ * valid until fn is called again. NULL turns it off. Not on a window format other than 8-bit BGRA or RGBA. */
+ #define RSX_OVERLAY_MAX_RECTS 256
+ typedef struct rsx_overlay_rect { int32_t x, y; uint32_t w, h, off, row_px; } rsx_overlay_rect;
+ typedef int (*rsx_overlay_fn)(uint32_t win_w, uint32_t win_h, int bgra, const void** pixels, size_t* bytes,
+diff --git a/libs/video/vulkan/rsx_vk_overlay.comp b/libs/video/vulkan/rsx_vk_overlay.comp
+new file mode 100644
+index 0000000..3978ea3
+--- /dev/null
++++ b/libs/video/vulkan/rsx_vk_overlay.comp
+@@ -0,0 +1,20 @@
++#version 450
++// The host overlay (rsx_vulkan_set_overlay) over the window's pixels: OV holds the overlay's 4-byte pixels with
++// premultiplied alpha in the fourth byte, FB the window's pixels under them, read back in the same layout. Each
++// word: FB = OV + FB * (255 - a) / 255, byte by byte (the byte order is the window's; only the fourth byte is alpha,
++// and the result's alpha is opaque). Regenerate the header with:
++//   glslangValidator -V --target-env vulkan1.0 --vn rsx_vk_overlay_comp_spv -o rsx_vk_overlay_comp.spv.h rsx_vk_overlay.comp
++layout(local_size_x = 256) in;
++layout(std430, binding = 0) readonly buffer Ov { uint ov[]; };
++layout(std430, binding = 1) buffer Fb { uint fb[]; };
++layout(push_constant) uniform P { uint count; } pc;
++
++void main()
++{
++    const uint i = gl_GlobalInvocationID.x;
++    if (i >= pc.count) return;
++    const uvec4 o = (uvec4(ov[i]) >> uvec4(0, 8, 16, 24)) & 255u;
++    const uvec4 f = (uvec4(fb[i]) >> uvec4(0, 8, 16, 24)) & 255u;
++    const uvec3 c = min(o.xyz + (f.xyz * (255u - o.w) + 127u) / 255u, uvec3(255u));
++    fb[i] = c.x | c.y << 8 | c.z << 16 | 0xFF000000u;
++}
+diff --git a/libs/video/vulkan/rsx_vk_overlay_comp.spv.h b/libs/video/vulkan/rsx_vk_overlay_comp.spv.h
+new file mode 100644
+index 0000000..3136630
+--- /dev/null
++++ b/libs/video/vulkan/rsx_vk_overlay_comp.spv.h
+@@ -0,0 +1,82 @@
++	// 1116.6.0
++	 #pragma once
++const uint32_t rsx_vk_overlay_comp_spv[] = {
++	0x07230203,0x00010000,0x0008000b,0x00000066,0x00000000,0x00020011,0x00000001,0x0006000b,
++	0x00000001,0x4c534c47,0x6474732e,0x3035342e,0x00000000,0x0003000e,0x00000000,0x00000001,
++	0x0006000f,0x00000005,0x00000004,0x6e69616d,0x00000000,0x0000000b,0x00060010,0x00000004,
++	0x00000011,0x00000100,0x00000001,0x00000001,0x00030003,0x00000002,0x000001c2,0x00040005,
++	0x00000004,0x6e69616d,0x00000000,0x00030005,0x00000008,0x00000069,0x00080005,0x0000000b,
++	0x475f6c67,0x61626f6c,0x766e496c,0x7461636f,0x496e6f69,0x00000044,0x00030005,0x00000011,
++	0x00000050,0x00050006,0x00000011,0x00000000,0x6e756f63,0x00000074,0x00030005,0x00000013,
++	0x00006370,0x00030005,0x00000020,0x0000006f,0x00030005,0x00000022,0x0000764f,0x00040006,
++	0x00000022,0x00000000,0x0000766f,0x00030005,0x00000024,0x00000000,0x00030005,0x00000032,
++	0x00000066,0x00030005,0x00000034,0x00006246,0x00040006,0x00000034,0x00000000,0x00006266,
++	0x00030005,0x00000036,0x00000000,0x00030005,0x0000003f,0x00000063,0x00040047,0x0000000b,
++	0x0000000b,0x0000001c,0x00030047,0x00000011,0x00000002,0x00050048,0x00000011,0x00000000,
++	0x00000023,0x00000000,0x00040047,0x00000021,0x00000006,0x00000004,0x00030047,0x00000022,
++	0x00000003,0x00040048,0x00000022,0x00000000,0x00000018,0x00050048,0x00000022,0x00000000,
++	0x00000023,0x00000000,0x00030047,0x00000024,0x00000018,0x00040047,0x00000024,0x00000021,
++	0x00000000,0x00040047,0x00000024,0x00000022,0x00000000,0x00040047,0x00000033,0x00000006,
++	0x00000004,0x00030047,0x00000034,0x00000003,0x00050048,0x00000034,0x00000000,0x00000023,
++	0x00000000,0x00040047,0x00000036,0x00000021,0x00000001,0x00040047,0x00000036,0x00000022,
++	0x00000000,0x00040047,0x00000065,0x0000000b,0x00000019,0x00020013,0x00000002,0x00030021,
++	0x00000003,0x00000002,0x00040015,0x00000006,0x00000020,0x00000000,0x00040020,0x00000007,
++	0x00000007,0x00000006,0x00040017,0x00000009,0x00000006,0x00000003,0x00040020,0x0000000a,
++	0x00000001,0x00000009,0x0004003b,0x0000000a,0x0000000b,0x00000001,0x0004002b,0x00000006,
++	0x0000000c,0x00000000,0x00040020,0x0000000d,0x00000001,0x00000006,0x0003001e,0x00000011,
++	0x00000006,0x00040020,0x00000012,0x00000009,0x00000011,0x0004003b,0x00000012,0x00000013,
++	0x00000009,0x00040015,0x00000014,0x00000020,0x00000001,0x0004002b,0x00000014,0x00000015,
++	0x00000000,0x00040020,0x00000016,0x00000009,0x00000006,0x00020014,0x00000019,0x00040017,
++	0x0000001e,0x00000006,0x00000004,0x00040020,0x0000001f,0x00000007,0x0000001e,0x0003001d,
++	0x00000021,0x00000006,0x0003001e,0x00000022,0x00000021,0x00040020,0x00000023,0x00000002,
++	0x00000022,0x0004003b,0x00000023,0x00000024,0x00000002,0x00040020,0x00000026,0x00000002,
++	0x00000006,0x0004002b,0x00000006,0x0000002a,0x00000008,0x0004002b,0x00000006,0x0000002b,
++	0x00000010,0x0004002b,0x00000006,0x0000002c,0x00000018,0x0007002c,0x0000001e,0x0000002d,
++	0x0000000c,0x0000002a,0x0000002b,0x0000002c,0x0004002b,0x00000006,0x0000002f,0x000000ff,
++	0x0003001d,0x00000033,0x00000006,0x0003001e,0x00000034,0x00000033,0x00040020,0x00000035,
++	0x00000002,0x00000034,0x0004003b,0x00000035,0x00000036,0x00000002,0x00040020,0x0000003e,
++	0x00000007,0x00000009,0x0004002b,0x00000006,0x00000044,0x00000003,0x0004002b,0x00000006,
++	0x0000004a,0x0000007f,0x0006002c,0x00000009,0x00000050,0x0000002f,0x0000002f,0x0000002f,
++	0x0004002b,0x00000006,0x00000055,0x00000001,0x0004002b,0x00000014,0x00000058,0x00000008,
++	0x0004002b,0x00000006,0x0000005b,0x00000002,0x0004002b,0x00000014,0x0000005e,0x00000010,
++	0x0004002b,0x00000006,0x00000061,0xff000000,0x0004002b,0x00000006,0x00000064,0x00000100,
++	0x0006002c,0x00000009,0x00000065,0x00000064,0x00000055,0x00000055,0x00050036,0x00000002,
++	0x00000004,0x00000000,0x00000003,0x000200f8,0x00000005,0x0004003b,0x00000007,0x00000008,
++	0x00000007,0x0004003b,0x0000001f,0x00000020,0x00000007,0x0004003b,0x0000001f,0x00000032,
++	0x00000007,0x0004003b,0x0000003e,0x0000003f,0x00000007,0x00050041,0x0000000d,0x0000000e,
++	0x0000000b,0x0000000c,0x0004003d,0x00000006,0x0000000f,0x0000000e,0x0003003e,0x00000008,
++	0x0000000f,0x0004003d,0x00000006,0x00000010,0x00000008,0x00050041,0x00000016,0x00000017,
++	0x00000013,0x00000015,0x0004003d,0x00000006,0x00000018,0x00000017,0x000500ae,0x00000019,
++	0x0000001a,0x00000010,0x00000018,0x000300f7,0x0000001c,0x00000000,0x000400fa,0x0000001a,
++	0x0000001b,0x0000001c,0x000200f8,0x0000001b,0x000100fd,0x000200f8,0x0000001c,0x0004003d,
++	0x00000006,0x00000025,0x00000008,0x00060041,0x00000026,0x00000027,0x00000024,0x00000015,
++	0x00000025,0x0004003d,0x00000006,0x00000028,0x00000027,0x00070050,0x0000001e,0x00000029,
++	0x00000028,0x00000028,0x00000028,0x00000028,0x000500c2,0x0000001e,0x0000002e,0x00000029,
++	0x0000002d,0x00070050,0x0000001e,0x00000030,0x0000002f,0x0000002f,0x0000002f,0x0000002f,
++	0x000500c7,0x0000001e,0x00000031,0x0000002e,0x00000030,0x0003003e,0x00000020,0x00000031,
++	0x0004003d,0x00000006,0x00000037,0x00000008,0x00060041,0x00000026,0x00000038,0x00000036,
++	0x00000015,0x00000037,0x0004003d,0x00000006,0x00000039,0x00000038,0x00070050,0x0000001e,
++	0x0000003a,0x00000039,0x00000039,0x00000039,0x00000039,0x000500c2,0x0000001e,0x0000003b,
++	0x0000003a,0x0000002d,0x00070050,0x0000001e,0x0000003c,0x0000002f,0x0000002f,0x0000002f,
++	0x0000002f,0x000500c7,0x0000001e,0x0000003d,0x0000003b,0x0000003c,0x0003003e,0x00000032,
++	0x0000003d,0x0004003d,0x0000001e,0x00000040,0x00000020,0x0008004f,0x00000009,0x00000041,
++	0x00000040,0x00000040,0x00000000,0x00000001,0x00000002,0x0004003d,0x0000001e,0x00000042,
++	0x00000032,0x0008004f,0x00000009,0x00000043,0x00000042,0x00000042,0x00000000,0x00000001,
++	0x00000002,0x00050041,0x00000007,0x00000045,0x00000020,0x00000044,0x0004003d,0x00000006,
++	0x00000046,0x00000045,0x00050082,0x00000006,0x00000047,0x0000002f,0x00000046,0x00060050,
++	0x00000009,0x00000048,0x00000047,0x00000047,0x00000047,0x00050084,0x00000009,0x00000049,
++	0x00000043,0x00000048,0x00060050,0x00000009,0x0000004b,0x0000004a,0x0000004a,0x0000004a,
++	0x00050080,0x00000009,0x0000004c,0x00000049,0x0000004b,0x00060050,0x00000009,0x0000004d,
++	0x0000002f,0x0000002f,0x0000002f,0x00050086,0x00000009,0x0000004e,0x0000004c,0x0000004d,
++	0x00050080,0x00000009,0x0000004f,0x00000041,0x0000004e,0x0007000c,0x00000009,0x00000051,
++	0x00000001,0x00000026,0x0000004f,0x00000050,0x0003003e,0x0000003f,0x00000051,0x0004003d,
++	0x00000006,0x00000052,0x00000008,0x00050041,0x00000007,0x00000053,0x0000003f,0x0000000c,
++	0x0004003d,0x00000006,0x00000054,0x00000053,0x00050041,0x00000007,0x00000056,0x0000003f,
++	0x00000055,0x0004003d,0x00000006,0x00000057,0x00000056,0x000500c4,0x00000006,0x00000059,
++	0x00000057,0x00000058,0x000500c5,0x00000006,0x0000005a,0x00000054,0x00000059,0x00050041,
++	0x00000007,0x0000005c,0x0000003f,0x0000005b,0x0004003d,0x00000006,0x0000005d,0x0000005c,
++	0x000500c4,0x00000006,0x0000005f,0x0000005d,0x0000005e,0x000500c5,0x00000006,0x00000060,
++	0x0000005a,0x0000005f,0x000500c5,0x00000006,0x00000062,0x00000060,0x00000061,0x00060041,
++	0x00000026,0x00000063,0x00000036,0x00000015,0x00000052,0x0003003e,0x00000063,0x00000062,
++	0x000100fd,0x00010038
++};

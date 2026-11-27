@@ -1,6 +1,6 @@
 // The trophy notices' queue and layout (port/kz1hd/trophy_notice.h): arrival order, at most three on screen with the
-// rest waiting, the slide-in/hold/slide-out timing, the stacking, the scale with the window, and the card's rows
-// without its cut corners. The HLE's side (a blocked unlock is never notified, so never queued) is
+// rest waiting, the slide-in/hold/slide-out timing, the stacking, the scale with the window, and the slide up when a
+// card above leaves. The HLE's side (a blocked unlock is never notified, so never queued) is
 // test_trophy_notify.c's.
 #include <cstdio>
 #include <vector>
@@ -53,15 +53,18 @@ int main()
     for (int i = 0; i < tn::kQueue; i++) q.push(Item{ 100 + i });
     EXPECT(!q.push(Item{ 999 }), "a full queue refuses the next notice");
 
-    int x0, x1;
-    tn::row_span(0, 470, 96, 14, &x0, &x1);
-    EXPECT(x0 == 14 && x1 == 470, "row 0: the top-left cut");
-    tn::row_span(13, 470, 96, 14, &x0, &x1);
-    EXPECT(x0 == 1 && x1 == 470, "row 13: the cut's last row");
-    tn::row_span(50, 470, 96, 14, &x0, &x1);
-    EXPECT(x0 == 0 && x1 == 470, "a middle row: the whole width");
-    tn::row_span(95, 470, 96, 14, &x0, &x1);
-    EXPECT(x0 == 0 && x1 == 470 - 13, "the last row: the bottom-right cut");
+    tn::Queue<Item> q2;   // a card above leaves
+    q2.push(Item{ 20 });
+    q2.step(3e9, 1920, 1080, p, on_start);
+    q2.push(Item{ 21 });
+    n = q2.step(3e9 + 1000, 1920, 1080, p, on_start);
+    EXPECT(n == 2 && p[1].y == 56 + 110, "a later card goes under the first");
+    n = q2.step(3e9 + tn::kTotalMs + 1, 1920, 1080, p, on_start);
+    EXPECT(n == 1 && q2.item(p[0].slot).id == 21 && p[0].y > 56 + 100, "the first leaves: the second starts to move up");
+    q2.step(3e9 + tn::kTotalMs + 1 + tn::kMoveMs / 2, 1920, 1080, p, on_start);
+    EXPECT(p[0].y > 56 && p[0].y < 56 + 110, "half way up, not a jump");
+    q2.step(3e9 + tn::kTotalMs + 1 + tn::kMoveMs, 1920, 1080, p, on_start);
+    EXPECT(p[0].y == 56, "after kMoveMs it is at the top");
     EXPECT(tn::slide(-1) == 0 && tn::slide(tn::kTotalMs) == 0 && tn::slide(tn::kInMs) == 1, "slide: hidden, in, gone");
 
     if (fails) return 1;
