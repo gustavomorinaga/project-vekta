@@ -291,9 +291,6 @@ finishing the list is the game's "Mastered"). The SDK's `docs/SPEC.md` has the c
 - No PC page row: RecompLauncher turns its achievements on and off itself, and the channel exists only when it
   started the game.
 
-The list for RecompLauncher is theirs to host; a draft with the 58 ids (bronze 5, silver 10, gold 25 points) was
-made from the TRP for the maintainer to send, outside the repository (it is game text).
-
 Checked: `tools/tests/test_rl_bridge.sh` builds the vendored SDK and passes its own channel test
 (`sdk/tests/fake_launcher.py`), then runs the bridge against `tools/tests/rl_launcher.py` (a fake launcher on a Unix
 socket; the HLE's host calls faked): `hello` (ps3, no memory, the version), one `native_list` with 1..3 and no
@@ -306,6 +303,26 @@ no memory, the port's version), one `native_list` of 58 (ids 1 to 58, the TRP's 
 one `save_loaded` after the profile's `LOAD complete`, and the log's `[rl] connected ... 58 trophies listed, 2
 earlier` and the quiet line. A live unlock in the game was not run: input from a file blocks trophies; the host test
 covers that path.
+
+### The hosted list
+
+RecompLauncher hosts the list, and the maintainer writes it in the developer hub (<https://recompstore.com/hub>, PC
+recomps, the port, Achievements: the Recomp Achievements list editor, which checks every save against SPEC.md). The
+titles and descriptions are Sony's and Guerrilla's text from the TRP, so they stay out of the repository like every
+other game file: it keeps only what the port decides, in `tools/release/rl_list_meta.json`. That is the header
+(format 1, `project-vekta`, native, ps3, `versions` `>=0.8.0`, no `voids`) and, for each id 1 to 58, its points,
+type and bonus. The platinum (id 0) is left out. Points are written per id: bronze 5, silver 10 (2, 14, 15, 27), and
+3, the gold, 50. Types: `win` for 1, 2, 3 and 51, `progression` for the chapters 41 to 50; 58 is `bonus`.
+
+To make the list, run `python3 tools/release/rl_list.py`. It reads the player's own TRP (default
+`work/vfs/PS3_GAME/TROPDIR/NPWR03819_00/TROPHY.TRP`, or `--trp`), takes the English text from `TROP.SFM` (entities
+unescaped, spaces stripped) and writes `work/trophies/recomplauncher-list.json` (or `--out`; `work/` is gitignored).
+It refuses a table whose ids are not the TRP's non-platinum trophies, points outside 5/10/25/50, an unknown type or
+any other field. Paste the whole file into the hub's editor and save. A change to points or types is a change to the
+table, then the list made and pasted again; it reaches players without a release.
+
+Checked: `tools/tests/test_rl_list.py` (a synthetic TRP, no game text). On the US TRP (2026-11-27) the output is
+JSON-equal to the list reviewed before (58 entries, 355 points; the same bytes but a final newline).
 
 ## Debug options that block trophies
 
