@@ -1373,7 +1373,10 @@ static const LiveSel* live_sel(uint32_t sel)
     return nullptr;
 }
 
-static bool shown(uint32_t w) { return w && rdf(w + 0x38) == 1.0f; }
+/* A disabled item is skipped too: the frontend's Extras keeps its hidden,
+ * disabled Movies 2 at the row Trophies is drawn on (+0x38 still 1.0), and
+ * hover on it stepped toward an item the selection never lands on. */
+static bool shown(uint32_t w) { return w && rdf(w + 0x38) == 1.0f && menu_widget_enabled(vm_base[w + MENU_WIDGET_ENABLED_BYTE]); }
 static bool inside(uint32_t w, float vx, float vy)
 {
     return vx >= rdf(w + 0x50) && vx < rdf(w + 0x58) && vy >= rdf(w + 0x54) && vy < rdf(w + 0x5C);
