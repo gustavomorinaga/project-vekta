@@ -4,8 +4,8 @@ Native PC versions (Linux and Windows, Vulkan) of the PS3 Killzone games by stat
 [ps3recomp](https://github.com/sp00nznet/ps3recomp), starting with Killzone HD. Technical plan:
 [dev/recomp-plan.md](dev/recomp-plan.md). The port's journal: [dev/port-journal.md](dev/port-journal.md).
 
-Updated 2026-11-18 (after 0.5.2: recorded routes done, the converted-vertex cache noted). Tick items as they are done; each phase's
-percentage comes from its items and its weight.
+Updated 2026-11-27 (for 0.8.0: the European edition, split screen, trophies in the game, more frame-rate limits).
+Tick items as they are done; each phase's percentage comes from its items and its weight.
 
 ## Principles
 
@@ -37,7 +37,7 @@ each phase's estimated relative effort.
 | 7. PC: runtime | 7 | 45 % |
 | 8. PC: the game's map | 12 | 30 % |
 | 9. Killzone 2 and Killzone 3 | 22 | 2 % |
-| 10. Multiplayer | 6 | 0 % |
+| 10. Multiplayer | 6 | 10 % |
 | 11. Launcher | 4 | 20 % |
 | 12. Workshop (mods and add-ons) | 5 | 0 % |
 
@@ -83,6 +83,8 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 ### Phase 1. PPU translated
 - [x] `ppu_loader`/`ppu_lifter` on the EBOOT; the port compiles and links
 - [x] `tools/lift.sh` redoes the whole translation from the player's files
+- [x] The European edition (NPEA00418, BCES-01743) lifted with its own addresses, from one table of what moved
+      (`re/eu/address_map.tsv`, [dev/editions.md](dev/editions.md), 0.8.0)
 
 ### Phase 2. Boot to the main loop
 - [x] Run folder with the decrypted archive; the game reads `KillzonePS3.ini` and its lumps
@@ -151,7 +153,7 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] V-Sync on, off and adaptive
 - [x] VRR (G-Sync/FreeSync) checked on a compatible monitor (with a 60 limit the monitor shows about 60 Hz; in that
       mode presents follow 59.94 instead of 144)
-- [x] Frame-rate limit (30, 60, 144)
+- [x] Frame-rate limit (30, 60, 144), and 120, 165, 240 and Unlimited as experimental limits (0.8.0)
 - [x] NVIDIA Reflex: Off / On / On + Boost on the PC page (`reflex` in the ini), applied at once; `VK_NV_low_latency2`
       with present ids, the game's thread sleeping after each flip (patch 2038). Without the extension the row reads
       "not available" (AMD/Intel get it through low_latency_layer, untested). Measured on an RTX 3070 Ti, Level 7: no fps
@@ -168,7 +170,8 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 - [x] Stereo, 5.1 and 7.1 sound: the game is told and its own mixer fills the centre and surround channels (checked
       per channel on Linux and with 6- and 8-channel WASAPI under Wine; not yet heard on a surround system)
 - [x] Voice and subtitle language: System, English (US/UK), French, Spanish (the game uses one language for voice,
-      subtitles and menus; System follows the PC's language, with English for languages the game lacks)
+      subtitles and menus; System follows the PC's language, with English for languages the game lacks; the
+      European edition also has German, Italian and Dutch)
 - [x] Skip the opening movie (the logos at start stay)
 - [ ] ~~Colour precision (16-bit render targets, experimental)~~ investigated, no visible gain (2026-11-11): the game
       draws its whole scene straight into the display buffers and its own film grain already hides banding; 16-bit
@@ -231,7 +234,9 @@ improvements after parity); DLSS Frame Generation and XeSS postponed.
 ### Phase 10. Multiplayer
 Killzone HD has no online modes (its EBOOT imports only `sceNp`/`sceNpTrophy`). Killzone 2 and 3 have offline bots
 and online modes whose servers were shut down.
-- [ ] Local: check what each game offers (Killzone HD's menu shows "One / Two Player") and make it work
+- [x] Killzone HD, local: Battlefields against bots, and two players on one PC in split screen (0.8.0; checked
+      with scripted input, not yet played by two people)
+- [ ] Killzone 2 and Killzone 3, local: check what each game offers and make it work
 - [ ] LAN; community servers replacing `sceNp*` matchmaking; a dedicated server the community can host
 
 ### Phase 11. Launcher

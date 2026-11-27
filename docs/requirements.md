@@ -2,8 +2,8 @@
 
 ## Your game
 
-Your own Killzone HD (NPUA80856, or the European NPEA00418) from the Killzone Trilogy disc or the PlayStation
-Store, installed, with its decrypted EBOOT (no PS3
+Your own Killzone HD (NPUA80856, or the European NPEA00418 or BCES-01743) from the Killzone Trilogy disc, the
+European disc or the PlayStation Store, with its decrypted EBOOT (no PS3
 system software is needed): [GETTING-FILES.md](GETTING-FILES.md).
 No PlayStation Network account is used.
 

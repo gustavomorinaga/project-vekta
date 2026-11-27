@@ -843,5 +843,7 @@ Starting point: about 35.4 fps.
 The journal continues in topic notes: [performance.md](performance.md) (the 144 Hz work, to 2026-10-27),
 [ps3recomp-v018-migration.md](ps3recomp-v018-migration.md) (2026-10-27/28), [windows-build.md](windows-build.md)
 (2026-10-28/29), [wws-jm-post.md](wws-jm-post.md) (the post-processing chain), [libsre-removal.md](libsre-removal.md)
-(2026-11-17, the SPURS queue without the firmware's libsre), and the [roadmap](../ROADMAP.md) for the
-PC features added since (widescreen, FSR 1, presets, 5.1/7.1, languages, trophies).
+(2026-11-17, the SPURS queue without the firmware's libsre), [crash-reports.md](crash-reports.md) (2026-11-23),
+[editions.md](editions.md) (2026-11-24/25, the European edition), [trophies.md](trophies.md) (2026-11-26/27), and the
+[roadmap](../ROADMAP.md) for the PC features added since (widescreen, FSR 1, presets, 5.1/7.1, languages, split
+screen).

@@ -3,7 +3,7 @@
 
 What the PS3 version of Killzone HD does and how far the port reproduces it (section 1), and what the port adds
 (section 2). Every status comes from a dated run on the maintainer's machine (Linux, RTX 3070 Ti) unless it says
-otherwise. Last checked 2026-10-30.
+otherwise. Last checked 2026-11-27.
 
 | Status | Meaning |
 |---|---|
@@ -17,8 +17,8 @@ otherwise. Last checked 2026-10-30.
 | Area | Feature | On the PS3 | In the port | Evidence |
 |---|---|---|---|---|
 | Boot and menus | Logos, opening movie, front end, options, pause menu | as shipped | **works** | every run since 2026-10-14 |
-| Campaign | Level 1 | first level | **works** | played by hand from start to end |
-| Campaign | Levels 2 to 11 | the rest of the campaign | **works** on Linux and on Windows | 2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16) |
+| Campaign | Level 1 | first level | **works** | played by hand from start to end; 2026-11-27, the 0.8.0 code on Linux: from a fresh profile with the default settings through the logos, the menus and the opening movie into the level, 60 fps on scripted input |
+| Campaign | Levels 2 to 11 | the rest of the campaign | **works** on Linux and on Windows | 2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16); 2026-11-27, the 0.8.0 code on Linux: each of the campaign's 36 sections opened from the level list and run for about 95 s on scripted input (walk, turn, fire) at the 60 fps limit: all 36 reached play and held 60 fps with the game clock at 60 ticks a second, no crash or hang |
 | Campaign | Cutscene and level movies | AVI movies through `cellSail` | **works** (FFmpeg) | 30 movies; runs without FFmpeg skip them |
 | Campaign | Game logic timing | 30 Hz | **works** at 30 and 60 Hz; 144 Hz with one known problem ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)) | hints, movement and rate of fire checked at 60 Hz |
 | Saves | Profile, checkpoints, Continue | one profile save | **works**: Continue returns to the checkpoint | 2026-10-20; a checkpoint save checked end to end: quit, Continue, play on to the next checkpoint and the next part, twice, also from a part in the middle of a chapter (the maintainer, 2026-11-17) |
@@ -31,9 +31,9 @@ otherwise. Last checked 2026-10-30.
 | Graphics | HUD, menus, fonts | as shipped | **works** | |
 | Sound | Music, effects, dialogue | MultiStream on the SPUs, MP3 streams | **works** | decoded by minimp3 in place of the firmware's decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md) |
 | Sound | Surround | the console's output setting | **works**: stereo, 5.1, 7.1 | per channel on Linux; 6 and 8 channels through WASAPI under Wine |
-| Languages | Voice, subtitles, menus | English, French, Spanish (by console language) | **works**, chosen on the PC page | |
+| Languages | Voice, subtitles, menus | English, French, Spanish in the US edition; the European edition adds German, Italian and Dutch (by console language) | **works**, chosen on the PC page (English, French, Spanish) or by the system's language | the European edition's German and Italian front ends, 2026-11-24/25 ([dev/editions.md](dev/editions.md)); its Dutch, French and Spanish not yet run |
 | Trophies | Trophy unlocks | PSN trophies | **works** on Linux: unlocked and kept locally with names, grades and platinum, with an on-screen notice and its sound (the port's own), a Trophies page in the pause menu and in Extras, and RecompLauncher's own toast in their place when RecompLauncher starts the game; not yet run on Windows | `gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse); RecompLauncher's channel 2026-11-27 with a stand-in launcher (a live unlock through RecompLauncher itself not yet run); [KNOWN_ISSUES.md](KNOWN_ISSUES.md) |
-| Multiplayer | "One / Two Player" in the menu | local | **not yet** checked | |
+| Multiplayer | Battlefields: one player against bots, two players in split screen | local | **works** on Linux with scripted input: two players share one PC, the keyboard and mouse and a controller or two controllers; not yet played by two people, with a real second controller or on Windows | one player with 13 bots on the 8 maps, Team Deathmatch, 2026-11-25 ([dev/performance.md](dev/performance.md)); two players, player 2 on a virtual pad: 37 of 37 mode and map cells, and Canyon Crossing for 64 s at 59.6 fps with both HUDs right, US and European editions, 2026-11-25/26; [KNOWN_ISSUES.md](KNOWN_ISSUES.md) |
 | Online | PSN | sign-in, trophies sync | **n/a** | no network is used |
 
 ## 2. Features the PS3 version does not have
@@ -49,7 +49,7 @@ are off by default; display and input improvements may be on.
 | Internal resolution scale, 50 % to 200 % | 100 % | `scale`; applies at once, with FSR 3.1 too (ps3recomp patch 2093; Level 1, 2026-11-26; DLSS takes the same path, not yet run) |
 | V-Sync on, off, adaptive; VRR | on | `vsync` |
 | NVIDIA Reflex: off, on, on + boost (`VK_NV_low_latency2`) | off | `reflex`; "not available" without the extension; no measured fps or latency change in Level 7 |
-| Frame-rate limit 30, 60, 120, 144, 165, 240 or Unlimited (the game clock follows) | 60 | `fps_limit` (`0` = Unlimited, a 1000 Hz game clock); 30 is the PS3's; 120 and up are EXPERIMENTAL: the frame rate is the PC's below the limit, with the 144 Hz mode's known problems ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)) |
+| Frame-rate limit 30, 60, 120, 144, 165, 240 or Unlimited (the game clock follows) | 60 | `fps_limit` (`0` = Unlimited, a 1000 Hz game clock); 30 is the PS3's; 120 and up are EXPERIMENTAL: the frame rate is the PC's below the limit, with the 144 Hz mode's known problems ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)); Level 1's opening battle, 2026-11-27: the game clock ran at 30.0, 144.0, 240.0 and 1000.2 ticks a second at the 30, 144, 240 and Unlimited limits |
 | AMD FSR 1 upscaling and RCAS sharpening | bilinear | `upscaler`, `sharpness` |
 | Anisotropic filtering: the game's own, off, 2x to 16x | the game's | `anisotropic`; applies at once (ps3recomp patch 2095; Level 1, 2026-11-26) |
 | Post-processing: anti-aliasing (the game's MLAA) on or off; motion blur, film grain and glow 0 to 100 % in steps of 10 | the game's | `antialiasing`, `motion_blur`, `film_grain`, `glow`, applied at once; 100 % leaves the game's value untouched. Level 8 (user_1023 save), 60 Hz, 2026-11-13, scripted sprint with `PS3RECOMP_MLAA_DUMP`: at 100 % the sprint field rises 12, 23 ... 94 over 8 frames and the output equals the C reference on every pixel; at 50 % the field is exactly half (6, 12 ... 47), output again equal to the reference; at 0 % the game's factor (0.05) is drawn as 0 and no frame has field strength; anti-aliasing off: output = input on 8 frames. Film grain (alpha 0.12 in Level 8, always on): 0 % vs 100 % frames differ by grain only (high-frequency energy 2.35 vs 2.61, 4 luma darker with grain); glow (Level 8, lit sprite glow, 8 frames with 13-696 lit source pixels): at 100 % every output equals the C reference at the game's strength 256 (the glow branch's `check_dump.sh`), at 0 % every output equals the reference without glow, about 8000 pixels apart from the 100 % one. 2026-11-16, Linux, 2560x1440 (internal 2x), 14 phases of chapters 1 to 9 opened from the level select or a save: the MLAA, glow and motion-blur passes ran on every frame (a counter per 5 s); in `1.HQGrounds` the game itself fades its film grain from 0.15 to 0 in about 30 s, so the slider has nothing to scale (the same in RPCS3, checked by the maintainer); the glow source was unlit in all 14, as the game draws it only in some Level 11 spots. Windows, 3440x1440, 2026-11-16 (maintainer): MLAA and sprint blur on |
@@ -63,7 +63,7 @@ are off by default; display and input improvements may be on.
 | Controllers through SDL, with keyboard and mouse at the same time | merged | `controllers`; `PAD_MOUSE_STICK=1` puts the mouse on the right stick instead |
 | Button prompts and the Controls picture follow the device (keyboard and mouse, Xbox, PlayStation, Nintendo) | auto | |
 | Sound output: stereo, 5.1, 7.1 | stereo | `speakers` |
-| Language: system, English (US, UK), French, Spanish | system | `language` |
+| Language: system, English (US, UK), French, Spanish | system | `language`; system follows the PC's language, also to the European edition's German, Italian and Dutch |
 | Skip the opening movie (the logos stay) | off | `intro = off`, `KZ_SKIP_INTRO=1` |
 | Statistics overlay (MangoHUD, Linux) | off | `overlay = mangohud`, `KZ_MANGOHUD=1` |
 | Quit Game in the Options sub-menu; closing the window waits for a save in progress | on | |
@@ -82,6 +82,7 @@ How it is built, how fast it runs and how it reaches players.
 | Item | State | Evidence |
 |---|---|---|
 | Linux x64 build | **works** | built and played on the maintainer's machine; [BUILDING.md](BUILDING.md) |
+| The European edition (NPEA00418 from the PlayStation Store, BCES-01743 from the disc) | **works**: lifted with its own addresses and built like the US edition; every level loads on Linux; not yet played past each level's start | 2026-11-24/25, Linux: the 11 levels loaded, the German and Italian front ends, Level 1's start set beside a PS3 longplay ([dev/editions.md](dev/editions.md)); 2026-11-25, a Windows 11 virtual machine: a test build of the setup built it from a copy of the disc and from the Store copy in RPCS3, and each reached the menu; 2026-11-26: a split-screen match on the disc's copy |
 | Windows x64 exe (cross-built on Linux) | **works**: runs under Wine, Proton and on Windows; the whole campaign played there | `tools/wine-test.sh` passes under Wine and GE-Proton 11 (2026-10-30); [KNOWN_ISSUES.md](KNOWN_ISSUES.md); the whole campaign played on a real Windows (the maintainer, reported 2026-11-16) |
 | Frame rate | **works**: a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps | Level 1 and Level 7 on Linux, RTX 3070 Ti; [dev/performance.md](dev/performance.md) |
 | Installer that builds the port on the player's PC | **works**: `tools/install.sh` on Linux; on Windows a release folder (`tools/release/assemble_payload.py`, `Project Vekta.exe`) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0 | [ROADMAP.md](ROADMAP.md), phase 11; the 0.5.0 install (from the player's RPCS3 or from prepared files, "Show me how") installed, built and played on Windows and Linux (the maintainer, reported 2026-11-16) |

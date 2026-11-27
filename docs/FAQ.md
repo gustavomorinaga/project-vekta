@@ -23,8 +23,9 @@ built on your PC from your own copy of Killzone HD. What each file must be: [GET
 ## Which copies work?
 
 Killzone HD, the US edition (NPUA80856), installed from your own **Killzone Trilogy** disc or bought on the
-PlayStation Store, and the European edition (NPEA00418) from the European PlayStation Store, through your RPCS3. The
-European disc (BCES-01743) has not been tried ([GETTING-FILES.md](GETTING-FILES.md)).
+PlayStation Store, and, since 0.8.0, the European edition: NPEA00418 from the European PlayStation Store, through
+your RPCS3, or a copy of the European disc (BCES-01743). Each must be version 01.00
+([GETTING-FILES.md](GETTING-FILES.md)).
 
 ## Do I need PS3 firmware?
 
@@ -56,13 +57,26 @@ Yes: RecompLauncher and Quiver Launcher list the port, and both install the same
 ## How fast does it run?
 
 A steady 60 frames per second by default on the maintainer's machine (the game logic runs at 60 Hz instead of the
-PS3's 30); an optional 144 Hz mode reaches about 131 to 134 in Level 1 and Level 7 ([STATUS.md](STATUS.md)). Your
-PC: [requirements.md](requirements.md).
+PS3's 30); an optional 144 Hz mode reaches about 131 to 134 in Level 1 and Level 7 ([STATUS.md](STATUS.md)). The
+limits of 120, 165, 240 and Unlimited are experimental ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)). Your PC:
+[requirements.md](requirements.md).
+
+## Can two people play on one PC?
+
+Yes, since 0.8.0: Game > Battlefields > Two Players, in split screen. With one controller, player 1 plays on the
+keyboard and mouse and player 2 on the controller; with two, each has a controller. There is no online play: the PS3
+game has none ([KNOWN_ISSUES.md](KNOWN_ISSUES.md)).
+
+## Are there trophies?
+
+Yes, on your PC only: the port reads the names and pictures from your game's own trophy set, shows a notice when you
+earn one and lists them on a Trophies page. Nothing is sent to the PlayStation Network
+([PRIVACY.md](PRIVACY.md)).
 
 ## Does anything go online?
 
-Nothing unless you choose it: the optional NVIDIA DLSS download and the new-version check, off by default
-([PRIVACY.md](PRIVACY.md)).
+Nothing unless you choose it: the optional NVIDIA DLSS download, the official RPCS3 for a game straight from the
+disc, and the new-version check, off by default ([PRIVACY.md](PRIVACY.md)).
 
 ## Where are my saves and settings?
 
