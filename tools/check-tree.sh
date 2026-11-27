@@ -38,6 +38,7 @@ printf '%s\n' $TEXT | xargs -r grep -n -I -E '/mnt/[A-Z]|/home/[a-z]|C:\\\\Users
 printf '%s\n' $TEXT | xargs -r grep -n -I -o -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}' 2>/dev/null |
     grep -v -E '@(gustavomorinaga\.dev|users\.noreply\.github\.com|example\.(com|org))$|@[0-9]x\.(png|jpg|svg|webp)$' |
     grep -v -x -E '(site/fonts/OFL|licenses/Rajdhani-OFL)\.txt:1:info@indiantypefoundry\.com' |   # the font licence's own copyright line, kept as is
+    grep -v -x -E 'licenses/Recomp-Achievements-LICENSE\.txt:33:info@recompstore\.com' |   # the SDK licence's own contact line, kept as is
     sed 's/^/check-tree: e-mail address: /' | grep . && fail=1
 printf '%s\n' $TEXT | xargs -r grep -n -I -i -E '(klic|api[_-]?key|secret|token|password)[^a-z0-9]{0,4}[:=][^a-z0-9]{0,4}[0-9a-f]{24,}|gh[pousr]_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9]{30,}' 2>/dev/null |
     sed 's/^/check-tree: key or token: /' | grep . && fail=1

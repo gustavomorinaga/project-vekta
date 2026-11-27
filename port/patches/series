@@ -183,3 +183,5 @@
 2097-Vulkan-a-host-overlay-over-the-window-copied-after-t.patch
 3039-cellAudio-the-host-s-own-sounds-added-into-every-mix.patch
 2098-Vulkan-the-host-overlay-is-blended-over-the-window-n.patch
+3040-cellSaveData-ps3_savedata_loads-a-count-of-loads-tha.patch
+5003-sceNpTrophy-ps3_trophy_ready-the-set-read-and-the-st.patch

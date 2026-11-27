@@ -45,6 +45,7 @@ tools/tests/test_audio_notify.sh
 tools/tests/test_trophy_notify.sh
 tools/tests/test_trophy_notice.sh
 tools/tests/test_trophy_list.sh
+tools/tests/test_rl_bridge.sh
 tools/tests/test_view_flat.sh
 tools/tests/test_prof_trigger.sh
 tools/tests/test_route_rebase.sh

@@ -1,7 +1,8 @@
 // Trophies on the port's side (docs/dev/trophies.md). The HLE (sceNpTrophy.c, patch 5002) calls on_notice on the
 // game's unlock thread (func_001D2E48) for each new unlock; the notice and the count so far are copied into a fixed
 // ring under a mutex, with no allocation on that thread, and kz_trophies_pump takes it on the frame loop and hands
-// it to the notice (trophy_notice.cpp).
+// it to the notice (trophy_notice.cpp) and to RecompLauncher (rl_bridge.cpp).
+#include "rl_bridge.h"
 #include "trophies.h"
 #include "trophy_list.h"
 
@@ -75,6 +76,7 @@ extern "C" void kz_trophies_register(void)
     kz_notice_init();
     if (const char* why = blocking_option()) {
         ps3_trophy_set_blocked(1);
+        kz_rl_set_casual("debug");
         std::fprintf(stderr, "[trophy] %s is set: trophies are not stored this session\n", why);
     }
 }
@@ -92,9 +94,13 @@ extern "C" void kz_trophies_pump(void)
     static int s_count = -1;
     const int count = ps3_trophy_count();
     if (n || count != s_count) { s_count = count; s_gen++; }
+    int ids[kRing];
+    for (unsigned i = 0; i < n; i++) ids[i] = got[i].id;
+    kz_rl_frame(ids, n);
     for (unsigned i = 0; i < n; i++) {
         std::fprintf(stderr, "[trophy] unlocked %d %s (%s)\n", got[i].id, got[i].name, grade_name(got[i].grade));
-        kz_notice_add(got[i].id, got[i].grade, got[i].name, got[i].have, got[i].total);
+        // RecompLauncher shows its own toast (its "quiet"): no card and no sound of ours
+        if (!kz_rl_quiet()) kz_notice_add(got[i].id, got[i].grade, got[i].name, got[i].have, got[i].total);
     }
 }
 

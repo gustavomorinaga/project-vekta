@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 27 Nov 2026 08:44:54 -0300
+Subject: [PATCH] cellSaveData: ps3_savedata_loads, a count of loads that read
+ a save
+
+A host reporting achievements to a launcher has to say when a save was
+loaded: RecompLauncher's Recomp Achievements counts unlocks in a burst right
+after a load as Casual, not Ranked. The HLE had no way to tell the host.
+
+ps3_savedata_loads() counts the loads that reached "LOAD complete" in
+savedata_execute_run, so every List, Fixed and Auto load entry is covered.
+A first boot with no profile (the stat callback reports no data, the call
+returns CBRESULT) is not counted. The host compares the count between
+frames. Killzone HD loads its profile (AutoLoad2, BCUS98116) once at boot.
+---
+ libs/system/cellSaveData.c | 5 +++++
+ libs/system/cellSaveData.h | 3 +++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/libs/system/cellSaveData.c b/libs/system/cellSaveData.c
+index d73c8e5..e4adc97 100644
+--- a/libs/system/cellSaveData.c
++++ b/libs/system/cellSaveData.c
+@@ -846,6 +846,10 @@ static void read_param_sfo(const char* save_path, CellSaveDataSystemFileParam* p
+  * waits for this to reach 0 so it never cuts a save file short. */
+ static volatile int s_savedata_busy;
+ int ps3_savedata_busy(void) { return __atomic_load_n(&s_savedata_busy, __ATOMIC_ACQUIRE); }
++/* Loads that read a save (not a new profile's), for a host that reports them
++ * (an achievements launcher counts unlocks right after a load as Casual). */
++static volatile unsigned s_savedata_loads;
++unsigned ps3_savedata_loads(void) { return __atomic_load_n(&s_savedata_loads, __ATOMIC_ACQUIRE); }
+ /* Quitting while a save is half written (its files, PARAM.SFO and PARAM.PFD
+  * are separate writes) would leave a save the title may refuse. A host that
+  * quits calls cellSaveData_quiesce first: operations already running finish,
+@@ -1031,6 +1035,7 @@ static s32 savedata_execute_run(const char* dirName, int is_save,
+ 
+     printf("[cellSaveData] %s complete for '%s'\n",
+            is_save ? "SAVE" : "LOAD", dirName);
++    if (!is_save) __atomic_add_fetch(&s_savedata_loads, 1, __ATOMIC_ACQ_REL);
+     return CELL_OK;
+ }
+ 
+diff --git a/libs/system/cellSaveData.h b/libs/system/cellSaveData.h
+index 53bbaf8..aa6dd54 100644
+--- a/libs/system/cellSaveData.h
++++ b/libs/system/cellSaveData.h
+@@ -354,6 +354,9 @@ s32 cellSaveDataUserAutoLoad(u32 version, u32 userId, const char* dirName,
+                              CellSaveDataStatCallback funcStat,
+                              CellSaveDataFileCallback funcFile, u32 container);
+ 
++/* Host side: how many loads have read an existing save so far (0 at boot). */
++unsigned ps3_savedata_loads(void);
++
+ #ifdef __cplusplus
+ }
+ #endif

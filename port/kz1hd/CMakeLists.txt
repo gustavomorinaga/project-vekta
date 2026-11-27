@@ -256,6 +256,20 @@ set_source_files_properties(trophy_notice.cpp PROPERTIES
     COMPILE_OPTIONS "-Wno-c23-extensions"
     OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/Rajdhani-Bold.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/Rajdhani-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/trophy.mp3")
 
+# ENHANCEMENT: the trophies reported to RecompLauncher (rl_bridge.cpp; docs/dev/trophies.md, stage 4) with the
+# Recomp Achievements SDK in third_party/rl_achievements (unchanged, its own licence: licenses/). Only when the
+# launcher starts the game (RL_SESSION); KZ_RL_ACHIEVEMENTS=OFF builds without it. The SDK's include directory and
+# the define are on rl_bridge.cpp alone, and it is linked with LINK_ONLY, so no other source's command changes.
+option(KZ_RL_ACHIEVEMENTS "Report trophies to RecompLauncher (third_party/rl_achievements)" ON)
+if(KZ_RL_ACHIEVEMENTS)
+    set(_rl "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/rl_achievements/sdk")
+    add_subdirectory("${_rl}" rl_achievements EXCLUDE_FROM_ALL)
+    set_source_files_properties(rl_bridge.cpp PROPERTIES
+        INCLUDE_DIRECTORIES "${_rl}/include;${PS3RECOMP_DIR}/libs/network;${PS3RECOMP_DIR}/libs/system"
+        COMPILE_DEFINITIONS KZ_RL_ACH=1)
+endif()
+message(STATUS "RecompLauncher achievements: ${KZ_RL_ACHIEVEMENTS}")
+
 add_executable(${PROJECT_NAME}
     cpu_check.c     # first: the CPU check (constructor 101), compiled for baseline x86-64
     main.cpp
@@ -266,6 +280,7 @@ add_executable(${PROJECT_NAME}
     route.cpp
     trophies.cpp    # the HLE's unlock notices, queued for the frame loop (docs/dev/trophies.md)
     trophy_notice.cpp   # the notice on screen and its sound
+    rl_bridge.cpp   # the trophies reported to RecompLauncher (Recomp Achievements)
     glyphs.cpp
     sail.cpp
     prof.cpp
@@ -350,6 +365,9 @@ elseif(NOT FFMPEG_FOUND)
     message(FATAL_ERROR "FFmpeg headers not found: pass -DKZ_FFMPEG_INCLUDE_DIR=<dir holding libavcodec/avcodec.h>")
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_DL_LIBS})
+if(KZ_RL_ACHIEVEMENTS)
+    target_link_libraries(${PROJECT_NAME} PRIVATE $<LINK_ONLY:rl_achievements>)
+endif()
 # zlib: the native FIOS inflate (native_ppu/fios_inflate.cpp).
 find_package(ZLIB REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE ZLIB::ZLIB)
