@@ -13,6 +13,9 @@ developers are linked.
   the game's main thread about 95 % busy from 165 up; the game clock kept real time within 0.1 % at every limit.
   Mouse look turns as at 60 at every limit (0.04365 degrees per count; flicks and slow sweeps injected in Level 1,
   within 1.7 % at 60, 144, 240 and Unlimited).
+  A heavier place runs lower: in Level 1's opening battle on the same PC (2026-11-27, scripted input, no window)
+  the 144 limit ran at 115 to 123 fps (the 0.7.0 build: 118 to 120 in the same run), 240 at 121 and Unlimited at 120,
+  with the game clock exact at each.
   Reports of how they run on your machine are welcome. The default 60 is not affected.
 - **First-person weapon "ghosting" in the 144 Hz mode.** In busy places (the concrete yard with the Helghast dropships
   in chapter 9, "Hidden Pasts", identified by the maintainer on 2026-11-12), on rare frames the whole first-person
@@ -30,7 +33,8 @@ developers are linked.
   default or the frame clock wait. Cause not known yet.
 - **Uneven frames at the 30 fps limit (2026-11-26).** In Level 1 with the frame-rate limit at 30, frames are shown
   17, 33 or 50 ms apart instead of an even 33 (p99 50.0 ms, 1 % low 20 fps, V-Sync off, headless; the same on the
-  release branch before and after the 60 fps latency work). 60 fps is even. Workaround: play at 60.
+  release branch before and after the 60 fps latency work; again on 2026-11-27, where about a quarter of the
+  2-second stretches had a 50 ms frame). 60 fps is even. Workaround: play at 60.
 - **One crash when a rocket exploded in Level 11 (2026-11-11).** At 144 Hz in `11.SDDockingBay` the game closed
   once when a rocket launcher shot exploded: an SPU job's host stack was 8 bytes off alignment. Not seen again in two
   full plays of the chapter. If it happens, keep `play.log` and the core and play on with the stack tripwire build
