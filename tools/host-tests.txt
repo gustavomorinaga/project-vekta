@@ -101,3 +101,4 @@ tools/tests/test_crash_report.sh
 tools/tests/test_pad_test_input.sh
 tools/tests/test_pad_assign.sh
 tools/tests/test_temporal_hold.sh
+tools/tests/test_vk_disk_cache.sh

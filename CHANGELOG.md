@@ -65,6 +65,9 @@ program and folder that build it. Until a release that calls itself playable
   stays within its weight budget as a release grows.
 
 ### Fixed
+- Windows: the shader and pipeline caches were off, so every run compiled the game's shaders again and stuttered
+  where they were first met. They now live in the install's `work\vk-cache` (removed with the game); a damaged
+  `pipelines.bin` is ignored instead of handed to the graphics driver (patch 2099).
 - Menus with the mouse (#180): hovering skips greyed-out items and selects a submenu's item at once, so the
   highlight keeps up with the pointer and a click opens Extras > Trophies.
 - Mouse yaw turns by the same amount whatever the frame times: the game turns at the mean of a frame's turn rate and

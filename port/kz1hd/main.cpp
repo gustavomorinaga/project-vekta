@@ -693,6 +693,12 @@ static void set_edat_cache()
     edat_set_cache_dir(s_edat_cache.c_str());
     const char* p = getenv("KZ_PREPARE_DATA");
     if (p && p[0] == '1') edat_set_ready_hook(edat_ready);
+#ifdef _WIN32
+    /* Windows sets no HOME: the Vulkan shader and pipeline caches (patches 2010, 2099) go beside edat-cache, in the
+     * port's folder (work/vk-cache), which the uninstaller removes. $PS3RECOMP_VK_CACHE wins; Linux keeps
+     * ~/.cache/ps3recomp-vk. */
+    setenv("PS3RECOMP_VK_CACHE", (std::string(ppu_vfs_root) + "/../vk-cache").c_str(), 0);
+#endif
 }
 
 /* ---------------------------------------------------------------------------

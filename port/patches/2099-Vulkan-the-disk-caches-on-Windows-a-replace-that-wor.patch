@@ -1,0 +1,172 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 27 Nov 2026 11:35:04 -0300
+Subject: [PATCH] Vulkan: the disk caches on Windows, a replace that works
+ there, pipelines.bin checked
+
+Symptom: on Windows the SPIR-V files, pipelines.bin, the pipeline list built ahead (2044) and the MLAA marker
+(2087) were all off. Two Windows testers' logs have no "shader cache: translator" line, and every program first met
+cost its translation and driver compile again on each run.
+
+Cause: vk_cache_dir took its folder from $PS3RECOMP_VK_CACHE, else $HOME/.cache; Windows sets no HOME, so with
+neither the caches were off. Had a folder been set, vk_cache_write's rename() fails on Windows when the target
+exists, so every save of pipelines.bin after the first was lost. And pipelines.bin went to the driver unchecked;
+the driver is meant to refuse another device's data, but a torn or damaged blob has crashed drivers in other ports.
+
+Fix (rsx_vk_disk_cache.h, plain C for a host test): the folder is $PS3RECOMP_VK_CACHE ("0" off), else on Windows
+%LOCALAPPDATA%\ps3recomp-vk, else $HOME/.cache/ps3recomp-vk as before; the backend logs the folder or that the
+caches are off. A finished file replaces the old one with MoveFileEx(MOVEFILE_REPLACE_EXISTING) on Windows, rename()
+elsewhere. pipelines.bin reaches the driver only when its VkPipelineCacheHeaderVersionOne (length, version 1,
+vendor, device, cache UUID) is this device's; otherwise the cache starts empty and a line says so. Written from the
+Vulkan specification's header layout. Test: tools/tests/test_vk_disk_cache.sh (Linux) and the same C test in
+tools/wine-host-tests.sh (Windows, under Wine). Upstream candidate.
+---
+ libs/video/rsx_vk_disk_cache.h  | 64 +++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.c | 34 ++++++++++++------
+ 2 files changed, 87 insertions(+), 11 deletions(-)
+ create mode 100644 libs/video/rsx_vk_disk_cache.h
+
+diff --git a/libs/video/rsx_vk_disk_cache.h b/libs/video/rsx_vk_disk_cache.h
+new file mode 100644
+index 0000000..536af82
+--- /dev/null
++++ b/libs/video/rsx_vk_disk_cache.h
+@@ -0,0 +1,64 @@
++/* The Vulkan backend's disk caches (SPIR-V files, pipelines.bin): where they
++ * live, how a file is replaced, and whether a pipelines.bin may be handed to
++ * the driver. Plain C, no Vulkan types, so a host test can include it. */
++#ifndef RSX_VK_DISK_CACHE_H
++#define RSX_VK_DISK_CACHE_H
++
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++#ifdef _WIN32
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <windows.h>
++#endif
++
++/* The cache folder from $PS3RECOMP_VK_CACHE (`env`), else, on Windows (`win`),
++ * %LOCALAPPDATA%\ps3recomp-vk, else $HOME/.cache/ps3recomp-vk. `parent` gets
++ * the folder above it to create first ("" when there is none to make). Returns
++ * 0 when the cache is off ("0", or no folder at all). Windows sets no HOME, so
++ * before LOCALAPPDATA the caches were off there. */
++static inline int rsx_vk_cache_dir_pick(char* dir, size_t n, char* parent, size_t pn, int win,
++                                        const char* env, const char* home, const char* localappdata)
++{
++    dir[0] = 0; parent[0] = 0;
++    if (env && strcmp(env, "0") == 0) return 0;
++    if (env && *env) snprintf(dir, n, "%s", env);
++    else if (win && localappdata && *localappdata) snprintf(dir, n, "%s/ps3recomp-vk", localappdata);
++    else if (home && *home) {
++        snprintf(parent, pn, "%s/.cache", home);
++        snprintf(dir, n, "%s/.cache/ps3recomp-vk", home);
++    }
++    return dir[0] != 0;
++}
++
++/* `tmp` put in place of `path`. rename() fails on Windows when `path` exists,
++ * so every save after the first was lost there; MoveFileEx replaces it. */
++static inline int rsx_vk_replace_file(const char* tmp, const char* path)
++{
++#ifdef _WIN32
++    return MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) ? 0 : -1;
++#else
++    return rename(tmp, path);
++#endif
++}
++
++/* A pipelines.bin is handed to the driver only when its header
++ * (VkPipelineCacheHeaderVersionOne: length, version 1, vendor, device, the
++ * 16-byte cache UUID, all little-endian) is this device's. A file from another
++ * GPU or driver, or a torn or damaged one, starts the cache empty instead: some
++ * drivers crash on such data rather than refusing it. */
++static inline int rsx_vk_pcache_header_ok(const void* data, size_t size, uint32_t vendor, uint32_t device,
++                                          const uint8_t uuid[16])
++{
++    const uint8_t* p = (const uint8_t*)data;
++    if (!p || size < 32) return 0;
++    const uint32_t len = p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24;
++    const uint32_t ver = p[4] | p[5] << 8 | p[6] << 16 | (uint32_t)p[7] << 24;
++    const uint32_t ven = p[8] | p[9] << 8 | p[10] << 16 | (uint32_t)p[11] << 24;
++    const uint32_t dev = p[12] | p[13] << 8 | p[14] << 16 | (uint32_t)p[15] << 24;
++    return len >= 32 && len <= size && ver == 1 && ven == vendor && dev == device && memcmp(p + 16, uuid, 16) == 0;
++}
++
++#endif
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index a5b7ee3..61adb8c 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -74,6 +74,7 @@ static float vk_forced_aspect(void);   /* PS3RECOMP_VK_ASPECT, at vk_fit_scale *
+ #include "rsx_vk_driver.h"   /* the GPU and driver lines at start (2082) */
+ #include "rsx_vk_breadcrumbs.h"   /* the last things given to the GPU (2084) */
+ #include "rsx_vk_gpu_wait.h"   /* fence waits in steps that say when they take long (2085) */
++#include "rsx_vk_disk_cache.h"   /* the caches' folder, file replace, pipelines.bin header (2099) */
+ /* FSR 1's constants, computed on the CPU (vulkan/ffx, MIT). */
+ #include <math.h>
+ #include <stdlib.h>
+@@ -6212,7 +6213,8 @@ static VkStencilOpState vk_gcm_stencil_face(u32 func, u32 fail, u32 zfail, u32 z
+  * translation and a driver pipeline compile: 70-250 ms hitches in Killzone's
+  * Level 1. SPIR-V is kept per program source, and the driver's compiled
+  * pipelines in one VkPipelineCache blob, under $PS3RECOMP_VK_CACHE (default
+- * ~/.cache/ps3recomp-vk; "0" turns both off). The keys hold the translator's
++ * %LOCALAPPDATA%\ps3recomp-vk on Windows, ~/.cache/ps3recomp-vk elsewhere;
++ * "0" turns both off; rsx_vk_disk_cache.h). The keys hold the translator's
+  * id (rsx_vk_cache_key.h), so a build with another translator or glslang
+  * never reads an older build's SPIR-V; bump VK_CACHE_VERSION when the SPIR-V
+  * this file makes of the same translation changes. */
+@@ -6232,16 +6234,18 @@ static const char* vk_cache_dir(void)
+     static int init;
+     if (!init) {
+         init = 1;
+-        const char* e = getenv("PS3RECOMP_VK_CACHE");
+-        const char* home = getenv("HOME");
+-        if (e && strcmp(e, "0") == 0) return NULL;
+-        if (e && *e) snprintf(dir, sizeof dir, "%s", e);
+-        else if (home) {
+-            snprintf(dir, sizeof dir, "%s/.cache", home);
++        char parent[512];
++#ifdef _WIN32
++        const int win = 1;
++#else
++        const int win = 0;
++#endif
++        if (rsx_vk_cache_dir_pick(dir, sizeof dir, parent, sizeof parent, win, getenv("PS3RECOMP_VK_CACHE"),
++                                  getenv("HOME"), getenv("LOCALAPPDATA"))) {
++            if (parent[0]) vk_mkdir(parent);
+             vk_mkdir(dir);
+-            snprintf(dir, sizeof dir, "%s/.cache/ps3recomp-vk", home);
+-        }
+-        if (dir[0]) vk_mkdir(dir);
++            VK_LOG("shader cache: %s\n", dir);
++        } else VK_LOG("shader cache: off (PS3RECOMP_VK_CACHE=0, or no folder for it)\n");
+     }
+     return dir[0] ? dir : NULL;
+ }
+@@ -6256,7 +6260,7 @@ static void vk_cache_write(const char* path, const void* data, size_t size)
+     if (!f) return;
+     const int ok = fwrite(data, 1, size, f) == size;
+     fclose(f);
+-    if (ok) rename(tmp, path); else remove(tmp);
++    if (!ok || rsx_vk_replace_file(tmp, path) != 0) remove(tmp);
+ }
+ 
+ static VkPipelineCache s_vk_pcache;
+@@ -6300,6 +6304,14 @@ static VkPipelineCache vk_pipeline_cache(void)
+         if (n > 0 && (data = malloc((size_t)n)) && fread(data, 1, (size_t)n, f) == (size_t)n) size = (size_t)n;
+         fclose(f);
+     }
++    if (size) {
++        VkPhysicalDeviceProperties dp;
++        pvkGetPhysicalDeviceProperties(s_vk.phys, &dp);
++        if (!rsx_vk_pcache_header_ok(data, size, dp.vendorID, dp.deviceID, dp.pipelineCacheUUID)) {
++            VK_LOG("shader cache: pipelines.bin is another GPU's or damaged (%llu bytes): starting empty\n", (unsigned long long)size);
++            size = 0;
++        }
++    }
+     VkPipelineCacheCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+                                      .initialDataSize = size, .pInitialData = size ? data : NULL };
+     /* A blob from another driver or device fails the driver's header check:
