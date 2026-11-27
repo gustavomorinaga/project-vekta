@@ -16,7 +16,7 @@ ps3	Graphics	HUD, menus, fonts	as shipped	works
 ps3	Sound	Music, effects, dialogue	MultiStream on the SPUs, MP3 streams	works		decoded by minimp3 in place of the firmware's decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md)	Sound
 ps3	Sound	Surround	the console's output setting	works	: stereo, 5.1, 7.1	per channel on Linux; 6 and 8 channels through WASAPI under Wine	
 ps3	Languages	Voice, subtitles, menus	English, French, Spanish (by console language)	works	, chosen on the PC page		
-ps3	Trophies	Trophy unlocks	PSN trophies	partial	: unlocked and logged locally with names, grades and platinum, with an on-screen notice and its sound (the port's own) and a Trophies page in the pause menu and in Extras	`gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse)	Trophies
+ps3	Trophies	Trophy unlocks	PSN trophies	works	 on Linux: unlocked and kept locally with names, grades and platinum, with an on-screen notice and its sound (the port's own), a Trophies page in the pause menu and in Extras, and RecompLauncher's own toast in their place when RecompLauncher starts the game; not yet run on Windows	`gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse); RecompLauncher's channel 2026-11-27 with a stand-in launcher (a live unlock through RecompLauncher itself not yet run); [KNOWN_ISSUES.md](KNOWN_ISSUES.md)	Trophies
 ps3	Multiplayer	"One / Two Player" in the menu	local	not yet	 checked		
 ps3	Online	PSN	sign-in, trophies sync	n/a		no network is used	
 pc		Display mode: window, borderless, fullscreen; Alt+Enter		window		`display`; `KZ_FULLSCREEN=1` in `tools/play.sh`	Window, borderless or fullscreen; any resolution; internal resolution scale
@@ -44,7 +44,8 @@ pc		Statistics overlay (MangoHUD, Linux)		off		`overlay = mangohud`, `KZ_MANGOHU
 pc		Quit Game in the Options sub-menu; closing the window waits for a save in progress		on			
 pc		The game's own Debug Options in the pause menu (God Mode, Next Level, ...)		off		`KZ_DEBUG_MENU=1`	
 pc		All 11 levels selectable in the campaign menu		off		`KZ_UNLOCK_LEVELS=1`	
-pc		Local trophy log from the game's own trophy set		on		needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`)	Local trophies, read from the game's own trophy set
+pc		Local trophies from the game's own trophy set: a notice with its sound, a Trophies page		on		`trophy_notices`, `trophy_sound`; needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`)	Local trophies, read from the game's own trophy set
+pc		Trophies reported to RecompLauncher when it starts the game		on		`KZ_RL_ACH=0` turns it off ([PRIVACY.md](PRIVACY.md))	
 port		Linux x64 build		works		built and played on the maintainer's machine; [BUILDING.md](BUILDING.md)	Linux build
 port		Windows x64 exe (cross-built on Linux)		works	: runs under Wine, Proton and on Windows; the whole campaign played there	`tools/wine-test.sh` passes under Wine and GE-Proton 11 (2026-10-30); [KNOWN_ISSUES.md](KNOWN_ISSUES.md); the whole campaign played on a real Windows (the maintainer, reported 2026-11-16)	Windows
 port		Frame rate		works	: a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps	Level 1 and Level 7 on Linux, RTX 3070 Ti; [dev/performance.md](dev/performance.md)	Frame rate

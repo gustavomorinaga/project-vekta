@@ -129,7 +129,10 @@ and what is left: [dev/performance.md](dev/performance.md). Recommended order:
 - [x] Saves: the real title (NPUA80856) from PARAM.SFO; the profile loads and Continue returns to the checkpoint
 - [x] A save made at a checkpoint checked end to end (the maintainer, 2026-11-17)
 - [x] Trophies as a local log: names, grades and platinum from the installed game's `TROPHY.TRP`, one line per trophy
-      in `gamedata/trophies/NPWR03819.log` (after Project Pyrrhus's patch 5004). An on-screen notice is missing
+      in `gamedata/trophies/NPWR03819.log` (after Project Pyrrhus's patch 5004)
+- [x] Trophies in the game: an on-screen notice with its sound, a Trophies page in the pause menu and in Extras,
+      and RecompLauncher's achievements (0.8.0)
+- [ ] Trophies kept in RPCS3's own format too, and an import of the trophies earned in RPCS3 (after 0.8.0)
 - [x] Full campaign on Windows (the maintainer, 2026-11-16)
 
 ## PC: Killzone HD

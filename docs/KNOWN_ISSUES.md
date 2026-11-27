@@ -61,7 +61,13 @@ are linked.
 - **Film grain fades out in chapter 1's fourth part** (`1.HQGrounds`, 2026-11-16). Not a fault of the port: the game
   takes its grain from 0.15 to 0 in about 30 seconds there, the same in RPCS3, so the PC page's Film Grain has nothing
   to scale. The glow likewise shows only where the game draws its source (some spots of Level 11).
-- **No on-screen trophy notice.** Trophies unlock and are logged to `gamedata/trophies/NPWR03819.log`.
+- **Trophies (2026-11-27).** The notice, its sound and the Trophies page were checked on Linux only, not yet on
+  Windows, and no trophy has yet been earned live with RecompLauncher itself (its channel was checked with a stand-in
+  launcher). Without the game's trophy set (`TROPDIR` in the game folder, [GETTING-FILES.md](GETTING-FILES.md)),
+  nothing is stored and the Trophies page says the set was not found. With a debug option or scripted input on,
+  trophies are not stored, by design. The trophy for a Battlefields win in split screen needs Game > Battlefields >
+  Two Players. The Trophies page shows no trophy pictures (the notice does), and importing the trophies earned in
+  RPCS3 is not there yet ([ROADMAP.md](ROADMAP.md)).
 
 ## PC
 

@@ -46,7 +46,7 @@
 <ol>
 <li><a href="#top" data-detail="Killzone HD: Unofficial PC Port (static recompilation)"><span class="mi-n">01</span><span class="mi-l">Home</span></a></li>
 <li><a href="#shots" data-detail="19 screenshots of the port running the developer&#x27;s own copy of the game."><span class="mi-n">02</span><span class="mi-l">Screens</span></a></li>
-<li><a href="#status" data-detail="Status: Playable. 19 game features and 26 PC features, from the project&#x27;s records."><span class="mi-n">03</span><span class="mi-l">Status</span></a></li>
+<li><a href="#status" data-detail="Status: Playable. 19 game features and 27 PC features, from the project&#x27;s records."><span class="mi-n">03</span><span class="mi-l">Status</span></a></li>
 <li><a href="#news" data-detail="The newest release notes, newest first."><span class="mi-n">04</span><span class="mi-l">News</span></a></li>
 <li><a href="#progress" data-detail="The newest changelog items and the objectives still open. About 65 % of Killzone HD is done."><span class="mi-n">05</span><span class="mi-l">Progress</span></a></li>
 <li><a href="#install" data-detail="The setup program or the release folders: they check your own copy and build the port on your PC."><span class="mi-n">06</span><span class="mi-l">Install</span></a></li>
@@ -96,9 +96,9 @@
 </section>
 <section id="status" class="sec" aria-labelledby="h-status">
 <h2 id="h-status">Status</h2>
-<p class="lede">Status: Playable. 19 game features and 26 PC features, from the project&#x27;s records.</p>
+<p class="lede">Status: Playable. 19 game features and 27 PC features, from the project&#x27;s records.</p>
 <h3>Status: Playable</h3>
-<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 26 PC features</p>
+<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 27 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
@@ -107,7 +107,7 @@
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Movies</b><span class="blurb">30 movies; runs without FFmpeg skip them</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Saves</b><span class="blurb">Continue returns to the checkpoint</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Sound</b><span class="blurb">decoded by minimp3 in place of the firmware&#x27;s decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md)</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
-<li class="row"><span class="thumb tb-part" aria-hidden="true">WIP</span><div class="rt"><b>Trophies</b><span class="blurb">unlocked and logged locally with names, grades and platinum, with an on-screen notice and its sound (the port&#x27;s own) and a Trophies page in the pause menu and in Extras</span></div><div class="stats"><span class="st st-part">Partial</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Trophies</b><span class="blurb"><code>gamedata/trophies/NPWR03819.log</code>; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse); RecompLauncher&#x27;s channel 2026-11-27 with a stand-in launcher (a live unlock through RecompLauncher itself not yet run); <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a></span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Linux build</b><span class="blurb">built and played on the maintainer&#x27;s machine; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a></span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the whole campaign played there</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Frame rate</b><span class="blurb">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
@@ -115,8 +115,8 @@
 </ul>
 <h4>The PS3 game, feature by feature</h4>
 <ul class="meters">
-<li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span><b>16</b></li>
-<li class="m-part"><span class="ml">Partial</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
+<li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span><b>17</b></li>
+<li class="m-part"><span class="ml">Partial</span><span class="bar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>0</b></li>
 <li class="m-no"><span class="ml">Not yet</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
 <li class="m-na"><span class="ml">Not applicable</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
 </ul>
@@ -190,7 +190,7 @@
 <caption class="vh">Trophies: the PS3 game feature by feature</caption>
 <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Feature</th><th role="columnheader" scope="col">On the PS3</th><th role="columnheader" scope="col">In the port</th><th role="columnheader" scope="col">State</th></tr></thead>
 <tbody role="rowgroup">
-<tr role="row"><th role="rowheader" scope="row">Trophy unlocks</th><td role="cell" data-label="On the PS3">PSN trophies</td><td role="cell" data-label="In the port">unlocked and logged locally with names, grades and platinum, with an on-screen notice and its sound (the port&#x27;s own) and a Trophies page in the pause menu and in Extras</td><td role="cell" data-label="State"><span class="st st-part">Partial</span></td></tr>
+<tr role="row"><th role="rowheader" scope="row">Trophy unlocks</th><td role="cell" data-label="On the PS3">PSN trophies</td><td role="cell" data-label="In the port">on Linux: unlocked and kept locally with names, grades and platinum, with an on-screen notice and its sound (the port&#x27;s own), a Trophies page in the pause menu and in Extras, and RecompLauncher&#x27;s own toast in their place when RecompLauncher starts the game; not yet run on Windows</td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Multiplayer</summary>
@@ -210,8 +210,8 @@
 </tbody></table></div>
 </details>
 <h4>What the port adds</h4>
-<p>26 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
-<details><summary>All 26 PC features</summary>
+<p>27 PC features available now, on a <strong>PC</strong> page inside the game's own Options and Pause menus. Changes to how the game plays stay optional.</p>
+<details><summary>All 27 PC features</summary>
 <div class="tw"><table role="table">
 <caption class="vh">The PC features</caption>
 <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Feature</th><th role="columnheader" scope="col">Default</th><th role="columnheader" scope="col">Where it is set</th></tr></thead>
@@ -241,7 +241,8 @@
 <tr role="row"><th role="rowheader" scope="row">Quit Game in the Options sub-menu; closing the window waits for a save in progress</th><td role="cell" data-label="Default">on</td><td role="cell" data-label="Where it is set"></td></tr>
 <tr role="row"><th role="rowheader" scope="row">The game&#x27;s own Debug Options in the pause menu (God Mode, Next Level, ...)</th><td role="cell" data-label="Default">off</td><td role="cell" data-label="Where it is set"><code>KZ_DEBUG_MENU=1</code></td></tr>
 <tr role="row"><th role="rowheader" scope="row">All 11 levels selectable in the campaign menu</th><td role="cell" data-label="Default">off</td><td role="cell" data-label="Where it is set"><code>KZ_UNLOCK_LEVELS=1</code></td></tr>
-<tr role="row"><th role="rowheader" scope="row">Local trophy log from the game&#x27;s own trophy set</th><td role="cell" data-label="Default">on</td><td role="cell" data-label="Where it is set">needs <code>TROPDIR</code> in the run folder (<code>tools/setup-vfs.sh</code>)</td></tr>
+<tr role="row"><th role="rowheader" scope="row">Local trophies from the game&#x27;s own trophy set: a notice with its sound, a Trophies page</th><td role="cell" data-label="Default">on</td><td role="cell" data-label="Where it is set"><code>trophy_notices</code>, <code>trophy_sound</code>; needs <code>TROPDIR</code> in the run folder (<code>tools/setup-vfs.sh</code>)</td></tr>
+<tr role="row"><th role="rowheader" scope="row">Trophies reported to RecompLauncher when it starts the game</th><td role="cell" data-label="Default">on</td><td role="cell" data-label="Where it is set"><code>KZ_RL_ACH=0</code> turns it off (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md">PRIVACY.md</a>)</td></tr>
 </tbody></table></div>
 </details>
 <details><summary>The port itself</summary>
@@ -264,16 +265,16 @@
 <h3>Unreleased</h3>
 <p class="meta">not released yet</p>
 <ul class="rlist">
-<li><span class="kind">Added</span>A notice when you earn a trophy: a card slides in at the top right with the trophy&#x27;s own picture from your game&#x27;s trophy set, its name, its grade and how many of the 59 you have, with a short sound made for Project Vekta. Up to three show at once, the others wait their turn, and the ones below slide up when one leaves; the card is slightly see-through. It shows during loading screens, movies and the pause menu too, and with every upscaler. Two new rows on the PC page, &quot;Trophy Notices&quot; and &quot;Trophy Sound&quot; (on by default; the sound row is greyed out while notices are off). No notice when trophies are not stored (debug options or scripted input). The words on the card follow the game&#x27;s language (English, French, Spanish, German, Italian, Dutch).</li>
-<li><span class="kind">Added</span>A Trophies page in the pause menu and in Extras on the main menu: all 59 trophies in the trophy set&#x27;s order with their grade and name on the left and the day you earned it (or &quot;Locked&quot;) at the row&#x27;s right end; under the list, the selected trophy&#x27;s description; how many you have in the page&#x27;s title. The rows only scroll. Pad, keyboard and mouse work as on the PC page; names and words follow the game&#x27;s language. Without the trophy set, the page says so.</li>
-<li><span class="kind">Added</span>RecompLauncher achievements: started from RecompLauncher, the game reports its trophies to the launcher (Recomp Achievements), which shows its own unlock toast instead of the port&#x27;s card and sound. The trophies you already have are reported too; with a debug option or scripted input on, the session counts as Casual. Nothing changes when the game is started any other way, and the game itself goes online for none of it (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md">docs/PRIVACY.md</a>).</li>
+<li><span class="kind">Added</span>Trophies in the game (#180, #181): when you earn one, a card slides in at the top right with the trophy&#x27;s picture from your game&#x27;s trophy set, its name, its grade and how many of the 59 you have, with a short sound made for Project Vekta (&quot;Trophy Notices&quot; and &quot;Trophy Sound&quot; on the PC page). A Trophies page in the pause menu and in Extras lists all 59 with the day you earned each; without the trophy set, it says so. The words follow the game&#x27;s language. Started from RecompLauncher, the game reports its trophies to the launcher (Recomp Achievements), which shows its own toast instead of the card; the game goes online for none of it (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md">docs/PRIVACY.md</a>).</li>
 <li><span class="kind">Added</span>More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (<code>fps_limit = 0</code>, a 1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the default (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">docs/KNOWN_ISSUES.md</a>).</li>
 <li><span class="kind">Added</span>RecompLauncher: the game&#x27;s page lists the PC settings (display, picture, upscaling, mouse, sound and language), read from and written to <code>kz1hd_pc.ini</code>, greyed out where the game&#x27;s PC page greys them; and a PlayStation Store package or a decrypted EBOOT.elf that matches the US copy is shown as verified.</li>
 <li><span class="kind">Added</span>RecompLauncher: the game box also takes the European edition, the folder RPCS3 installed it in (NPEA00418) or your European disc copied to the PC (BCES-01743), and a decrypted EBOOT.elf of the European edition is shown as verified. The release notes name the European edition too.</li>
 <li><span class="kind">Added</span>The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game folder, lifts it with its own addresses and plays it in the language the system asks for (its archive has English, French, German, Italian, Spanish and Dutch), with its saves in their own folder. Install it in your RPCS3 with its licence and choose &quot;Use my RPCS3 install&quot;.</li>
 <li><span class="kind">Added</span>The European disc of Killzone HD (BCES-01743): give a copy of the disc&#x27;s folder to <code>--disc FOLDER</code> (or &quot;From my Killzone Trilogy disc&quot; in the setup). Its files are the European edition&#x27;s; the official RPCS3 only decrypts a copy of its <code>EBOOT.BIN</code>, and the archive is read where it is (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">docs/GETTING-FILES.md</a>).</li>
+<li><span class="kind">Added</span>Two players on one PC (Game &gt; Battlefields &gt; Two Players, split screen): &quot;Two Players&quot; is now enabled with a single controller, whatever the Controllers setting. With one controller, player 1 plays on the keyboard and mouse and player 2 on the controller; with two or more, the first controller and the keyboard and mouse are player 1 and the second controller is player 2. The mouse turns only player 1&#x27;s view (it used to turn both), and player 1&#x27;s rumble no longer shakes player 2&#x27;s controller. Each view&#x27;s HUD follows the HUD Size and HUD Position settings in its own half of the screen, on a 16:9 display and a wider one, and is one player&#x27;s HUD at half its size: the health and ammo panels keep their shape (the PS3 game squashes them in split screen), the ammo count sits centred on its bar, and the HUD&#x27;s text (timer, scores, ammo count, prompts) keeps its shape too. Player 2&#x27;s HUD has the same margins as player 1&#x27;s (the PS3 game draws it 20 pixels higher, so its timer and scores touched the split line). With FSR 3 or DLSS on (Temporal), split screen shows both views: the temporal upscaler rests while two players play, and the scene is drawn at the upscaler&#x27;s render size and stretched to the screen as with a lower Resolution Scale (patch 2092). One-player games are unchanged.</li>
+<li><span class="kind">Changed</span>Trophies are kept more safely (#180): the trophy file is written in full to a temporary file and then put in place, so a crash or a power cut while saving keeps the old file. With a debug option that changes the game or input from a control script, trophies are not stored, and the log says so (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/trophies.md#debug-options-that-block-trophies">docs/dev/trophies.md</a>).</li>
 </ul>
-<p class="small">And 26 more items in <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
+<p class="small">And 25 more items in <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </article>
 <article class="rel">
 <h3>0.7.0</h3>
@@ -313,14 +314,14 @@
 <section id="changelog" class="promo term">
 <h3>Changelog</h3>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> A notice when you earn a trophy: a card slides in at the top right with the trophy&#x27;s own picture from your game&#x27;s...</span></li>
-<li><time>next</time><span><b>Unreleased</b> A Trophies page in the pause menu and in Extras on the main menu: all 59 trophies in the trophy set&#x27;s order with their...</span></li>
-<li><time>next</time><span><b>Unreleased</b> RecompLauncher achievements: started from RecompLauncher, the game reports its trophies to the launcher (Recomp...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Trophies in the game (#180, #181): when you earn one, a card slides in at the top right with the trophy&#x27;s picture from...</span></li>
 <li><time>next</time><span><b>Unreleased</b> More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (fps_limit = 0, a 1000 Hz...</span></li>
 <li><time>next</time><span><b>Unreleased</b> RecompLauncher: the game&#x27;s page lists the PC settings (display, picture, upscaling, mouse, sound and language), read...</span></li>
 <li><time>next</time><span><b>Unreleased</b> RecompLauncher: the game box also takes the European edition, the folder RPCS3 installed it in (NPEA00418) or your...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game...</span></li>
 <li><time>next</time><span><b>Unreleased</b> The European disc of Killzone HD (BCES-01743): give a copy of the disc&#x27;s folder to --disc FOLDER (or &quot;From my Killzone...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Two players on one PC (Game &gt; Battlefields &gt; Two Players, split screen): &quot;Two Players&quot; is now enabled with a single...</span></li>
+<li><time>next</time><span><b>Unreleased</b> Trophies are kept more safely (#180): the trophy file is written in full to a temporary file and then put in place, so...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
@@ -328,7 +329,6 @@
 <h3>Objectives</h3>
 <ul class="todo">
 <li class="o-no"><span class="box" aria-hidden="true"></span>&quot;One / Two Player&quot; in the menu <em>(not yet)</em></li>
-<li class="o-part"><span class="box" aria-hidden="true"></span>Trophy unlocks <em>(partial)</em></li>
 </ul>
 <p class="small">The next features still open; all of them: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, and the plan: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">ROADMAP.md</a>.</p>
 </section>
