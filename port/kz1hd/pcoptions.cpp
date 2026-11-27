@@ -1354,6 +1354,7 @@ static void create_selection(ppu_context* ctx)
 struct LiveSel { uint32_t sel; int prev, next; long long ms; };
 static LiveSel s_live[8];
 
+static void hover_select(ppu_context* ctx, uint32_t sel);   /* below, with hover */
 static void selection_update(ppu_context* ctx)
 {
     const uint32_t sel = (uint32_t)ctx->gpr[3];
@@ -1364,6 +1365,7 @@ static void selection_update(ppu_context* ctx)
         if (l.ms < slot->ms) slot = &l;   /* else the stalest */
     }
     *slot = { sel, (int)ctx->gpr[4], (int)ctx->gpr[5], t };
+    if (ctx->gpr[4] == 2) hover_select(ctx, sel);   /* up/down: a submenu */
     func_00276DC0(ctx);
 }
 static const LiveSel* live_sel(uint32_t sel)
@@ -1382,11 +1384,32 @@ static bool inside(uint32_t w, float vx, float vy)
     return vx >= rdf(w + 0x50) && vx < rdf(w + 0x58) && vy >= rdf(w + 0x54) && vy < rdf(w + 0x5C);
 }
 
-/* Hover: the item under the pointer becomes the goal, and the menu is
- * stepped to it with the d-pad, one press at a time, so the game's own
- * handlers run (sounds, the tab marker, submenus). */
-struct Goal { uint32_t sel, grp, box; int target, steps; bool then_x; };   /* then_x: a click, X once there */
+/* Hover: the item under the pointer becomes the goal, and the game's thread
+ * selects it (hover_select). */
+struct Goal { uint32_t sel, grp; int target, steps; bool then_x; int at; };   /* then_x: a click, X once there; at: the index a step left */
 static Goal s_goal;
+
+/* A submenu's hovered item is selected at once, here on the game's thread
+ * just before Selection:Update, as a PC menu does: Update draws the
+ * highlight (+0x42) from the index, and the move sound is the one it plays
+ * for a key (func_002745A8). Stepped with the d-pad instead, the highlight
+ * trailed the pointer by up to a second on a fast sweep: Update takes a key
+ * only on its press, and injected presses 30 ms apart merged into one held
+ * key. The main bar is still stepped (menu_mouse): its tabs open their
+ * submenus on the key, and a written index only moved the bar's highlight. */
+static void hover_select(ppu_context* ctx, uint32_t sel)
+{
+    const Goal g = s_goal;   /* menu_mouse's thread writes it: check all of it */
+    const int cg = (int)rd32(sel + 0x18);
+    if (g.sel != sel || !g.grp || cg < 0 || cg >= (int)rd32(sel + 0x08) || g.grp != rd32(sel + 0x10) + 0x10u * cg) return;
+    if (g.target < 0 || g.target >= (int)rd32(g.grp) || g.target == (int)rd32(g.grp + 0x0C)) return;
+    if (!shown(rd32(rd32(g.grp + 8) + 8u * g.target))) return;
+    wr32(g.grp + 0x0C, (uint32_t)g.target);
+    const uint64_t r3 = ctx->gpr[3], r4 = ctx->gpr[4], r5 = ctx->gpr[5];
+    ctx->gpr[3] = rd32(0x012D330C);   /* the menu, as Update passes it */
+    func_002745A8(ctx);
+    ctx->gpr[3] = r3; ctx->gpr[4] = r4; ctx->gpr[5] = r5;
+}
 
 /* JOY_LEFT, JOY_RIGHT, JOY_UP, JOY_DOWN (0..3) as pad buttons. */
 static unsigned joy_mask(int k) { static const unsigned m[4] = { 0x0080, 0x0020, 0x0010, 0x0040 }; return k >= 0 && k < 4 ? m[k] : 0; }
@@ -1452,7 +1475,7 @@ static bool hover_one(uint32_t sel, float vx, float vy, Goal* g)
         if (d < best_d) { best_d = d; best = i; }
     }
     if (best < 0) return false;
-    *g = { sel, grp, 0, best, 0 };
+    *g = { sel, grp, best, 0, false, -1 };
     return true;
 }
 
@@ -1473,19 +1496,6 @@ static int box_row_at(uint32_t box, float vy, bool hover = false)
     else if (hover) r = std::min((int)((vy - y0) / (ih - over / (n - 1))), n - 1);   /* the box's foot: the last row */
     else r = (int)((vy - y0 + rdf(box + 0xDC)) / ih);
     return r >= 0 && r < n ? r : -1;
-}
-
-/* The d-pad press that moves the goal's menu one step toward it, 0 when there. */
-static unsigned goal_step(const Goal& g)
-{
-    if (g.box) {
-        const int cur = (int)rd32(g.box + 0x12C);
-        return cur == g.target ? 0 : cur < g.target ? 0x0040 : 0x0010;
-    }
-    const int cur = (int)rd32(g.grp + 0x0C);
-    const LiveSel* l = live_sel(g.sel);
-    if (cur == g.target || !l) return 0;
-    return joy_mask(g.target > cur ? l->next : l->prev);
 }
 
 /* gMenu:DialogBox (native func_00272670) runs its own loop until a button is
@@ -1586,8 +1596,10 @@ static void menu_mouse(void)
             if (r >= 0 && r != (int)rd32(box + 0x12C) && option_enabled(option_at(vx, vy)) && menu_box_row_enabled(vm_base, box, r))
                 wr32(box + 0x12C, (uint32_t)r);   /* not onto a greyed row (menu_box.h) */
         } else hover_selection(vx, vy, &g);
-        if ((g.box || g.grp) && (g.box != s_goal.box || g.grp != s_goal.grp || g.target != s_goal.target))
+        if (g.grp && (g.grp != s_goal.grp || g.target != s_goal.target)) {
+            if (g.grp == s_goal.grp) g.at = s_goal.at;   /* a step on its way still counts */
             s_goal = g;
+        }
     }
 hovered:
     prev_x = x; prev_y = y;
@@ -1626,11 +1638,15 @@ hovered:
     else if ((b & 1) && drag_on) {   /* dragging: a step every 20 virtual units */
         const float d = (x - drag_x) * 512.0f / fw;
         if (d >= 20 || d <= -20) { pad_inject(d > 0 ? 0x0020 : 0x0080, 2); drag_x = x; }
-    } else if ((s_goal.box || s_goal.grp) && t >= next_step) {
-        const unsigned step = goal_step(s_goal);
-        if (!step && s_goal.then_x && (int)rd32(s_goal.grp + 0x0C) == s_goal.target) { pad_inject(0x4000, 2); s_goal = {}; }
-        else if (!step || ++s_goal.steps > 32) s_goal = {};
-        else { pad_inject(step, 2); next_step = t + 30; }
+    } else if (s_goal.grp) {   /* a click's X once it is there */
+        const int cur = (int)rd32(s_goal.grp + 0x0C);
+        const LiveSel* l = live_sel(s_goal.sel);
+        if (cur == s_goal.target) { if (s_goal.then_x) pad_inject(0x4000, 2); s_goal = {}; }
+        else if (!l || ++s_goal.steps > 64) s_goal = {};   /* the game did not take it (~0.5 s) */
+        else if (l->prev != 2) {   /* the main bar: a d-pad step, the next once the bar moved and the key was let go */
+            if (s_goal.at >= 0 && cur != s_goal.at) { s_goal.at = -1; next_step = t + 50; }
+            if (t >= next_step) { pad_inject(joy_mask(s_goal.target > cur ? l->next : l->prev), 2); s_goal.at = cur; next_step = t + 150; }
+        }   /* else a submenu: hover_select moves it */
     }
 }
 
