@@ -33,4 +33,4 @@ eight library sources and `rsx_vk_fsr3.cpp`.
 (`sdk/tools/binary_store/FidelityFX_SC.exe`, with `-compiler=glslang` and the options of the SDK's CMake for VK), run
 under Wine in a prefix of its own, and the two adapted files by `sed`. To update this folder, run it, copy the files
 that the dependency list names from `<out>` and the SDK into the same places here (the `.h.d` dependency files are not
-kept), and build.
+kept), rewrite `third_party/SHA256SUMS` (the command is in `tools/tests/test_vendored.py`), and build.

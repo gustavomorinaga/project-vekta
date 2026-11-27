@@ -9,3 +9,5 @@
 | `LICENSE` | `6a1ee543e5282cd9061881edf462e6fdab181f328da71fc2c9a6950a80e94d01` |
 
 Used by `port/kz1hd/native/flashmp3.c` in place of the firmware's MP3 decoder.
+
+The same hashes, with the other vendored files', are in `../SHA256SUMS`, which `tools/tests/test_vendored.py` checks.

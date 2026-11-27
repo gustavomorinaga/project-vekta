@@ -19,6 +19,7 @@ tools/tests/test_setup.py
 tools/tests/test_check_install.py
 tools/tests/test_version_agree.py
 tools/tests/test_doc_refs.py
+tools/tests/test_vendored.py
 tools/tests/test_sync_from_private.py
 tools/tests/test_run_host_tests.sh
 tools/tests/test_check_tree.sh
