@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "game": "example-x360-recomp",
+  "source": "native",
+  "console": "x360",
+  "versions": ">=1.0.0"
+}

@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "game": "example-decomp",
+  "source": "events",
+  "console": "n64",
+  "versions": ">=0.5.0",
+  "achievements": [
+    {"id": 1, "title": "Off We Go", "description": "Finish the tutorial", "points": 5, "type": "progression", "event": "tutorial_done"},
+    {"id": 2, "title": "Collector", "description": "Find every hidden item in the first world", "points": 25, "event": "world1_all_items"},
+    {"id": 3, "title": "Credits Roll", "description": "Beat the game", "points": 50, "type": "win", "event": "beat_final_boss"}
+  ]
+}

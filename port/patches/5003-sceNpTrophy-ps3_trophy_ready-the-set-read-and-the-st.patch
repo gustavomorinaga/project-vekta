@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Fri, 27 Nov 2026 08:58:10 -0300
+Subject: [PATCH] sceNpTrophy: ps3_trophy_ready, the set read and the store
+ loaded
+
+ps3_trophy_count is nonzero from CreateContext, when the TRP is read, but
+the player's unlocks are loaded only at RegisterContext. In Killzone HD the
+two are three guest calls apart at boot; a host that read the store between
+them saw every trophy locked. Port side: the RecompLauncher bridge lists the
+trophies the player already has as "earlier" once, when it connects, and in
+a headless boot it connected in that window.
+
+ps3_trophy_ready() is 1 once the title's context has its TRP and is
+registered (its store loaded), under the store lock.
+---
+ libs/network/sceNpTrophy.c | 9 +++++++++
+ libs/network/sceNpTrophy.h | 3 +++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/libs/network/sceNpTrophy.c b/libs/network/sceNpTrophy.c
+index c38ea60..4c55009 100644
+--- a/libs/network/sceNpTrophy.c
++++ b/libs/network/sceNpTrophy.c
+@@ -453,6 +453,15 @@ static TrophyContext* trophy_host_ctx(void)
+     return NULL;
+ }
+ 
++int ps3_trophy_ready(void)
++{
++    STORE_LOCK();
++    const TrophyContext* ctx = trophy_host_ctx();
++    const int r = ctx && ctx->have_trp && ctx->registered;
++    STORE_UNLOCK();
++    return r;
++}
++
+ int ps3_trophy_count(void)
+ {
+     STORE_LOCK();
+diff --git a/libs/network/sceNpTrophy.h b/libs/network/sceNpTrophy.h
+index 587000c..6f45692 100644
+--- a/libs/network/sceNpTrophy.h
++++ b/libs/network/sceNpTrophy.h
+@@ -207,6 +207,9 @@ typedef struct ps3_trophy_def {
+     char name_en[SCE_NP_TROPHY_NAME_MAX_SIZE];   /* TROP.SFM's, as the store keeps it */
+ } ps3_trophy_def;
+ int ps3_trophy_count(void);
++/* 1 once the set is read and the store loaded (RegisterContext): from then on
++ * ps3_trophy_get's unlocked fields are the player's, not all zero. */
++int ps3_trophy_ready(void);
+ int ps3_trophy_get(s32 id, ps3_trophy_def* out);
+ 
+ /* The PNG of trophy `id` (TROPnnn.PNG; -1 = the set's ICON0.PNG), read from

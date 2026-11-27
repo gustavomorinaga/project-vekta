@@ -45,6 +45,7 @@ tools/tests/test_audio_notify.sh
 tools/tests/test_trophy_notify.sh
 tools/tests/test_trophy_notice.sh
 tools/tests/test_trophy_list.sh
+tools/tests/test_rl_bridge.sh
 tools/tests/test_view_flat.sh
 tools/tests/test_prof_trigger.sh
 tools/tests/test_route_rebase.sh
@@ -89,6 +90,7 @@ tools/tests/test_eboot_check.sh
 tools/tests/test_launcher_contract.py
 tools/tests/test_heap_bytes.sh
 tools/tests/test_recomplauncher.py
+tools/tests/test_rl_list.py
 tools/tests/test_sessions.py
 tools/tests/test_res_list.sh
 tools/tests/test_display_seq.sh

@@ -254,6 +254,76 @@ the rows themselves; under the list only the description; no count card; 30 rows
 its row; left/right change nothing (the pause frame identical before and after); Back returns to Extras and to the
 pause menu.
 
+## RecompLauncher's achievements (stage 4, 2026-11-27)
+
+RecompLauncher shows a recomp's achievements with its own toast and keeps them for the player (Recomp Achievements).
+The SDK is vendored unchanged in `third_party/rl_achievements` (<https://github.com/elripalda/RecompAchievements> at
+faf094ac, 2026-11-11; Recomp Achievements License 1.0, free for games; it bundles rcheevos and cJSON, MIT; the
+licences in `licenses/`). For PS3 games trophies are "native" achievements: the port reports trophy ids, and the list
+RecompLauncher hosts says what each id is called and is worth (5, 10, 25 or 50 points; the platinum left out, since
+finishing the list is the game's "Mastered"). The SDK's `docs/SPEC.md` has the channel and the list's format.
+
+- `port/kz1hd/rl_bridge.cpp`, called once per frame from `kz_trophies_pump` with the ids taken from the ring that
+  frame, on the frame loop like every SDK call. Without `RL_SESSION` (the channel RecompLauncher names: a Unix socket
+  on Linux, a named pipe on Windows, which the SDK handles), with `KZ_RL_ACH=0`, or built with
+  `KZ_RL_ACHIEVEMENTS=OFF` (CMake, on by default), it does nothing.
+- On the first frames with `RL_SESSION` it waits for the trophy set and the player's store (`ps3_trophy_ready`,
+  ps3recomp patch 5003: the context has its TRP and is registered; at most 60 s, ASSUMPTION: enough for any boot, it
+  took about 5 s here). `ps3_trophy_count` alone is not enough: it is nonzero from CreateContext, and the store is
+  loaded three guest calls later, at RegisterContext; the first game run connected in between and reported 0 trophies
+  earlier (the frame loop turns thousands of times during boot, so a wait in frames was also too short). Then it defines ids 1 to 58 with the TRP's
+  names and descriptions in the game's language (`rl_ach_native_define`, before `rl_ach_init`, so they go out as one
+  `native_list` right after `hello`; after `init` each define would send the whole list again), with gamerscore 0
+  (trophies have none; the hosted list gives the points), and connects (`rl_ach_init("ps3", NULL, NULL)`, no memory
+  reader: `hello` says `memory: false`; `rl_ach_set_info("", VERSION)`, so `hello` carries the port's version and no
+  catalog id). Then the trophies already in the store go as `native` with `earlier` (the launcher keeps them as
+  Casual), and the session's casual reason if any.
+- Each new unlock afterwards: `rl_ach_native(id)`. The platinum (id 0), which the HLE notifies after the last of
+  1..58, is never sent. A blocked session (the debug options and scripted inputs below) stores and notifies nothing,
+  so nothing is reported, and it sends `casual` with the reason `debug` once.
+- Save loads: ps3recomp patch 3040 counts the loads that read an existing save (`ps3_savedata_loads`, at "LOAD
+  complete" in `savedata_execute_run`, under every List, Fixed and Auto entry; a new profile's load is not counted).
+  A frame that sees the count move sends one `save_loaded`. Killzone HD loads its profile once at boot, which reaches
+  the launcher right after the connect.
+- The launcher's `quiet` (always sent while its achievements are on): `kz_rl_quiet()` is then 1 and
+  `kz_trophies_pump` does not hand the unlock to `kz_notice_add`, so neither the card nor its sound shows. The
+  Trophies page is unchanged.
+- No PC page row: RecompLauncher turns its achievements on and off itself, and the channel exists only when it
+  started the game.
+
+Checked: `tools/tests/test_rl_bridge.sh` builds the vendored SDK and passes its own channel test
+(`sdk/tests/fake_launcher.py`), then runs the bridge against `tools/tests/rl_launcher.py` (a fake launcher on a Unix
+socket; the HLE's host calls faked): `hello` (ps3, no memory, the version), one `native_list` with 1..3 and no
+platinum, the earlier unlock, `casual`, one `save_loaded`, the live unlock and no platinum, and `quiet` seen; and
+without `RL_SESSION`, and built without the SDK, nothing is sent and the notice stays.
+
+Game (2026-11-27, Linux, RTX 3070 Ti, headless, a temporary VFS with a store of 2 of 59, `RL_SESSION` on a Unix
+socket served by a stand-in that records the lines and answers `hello` with `quiet`, no input, 90 s): `hello` (ps3,
+no memory, the port's version), one `native_list` of 58 (ids 1 to 58, the TRP's names), `native` 30 and 34 with `earlier`,
+one `save_loaded` after the profile's `LOAD complete`, and the log's `[rl] connected ... 58 trophies listed, 2
+earlier` and the quiet line. A live unlock in the game was not run: input from a file blocks trophies; the host test
+covers that path.
+
+### The hosted list
+
+RecompLauncher hosts the list, and the maintainer writes it in the developer hub (<https://recompstore.com/hub>, PC
+recomps, the port, Achievements: the Recomp Achievements list editor, which checks every save against SPEC.md). The
+titles and descriptions are Sony's and Guerrilla's text from the TRP, so they stay out of the repository like every
+other game file: it keeps only what the port decides, in `tools/release/rl_list_meta.json`. That is the header
+(format 1, `project-vekta`, native, ps3, `versions` `>=0.8.0`, no `voids`) and, for each id 1 to 58, its points,
+type and bonus. The platinum (id 0) is left out. Points are written per id: bronze 5, silver 10 (2, 14, 15, 27), and
+3, the gold, 50. Types: `win` for 1, 2, 3 and 51, `progression` for the chapters 41 to 50; 58 is `bonus`.
+
+To make the list, run `python3 tools/release/rl_list.py`. It reads the player's own TRP (default
+`work/vfs/PS3_GAME/TROPDIR/NPWR03819_00/TROPHY.TRP`, or `--trp`), takes the English text from `TROP.SFM` (entities
+unescaped, spaces stripped) and writes `work/trophies/recomplauncher-list.json` (or `--out`; `work/` is gitignored).
+It refuses a table whose ids are not the TRP's non-platinum trophies, points outside 5/10/25/50, an unknown type or
+any other field. Paste the whole file into the hub's editor and save. A change to points or types is a change to the
+table, then the list made and pasted again; it reaches players without a release.
+
+Checked: `tools/tests/test_rl_list.py` (a synthetic TRP, no game text). On the US TRP (2026-11-27) the output is
+JSON-equal to the list reviewed before (58 entries, 355 points; the same bytes but a final newline).
+
 ## Debug options that block trophies
 
 When a debug option that changes what the player can do is on, the port calls `ps3_trophy_set_blocked(1)` and

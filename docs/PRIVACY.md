@@ -33,6 +33,13 @@ GitHub sees that visit like any other; nothing is sent until you attach the zip 
 A game launcher that installs the port (RecompLauncher, Quiver Launcher) makes its own connections under its own
 rules; the port adds none to them.
 
+**RecompLauncher's achievements**: when RecompLauncher starts the game, it names a local channel in `RL_SESSION` (a
+Unix socket on Linux, a named pipe on Windows). The port then writes to it, on your PC only, the trophy set's ids,
+names and descriptions, which trophies you already have, each new unlock, when a save is loaded, the port's version,
+and "debug" when a debug option or scripted input is on. Nothing else, and nothing about you or your PC. The game
+itself connects to no server; RecompLauncher handles your achievements under its own rules. Started any other way,
+no channel is opened. `KZ_RL_ACH=0` turns it off.
+
 **Project website** (`site/`): loads nothing from other servers. Its font, images and script are served with the
 page from GitHub Pages, which, like any web host, receives your visit; the site itself sets no cookies, stores
 nothing in your browser and keeps no statistics.

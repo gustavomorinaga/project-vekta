@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "game": "example-snes-recomp",
+  "source": "memory",
+  "console": "snes",
+  "versions": ">=1.0.0",
+  "voids": ["Cheats/enabled"],
+  "achievements": [
+    {"id": 1, "title": "First Steps", "description": "Clear the first level", "points": 5, "type": "progression", "trigger": "0xH0100=2"},
+    {"id": 2, "title": "Treasure Hunter", "description": "Collect 50 coins without losing a life", "points": 10, "trigger": "0xH0DBF>=50_0xH0DBE=4"},
+    {"id": 3, "title": "The End", "description": "Beat the final boss", "points": 50, "type": "win", "trigger": "0xH13C6=8"}
+  ]
+}

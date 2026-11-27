@@ -19,6 +19,11 @@ program and folder that build it. Until a release that calls itself playable
   their grade and name on the left and the day you earned it (or "Locked") at the row's right end; under the list,
   the selected trophy's description; how many you have in the page's title. The rows only scroll. Pad, keyboard and mouse work as on the
   PC page; names and words follow the game's language. Without the trophy set, the page says so.
+- RecompLauncher achievements: started from RecompLauncher, the game reports its trophies to the launcher (Recomp
+  Achievements), which shows its own unlock toast instead of the port's card and sound. The trophies you already
+  have are reported too; with a debug option or scripted input on, the session counts as Casual. Nothing changes
+  when the game is started any other way, and the game itself goes online for none of it
+  ([docs/PRIVACY.md](docs/PRIVACY.md)).
 - More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (`fps_limit = 0`, a
   1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the
   default ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
