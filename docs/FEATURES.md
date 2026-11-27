@@ -32,7 +32,7 @@ otherwise. Last checked 2026-10-30.
 | Sound | Music, effects, dialogue | MultiStream on the SPUs, MP3 streams | **works** | decoded by minimp3 in place of the firmware's decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md) |
 | Sound | Surround | the console's output setting | **works**: stereo, 5.1, 7.1 | per channel on Linux; 6 and 8 channels through WASAPI under Wine |
 | Languages | Voice, subtitles, menus | English, French, Spanish (by console language) | **works**, chosen on the PC page | |
-| Trophies | Trophy unlocks | PSN trophies | **partial**: unlocked and logged locally with names, grades and platinum, with an on-screen notice and its sound (the port's own) and a Trophies page in the pause menu and in Extras | `gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse) |
+| Trophies | Trophy unlocks | PSN trophies | **works** on Linux: unlocked and kept locally with names, grades and platinum, with an on-screen notice and its sound (the port's own), a Trophies page in the pause menu and in Extras, and RecompLauncher's own toast in their place when RecompLauncher starts the game; not yet run on Windows | `gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse); RecompLauncher's channel 2026-11-27 with a stand-in launcher (a live unlock through RecompLauncher itself not yet run); [KNOWN_ISSUES.md](KNOWN_ISSUES.md) |
 | Multiplayer | "One / Two Player" in the menu | local | **not yet** checked | |
 | Online | PSN | sign-in, trophies sync | **n/a** | no network is used |
 
@@ -69,7 +69,8 @@ are off by default; display and input improvements may be on.
 | Quit Game in the Options sub-menu; closing the window waits for a save in progress | on | |
 | The game's own Debug Options in the pause menu (God Mode, Next Level, ...) | off | `KZ_DEBUG_MENU=1` |
 | All 11 levels selectable in the campaign menu | off | `KZ_UNLOCK_LEVELS=1` |
-| Local trophy log from the game's own trophy set | on | needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`) |
+| Local trophies from the game's own trophy set: a notice with its sound, a Trophies page | on | `trophy_notices`, `trophy_sound`; needs `TROPDIR` in the run folder (`tools/setup-vfs.sh`) |
+| Trophies reported to RecompLauncher when it starts the game | on | `KZ_RL_ACH=0` turns it off ([PRIVACY.md](PRIVACY.md)) |
 
 Planned items (post-processing toggles, HDR, FSR 3.1 and DLSS on Windows, an in-game key remapping page, narrower aspect
 ratios, a steady 144 fps): [ROADMAP.md](ROADMAP.md).
