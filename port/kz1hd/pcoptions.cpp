@@ -741,9 +741,6 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
 static void get_tnotice(ppu_context* c) { attr_log("get_tnotice", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["trophy_notices"] != "off"; }
 static void set_tnotice(ppu_context* c) { attr_log("set_tnotice", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["trophy_notices"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); notice_apply(); s_deps_dirty = true; }
-/* The Trophies page (trophy_list.h): its Update pings every frame it is on screen (the header card, trophy_notice.cpp). */
-static void get_tping(ppu_context* c) { vm_base[(uint32_t)c->gpr[4]] = 0; }
-static void set_tping(ppu_context* c) { if ((int32_t)c->gpr[5] == 2) kz_trophy_page_ping(); }
 static void get_tsound(ppu_context* c) { attr_log("get_tsound", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["trophy_sound"] != "off"; }
 static void set_tsound(ppu_context* c) { attr_log("set_tsound", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_TROPHY_SOUND)) return;
     s_ini["trophy_sound"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); notice_apply(); }
@@ -894,7 +891,6 @@ static void kz_pc_inject_attrs(ppu_context* ctx)
         { kSysClass, "IntroMovie",            kBoolVtbl,  get_intro,   set_intro },
         { kSysClass, "TrophyNotices",         kBoolVtbl,  get_tnotice, set_tnotice },
         { kSysClass, "TrophySound",           kBoolVtbl,  get_tsound,  set_tsound },
-        { kSysClass, "TrophyPing",            kBoolVtbl,  get_tping,   set_tping },
         { kSysClass, "Anisotropic",           kFloatVtbl, get_aniso,   set_aniso },
         { kSysClass, "Upscaler",              kFloatVtbl, get_upscaler, set_upscaler },
         { kSysClass, "Sharpness",             kFloatVtbl, get_sharp,   set_sharp },
@@ -1056,13 +1052,24 @@ static std::string kz_lua(void)
     " end\n"
     "end\n"
     /* The Trophies page (trophy_list.h), in the pause menu and in the frontend's Extras: KZTRDATA is handed in by the
-     * host (lua_binding). Its rows are text in two columns, the grade and name and the day, that only scroll (no
-     * value to change, so no arrows); under the list, centred, the selected trophy's description, or the message
-     * that the trophy set was not found. Back returns to the menu that opened it. */
+     * host (lua_binding). Its rows are two columns that only scroll (no value to change, so no arrows): the grade and
+     * name, and at the row's right end the day or "Locked"; under the list, centred, the selected trophy's
+     * description, or the message that the trophy set was not found. Back returns to the menu that opened it.
+     * Cells are SetAlignedTextItem's with align 0 (left) and 2 (right), as the game's Statistics page: an AddTextItem
+     * keeps align -1, whose first line is centred in a box of the unscaled text width while the glyphs are scaled to
+     * the aspect (func_00106598), so a longer row started further right. A column spans from its offset to the next
+     * one's, the last to the list's right end (func_002622A8). No selection indent: every row starts at one x. The
+     * list is 20 units right of the game's (its rows' text then starts where the page title's does: the header's
+     * x 64 draws at 210 px of 1280, a list's at 160) and its bars 20 units further left, still from the screen's
+     * edge; 40 units narrower, the day ends as far from the right edge as the names start from the left. A right
+     * cell is made under the RIGHT format: its box is placed by the format at the measured (unscaled) width, so under
+     * LEFT a longer day ended further right. Cells wrap at their span by the unscaled width, so they are
+     * single-line (SetTextMultilineAllowed, func_00261334): a long name wrapped though it fitted. */
     "if not KZTRMAKE then\n"
     " KZTRMAKE = function(S, h, rows)\n"
     "  gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
-    "  S.ListBox = gMenu:AddListBox(B.B2.item_x, B.B2.first_item_y, B.B2.item_width, h * rows)\n"
+    "  gMenu:SetSelectionIndent(0)\n"
+    "  S.ListBox = gMenu:AddListBox(B.B2.item_x + 20, B.B2.first_item_y, B.B2.item_width - 40, h * rows)\n"
     "  S.ListBox:SetScrollable(SCROLLING.UPDOWN)\n"
     "  S.ListBox:SetItemHeight(h)\n"
     "  gMenu:SetTextFormat(gTypefaces.ItemList, CENTER, CENTER)\n"
@@ -1072,18 +1079,25 @@ static std::string kz_lua(void)
     " KZTRFILL = function(S)\n"
     "  S.ListBox:Clear()\n"
     "  gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
+    "  gMenu:SetSelectionIndent(0)\n"
+    /* after Clear, which drops the columns too; the second is the list's last 100 units */
+    "  S.ListBox:SetColumn(0, 0, -1, '', '')\n"
+    "  S.ListBox:SetColumn(1, B.B2.item_width - 40 - 100, 1, '', '')\n"
     "  local d, i = KZTRDATA, 1\n"
     "  while d and i <= d.n do\n"
-    "   S.ListBox:AddTextItem(d[i].l)\n"
+    "   gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
+    "   S.ListBox:SetAlignedTextItem(i - 1, 0, d[i].l, 0)\n"
+    "   gMenu:SetTextFormat(gTypefaces.ItemList, RIGHT, CENTER)\n"
+    "   S.ListBox:SetAlignedTextItem(i - 1, 1, d[i].v, 2)\n"
+    "   S.ListBox:SetTextMultilineAllowed(i - 1, 0, FALSE) S.ListBox:SetTextMultilineAllowed(i - 1, 1, FALSE)\n"
     "   i = i + 1\n"
     "  end\n"
     "  S.Sel = -1\n"
     "  KZTRDESC(S, d and d.missing or '')\n"
     " end\n"
     " KZTRUPDATE = function(S)\n"
-    "  gGameSystem:SetAttribute('PC settings.TrophyPing', 'True')\n"
     "  local d, i = KZTRDATA, S.ListBox:GetSelectedItemIndex()\n"
-    "  if d and i ~= S.Sel then S.Sel = i if d[i + 1] then KZTRDESC(S, d[i + 1].v .. '<line align=center>' .. d[i + 1].d) end end\n"
+    "  if d and i ~= S.Sel then S.Sel = i if d[i + 1] then KZTRDESC(S, d[i + 1].d) end end\n"
     "  if gMenu:IsPressed(JOY_CANCEL) then gMenu:PlaySound(SOUND_BACK) gMenu:ReturnToPreviousSafeMenu() end\n"
     " end\n"
     "end\n"
@@ -1111,7 +1125,7 @@ static std::string kz_lua(void)
     " gScreenTrophies.Init = function(self)\n"
     "  BASE_CLASS.Init(self)\n"
     "  KZTRMAKE(self, 30, 8)\n"
-    "  self.ListBox:SetBackgroundImagesHD('Ingame_background', 'Ingame_background_selected', 'Ingame_background', B.B2.background_x_offset, B.B2.background_y_offset)\n"
+    "  self.ListBox:SetBackgroundImagesHD('Ingame_background', 'Ingame_background_selected', 'Ingame_background', B.B2.background_x_offset - 20, B.B2.background_y_offset)\n"
     "  self.TITLE = " + tl::lua_str(tl::words().page) + "\n"
     "  self.FOOTER = '$FrontEnd.UpDown$  $FrontEnd.Back$'\n"
     " end\n"
@@ -1253,7 +1267,7 @@ static std::string kz_lua(void)
     " gScreenTrophies = {}\n"
     " ScreenTrophiesInit = function()\n"
     "  KZTRMAKE(gScreenTrophies, B.B2.get_item_height(), 5)\n"
-    "  gScreenTrophies.ListBox:SetBackgroundImagesHD(B.B2.get_background_image(), B.B2.get_background_img_selected(), B.B2.get_background_img_empty(), B.B2.background_x_offset, B.B2.background_y_offset)\n"
+    "  gScreenTrophies.ListBox:SetBackgroundImagesHD(B.B2.get_background_image(), B.B2.get_background_img_selected(), B.B2.get_background_img_empty(), B.B2.background_x_offset - 20, B.B2.background_y_offset)\n"
     " end\n"
     " ScreenTrophiesEntry = function()\n"
     "  KZTRFILL(gScreenTrophies)\n"

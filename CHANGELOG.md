@@ -16,8 +16,8 @@ program and folder that build it. Until a release that calls itself playable
   are off). No notice when trophies are not stored (debug options or scripted
   input). The words on the card follow the game's language (English, French, Spanish, German, Italian, Dutch).
 - A Trophies page in the pause menu and in Extras on the main menu: all 59 trophies in the trophy set's order with
-  their grade and name; under the list, the selected trophy's day you earned it (or "Locked") and its description; how
-  many you have, with a progress bar, at the top right. The rows only scroll. Pad, keyboard and mouse work as on the
+  their grade and name on the left and the day you earned it (or "Locked") at the row's right end; under the list,
+  the selected trophy's description; how many you have in the page's title. The rows only scroll. Pad, keyboard and mouse work as on the
   PC page; names and words follow the game's language. Without the trophy set, the page says so.
 - More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (`fps_limit = 0`, a
   1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the

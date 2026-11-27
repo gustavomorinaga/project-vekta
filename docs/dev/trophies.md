@@ -201,18 +201,35 @@ added) and Extras opens on Trophies, its topmost visible item.
   script now runs in pieces of whole top-level blocks of at most 12 KB (`tl::lua_blocks`), and `lua_run` refuses (and
   logs) a text that would not fit.
 - No trophy set (no `TROPHY.TRP`): the page's title is "TROPHIES" without a count, the list is empty, and the line
-  under it says "Trophy set not found: see GETTING-FILES" (in the six languages); the header card is not shown.
+  under it says "Trophy set not found: see GETTING-FILES" (in the six languages).
 - The menu's text is one byte per letter, Latin-1: the TRP's UTF-8 is converted (a letter beyond Latin-1 becomes
   `?`). Its font has no middle dot, so grade and name are three spaces apart.
-- Each row is a plain text item (`AddTextItem`), grade and name: nothing to change, so no arrows, and left and right
-  do nothing. Under the list, centred, the selected trophy's day or "Locked" and, on the next line, its description
-  (`GetSelectedItemIndex` in the page's `Update`, which also handles Back). A second column for the day was tried
-  (the list's `SetColumn` with `SetAlignedTextItem` or a text per cell, as the game's Statistics and profile pages
-  do): the first column then drew one letter per line, so the day moved under the list. The footer says Up/Down and
-  Back.
-- The count and its bar are the notice's card in the style B palette (no icon, the chip in steel), at the top right
-  while the page is open: its `Update` pings `PC settings.TrophyPing` every frame (`kz_trophy_page_ping`, 300 ms
-  without a ping closes it); notices arriving meanwhile stack under it. The page's title also says "TROPHIES 2 / 59".
+- Each row has two cells, as the game's Statistics page (`SetColumn`, `SetAlignedTextItem`): the grade and name
+  aligned left, and at the row's right end the unlock day or "Locked" aligned right. Nothing to change, so no arrows,
+  and left and right do nothing. Under the list, centred, only the selected trophy's description
+  (`GetSelectedItemIndex` in the page's `Update`, which also handles Back). The footer says Up/Down and Back.
+- Why not `AddTextItem` (the first try): its cell keeps align -1, so the text's first line takes the parser's default,
+  centre (`func_00109538`), inside a box as wide as the unscaled measured text, while the glyphs and the line width
+  used for centring are scaled by `1 / ((w / h) * 0.75)` (`func_002CA880`, 0.75 at 16:9; `func_00106598`). A
+  left-formatted row therefore started `0.125 * width` right of the list's edge: the longer the row, the further
+  right. A cell align of 0 (left) or 2 (right) overrides the line's own (`SetAlignedTextItem`, `func_00261020`;
+  0 left, 1 centre, 2 right, -1 the line's). The selected row was also moved by the menu's selection indent
+  (`gMenu:SetSelectionIndent`, `menu+0x208`); the page sets it to 0, as Statistics does.
+- Columns: `SetColumn(i, x, align, header, s2)` (`func_00260A30`); column i spans from the list's x plus its offset to
+  the next column's, the last to the list's right end (`func_002622A8`); the second argument is an offset, not a
+  width. The first try at a second column gave the first one no span, and its text wrapped one letter per line (cells
+  wrap at their span). Text markup has no tab or fixed x (`<line align=...>` starts a new line), so left and right
+  parts of one row need two columns. `Clear` drops the columns too, so the page sets them after it.
+- Layout (measured in the game's 1280x720 frame): the list is 20 units right of the game's (`B.B2.item_x + 20`), so
+  the names start at x 213, under the page title's 210 (the header's x 64 draws 20 units right of a list's), and its
+  bars 20 units further left (`background_x_offset - 20`), still from the screen's edge. It is 40 units narrower than
+  the game's (`item_width - 40`), so the day ends at x 1071, as far from the right edge as the names start from the
+  left; the day's column is the list's last 100 units. A right cell is made under the `RIGHT` text format: the cell's
+  box is placed by the format at the unscaled measured width (`func_002580F0`), so under `LEFT` a longer day ended
+  further right ("2026-11-25" 70 px past "Locked"). Cells wrap at their span by that unscaled width, so both cells are
+  single-line (`SetTextMultilineAllowed(row, col, FALSE)`, `func_00261334`): "Tanks For The Good Times" wrapped
+  though it fitted.
+- No count card on the page (the title says "TROPHIES 2 / 59"); notices of new unlocks still show over it.
 - Pad and keyboard (through the key map) move as in any list; the mouse is the PC page's (`menu_mouse`: on a list
   longer than its box, the pointer's height picks a row as a scroll bar would).
 - Not done: icons in the list.
@@ -229,6 +246,13 @@ the header card at the top right; 30 rows down and left/right change nothing but
 Extras. The pause page (Level Select, headless, the guest's 1280x720 frame): the same rows and lines; Back returns to
 the pause menu. Without `TROPDIR` (headless): the title "TROPHIES" and the not-found line, no rows. A headless boot
 of the build before the script was split stopped before the save data load; after it, it reaches it.
+
+Checked after the two-column rows (2026-11-27, same machine, headless, the guest's 1280x720 frame, a temporary VFS
+with a store of 2 of 59, input from a file): Extras > Trophies and the pause page (Level Select) show every row's
+name at x 213 (the title's text at 210), the selected one too, and "Locked" and the days ending together at x 1071 on
+the rows themselves; under the list only the description; no count card; 30 rows down, the day of Burn Baby Burn on
+its row; left/right change nothing (the pause frame identical before and after); Back returns to Extras and to the
+pause menu.
 
 ## Debug options that block trophies
 

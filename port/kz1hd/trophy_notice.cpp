@@ -167,7 +167,6 @@ float draw_text(Canvas& cv, const Font& fn, float size, float spacing, float x, 
 bool has_glyph(const Font& fn, int cp) { return stbtt_FindGlyphIndex(&fn.f, cp) != 0; }
 
 struct Card {
-    bool header = false;   // the Trophies page's header (its count and bar): no icon, the chip in steel
     int id = 0, grade = 0, got = 0, total = 0;
     std::string name;
     std::vector<unsigned char> icon;   // RGBA
@@ -208,13 +207,13 @@ void draw(Card& c, int w, int h, double s, int bgra)
             cv.px[i] = { p.r * ci + kLine.r * (co - ci), p.g * ci + kLine.g * (co - ci), p.b * ci + kLine.b * (co - ci) };
             cv.al[i] = pa * ci + (co - ci);
         }
-    const Rgb gc = c.header ? kSteel : grade_colour(c.grade);
+    const Rgb gc = grade_colour(c.grade);
 
     // the icon: the trophy's own picture from the player's TRP, 68 px, corners cut 8 px
     const int is = tn::px(68, s), ix = tn::px(18, s), iy = (h - is) / 2;
     const float icut = (float)tn::px(8, s), fis = (float)is;
     auto icon_in = [&](float x, float y) { return x + y >= icut && (fis - x) + (fis - y) >= icut; };
-    for (int y = 0; y < (c.header ? 0 : is); y++)
+    for (int y = 0; y < is; y++)
         for (int x = 0; x < is; x++) {
             const float a = cover(x, y, icon_in);
             if (a <= 0) continue;
@@ -246,7 +245,7 @@ void draw(Card& c, int w, int h, double s, int bgra)
                 h3 = a14 - d14 + g14, gap = (float)s;
     const float top1 = (h - (h1 + gap + h2 + gap + h3)) / 2, top2 = top1 + h1 + gap, top3 = top2 + h2 + gap;
     auto base = [](float top, float lh, float asc, float desc) { return top + (lh - (asc - desc)) / 2 + asc; };
-    const float tx = (float)((c.header ? 20 : 102) * s), tr = (float)(w - 20 * s);
+    const float tx = (float)(102 * s), tr = (float)(w - 20 * s);
 
     // line 1: the hex chip (the project's own glyph), then "TROPHY · BRONZE"
     const float cx = tx, cy = top1 + (h1 - chip_h) / 2, cs = (float)s;
@@ -277,16 +276,14 @@ void draw(Card& c, int w, int h, double s, int bgra)
         }
     const tl::Words& wd = tl::words();
     const float ls1 = (float)(2.4 * s), b1 = base(top1, h1, a15, d15);
-    float x = draw_text(cv, fb, s15, ls1, cx + 18 * cs + (float)(8 * s), b1, utf8(c.header ? wd.trophies : wd.trophy),
+    float x = draw_text(cv, fb, s15, ls1, cx + 18 * cs + (float)(8 * s), b1, utf8(wd.trophy),
                         kSteelHi);
     const std::string dot = has_glyph(fb, 0xB7) ? "\xC2\xB7 " : "- ";
-    if (!c.header) draw_text(cv, fb, s15, ls1, x + (float)(8 * s), b1, utf8(dot + wd.grade[tl::grade_index(c.grade)]), gc);
+    draw_text(cv, fb, s15, ls1, x + (float)(8 * s), b1, utf8(dot + wd.grade[tl::grade_index(c.grade)]), gc);
 
     // line 2: the name, with an ellipsis when it is too long
     const float ls2 = (float)(0.4 * s);
-    char big[32];
-    std::snprintf(big, sizeof big, "%d / %d", c.got, c.total);
-    std::vector<int> name = utf8(c.header ? std::string(big) : c.name);
+    std::vector<int> name = utf8(c.name);
     const std::vector<int> ell = has_glyph(fb, 0x2026) ? std::vector<int>{ 0x2026 } : std::vector<int>{ '.', '.', '.' };
     if (measure(fb, s26, ls2, name) > tr - tx) {
         while (!name.empty()) {
@@ -302,8 +299,7 @@ void draw(Card& c, int w, int h, double s, int bgra)
 
     // line 3: "34 / 59" and a 3 px bar
     char count[32];
-    if (c.header) std::snprintf(count, sizeof count, "%d %%", c.total > 0 ? c.got * 100 / c.total : 0);
-    else std::snprintf(count, sizeof count, "%d / %d", c.got, c.total);
+    std::snprintf(count, sizeof count, "%d / %d", c.got, c.total);
     x = draw_text(cv, fm, s14, (float)s, tx, base(top3, h3, a14, d14), utf8(count), kDim);
     const int bx0 = (int)std::lround(x + 10 * s), bx1 = (int)std::lround(tr), bh = std::max(1, tn::px(3, s));
     const int by = (int)std::lround(top3 + (h3 - bh) / 2);
@@ -330,8 +326,6 @@ std::mutex s_mu;
 tn::Queue<Item> s_q;
 std::vector<uint8_t> s_out;   // the cards' pixels for the present that asked (valid until the next call)
 std::atomic<bool> s_notices{ true }, s_sound{ true };
-std::shared_ptr<Card> s_head;   // the Trophies page's header, while the page pings (kz_trophy_page_ping)
-double s_head_until;
 
 std::vector<float> s_pcm;     // the sound, stereo 48 kHz
 std::atomic<int> s_pos{ -1 }; // the next frame to mix, -1 idle
@@ -378,27 +372,18 @@ int overlay(uint32_t ww, uint32_t wh, int bgra, const void** pixels, size_t* byt
 {
     std::lock_guard<std::mutex> g(s_mu);
     const double t = now_ms();
-    if (s_head && t > s_head_until) s_head.reset();   // the page closed
-    if (!s_q.n && !s_head) return 0;
-    tn::Placed p[tn::kShown + 1];
-    int np = s_q.step(t, ww, wh, p + 1, [](Item& it) {
+    if (!s_q.n) return 0;
+    tn::Placed p[tn::kShown];
+    const int np = s_q.step(t, ww, wh, p, [](Item& it) {
         const bool snd = s_sound.load() && !s_pcm.empty();
         if (snd) s_pos.store(0, std::memory_order_release);
         std::fprintf(stderr, "[trophy] notice shown %d %s%s\n", it.c->id, it.c->name.c_str(), snd ? ", sound played" : "");
     });
     const double s = tn::scale_for(wh);
-    if (s_head) {   // in the top place, fully in; the notices go under it
-        const int w = tn::px(tn::kW, s), h = tn::px(tn::kH, s), m = tn::px(tn::kMargin, s);
-        p[0] = { -1, (int)ww - m - w, m, w, h };
-        for (int k = 1; k <= np; k++) p[k].y += h + tn::px(tn::kGap, s);
-        np++;
-    } else {
-        for (int k = 0; k < np; k++) p[k] = p[k + 1];
-    }
     s_out.clear();
     int n = 0;
     for (int k = 0; k < np; k++) {
-        Card& c = p[k].slot < 0 ? *s_head : *s_q.item(p[k].slot).c;
+        Card& c = *s_q.item(p[k].slot).c;
         if (c.pw != p[k].w || c.ph != p[k].h || c.bgra != bgra) draw(c, p[k].w, p[k].h, s, bgra);
         if (c.pixels.empty()) continue;
         const uint32_t off = (uint32_t)s_out.size();
@@ -423,21 +408,6 @@ extern "C" void kz_notice_options(int notices, int sound)
 {
     s_notices = notices != 0;
     s_sound = sound != 0;
-}
-
-extern "C" void kz_trophy_page_ping(void)
-{
-    if (ps3_trophy_count() == 0) return;   // no trophy set: the page says so, no "0 / 0" card
-    std::lock_guard<std::mutex> g(s_mu);
-    if (!s_head) {   // the page opened: its count now
-        auto c = std::make_shared<Card>();
-        c->header = true;
-        c->total = ps3_trophy_count();
-        ps3_trophy_def d;
-        for (int id = 0; id < c->total; id++) c->got += ps3_trophy_get(id, &d) == 0 && d.unlocked;
-        s_head = c;
-    }
-    s_head_until = now_ms() + 300;   // ASSUMPTION: the page's Update pings every frame; 300 ms covers a slow one
 }
 
 extern "C" void kz_notice_add(int id, int grade, const char* name, int got, int total)

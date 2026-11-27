@@ -15,9 +15,6 @@ void kz_trophies_pump(void);
 void kz_notice_init(void);
 void kz_notice_options(int notices, int sound);
 void kz_notice_add(int id, int grade, const char* name, int got, int total);
-// The Trophies page (pcoptions.cpp) is on screen: called every frame it is, it shows the page's header (the count
-// and its bar) in the notices' place, the notices under it.
-void kz_trophy_page_ping(void);
 
 // The Trophies page: moves when the frame loop takes an unlock report or the set's size changes (its data is made
 // again then).
