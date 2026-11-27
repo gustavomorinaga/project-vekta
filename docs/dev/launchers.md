@@ -14,8 +14,9 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
 - **No arguments, from its own folder.** Either program plays. Before the first build it checks the files and builds
   first (`tools/release/launch.py --build-if-needed`), asking nothing when RPCS3 and the game are in their usual
   places. It needs no `HOME`, `USER` or `XDG_RUNTIME_DIR` (`project-vekta` changes to its own folder).
-- **The player's files:** `--game DIR` (the installed NPUA80856 folder, with `PARAM.SFO` and `USRDIR`), `--eboot FILE`
-  (a decrypted `EBOOT.elf`, SHA-256 `c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc`), `--psarc
+- **The player's files:** `--game DIR` (the installed NPUA80856 or NPEA00418 folder, with `PARAM.SFO` and `USRDIR`), `--eboot FILE`
+  (a decrypted `EBOOT.elf`, SHA-256 `c81aa91e35a76ff7d856095c392cee98bcc4b01879d7f13e5a389c6ee2d903fc` for the US
+  edition, `e4fc4f13b1bd940f52c5df16f4cc4bf0af88e17f4c1d2276b877a62490c57f52` for the European one), `--psarc
   FILE`, `--rpcs3 [DIR]`, `--disc PATH` (the disc with no RPCS3 installed), or `KZ_GAME`, `KZ_EBOOT`, `KZ_PSARC`. They are kept in `work/paths.env` once the check
   passes.
 - **The prepare step:** `scripts/prepare.cmd` and `scripts/prepare.sh` (`launch.py --prepare`). No window and no
@@ -45,7 +46,7 @@ options and exit codes in [BUILDING.md](../BUILDING.md), "Starting from a launch
   `quiver` for any `QUIVER*` variable (what Quiver sets was not found: unconfirmed), then `setup`, `source` (a Git
   checkout) or `zip`.
 - **Not yet:** the launchers' mode hints (`RECOMPLAUNCHER_MODE=bigpicture|desktop`, `RECOMPLAUNCHER_PAD=xbox|
-  playstation`, Steam Deck Game Mode) are not read; planned for 0.7.0 (full screen in Big Picture mode, the button
+  playstation`, Steam Deck Game Mode) are not read; planned, not in 0.8.0 (full screen in Big Picture mode, the button
   icons of the pad that is plugged in).
 
 ## Quiver

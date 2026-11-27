@@ -1,6 +1,6 @@
 # Installing Project Vekta
 
-This page is for players. It describes version <!-- version -->0.7.0<!-- /version -->: the Windows setup program, the Windows zip,
+This page is for players. It describes version <!-- version -->0.8.0<!-- /version -->: the Windows setup program, the Windows zip,
 and the Linux folder. Building from a Git clone is in [BUILDING.md](BUILDING.md).
 
 Every download builds the port on your own PC, from your own game. Nothing of the game is in them, and nothing of the
@@ -17,7 +17,7 @@ You need these files from your own game. No PS3 system software (firmware) is ne
   `dev_hdd0\game\NPUA80856`. The Store copy's data archive is bound to your licence: use "Use my RPCS3 install",
   which has your RPCS3 open it (with the `.rap` it already uses for the game) into `data_ps3.psarc`. The European
   edition (NPEA00418, `dev_hdd0\game\NPEA00418`, from the European PlayStation Store) works the same way, through
-  "Use my RPCS3 install".
+  "Use my RPCS3 install". A copy of the European disc (BCES-01743) goes the disc's way, below.
 - `EBOOT.elf`: the game's executable, decrypted. Not `EBOOT.BIN`.
 - Optional: `data_ps3.psarc`, the data archive, decrypted, about 3 GB. Without it the port reads the game folder's
   own `USRDIR\data_ps3.psarc.edat`, once, after the build: about a minute more, and 3.1 GB more disk in `work`.
@@ -40,7 +40,10 @@ Trilogy disc") and RecompLauncher's game box (given the disc's folder or the pac
 0.0.43-20640 from RPCS3's own GitHub releases, about 37 MB on Windows and 83 MB on Linux, checked by SHA-256) into
 the port's `work\toolchain-cache\rpcs3`. It installs the package into `work\prep\disc`, with no window and none of
 your settings, and decrypts a copy of `EBOOT.BIN` into `work\prep`. About 4 GB more disk is used; a minute or less
-on an SSD. The PlayStation Store package needs your licence, so it goes through "Use my RPCS3 install" instead. A
+on an SSD. A copy of the European Killzone HD disc (BCES-01743: its folder, with `PS3_GAME` in it) is taken the
+same way; nothing is installed from it, the official RPCS3 only decrypts a copy of its `EBOOT.BIN`, and its data
+archive is read where it is. The PlayStation Store package needs your licence, so it goes through "Use my RPCS3
+install" instead. A
 disc image (`.iso`) must be opened first (double-click it on Windows, or mount it on Linux). Windows 11 unpacks the RPCS3 download by
 itself; on Windows 10, install [7-Zip](https://www.7-zip.org) first.
 
@@ -142,14 +145,17 @@ A game launcher that installs downloaded packages can install the Windows zip or
 one program at its top for the launcher to start: `Project Vekta.exe` on Windows, `project-vekta` on Linux.
 
 1. **Add the package** to the launcher (the zip or the `.tar.xz` of a release).
-2. **Give it your game folder** when it asks: the installed NPUA80856 folder, with `PARAM.SFO` and `USRDIR`. A
-   decrypted `EBOOT.elf` is optional: leave it out when your RPCS3 has the game, and it makes the copy itself.
+2. **Give it your game** when it asks: the installed folder (NPUA80856, or the European NPEA00418), with
+   `PARAM.SFO` and `USRDIR`; or, with no RPCS3, the copied disc's folder or its `DATA000.PKG`. A decrypted
+   `EBOOT.elf` is optional: leave it out when your RPCS3 has the game, and it makes the copy itself.
 3. **Tick NVIDIA DLSS** (Windows only) only if you accept NVIDIA's licence; without it the port builds with AMD
    FSR 3.1. The Linux folder always builds with FSR 3.1: NVIDIA's Linux library does not link with its bundled
    toolchain. For DLSS on Linux, build with your system's compilers (docs/BUILDING.md).
 4. **Let it prepare.** The launcher runs the check and the build (5 to 30 minutes) without a window, with a
    progress bar. Nothing of the game is downloaded.
 5. **Play** from the launcher. The saves and settings stay in the folder (`work/vfs`), and the logs in `work`.
+   RecompLauncher's page for the game also shows the PC settings (the same `kz1hd_pc.ini` the game's PC page
+   writes) and, when it starts the game, your trophies as its achievements ([PRIVACY.md](PRIVACY.md)).
 
 When RPCS3 has the game in its usual places, a launcher that only starts the program also works: the first start
 builds from your RPCS3 without asking anything. If a step fails, the launcher shows the reason;

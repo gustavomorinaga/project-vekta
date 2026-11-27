@@ -3,7 +3,8 @@
 Project Vekta is maintained by gustavomorinaga. Thanks to everyone who helped:
 
 - **Code:** undecuple (the Project Helghast and Project Pyrrhus ports, and their work taken in here, credited in
-  [NOTICE.md](NOTICE.md) and in each patch's header).
+  [NOTICE.md](NOTICE.md) and in each patch's header); Sami Enazi (the inFAMOUS 2 PC port, whose RecompLauncher
+  achievements bridge gave ours its shape); Ripalda (the Recomp Achievements SDK the bridge is built on).
 - **Testing and bug reports:** Strawman97 (Windows and AMD reports: issues #17, #18, #19, #94), MarkPremier
   (#93), undecuple (#27), Dizzee112 (issue #129, the Level 1 crash on AMD graphics cards on Windows: tested four
   builds and sent the logs and crash reports that found the cause and confirmed the fix), FakeItalianFella (issue

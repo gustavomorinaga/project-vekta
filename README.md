@@ -40,7 +40,8 @@ An unofficial fan port by static recompilation. Work in progress, playable from 
 <p align="center"><img src="assets/divider-frame.png" width="900" alt=""></p>
 
 **Project Vekta** is an unofficial fan port of **Killzone HD**, the PS3 remaster of the first Killzone (title
-NPUA80856, from the Killzone Trilogy disc or the PlayStation Store), to Linux and Windows x64. The game's own PowerPC
+NPUA80856, from the Killzone Trilogy disc or the PlayStation Store, or the European NPEA00418), to Linux and Windows
+x64. The game's own PowerPC
 and SPU code is translated to C++ ahead of time with [ps3recomp](https://github.com/sp00nznet/ps3recomp) and compiled
 into a native program: it is **not an emulator** and **not a rewrite**. *Vekta* is the ISA colony world where the
 first Killzone is fought.
@@ -53,7 +54,7 @@ first Killzone is fought.
 
 ## Status
 
-Latest release: <!-- release -->[v0.7.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0), a pre-release<!-- /release -->. The whole campaign, levels 1 to 11, has been played from start to end on Linux and on
+Latest release: <!-- release -->[v0.8.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.8.0), a pre-release<!-- /release -->. The whole campaign, levels 1 to 11, has been played from start to end on Linux and on
 Windows. The levels are not yet each compared with reference footage of the PS3 game.
 
 | | | | |
@@ -76,8 +77,9 @@ The full dated table is [docs/STATUS.md](docs/STATUS.md).
 **What you need:**
 
 - **Your own Killzone HD** (NPUA80856, the US edition), installed from your own **Killzone Trilogy** disc or bought on
-  the PlayStation Store, or the European edition (NPEA00418) from the PlayStation Store, through your RPCS3. No PS3
-  system software is needed ([getting your files](docs/GETTING-FILES.md)).
+  the PlayStation Store, or the European edition: NPEA00418 from the PlayStation Store, through your RPCS3, or a copy
+  of the European disc (BCES-01743). No PS3 system software is needed
+  ([getting your files](docs/GETTING-FILES.md)).
 - **A PC:** Windows or Linux x64, a CPU with AVX2 (x86-64-v3), and a Vulkan graphics card and driver
   ([requirements](docs/requirements.md)).
 - **Disk space:** about 4 GB for the game files, plus a few GB free for the port and its build
@@ -85,7 +87,7 @@ The full dated table is [docs/STATUS.md](docs/STATUS.md).
 
 **Install:**
 
-1. Download from <!-- release -->[v0.7.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0), a pre-release<!-- /release --> on the [releases page](https://github.com/gustavomorinaga/project-vekta/releases): the **setup program**
+1. Download from <!-- release -->[v0.8.0](https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.8.0), a pre-release<!-- /release --> on the [releases page](https://github.com/gustavomorinaga/project-vekta/releases): the **setup program**
    (`project-vekta-X.Y.Z-setup.exe`) or the **zip** on Windows, the **folder** (`project-vekta-X.Y.Z-linux.tar.xz`)
    on Linux. Check it against `SHA256SUMS`.
 2. Start it: the setup, `Project Vekta.exe` in the zip or `./project-vekta` in the Linux folder. When the game is in
@@ -127,7 +129,8 @@ All optional, on a **PC** page in the game's own Options and Pause menus:
 - AMD FSR 1, AMD FSR 3.1 and NVIDIA DLSS (downloaded only if you accept its licence), anisotropic filtering
 - field of view for the world and the weapon, HUD and crosshair size, motion blur, film grain and glow
 - keyboard and mouse with direct mouse look, any SDL controller, prompts that follow the device
-- stereo, 5.1 or 7.1 sound, game language, local trophies
+- two players on one PC in split screen, on the keyboard and mouse and a controller or on two controllers
+- stereo, 5.1 or 7.1 sound, game language, trophies with an on-screen notice and a Trophies page, kept on your PC
 
 The full list, with defaults and evidence: [docs/STATUS.md](docs/STATUS.md#pc-features) and
 [docs/FEATURES.md](docs/FEATURES.md). Controls and display: [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).

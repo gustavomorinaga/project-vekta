@@ -89,26 +89,28 @@
 <h2 id="h-status">Status</h2>
 <p class="lede">Status: Playable. 19 game features and 27 PC features, from the project&#x27;s records.</p>
 <h3>Status: Playable</h3>
-<p class="meta">generated from the project's records · checked 2026-10-30 · 19 game features · 27 PC features</p>
+<p class="meta">generated from the project's records · checked 2026-11-27 · 19 game features · 27 PC features</p>
 <p>The same data as <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, where every row has its evidence. <em>Works</em> is claimed only with a recorded result, on the maintainer's machine (Linux x64, RTX 3070 Ti) unless a row says otherwise.</p>
 <ul class="portal">
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Boot and menus</b><span class="blurb">every run since 2026-10-14</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Level 1</b><span class="blurb">played by hand from start to end</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
-<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Levels 2 to 11</b><span class="blurb">2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16)</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Level 1</b><span class="blurb">played by hand from start to end; 2026-11-27, the 0.8.0 code on Linux: from a fresh profile with the default settings through the logos, the menus and the opening movie into the level, 60 fps on scripted input</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Levels 2 to 11</b><span class="blurb">2026-10-17 (all 11 loaded 22 times without a hang), parts played by hand 2026-10-20; all played from start to end on Linux and on Windows (the maintainer, reported 2026-11-16); 2026-11-27, the 0.8.0 code on Linux: each of the campaign&#x27;s 36 sections opened from the level list and run for about 95 s on scripted input (walk, turn, fire) at the 60 fps limit: all 36 reached play and held 60 fps with the game clock at 60 ticks a second, no crash or hang</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Movies</b><span class="blurb">30 movies; runs without FFmpeg skip them</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Saves</b><span class="blurb">Continue returns to the checkpoint</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Sound</b><span class="blurb">decoded by minimp3 in place of the firmware&#x27;s decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md)</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Trophies</b><span class="blurb"><code>gamedata/trophies/NPWR03819.log</code>; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse); RecompLauncher&#x27;s channel 2026-11-27 with a stand-in launcher (a live unlock through RecompLauncher itself not yet run); <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a></span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Battlefields and split screen</b><span class="blurb">one player with 13 bots on the 8 maps, Team Deathmatch, 2026-11-25 (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/performance.md">dev/performance.md</a>); two players, player 2 on a virtual pad: 37 of 37 mode and map cells, and Canyon Crossing for 64 s at 59.6 fps with both HUDs right, US and European editions, 2026-11-25/26; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a></span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Linux build</b><span class="blurb">built and played on the maintainer&#x27;s machine; <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/BUILDING.md">BUILDING.md</a></span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
+<li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>European edition</b><span class="blurb">lifted with its own addresses and built like the US edition; every level loads on Linux; not yet played past each level&#x27;s start</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Windows</b><span class="blurb">runs under Wine, Proton and on Windows; the whole campaign played there</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Frame rate</b><span class="blurb">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 <li class="row"><span class="thumb tb-ok" aria-hidden="true">OK</span><div class="rt"><b>Installer</b><span class="blurb"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>Project Vekta.exe</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</span></div><div class="stats"><span class="st st-ok">Works</span></div></li>
 </ul>
 <h4>The PS3 game, feature by feature</h4>
 <ul class="meters">
-<li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span><b>17</b></li>
+<li class="m-ok"><span class="ml">Works</span><span class="bar" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span><b>18</b></li>
 <li class="m-part"><span class="ml">Partial</span><span class="bar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>0</b></li>
-<li class="m-no"><span class="ml">Not yet</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
+<li class="m-no"><span class="ml">Not yet</span><span class="bar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>0</b></li>
 <li class="m-na"><span class="ml">Not applicable</span><span class="bar" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1</b></li>
 </ul>
 <details><summary>Boot and menus</summary>
@@ -173,7 +175,7 @@
 <caption class="vh">Languages: the PS3 game feature by feature</caption>
 <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Feature</th><th role="columnheader" scope="col">On the PS3</th><th role="columnheader" scope="col">In the port</th><th role="columnheader" scope="col">State</th></tr></thead>
 <tbody role="rowgroup">
-<tr role="row"><th role="rowheader" scope="row">Voice, subtitles, menus</th><td role="cell" data-label="On the PS3">English, French, Spanish (by console language)</td><td role="cell" data-label="In the port">chosen on the PC page</td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr role="row"><th role="rowheader" scope="row">Voice, subtitles, menus</th><td role="cell" data-label="On the PS3">English, French, Spanish in the US edition; the European edition adds German, Italian and Dutch (by console language)</td><td role="cell" data-label="In the port">chosen on the PC page (English, French, Spanish) or by the system&#x27;s language</td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Trophies</summary>
@@ -189,7 +191,7 @@
 <caption class="vh">Multiplayer: the PS3 game feature by feature</caption>
 <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Feature</th><th role="columnheader" scope="col">On the PS3</th><th role="columnheader" scope="col">In the port</th><th role="columnheader" scope="col">State</th></tr></thead>
 <tbody role="rowgroup">
-<tr role="row"><th role="rowheader" scope="row">&quot;One / Two Player&quot; in the menu</th><td role="cell" data-label="On the PS3">local</td><td role="cell" data-label="In the port">checked</td><td role="cell" data-label="State"><span class="st st-no">Not yet</span></td></tr>
+<tr role="row"><th role="rowheader" scope="row">Battlefields: one player against bots, two players in split screen</th><td role="cell" data-label="On the PS3">local</td><td role="cell" data-label="In the port">on Linux with scripted input: two players share one PC, the keyboard and mouse and a controller or two controllers; not yet played by two people, with a real second controller or on Windows</td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
 </tbody></table></div>
 </details>
 <details><summary>Online</summary>
@@ -212,7 +214,7 @@
 <tr role="row"><th role="rowheader" scope="row">Internal resolution scale, 50 % to 200 %</th><td role="cell" data-label="Default">100 %</td><td role="cell" data-label="Where it is set"><code>scale</code>; applies at once, with FSR 3.1 too (ps3recomp patch 2093; Level 1, 2026-11-26; DLSS takes the same path, not yet run)</td></tr>
 <tr role="row"><th role="rowheader" scope="row">V-Sync on, off, adaptive; VRR</th><td role="cell" data-label="Default">on</td><td role="cell" data-label="Where it is set"><code>vsync</code></td></tr>
 <tr role="row"><th role="rowheader" scope="row">NVIDIA Reflex: off, on, on + boost (<code>VK_NV_low_latency2</code>)</th><td role="cell" data-label="Default">off</td><td role="cell" data-label="Where it is set"><code>reflex</code>; &quot;not available&quot; without the extension; no measured fps or latency change in Level 7</td></tr>
-<tr role="row"><th role="rowheader" scope="row">Frame-rate limit 30, 60, 120, 144, 165, 240 or Unlimited (the game clock follows)</th><td role="cell" data-label="Default">60</td><td role="cell" data-label="Where it is set"><code>fps_limit</code> (<code>0</code> = Unlimited, a 1000 Hz game clock); 30 is the PS3&#x27;s; 120 and up are EXPERIMENTAL: the frame rate is the PC&#x27;s below the limit, with the 144 Hz mode&#x27;s known problems (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>)</td></tr>
+<tr role="row"><th role="rowheader" scope="row">Frame-rate limit 30, 60, 120, 144, 165, 240 or Unlimited (the game clock follows)</th><td role="cell" data-label="Default">60</td><td role="cell" data-label="Where it is set"><code>fps_limit</code> (<code>0</code> = Unlimited, a 1000 Hz game clock); 30 is the PS3&#x27;s; 120 and up are EXPERIMENTAL: the frame rate is the PC&#x27;s below the limit, with the 144 Hz mode&#x27;s known problems (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>); Level 1&#x27;s opening battle, 2026-11-27: the game clock ran at 30.0, 144.0, 240.0 and 1000.2 ticks a second at the 30, 144, 240 and Unlimited limits</td></tr>
 <tr role="row"><th role="rowheader" scope="row">AMD FSR 1 upscaling and RCAS sharpening</th><td role="cell" data-label="Default">bilinear</td><td role="cell" data-label="Where it is set"><code>upscaler</code>, <code>sharpness</code></td></tr>
 <tr role="row"><th role="rowheader" scope="row">Anisotropic filtering: the game&#x27;s own, off, 2x to 16x</th><td role="cell" data-label="Default">the game&#x27;s</td><td role="cell" data-label="Where it is set"><code>anisotropic</code>; applies at once (ps3recomp patch 2095; Level 1, 2026-11-26)</td></tr>
 <tr role="row"><th role="rowheader" scope="row">Post-processing: anti-aliasing (the game&#x27;s MLAA) on or off; motion blur, film grain and glow 0 to 100 % in steps of 10</th><td role="cell" data-label="Default">the game&#x27;s</td><td role="cell" data-label="Where it is set"><code>antialiasing</code>, <code>motion_blur</code>, <code>film_grain</code>, <code>glow</code>, applied at once; 100 % leaves the game&#x27;s value untouched. Level 8 (user_1023 save), 60 Hz, 2026-11-13, scripted sprint with <code>PS3RECOMP_MLAA_DUMP</code>: at 100 % the sprint field rises 12, 23 ... 94 over 8 frames and the output equals the C reference on every pixel; at 50 % the field is exactly half (6, 12 ... 47), output again equal to the reference; at 0 % the game&#x27;s factor (0.05) is drawn as 0 and no frame has field strength; anti-aliasing off: output = input on 8 frames. Film grain (alpha 0.12 in Level 8, always on): 0 % vs 100 % frames differ by grain only (high-frequency energy 2.35 vs 2.61, 4 luma darker with grain); glow (Level 8, lit sprite glow, 8 frames with 13-696 lit source pixels): at 100 % every output equals the C reference at the game&#x27;s strength 256 (the glow branch&#x27;s <code>check_dump.sh</code>), at 0 % every output equals the reference without glow, about 8000 pixels apart from the 100 % one. 2026-11-16, Linux, 2560x1440 (internal 2x), 14 phases of chapters 1 to 9 opened from the level select or a save: the MLAA, glow and motion-blur passes ran on every frame (a counter per 5 s); in <code>1.HQGrounds</code> the game itself fades its film grain from 0.15 to 0 in about 30 s, so the slider has nothing to scale (the same in RPCS3, checked by the maintainer); the glow source was unlit in all 14, as the game draws it only in some Level 11 spots. Windows, 3440x1440, 2026-11-16 (maintainer): MLAA and sprint blur on</td></tr>
@@ -226,7 +228,7 @@
 <tr role="row"><th role="rowheader" scope="row">Controllers through SDL, with keyboard and mouse at the same time</th><td role="cell" data-label="Default">merged</td><td role="cell" data-label="Where it is set"><code>controllers</code>; <code>PAD_MOUSE_STICK=1</code> puts the mouse on the right stick instead</td></tr>
 <tr role="row"><th role="rowheader" scope="row">Button prompts and the Controls picture follow the device (keyboard and mouse, Xbox, PlayStation, Nintendo)</th><td role="cell" data-label="Default">auto</td><td role="cell" data-label="Where it is set"></td></tr>
 <tr role="row"><th role="rowheader" scope="row">Sound output: stereo, 5.1, 7.1</th><td role="cell" data-label="Default">stereo</td><td role="cell" data-label="Where it is set"><code>speakers</code></td></tr>
-<tr role="row"><th role="rowheader" scope="row">Language: system, English (US, UK), French, Spanish</th><td role="cell" data-label="Default">system</td><td role="cell" data-label="Where it is set"><code>language</code></td></tr>
+<tr role="row"><th role="rowheader" scope="row">Language: system, English (US, UK), French, Spanish</th><td role="cell" data-label="Default">system</td><td role="cell" data-label="Where it is set"><code>language</code>; system follows the PC&#x27;s language, also to the European edition&#x27;s German, Italian and Dutch</td></tr>
 <tr role="row"><th role="rowheader" scope="row">Skip the opening movie (the logos stay)</th><td role="cell" data-label="Default">off</td><td role="cell" data-label="Where it is set"><code>intro = off</code>, <code>KZ_SKIP_INTRO=1</code></td></tr>
 <tr role="row"><th role="rowheader" scope="row">Statistics overlay (MangoHUD, Linux)</th><td role="cell" data-label="Default">off</td><td role="cell" data-label="Where it is set"><code>overlay = mangohud</code>, <code>KZ_MANGOHUD=1</code></td></tr>
 <tr role="row"><th role="rowheader" scope="row">Quit Game in the Options sub-menu; closing the window waits for a save in progress</th><td role="cell" data-label="Default">on</td><td role="cell" data-label="Where it is set"></td></tr>
@@ -242,6 +244,7 @@
 <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Feature</th><th role="columnheader" scope="col">Notes</th><th role="columnheader" scope="col">State</th></tr></thead>
 <tbody role="rowgroup">
 <tr role="row"><th role="rowheader" scope="row">Linux x64 build</th><td role="cell" data-label="Notes"></td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
+<tr role="row"><th role="rowheader" scope="row">The European edition (NPEA00418 from the PlayStation Store, BCES-01743 from the disc)</th><td role="cell" data-label="Notes">lifted with its own addresses and built like the US edition; every level loads on Linux; not yet played past each level&#x27;s start</td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
 <tr role="row"><th role="rowheader" scope="row">Windows x64 exe (cross-built on Linux)</th><td role="cell" data-label="Notes">runs under Wine, Proton and on Windows; the whole campaign played there</td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
 <tr role="row"><th role="rowheader" scope="row">Frame rate</th><td role="cell" data-label="Notes">a steady 60 fps by default; the 144 Hz mode at about 131 to 134 fps</td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
 <tr role="row"><th role="rowheader" scope="row">Installer that builds the port on the player&#x27;s PC</th><td role="cell" data-label="Notes"><code>tools/install.sh</code> on Linux; on Windows a release folder (<code>tools/release/assemble_payload.py</code>, <code>Project Vekta.exe</code>) builds with the bundled toolchain, and a setup program installs it; both are built and published with each release since 0.2.0, and the Linux folder since 0.3.0</td><td role="cell" data-label="State"><span class="st st-ok">Works</span></td></tr>
@@ -253,8 +256,8 @@
 <h2 id="h-news">News</h2>
 <p class="lede">The newest release notes, newest first.</p>
 <article class="rel">
-<h3>Unreleased</h3>
-<p class="meta">not released yet</p>
+<h3>0.8.0</h3>
+<p class="meta">27 Nov 2026 · pre-release</p>
 <ul class="rlist">
 <li><span class="kind">Added</span>Trophies in the game (#180, #181): when you earn one, a card slides in at the top right with the trophy&#x27;s picture from your game&#x27;s trophy set, its name, its grade and how many of the 59 you have, with a short sound made for Project Vekta (&quot;Trophy Notices&quot; and &quot;Trophy Sound&quot; on the PC page). A Trophies page in the pause menu and in Extras lists all 59 with the day you earned each; without the trophy set, it says so. The words follow the game&#x27;s language. Started from RecompLauncher, the game reports its trophies to the launcher (Recomp Achievements), which shows its own toast instead of the card; the game goes online for none of it (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md">docs/PRIVACY.md</a>).</li>
 <li><span class="kind">Added</span>More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (<code>fps_limit = 0</code>, a 1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the default (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">docs/KNOWN_ISSUES.md</a>).</li>
@@ -265,7 +268,7 @@
 <li><span class="kind">Added</span>Two players on one PC (Game &gt; Battlefields &gt; Two Players, split screen): &quot;Two Players&quot; is now enabled with a single controller, whatever the Controllers setting. With one controller, player 1 plays on the keyboard and mouse and player 2 on the controller; with two or more, the first controller and the keyboard and mouse are player 1 and the second controller is player 2. The mouse turns only player 1&#x27;s view (it used to turn both), and player 1&#x27;s rumble no longer shakes player 2&#x27;s controller. Each view&#x27;s HUD follows the HUD Size and HUD Position settings in its own half of the screen, on a 16:9 display and a wider one, and is one player&#x27;s HUD at half its size: the health and ammo panels keep their shape (the PS3 game squashes them in split screen), the ammo count sits centred on its bar, and the HUD&#x27;s text (timer, scores, ammo count, prompts) keeps its shape too. Player 2&#x27;s HUD has the same margins as player 1&#x27;s (the PS3 game draws it 20 pixels higher, so its timer and scores touched the split line). With FSR 3 or DLSS on (Temporal), split screen shows both views: the temporal upscaler rests while two players play, and the scene is drawn at the upscaler&#x27;s render size and stretched to the screen as with a lower Resolution Scale (patch 2092). One-player games are unchanged.</li>
 <li><span class="kind">Changed</span>Trophies are kept more safely (#180): the trophy file is written in full to a temporary file and then put in place, so a crash or a power cut while saving keeps the old file. With a debug option that changes the game or input from a control script, trophies are not stored, and the log says so (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/dev/trophies.md#debug-options-that-block-trophies">docs/dev/trophies.md</a>).</li>
 </ul>
-<p class="small">And 26 more items in <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
+<p class="small">And 27 more items in <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </article>
 <article class="rel">
 <h3>0.7.0</h3>
@@ -305,21 +308,20 @@
 <section id="changelog" class="promo term">
 <h3>Changelog</h3>
 <ul class="clog">
-<li><time>next</time><span><b>Unreleased</b> Trophies in the game (#180, #181): when you earn one, a card slides in at the top right with the trophy&#x27;s picture from...</span></li>
-<li><time>next</time><span><b>Unreleased</b> More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (fps_limit = 0, a 1000 Hz...</span></li>
-<li><time>next</time><span><b>Unreleased</b> RecompLauncher: the game&#x27;s page lists the PC settings (display, picture, upscaling, mouse, sound and language), read...</span></li>
-<li><time>next</time><span><b>Unreleased</b> RecompLauncher: the game box also takes the European edition, the folder RPCS3 installed it in (NPEA00418) or your...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game...</span></li>
-<li><time>next</time><span><b>Unreleased</b> The European disc of Killzone HD (BCES-01743): give a copy of the disc&#x27;s folder to --disc FOLDER (or &quot;From my Killzone...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Two players on one PC (Game &gt; Battlefields &gt; Two Players, split screen): &quot;Two Players&quot; is now enabled with a single...</span></li>
-<li><time>next</time><span><b>Unreleased</b> Trophies are kept more safely (#180): the trophy file is written in full to a temporary file and then put in place, so...</span></li>
+<li><time datetime="2026-11-27">11-27</time><span><b>0.8.0</b> Trophies in the game (#180, #181): when you earn one, a card slides in at the top right with the trophy&#x27;s picture from...</span></li>
+<li><time datetime="2026-11-27">11-27</time><span><b>0.8.0</b> More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (fps_limit = 0, a 1000 Hz...</span></li>
+<li><time datetime="2026-11-27">11-27</time><span><b>0.8.0</b> RecompLauncher: the game&#x27;s page lists the PC settings (display, picture, upscaling, mouse, sound and language), read...</span></li>
+<li><time datetime="2026-11-27">11-27</time><span><b>0.8.0</b> RecompLauncher: the game box also takes the European edition, the folder RPCS3 installed it in (NPEA00418) or your...</span></li>
+<li><time datetime="2026-11-27">11-27</time><span><b>0.8.0</b> The European edition of Killzone HD (NPEA00418, from the European PlayStation Store): the build finds it in the game...</span></li>
+<li><time datetime="2026-11-27">11-27</time><span><b>0.8.0</b> The European disc of Killzone HD (BCES-01743): give a copy of the disc&#x27;s folder to --disc FOLDER (or &quot;From my Killzone...</span></li>
+<li><time datetime="2026-11-27">11-27</time><span><b>0.8.0</b> Two players on one PC (Game &gt; Battlefields &gt; Two Players, split screen): &quot;Two Players&quot; is now enabled with a single...</span></li>
+<li><time datetime="2026-11-27">11-27</time><span><b>0.8.0</b> Trophies are kept more safely (#180): the trophy file is written in full to a temporary file and then put in place, so...</span></li>
 </ul>
 <p class="small">Newest first; the full list: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 </section>
 <section id="todo" class="promo obj">
 <h3>Objectives</h3>
 <ul class="todo">
-<li class="o-no"><span class="box" aria-hidden="true"></span>&quot;One / Two Player&quot; in the menu <em>(not yet)</em></li>
 </ul>
 <p class="small">The next features still open; all of them: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FEATURES.md">FEATURES.md</a>, and the plan: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/ROADMAP.md">ROADMAP.md</a>.</p>
 </section>
@@ -328,10 +330,10 @@
 <h2 id="h-install">Install</h2>
 <p class="lede">The setup program or the release folders: they check your own copy and build the port on your PC.</p>
 <div class="dl">
-<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0">v0.7.0</a> <span>pre-release</span></p>
-<p class="small">23 Nov 2026 · playable · Windows x64 and Linux x64</p>
-<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.7.0">Download v0.7.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
-<p>The release page has the Windows setup program (project-vekta-0.7.0-setup.exe, the easiest way on Windows), the Windows folder as a zip, the Linux folder and the source archive, each with a .sha256 file, and SHA256SUMS: check your download against them.</p>
+<p class="ver"><a href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.8.0">v0.8.0</a> <span>pre-release</span></p>
+<p class="small">27 Nov 2026 · playable · Windows x64 and Linux x64</p>
+<p class="btns"><a class="btn" href="https://github.com/gustavomorinaga/project-vekta/releases/tag/v0.8.0">Download v0.8.0</a><a class="btn alt" href="https://github.com/gustavomorinaga/project-vekta/releases">All releases</a></p>
+<p>The release page has the Windows setup program (project-vekta-0.8.0-setup.exe, the easiest way on Windows), the Windows folder as a zip, the Linux folder and the source archive, each with a .sha256 file, and SHA256SUMS: check your download against them.</p>
 </div>
 <p>The Windows setup program, <code>Project Vekta.exe</code> in the Windows zip and <code>./project-vekta</code> in the Linux folder check your own Killzone HD files (a disc or PlayStation Store copy, or the one your RPCS3 already installed), translate the game's code and build it on your machine. Nothing of the game is shipped or downloaded, and nothing is written into your game files. What each input must contain: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">Getting your files</a>.</p>
 <h3>Through a launcher</h3>
@@ -351,7 +353,7 @@ tools/install.sh</pre>
 <h2 id="h-requirements">Requirements</h2>
 <p class="lede">What you need from your own copy, and the PC it was tested on.</p>
 <h3>What you need</h3>
-<p>Your own Killzone HD (NPUA80856, or the European NPEA00418) from the Killzone Trilogy disc or the PlayStation Store, installed, with its decrypted EBOOT (no PS3 system software is needed): <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>. No PlayStation Network account is used.</p>
+<p>Your own Killzone HD (NPUA80856, or the European NPEA00418 or BCES-01743) from the Killzone Trilogy disc, the European disc or the PlayStation Store, with its decrypted EBOOT (no PS3 system software is needed): <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>. No PlayStation Network account is used.</p>
 <h3>Hardware to play</h3>
 <div class="tw"><table role="table">
 <caption class="vh">The PC: what it was tested on, and the minimum</caption>
@@ -367,7 +369,7 @@ tools/install.sh</pre>
 </section>
 <section id="faq" class="sec" aria-labelledby="h-faq">
 <h2 id="h-faq">FAQ</h2>
-<p class="lede">14 short answers: the emulator question, your own copy, Linux, launchers, speed and more.</p>
+<p class="lede">16 short answers: the emulator question, your own copy, Linux, launchers, speed and more.</p>
 <div class="faq" id="faq-1"><h3>Is this an emulator?</h3>
 <p>No. The game&#x27;s PPU and SPU code is translated to C++ ahead of time with <a href="https://github.com/sp00nznet/ps3recomp">ps3recomp</a> and compiled into a native Linux or Windows x64 program. No CPU emulator runs while you play. Around the game&#x27;s own code, the PS3&#x27;s system libraries are reimplemented on PC APIs, and its graphics commands are replayed on Vulkan. More: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/HOW-IT-WORKS.md">HOW-IT-WORKS.md</a>.</p>
 </div>
@@ -378,7 +380,7 @@ tools/install.sh</pre>
 <p>Yes. This repository and its downloads hold no game code, data, assets, keys or firmware, and never will. The port is built on your PC from your own copy of Killzone HD. What each file must be: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>.</p>
 </div>
 <div class="faq" id="faq-4"><h3>Which copies work?</h3>
-<p>Killzone HD, the US edition (NPUA80856), installed from your own <strong>Killzone Trilogy</strong> disc or bought on the PlayStation Store, and the European edition (NPEA00418) from the European PlayStation Store, through your RPCS3. The European disc (BCES-01743) has not been tried (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>).</p>
+<p>Killzone HD, the US edition (NPUA80856), installed from your own <strong>Killzone Trilogy</strong> disc or bought on the PlayStation Store, and, since 0.8.0, the European edition: NPEA00418 from the European PlayStation Store, through your RPCS3, or a copy of the European disc (BCES-01743). Each must be version 01.00 (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/GETTING-FILES.md">GETTING-FILES.md</a>).</p>
 </div>
 <div class="faq" id="faq-5"><h3>Do I need PS3 firmware?</h3>
 <p>No, since 0.6.0. The music is decoded by the port itself, and the SPURS queue that used the firmware&#x27;s <code>libsre</code> is in the port&#x27;s runtime (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/CHANGELOG.md">CHANGELOG.md</a>).</p>
@@ -396,18 +398,24 @@ tools/install.sh</pre>
 <p>Yes: RecompLauncher and Quiver Launcher list the port, and both install the same release folders (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/INSTALL.md#installing-through-a-launcher">INSTALL.md</a>).</p>
 </div>
 <div class="faq" id="faq-10"><h3>How fast does it run?</h3>
-<p>A steady 60 frames per second by default on the maintainer&#x27;s machine (the game logic runs at 60 Hz instead of the PS3&#x27;s 30); an optional 144 Hz mode reaches about 131 to 134 in Level 1 and Level 7 (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/STATUS.md">STATUS.md</a>). Your PC: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/requirements.md">requirements.md</a>.</p>
+<p>A steady 60 frames per second by default on the maintainer&#x27;s machine (the game logic runs at 60 Hz instead of the PS3&#x27;s 30); an optional 144 Hz mode reaches about 131 to 134 in Level 1 and Level 7 (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/STATUS.md">STATUS.md</a>). The limits of 120, 165, 240 and Unlimited are experimental (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>). Your PC: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/requirements.md">requirements.md</a>.</p>
 </div>
-<div class="faq" id="faq-11"><h3>Does anything go online?</h3>
-<p>Nothing unless you choose it: the optional NVIDIA DLSS download and the new-version check, off by default (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md">PRIVACY.md</a>).</p>
+<div class="faq" id="faq-11"><h3>Can two people play on one PC?</h3>
+<p>Yes, since 0.8.0: Game &gt; Battlefields &gt; Two Players, in split screen. With one controller, player 1 plays on the keyboard and mouse and player 2 on the controller; with two, each has a controller. There is no online play: the PS3 game has none (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>).</p>
 </div>
-<div class="faq" id="faq-12"><h3>Where are my saves and settings?</h3>
+<div class="faq" id="faq-12"><h3>Are there trophies?</h3>
+<p>Yes, on your PC only: the port reads the names and pictures from your game&#x27;s own trophy set, shows a notice when you earn one and lists them on a Trophies page. Nothing is sent to the PlayStation Network (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md">PRIVACY.md</a>).</p>
+</div>
+<div class="faq" id="faq-13"><h3>Does anything go online?</h3>
+<p>Nothing unless you choose it: the optional NVIDIA DLSS download, the official RPCS3 for a game straight from the disc, and the new-version check, off by default (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md">PRIVACY.md</a>).</p>
+</div>
+<div class="faq" id="faq-14"><h3>Where are my saves and settings?</h3>
 <p>In the install&#x27;s <code>work/vfs/</code>, or in <code>%APPDATA%\Project Vekta</code> for a non-portable Windows setup install (<a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/PRIVACY.md#where-your-data-goes">PRIVACY.md</a>).</p>
 </div>
-<div class="faq" id="faq-13"><h3>Something went wrong. What now?</h3>
+<div class="faq" id="faq-15"><h3>Something went wrong. What now?</h3>
 <p>Look up what you see in <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/TROUBLESHOOTING.md">TROUBLESHOOTING.md</a>. If it is not there, <a href="https://github.com/gustavomorinaga/project-vekta/issues/new/choose">open an issue</a> with the log it names.</p>
 </div>
-<div class="faq" id="faq-14"><h3>What about Killzone 2 and Killzone 3?</h3>
+<div class="faq" id="faq-16"><h3>What about Killzone 2 and Killzone 3?</h3>
 <p>They have their own ports by undecuple: <a href="https://github.com/undecuple/project-pyrrhus">Project Pyrrhus</a> (Killzone 2) and <a href="https://github.com/undecuple/project-helghast">Project Helghast</a> (Killzone 3).</p>
 </div>
 <p class="small">The same answers, with every link: <a href="https://github.com/gustavomorinaga/project-vekta/blob/main/docs/FAQ.md">FAQ.md</a>.</p>

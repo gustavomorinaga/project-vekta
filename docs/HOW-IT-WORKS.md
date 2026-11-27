@@ -12,7 +12,8 @@ program is translated to C++ ahead of time, compiled for x64, and given a PC sta
 | SPURS LFQueue | firmware `libsre` | reimplemented in ps3recomp's runtime (patch 1022), checked against the firmware's own code |
 | Graphics (RSX) | the game's GCM command stream | replayed on Vulkan by ps3recomp's draw engine and this project's Vulkan backend (window, present, scaling, FSR 1) |
 | Movies | `cellSail` playing AVI files | `port/kz1hd/sail.cpp`, decoding with FFmpeg loaded at run time |
-| Input | DualShock 3 through `cellPad` | SDL controllers, keyboard and mouse through `cellPad`, with mouse look written straight into the game's camera |
+| Input | DualShock 3 through `cellPad` | SDL controllers, keyboard and mouse through `cellPad`, with mouse look written straight into the game's camera; in split screen the pads move to the two players' ports |
+| Trophies | `sceNpTrophy`, synced with the PlayStation Network | kept on the PC, with names and pictures read from the game's own trophy set; the notice and the Trophies page are the port's (`port/kz1hd/trophies.cpp`, `trophy_notice.cpp`) |
 | Data | `data_ps3.psarc` read by the game's file system code | the same: the game reads its own archive from the run folder |
 
 ## The build, step by step
@@ -21,7 +22,9 @@ program is translated to C++ ahead of time, compiled for x64, and given a PC sta
    `port/patches/series`. The submodule itself is never edited.
 2. `tools/lift.sh` reads your decrypted EBOOT: ps3recomp's loader lists its segments, imports and the functions its
    tables name; `find_functions.py` completes the list with the seeds in `re/function_seeds.txt`; the PPU lifter
-   writes the C++ (`work/lift/gen`). The SPU images and job modules are extracted and lifted (`work/lift/spu`). The system
+   writes the C++ (`work/lift/gen`). For the European edition the same seeds go through `re/eu/address_map.tsv`, the
+   table of what moved, and each function keeps its US name ([dev/editions.md](dev/editions.md)). The SPU images and
+   job modules are extracted and lifted (`work/lift/spu`). The system
    software's MP3 decoder is not: its call is answered by minimp3 (`port/kz1hd/native/flashmp3.c`).
 3. `tools/build.sh` compiles the lifted code, ps3recomp's runtime and the port (`port/kz1hd`) into one program.
 4. `tools/setup-vfs.sh` makes the folder the program runs in: the game's files where the PS3 would have them.
@@ -46,4 +49,4 @@ limits of 120 and up are optional and experimental, with known problems ([KNOWN_
 - [docs/dev/port-journal.md](dev/port-journal.md): the dated journal of the port, from the first lift to the
   current state.
 - [docs/dev/](dev/): performance work, the ps3recomp v0.18.0 and v0.19.0 migrations, the Windows build, the WWS job manager and
-  its post-processing jobs, data formats, and notes on other ports.
+  its post-processing jobs, data formats, the editions, the trophies, the launchers, and notes on other ports.
