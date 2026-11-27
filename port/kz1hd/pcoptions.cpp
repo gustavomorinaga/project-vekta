@@ -56,7 +56,8 @@
 #include "menu_box.h"    /* the list box the mouse drives */
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
-#include "trophies.h"    /* kz_notice_options */
+#include "trophies.h"    /* kz_notice_options, the Trophies page */
+#include "trophy_list.h" /* the Trophies page's words */
 #include "res_list.h"    /* the sizes the Resolution row offers */
 #include "sys_info.h"    /* kz_sys_pair: the session header's settings line */
 #include "display_seq.h" /* KZ_TEST_DISPLAY_SEQ */
@@ -740,6 +741,12 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
 static void get_tnotice(ppu_context* c) { attr_log("get_tnotice", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["trophy_notices"] != "off"; }
 static void set_tnotice(ppu_context* c) { attr_log("set_tnotice", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["trophy_notices"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); notice_apply(); s_deps_dirty = true; }
+/* The Trophies page (trophy_list.h): each row's value is its only option, so the rows share one attribute that always
+ * reads 0 and takes nothing; the page's Update pings every frame it is on screen (the header card, trophy_notice.cpp). */
+static void get_trow(ppu_context* c) { wrf((uint32_t)c->gpr[4], 0.0f); }
+static void set_trow(ppu_context*) {}
+static void get_tping(ppu_context* c) { vm_base[(uint32_t)c->gpr[4]] = 0; }
+static void set_tping(ppu_context* c) { if ((int32_t)c->gpr[5] == 2) kz_trophy_page_ping(); }
 static void get_tsound(ppu_context* c) { attr_log("get_tsound", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["trophy_sound"] != "off"; }
 static void set_tsound(ppu_context* c) { attr_log("set_tsound", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_TROPHY_SOUND)) return;
     s_ini["trophy_sound"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); notice_apply(); }
@@ -890,6 +897,8 @@ static void kz_pc_inject_attrs(ppu_context* ctx)
         { kSysClass, "IntroMovie",            kBoolVtbl,  get_intro,   set_intro },
         { kSysClass, "TrophyNotices",         kBoolVtbl,  get_tnotice, set_tnotice },
         { kSysClass, "TrophySound",           kBoolVtbl,  get_tsound,  set_tsound },
+        { kSysClass, "TrophyRow",             kFloatVtbl, get_trow,    set_trow },
+        { kSysClass, "TrophyPing",            kBoolVtbl,  get_tping,   set_tping },
         { kSysClass, "Anisotropic",           kFloatVtbl, get_aniso,   set_aniso },
         { kSysClass, "Upscaler",              kFloatVtbl, get_upscaler, set_upscaler },
         { kSysClass, "Sharpness",             kFloatVtbl, get_sharp,   set_sharp },
@@ -1069,6 +1078,37 @@ static std::string kz_lua(void)
     "  gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
     "  KZPCROWS(self.ListBox)\n"
     " end\n"
+    /* the Trophies page (trophy_list.h): KZTRDATA is handed in by the host (lua_binding), the rows are made on
+     * entry; the selected trophy's description under the list */
+    " gScreenTrophies = BASE_CLASS:CreateMenu('ScreenTrophies')\n"
+    " gScreenTrophies.Init = function(self)\n"
+    "  BASE_CLASS.Init(self)\n"
+    "  gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
+    "  self.ListBox = gMenu:AddListBox(B.B2.item_x, B.B2.first_item_y, B.B2.item_width, 30 * 8)\n"
+    "  self.ListBox:SetScrollable(SCROLLING.UPDOWN)\n"
+    "  self.ListBox:SetBackgroundImagesHD('Ingame_background', 'Ingame_background_selected', 'Ingame_background', B.B2.background_x_offset, B.B2.background_y_offset)\n"
+    "  self.ListBox:SetItemHeight(30)\n"
+    "  self.Desc = gMenu:AddText(B.B2.item_x + 20, B.B2.first_item_y + 30 * 8 + 12, B.B2.item_width - 40, 60, '')\n"
+    "  self.TITLE = " + tl::lua_str(tl::words().page) + "\n"
+    " end\n"
+    " gScreenTrophies.Entry = function(self)\n"
+    "  if KZTRDATA then self.TITLE = KZTRDATA.title end\n"
+    "  BASE_CLASS.Entry(self)\n"
+    "  self.ListBox:Clear()\n"
+    "  gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
+    "  local d, i = KZTRDATA, 1\n"
+    "  while d and i <= d.n do\n"
+    "   self.ListBox:SetItem(i - 1, 0, gMenu:AddAttributeEditHD(0, 0, 0, 0, gGameSystem, 'PC settings.TrophyRow|0.0|' .. d[i].v, d[i].l))\n"
+    "   i = i + 1\n"
+    "  end\n"
+    "  self.Sel = -1\n"
+    " end\n"
+    " gScreenTrophies.Update = function(self)\n"
+    "  gGameSystem:SetAttribute('PC settings.TrophyPing', 'True')\n"
+    "  local d, i = KZTRDATA, self.ListBox:GetSelectedItemIndex()\n"
+    "  if d and i ~= self.Sel then self.Sel = i if d[i + 1] then self.Desc:SetText(d[i + 1].d) end end\n"
+    "  if gMenu:IsPressed(JOY_CANCEL) then gMenu:PlaySound(SOUND_BACK) gMenu:ReturnToPreviousSafeMenu() end\n"
+    " end\n"
     " gPauseMenu.InitMenuItems = function(self)\n"
     "  local b = self.ListBox\n"
     /* the text format the game's own menu set once in Init (MenuScript.Pause):
@@ -1083,9 +1123,10 @@ static std::string kz_lua(void)
     "  b:AddTextItem('$PauseMenu.Audio') b:SetItemCookie(1, 2)\n"
     "  b:AddTextItem('$PauseMenu.Controls') b:SetItemCookie(2, 3)\n"
     "  b:AddTextItem('PC') b:SetItemCookie(3, 7)\n"
-    "  b:AddTextItem('$PauseMenu.Restart') b:SetItemCookie(4, 4)\n"
-    "  b:AddTextItem('$PauseMenu.Quit') b:SetItemCookie(5, 5)\n"
-    "  if not gGameSystem:IsSubmission() then b:AddTextItem('Debug Options') b:SetItemCookie(6, 6) end\n"
+    "  b:AddTextItem(" + tl::lua_str(tl::words().page) + ") b:SetItemCookie(4, 8)\n"
+    "  b:AddTextItem('$PauseMenu.Restart') b:SetItemCookie(5, 4)\n"
+    "  b:AddTextItem('$PauseMenu.Quit') b:SetItemCookie(6, 5)\n"
+    "  if not gGameSystem:IsSubmission() then b:AddTextItem('Debug Options') b:SetItemCookie(7, 6) end\n"
     " end\n"
     /* made again each time the menu opens: a menu opened while the game was
      * still loading (pausing to skip the intro) also got the game's own items
@@ -1093,16 +1134,18 @@ static std::string kz_lua(void)
     " local entry = gPauseMenu.Entry\n"
     " gPauseMenu.Entry = function(self) %entry(self) if self.ListBox then self:InitMenuItems() end end\n"
     " local sub = gPauseMenu.InitSubMenus\n"
-    " gPauseMenu.InitSubMenus = function(self) %sub(self) self.gScreenPC = gScreenPC end\n"
+    " gPauseMenu.InitSubMenus = function(self) %sub(self) self.gScreenPC = gScreenPC self.gScreenTrophies = gScreenTrophies end\n"
     " local sel = gPauseMenu.SelectPressed\n"
     " gPauseMenu.SelectPressed = function(self)\n"
     "  if self.ListBox:GetSelectedItemCookie() == 7 then gMenu:PlaySound(SOUND_SELECT) self.gScreenPC:Switch(TRUE)\n"
+    "  elseif self.ListBox:GetSelectedItemCookie() == 8 then gMenu:PlaySound(SOUND_SELECT) self.gScreenTrophies:Switch(TRUE)\n"
     "  else %sel(self) end\n"
     " end\n"
     " if gPauseMenu.ListBox then\n"   /* the menu was already made: make its items again */
     "  gPauseMenu.ListBox:Clear()\n"
     "  gPauseMenu:InitMenuItems()\n"
     "  gPauseMenu.gScreenPC = gScreenPC\n"
+    "  gPauseMenu.gScreenTrophies = gScreenTrophies\n"
     " end\n"
     "end\n"
     /* the frontend's Options */
@@ -1528,6 +1571,23 @@ static void lua_run(ppu_context* ctx, uint32_t L, const std::string& src, const 
     guest(ctx, func_0007043C, L, buf, src.size(), buf + src.size() + 1);
 }
 
+/* The Trophies page's data (KZTRDATA, trophy_list.h) for state L: once, and again after a trophy unlocked
+ * (kz_trophy_gen). In pieces: lua_run copies its text to the guest's stack. */
+static void trophy_data(ppu_context* ctx, uint32_t L, bool new_state)
+{
+    static std::vector<std::pair<uint32_t, unsigned>> have;   /* state, the generation it has */
+    const unsigned gen = kz_trophy_gen();
+    auto it = std::find_if(have.begin(), have.end(), [&](const auto& e) { return e.first == L; });
+    if (it != have.end() && !new_state && it->second == gen) return;
+    if (it == have.end()) {
+        if (have.size() >= 64) have.clear();   /* shortcut: states come and go with levels; a cleared one is sent again */
+        have.push_back({ L, gen });
+        it = have.end() - 1;
+    }
+    it->second = gen;
+    for (const std::string& c : kz_trophy_page_lua(4096)) lua_run(ctx, L, c, "=kztr");
+}
+
 static void lua_binding(ppu_context* ctx)
 {
     static struct lua_states tried; static bool busy;   /* lua_states.h */
@@ -1565,6 +1625,7 @@ static void lua_binding(ppu_context* ctx)
                 static const bool tr = getenv("KZ_LUA_TRACE") != nullptr; static unsigned runs;
                 if (tr) fprintf(stderr, "[kz-lua] script %u in state %08X\n", ++runs, L);
             }
+            trophy_data(ctx, L, !seen);
             /* KZ_DEBUG_GIVE (testing; debug_give.h): weapons for the player, once a state has one */
             static const std::string give = debug_give_lua(getenv("KZ_DEBUG_GIVE"));
             if (!give.empty()) lua_run(ctx, L, give, "=kzgive");

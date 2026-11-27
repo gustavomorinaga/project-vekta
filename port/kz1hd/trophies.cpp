@@ -3,8 +3,11 @@
 // ring under a mutex, with no allocation on that thread, and kz_trophies_pump takes it on the frame loop and hands
 // it to the notice (trophy_notice.cpp).
 #include "trophies.h"
+#include "trophy_list.h"
 
+#include <atomic>
 #include <cstdio>
+#include <ctime>
 #include <cstdlib>
 #include <mutex>
 
@@ -23,6 +26,7 @@ constexpr unsigned kRing = 16;
 Notice s_ring[kRing];
 unsigned s_head, s_count;   // s_head: the oldest
 std::mutex s_lock;
+std::atomic<unsigned> s_gen;   // kz_trophy_gen
 
 void on_notice(const ps3_trophy_notice* n, void*)
 {
@@ -83,8 +87,29 @@ extern "C" void kz_trophies_pump(void)
         std::lock_guard<std::mutex> g(s_lock);
         for (; s_count; s_count--, s_head = (s_head + 1) % kRing) got[n++] = s_ring[s_head];
     }
+    if (n) s_gen++;
     for (unsigned i = 0; i < n; i++) {
         std::fprintf(stderr, "[trophy] unlocked %d %s (%s)\n", got[i].id, got[i].name, grade_name(got[i].grade));
         kz_notice_add(got[i].id, got[i].grade, got[i].name, got[i].have, got[i].total);
     }
+}
+
+extern "C" unsigned kz_trophy_gen(void) { return s_gen.load(); }
+
+std::vector<std::string> kz_trophy_page_lua(size_t max_bytes)
+{
+    std::vector<tl::Def> defs;
+    const int total = ps3_trophy_count();
+    ps3_trophy_def d;
+    for (int id = 0; id < total; id++)
+        if (ps3_trophy_get(id, &d) == 0)
+            defs.push_back({ d.id, d.grade, d.hidden != 0, d.unlocked != 0, d.timestamp, d.name, d.detail });
+    const tl::Words& w = tl::words();
+    const tl::Page p = tl::build(defs, w, [](uint64_t t) {   // the player's own day
+        const time_t tt = (time_t)t;
+        char b[16] = "-";
+        if (const std::tm* lt = std::localtime(&tt)) std::strftime(b, sizeof b, "%Y-%m-%d", lt);
+        return std::string(b);
+    });
+    return tl::lua_chunks(p, w, max_bytes);
 }

@@ -15,6 +15,10 @@ program and folder that build it. Until a release that calls itself playable
   rows on the PC page, "Trophy Notices" and "Trophy Sound" (on by default; the sound row is greyed out while notices
   are off). No notice when trophies are not stored (debug options or scripted
   input). The words on the card follow the game's language (English, French, Spanish, German, Italian, Dutch).
+- A Trophies page in the pause menu: all 59 trophies in the trophy set's order with their grade, name, and the day
+  you earned each one or "Locked", the selected trophy's description under the list, and how many you have, with
+  a progress bar, at the top right. Pad, keyboard and mouse work as on the PC page; names and words follow the
+  game's language.
 - More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (`fps_limit = 0`, a
   1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the
   default ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).

@@ -15,7 +15,18 @@ void kz_trophies_pump(void);
 void kz_notice_init(void);
 void kz_notice_options(int notices, int sound);
 void kz_notice_add(int id, int grade, const char* name, int got, int total);
+// The Trophies page (pcoptions.cpp) is on screen: called every frame it is, it shows the page's header (the count
+// and its bar) in the notices' place, the notices under it.
+void kz_trophy_page_ping(void);
+
+// The Trophies page: how many unlock reports the frame loop has taken (its data is made again when this moves).
+unsigned kz_trophy_gen(void);
 
 #ifdef __cplusplus
 }
+
+#include <string>
+#include <vector>
+// The page's data as Lua (trophy_list.h), in pieces of at most max_bytes, from the HLE's store now.
+std::vector<std::string> kz_trophy_page_lua(size_t max_bytes);
 #endif

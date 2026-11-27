@@ -181,6 +181,35 @@ about 170 ms, ten presents, once the first left (a local log of the placed rows)
 1920x1080, input from a file): with Trophy Notices Off, Trophy Sound is greyed and the pad steps over it both ways;
 On again, it is selectable.
 
+## The Trophies page (stage 3, 2026-11-27)
+
+A page in the pause menu, made like the PC page (`pcoptions.cpp` injects its Lua into each of the game's Lua
+states), text first: the item "Trophies" (the game's language) between PC and Restart opens `gScreenTrophies`.
+
+- Data: `trophies.cpp` reads the HLE's store (`ps3_trophy_count`, `ps3_trophy_get`; no new guest calls) and
+  `trophy_list.h` makes the rows in the TRP's order (by id): the grade word and the name on the left, the unlock day
+  (the player's local date, `YYYY-MM-DD`) or "Locked" on the right, and the description. A hidden trophy still locked
+  shows only the hidden word. The rows reach each Lua state as `KZTRDATA`, in pieces of at most 4 KB (`lua_run` copies
+  its text to the guest's stack), once per state and again after an unlock (`kz_trophy_gen`).
+- The menu's text is one byte per letter, Latin-1: the TRP's UTF-8 is converted (a letter beyond Latin-1 becomes
+  `?`). Its font has no middle dot, so grade and name are three spaces apart.
+- Each row is an attribute edit with its value as its only option (`PC settings.TrophyRow`, which always reads 0 and
+  takes nothing), so the list has two columns like the other option pages; the selected row shows the edit's arrows,
+  which change nothing. The description of the selected row is a text under the list (`GetSelectedItemIndex` in
+  the page's `Update`, which also handles Back).
+- The count and its bar are the notice's card in the style B palette (no icon, the chip in steel), at the top right
+  while the page is open: its `Update` pings `PC settings.TrophyPing` every frame (`kz_trophy_page_ping`, 300 ms
+  without a ping closes it); notices arriving meanwhile stack under it. The page's title also says "TROPHIES 2 / 59".
+- Pad and keyboard (through the key map) move as in any list; the mouse is the PC page's (`menu_mouse`: on a list
+  longer than its box, the pointer's height picks a row as a scroll bar would).
+- Not done: icons in the list, the frontend's menus (the page is only in the pause menu).
+
+Checked: `tools/tests/test_trophy_list.sh` (order, count, words in six languages, hidden, Latin-1, the Lua's
+escaping and pieces). Game (2026-11-27, Linux, RTX 3070 Ti, window 1920x1080, Level 1, a store with 2 of 59, input
+from a file): the page lists the 59 rows and scrolls to row 40 with the pad, the description follows the selection,
+Back returns to the pause menu and the header card goes; a mouse click selects the row under the pointer; with
+`PS3_LANG=2` the item, title, words, names and descriptions are French with their accents.
+
 ## Debug options that block trophies
 
 When a debug option that changes what the player can do is on, the port calls `ps3_trophy_set_blocked(1)` and
