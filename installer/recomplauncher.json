@@ -255,6 +255,16 @@
         {"label": "On", "set": {"intro": "on"}},
         {"label": "Off", "set": {"intro": "off"}}
       ] },
+    {"id": "trophy_notices", "label": "Trophy Notices", "help": "A card at the top right when you earn a trophy.", "group": "Sound and language", "defaults": {"trophy_notices": "on"},
+      "choices": [
+        {"label": "On", "set": {"trophy_notices": "on"}},
+        {"label": "Off", "set": {"trophy_notices": "off"}}
+      ] },
+    {"id": "trophy_sound", "label": "Trophy Sound", "help": "The notice's short sound.", "group": "Sound and language", "when": {"trophy_notices": "on"}, "defaults": {"trophy_sound": "on"},
+      "choices": [
+        {"label": "On", "set": {"trophy_sound": "on"}},
+        {"label": "Off", "set": {"trophy_sound": "off"}}
+      ] },
     {"id": "overlay", "label": "Performance Overlay", "help": "Linux only: MangoHUD's frame rate and timings over the game.", "group": "Display", "advanced": true, "defaults": {"overlay": "off"},
       "choices": [
         {"label": "Off", "set": {"overlay": "off"}},

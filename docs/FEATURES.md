@@ -32,7 +32,7 @@ otherwise. Last checked 2026-10-30.
 | Sound | Music, effects, dialogue | MultiStream on the SPUs, MP3 streams | **works** | decoded by minimp3 in place of the firmware's decoder, checked against it (2026-11-18, docs/dev/flashmp3-native.md) |
 | Sound | Surround | the console's output setting | **works**: stereo, 5.1, 7.1 | per channel on Linux; 6 and 8 channels through WASAPI under Wine |
 | Languages | Voice, subtitles, menus | English, French, Spanish (by console language) | **works**, chosen on the PC page | |
-| Trophies | Trophy unlocks | PSN trophies | **partial**: unlocked and logged locally with names, grades and platinum; no on-screen notice | `gamedata/trophies/NPWR03819.log` |
+| Trophies | Trophy unlocks | PSN trophies | **partial**: unlocked and logged locally with names, grades and platinum, with an on-screen notice and its sound (the port's own) and a Trophies page in the pause menu and in Extras | `gamedata/trophies/NPWR03819.log`; Level 1 run 2026-11-26 (notice, stacked notices and sound in the mix; the Trophies page in English and French, pad and mouse) |
 | Multiplayer | "One / Two Player" in the menu | local | **not yet** checked | |
 | Online | PSN | sign-in, trophies sync | **n/a** | no network is used |
 

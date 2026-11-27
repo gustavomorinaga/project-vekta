@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 26 Nov 2026 20:25:52 -0300
+Subject: [PATCH] Vulkan: a host overlay over the window, copied after the
+ frame's blit
+
+A port that shows something of its own over the game (Project Vekta's trophy notice) had no place to put it: the
+frame reaches the window through the blit, FSR 1, FSR 3.1 or DLSS, and a picture added to the guest's frame would
+be scaled with it.
+
+Fix: rsx_vulkan_set_overlay(fn). Once per present, on the presenting thread (the window's own thread with patch
+2090), after the previous present's fence and before the present's command buffer is begun, fn gets the window's
+size and byte order (BGRA or RGBA) and returns rects of 4-byte pixels (x, y, w, h, offset, row length). They go to
+one host-visible staging buffer (made again only when it grows) and, right after the blit into the swap chain
+image (TRANSFER_DST_OPTIMAL), a transfer barrier and vkCmdCopyBufferToImage put them over the frame, clipped to
+the window; a rect whose rows leave the pixels is dropped. So every upscaler path is under it, and so are the
+PS3RECOMP_VK_DUMP_PRESENT dumps. A copy, not a draw: the swap chain needs no colour-attachment use, no render pass
+and no pipeline, at the price of opaque pixels (a port cuts its shape out of rows). Not on a window format other
+than 8-bit BGRA or RGBA (s_sc_format, kept from the swap chain), and not without a coherent host-visible memory
+type.
+
+ENHANCEMENT: the PS3 game has no such overlay. Seen in Level 1 (2026-11-26, Linux, RTX 3070 Ti, window 1920x1080,
+swap chain format 44): Project Vekta's trophy cards drawn over the frame, one and two stacked, sliding in and out,
+in the present dumps.
+---
+ libs/video/rsx_vulkan_backend.c | 68 +++++++++++++++++++++++++++++++++
+ libs/video/rsx_vulkan_backend.h | 12 ++++++
+ 2 files changed, 80 insertions(+)
+
+diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
+index 9f5fb72..ca3eeab 100644
+--- a/libs/video/rsx_vulkan_backend.c
++++ b/libs/video/rsx_vulkan_backend.c
+@@ -2676,6 +2676,7 @@ static u32 s_guest_w, s_guest_h;   /* the frame's size before scaling (vk_read_s
+ static int s_dump_now;
+ static u32 s_dump_tag;
+ static vk_buffer s_present_dump;   /* PS3RECOMP_VK_DUMP_PRESENT: the window's image, read back */
++static VkFormat s_sc_format;       /* the window's swap chain format (the overlay's byte order) */
+ static volatile int s_stretch = -1;
+ void rsx_vulkan_set_stretch(int on) { s_stretch = on ? 1 : 0; }
+ /* rsx_vulkan_set_crop(f): show only the middle f (0..1] of the frame's width,
+@@ -2862,6 +2863,7 @@ static int vk_create_swapchain(void)
+ 
+     s_vk.sc_extent = ext;
+     s_vk.sc_count = n;
++    s_sc_format = fmt.format;
+     if (s_vk.no_area) VK_LOG("window has an area again\n");
+     s_vk.no_area = 0;
+     VK_LOG("window swapchain %ux%u, %u images, format %d\n", ext.width, ext.height, n, (int)fmt.format);
+@@ -3051,6 +3053,70 @@ static void vk_fsr_record(u32 sw, u32 sh)
+     vk_barrier_image(s_fsr.out.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
+ }
+ 
++/* rsx_vulkan_set_overlay: the host's overlay (ENHANCEMENT: a port's own notices), rows of pixels copied over the
++ * window's image after the frame's blit and before the present, so every upscaler path is under it. A copy, not a
++ * draw: the swap chain needs no colour-attachment use, no render pass and no pipeline, and the pixels are opaque. The
++ * hook runs here on the presenting thread, after the previous present's fence: the one staging buffer is free. */
++static rsx_overlay_fn s_overlay_fn;
++static vk_buffer s_overlay_buf;
++static VkBufferImageCopy s_overlay_copy[RSX_OVERLAY_MAX_RECTS];
++static int s_overlay_n;
++void rsx_vulkan_set_overlay(rsx_overlay_fn fn) { s_overlay_fn = fn; }
++
++/* before the present's command buffer is begun (vk_destroy_buffer flushes) */
++static void vk_overlay_prepare(void)
++{
++    s_overlay_n = 0;
++    const rsx_overlay_fn fn = s_overlay_fn;
++    if (!fn) return;
++    const int bgra = s_sc_format == VK_FORMAT_B8G8R8A8_UNORM || s_sc_format == VK_FORMAT_B8G8R8A8_SRGB;
++    if (!bgra && s_sc_format != VK_FORMAT_R8G8B8A8_UNORM && s_sc_format != VK_FORMAT_R8G8B8A8_SRGB) return;
++    const int32_t ww = (int32_t)s_vk.sc_extent.width, wh = (int32_t)s_vk.sc_extent.height;
++    rsx_overlay_rect r[RSX_OVERLAY_MAX_RECTS];
++    const void* px = NULL;
++    size_t bytes = 0;
++    int n = fn((u32)ww, (u32)wh, bgra, &px, &bytes, r, RSX_OVERLAY_MAX_RECTS);
++    if (n <= 0 || !px || bytes < 4) return;
++    if (n > RSX_OVERLAY_MAX_RECTS) n = RSX_OVERLAY_MAX_RECTS;
++    if (s_overlay_buf.size < bytes) {
++        vk_destroy_buffer(&s_overlay_buf);
++        if (vk_create_host_buffer(&s_overlay_buf, (VkDeviceSize)bytes + bytes / 2, VK_BUFFER_USAGE_TRANSFER_SRC_BIT) ||
++            !s_overlay_buf.coherent) {   /* no flush here: a coherent type or no overlay */
++            vk_destroy_buffer(&s_overlay_buf); VK_LOG("overlay: no coherent host buffer\n"); return;
++        }
++    }
++    memcpy(s_overlay_buf.ptr, px, bytes);
++    for (int i = 0; i < n; i++) {   /* clipped to the window; a rect whose rows leave the pixels is dropped */
++        const int32_t x0 = r[i].x > 0 ? r[i].x : 0, y0 = r[i].y > 0 ? r[i].y : 0;
++        const int32_t x1 = r[i].x + (int32_t)r[i].w < ww ? r[i].x + (int32_t)r[i].w : ww;
++        const int32_t y1 = r[i].y + (int32_t)r[i].h < wh ? r[i].y + (int32_t)r[i].h : wh;
++        if (x1 <= x0 || y1 <= y0 || r[i].row_px < r[i].w) continue;
++        const size_t off = r[i].off + ((size_t)(y0 - r[i].y) * r[i].row_px + (size_t)(x0 - r[i].x)) * 4;
++        if ((off & 3) || off + ((size_t)(y1 - y0 - 1) * r[i].row_px + (size_t)(x1 - x0)) * 4 > bytes) continue;
++        s_overlay_copy[s_overlay_n++] = (VkBufferImageCopy){
++            .bufferOffset = off, .bufferRowLength = r[i].row_px,
++            .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
++            .imageOffset = { x0, y0, 0 }, .imageExtent = { (u32)(x1 - x0), (u32)(y1 - y0), 1 } };
++    }
++}
++
++/* after the blit, the image in TRANSFER_DST_OPTIMAL */
++static void vk_overlay_record(VkImage img)
++{
++    if (!s_overlay_n) return;
++    VkImageMemoryBarrier b = {
++        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
++        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
++        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
++        .image = img, .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
++    };
++    pvkCmdPipelineBarrier(s_vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
++                          0, 0, NULL, 0, NULL, 1, &b);
++    pvkCmdCopyBufferToImage(s_vk.cmd, s_overlay_buf.buf, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++                            (u32)s_overlay_n, s_overlay_copy);
++}
++
+ static void vk_present_window_body(void)
+ {
+     if (!s_vk.windowed || (!s_vk.swapchain && !s_vk.no_area && !s_vk.sc_retry)) return;
+@@ -3108,6 +3174,7 @@ static void vk_present_window_body(void)
+     const int32_t dx = ((int32_t)s_vk.sc_extent.width - dw) / 2, dy = ((int32_t)s_vk.sc_extent.height - dh) / 2;
+     const int fsr = sx0 == 0 && dw > 0 && dh > 0 && !vk_fsr_prepare((u32)dw, (u32)dh);
+ 
++    vk_overlay_prepare();
+     VkCommandBuffer cmd_saved = s_vk.cmd;
+     s_vk.cmd = s_vk.pcmd;
+     if (vk_begin_raw()) { s_vk.cmd = cmd_saved; return; }
+@@ -3155,6 +3222,7 @@ static void vk_present_window_body(void)
+                             1, &blit, fsr ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
+         }
+     }
++    vk_overlay_record(s_vk.sc_images[idx]);
+     /* PS3RECOMP_VK_DUMP_PRESENT=<path with %u>: the dumped frames also as the
+      * window shows them, bars and all (tests of how a frame is presented) */
+     static const char* pdump = (const char*)-1;
+diff --git a/libs/video/rsx_vulkan_backend.h b/libs/video/rsx_vulkan_backend.h
+index 84bfb2b..24fd48f 100644
+--- a/libs/video/rsx_vulkan_backend.h
++++ b/libs/video/rsx_vulkan_backend.h
+@@ -62,6 +62,8 @@
+ #define PS3RECOMP_RSX_VULKAN_BACKEND_H
+ 
+ #include "rsx_commands.h"
++#include <stddef.h>
++#include <stdint.h>
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -102,6 +104,16 @@ void rsx_vulkan_set_motion_blur(int on);
+  * the default), 0 none; the alpha the add sets (the motion blur weighs by it) stays the title's at every strength.
+  * Takes effect from the next frame. PS3RECOMP_GLOW_STRENGTH=<percent> sets the start. */
+ void rsx_vulkan_set_glow_strength(int strength256);
++/* A host overlay over the window (ENHANCEMENT: a port's own notices). Once per present, on the presenting thread,
++ * fn gets the window's size and its byte order (bgra: B,G,R,A; else R,G,B,A) and returns how many rects it filled
++ * (up to max), with *pixels and *bytes: the rects' 4-byte pixels, each rect's rows at off, row_px pixels apart. The
++ * pixels are copied over the frame as they are (opaque), clipped to the window; *pixels must stay valid until fn is
++ * called again. NULL turns it off. Not on a window format other than 8-bit BGRA or RGBA. */
++#define RSX_OVERLAY_MAX_RECTS 256
++typedef struct rsx_overlay_rect { int32_t x, y; uint32_t w, h, off, row_px; } rsx_overlay_rect;
++typedef int (*rsx_overlay_fn)(uint32_t win_w, uint32_t win_h, int bgra, const void** pixels, size_t* bytes,
++                              rsx_overlay_rect* rects, int max);
++void rsx_vulkan_set_overlay(rsx_overlay_fn fn);
+ /* Killzone HD's MLAA on the GPU (PS3RECOMP_MLAA_GPU): on or off from the next
+  * frame; PS3RECOMP_MLAA_ON=0 starts it off. Off, the frame copies stay taken
+  * (the glow and the motion blur still run there) and the frame is left

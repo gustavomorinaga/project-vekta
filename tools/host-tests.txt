@@ -42,6 +42,9 @@ tools/tests/test_wine_test.sh
 tools/tests/test_zig_wrappers.sh
 tools/tests/test_nv0039_route.sh
 tools/tests/test_audio_notify.sh
+tools/tests/test_trophy_notify.sh
+tools/tests/test_trophy_notice.sh
+tools/tests/test_trophy_list.sh
 tools/tests/test_view_flat.sh
 tools/tests/test_prof_trigger.sh
 tools/tests/test_route_rebase.sh

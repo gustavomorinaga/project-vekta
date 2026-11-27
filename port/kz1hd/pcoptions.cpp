@@ -56,6 +56,8 @@
 #include "menu_box.h"    /* the list box the mouse drives */
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
+#include "trophies.h"    /* kz_notice_options, the Trophies page */
+#include "trophy_list.h" /* the Trophies page's words */
 #include "res_list.h"    /* the sizes the Resolution row offers */
 #include "sys_info.h"    /* kz_sys_pair: the session header's settings line */
 #include "display_seq.h" /* KZ_TEST_DISPLAY_SEQ */
@@ -199,6 +201,9 @@ static void ini_save(void)
  *                             game's, 0 none; an older file's on/off is 100/0. post.h,
  *                             applied at once)
  *   film_grain  = 0-100   (the game's film grain, the same way. post.h, applied at once)
+ *   trophy_notices = on | off   (ENHANCEMENT: the card shown when a trophy unlocks, trophy_notice.cpp;
+ *                             applied at once)
+ *   trophy_sound   = on | off   (its sound; greyed out while trophy_notices is off; applied at once)
  *   glow        = 0-100   (the game's glow, on the GPU (ps3recomp patch 2078), the same way:
  *                             rsx_vulkan_set_glow_strength in 256ths, 100 = 256 the game's.
  *                             PS3RECOMP_GLOW_STRENGTH at start, applied at once) */
@@ -210,7 +215,7 @@ static const struct { const char* key; const char* def; } kVideo[] = {
     { "hud_size", "1" }, { "hud_position", "1" }, { "crosshair_size", "1" }, { "intro", "on" }, { "anisotropic", "game" },
     { "upscaler", "linear" }, { "sharpness", "0.2" }, { "temporal", "off" }, { "speakers", "2" }, { "language", "system" },
     { "reflex", "off" }, { "antialiasing", "mlaa" }, { "motion_blur", "100" }, { "film_grain", "100" },
-    { "glow", "100" },
+    { "glow", "100" }, { "trophy_notices", "on" }, { "trophy_sound", "on" },
 };
 /* MangoHUD with a preset for recording the game's progress: frame rate and
  * frame time, CPU per core, GPU, memory, resolution and driver. A
@@ -283,6 +288,7 @@ static void post_load(void)
 static long long now_ms(void);
 static void display_seq_tick(long long t);   /* KZ_TEST_DISPLAY_SEQ, below */
 static void aspect_apply(void);   /* below, with the aspect row */
+static void notice_apply(void) { kz_notice_options(s_ini["trophy_notices"] != "off", s_ini["trophy_sound"] != "off"); }
 static void aniso_apply(void);    /* below, with the anisotropic row */
 static void temporal_apply(void); /* below, with the temporal row */
 extern "C" void kz_view_update(void)
@@ -356,6 +362,7 @@ extern "C" void kz_pc_settings_env(void)
     { const char* fa = getenv("PS3RECOMP_VK_ASPECT");   /* the one the runtime reads, set here or before */
       s_aspect_forced = s_ini["widescreen"] != "off" && fa ? view_aspect_value(fa) : 0.0f; }
     if (s_ini["intro"] == "off") setenv("KZ_SKIP_INTRO", "1", 0);   /* sail.cpp */
+    notice_apply();
     { const std::string& a = s_ini["anisotropic"];
       setenv("PS3RECOMP_VK_ANISO", a == "off" ? "1" : a == "game" ? "0" : a.c_str(), 0); }
     setenv("PS3RECOMP_VK_FSR", s_ini["upscaler"] == "fsr" ? "1" : "0", 0);
@@ -730,6 +737,13 @@ static void set_preset(ppu_context* c) { attr_log("set_preset", c); if ((int32_t
     aniso_apply();
     temporal_apply();
     s_deps_dirty = true; }
+/* The trophy notice's rows (trophy_notice.cpp): the card, and its sound while the card is on. */
+static void get_tnotice(ppu_context* c) { attr_log("get_tnotice", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["trophy_notices"] != "off"; }
+static void set_tnotice(ppu_context* c) { attr_log("set_tnotice", c); if ((int32_t)c->gpr[5] != 2) return;
+    s_ini["trophy_notices"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); notice_apply(); s_deps_dirty = true; }
+static void get_tsound(ppu_context* c) { attr_log("get_tsound", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["trophy_sound"] != "off"; }
+static void set_tsound(ppu_context* c) { attr_log("set_tsound", c); if ((int32_t)c->gpr[5] != 2 || !dep_on(PC_DEP_TROPHY_SOUND)) return;
+    s_ini["trophy_sound"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); notice_apply(); }
 static void get_intro(ppu_context* c) { attr_log("get_intro", c); vm_base[(uint32_t)c->gpr[4]] = s_ini["intro"] != "off"; }
 static void set_intro(ppu_context* c) { attr_log("set_intro", c); if ((int32_t)c->gpr[5] != 2) return;
     s_ini["intro"] = vm_base[(uint32_t)c->gpr[4]] ? "on" : "off"; ini_write(); }
@@ -803,11 +817,12 @@ static unsigned s_nopts;
  * mask, a write is the menu saying it has applied it (s_deps_dirty: a setting
  * a row depends on changed, the menu should look again; lua_binding). The PC
  * screen's row of each PC_DEP_* bit: */
-static const int kDepRow[PC_DEP_COUNT] = { 2, 4, 7, 17, 19, 12 };   /* Resolution, Aspect, HUD Position, FSR Sharpness, Anti-aliasing, Reflex */
+static const int kDepRow[PC_DEP_COUNT] = { 2, 4, 7, 17, 19, 12, 30 };   /* Resolution, Aspect, HUD Position, FSR Sharpness, Anti-aliasing, Reflex, Trophy Sound */
 static unsigned deps_mask(void)
 {
     const pc_deps_in in = { s_ini["display"].c_str(), s_ini["widescreen"].c_str(), s_ini["upscaler"].c_str(),
-                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available(), !rsx_vulkan_mlaa_available() };
+                            rsx_vulkan_temporal_active(), rsx_vulkan_reflex_available(), !rsx_vulkan_mlaa_available(),
+                            s_ini["trophy_notices"].c_str() };
     return pc_deps_mask(&in);
 }
 static void get_deps(ppu_context* c) { attr_log("get_deps", c); wrf((uint32_t)c->gpr[4], (float)deps_mask()); }
@@ -874,6 +889,8 @@ static void kz_pc_inject_attrs(ppu_context* ctx)
         { kSysClass, "HUDPosition",           kFloatVtbl, get_hud_pos, set_hud_pos },
         { kSysClass, "CrosshairSize",         kFloatVtbl, get_xhair,   set_xhair },
         { kSysClass, "IntroMovie",            kBoolVtbl,  get_intro,   set_intro },
+        { kSysClass, "TrophyNotices",         kBoolVtbl,  get_tnotice, set_tnotice },
+        { kSysClass, "TrophySound",           kBoolVtbl,  get_tsound,  set_tsound },
         { kSysClass, "Anisotropic",           kFloatVtbl, get_aniso,   set_aniso },
         { kSysClass, "Upscaler",              kFloatVtbl, get_upscaler, set_upscaler },
         { kSysClass, "Sharpness",             kFloatVtbl, get_sharp,   set_sharp },
@@ -1002,8 +1019,10 @@ static std::string kz_lua(void)
     "  KZPCR(26, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Speakers|0.0;1.0;2.0|Stereo;5.1;7.1', 'Audio Output (on restart)'))\n"
     "  KZPCR(27, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Language|0.0;1.0;2.0;3.0;4.0|System;English (US);English (UK);French;Spanish', 'Language (on restart)'))\n"
     "  KZPCR(28, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.IntroMovie|true;false|$Conditions.On$;$Conditions.Off$', 'Opening Movie (on restart)'))\n"
+    "  KZPCR(29, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.TrophyNotices|true;false|$Conditions.On$;$Conditions.Off$', 'Trophy Notices'))\n"
+    "  KZPCR(30, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.TrophySound|true;false|$Conditions.On$;$Conditions.Off$', 'Trophy Sound'))\n"
 #ifndef _WIN32   /* MangoHUD is a Linux Vulkan layer (under Proton: mangohud %command%) */
-    "  KZPCR(29, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
+    "  KZPCR(31, gMenu:AddAttributeEditHD(0, 0, 0, 0, p, 'PC settings.Overlay|false;true|Off;MangoHUD', 'Performance Overlay (on restart)'))\n"
 #endif
     "  KZPCDEP()\n"
     " end\n"
@@ -1032,6 +1051,56 @@ static std::string kz_lua(void)
     "  gControllerAdvanced.ListBox:SetItemHeight(30)\n"
     " end\n"
     "end\n"
+    /* The Trophies page (trophy_list.h), in the pause menu and in the frontend's Extras: KZTRDATA is handed in by the
+     * host (lua_binding). Its rows are two columns that only scroll (no value to change, so no arrows): the grade and
+     * name, and at the row's right end the day or "Locked"; under the list, centred, the selected trophy's
+     * description, or the message that the trophy set was not found. Back returns to the menu that opened it.
+     * Cells are SetAlignedTextItem's with align 0 (left) and 2 (right), as the game's Statistics page: an AddTextItem
+     * keeps align -1, whose first line is centred in a box of the unscaled text width while the glyphs are scaled to
+     * the aspect (func_00106598), so a longer row started further right. A column spans from its offset to the next
+     * one's, the last to the list's right end (func_002622A8). No selection indent: every row starts at one x. The
+     * list is 20 units right of the game's (its rows' text then starts where the page title's does: the header's
+     * x 64 draws at 210 px of 1280, a list's at 160) and its bars 20 units further left, still from the screen's
+     * edge; 40 units narrower, the day ends as far from the right edge as the names start from the left. A right
+     * cell is made under the RIGHT format: its box is placed by the format at the measured (unscaled) width, so under
+     * LEFT a longer day ended further right. Cells wrap at their span by the unscaled width, so they are
+     * single-line (SetTextMultilineAllowed, func_00261334): a long name wrapped though it fitted. */
+    "if not KZTRMAKE then\n"
+    " KZTRMAKE = function(S, h, rows)\n"
+    "  gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
+    "  gMenu:SetSelectionIndent(0)\n"
+    "  S.ListBox = gMenu:AddListBox(B.B2.item_x + 20, B.B2.first_item_y, B.B2.item_width - 40, h * rows)\n"
+    "  S.ListBox:SetScrollable(SCROLLING.UPDOWN)\n"
+    "  S.ListBox:SetItemHeight(h)\n"
+    "  gMenu:SetTextFormat(gTypefaces.ItemList, CENTER, CENTER)\n"
+    "  S.Desc = gMenu:AddText(B.B2.item_x + 20, B.B2.first_item_y + h * rows + 12, B.B2.item_width - 40, 60, '')\n"
+    " end\n"
+    " KZTRDESC = function(S, t) S.Desc:SetText('<line align=center>' .. t) end\n"
+    " KZTRFILL = function(S)\n"
+    "  S.ListBox:Clear()\n"
+    "  gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
+    "  gMenu:SetSelectionIndent(0)\n"
+    /* after Clear, which drops the columns too; the second is the list's last 100 units */
+    "  S.ListBox:SetColumn(0, 0, -1, '', '')\n"
+    "  S.ListBox:SetColumn(1, B.B2.item_width - 40 - 100, 1, '', '')\n"
+    "  local d, i = KZTRDATA, 1\n"
+    "  while d and i <= d.n do\n"
+    "   gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
+    "   S.ListBox:SetAlignedTextItem(i - 1, 0, d[i].l, 0)\n"
+    "   gMenu:SetTextFormat(gTypefaces.ItemList, RIGHT, CENTER)\n"
+    "   S.ListBox:SetAlignedTextItem(i - 1, 1, d[i].v, 2)\n"
+    "   S.ListBox:SetTextMultilineAllowed(i - 1, 0, FALSE) S.ListBox:SetTextMultilineAllowed(i - 1, 1, FALSE)\n"
+    "   i = i + 1\n"
+    "  end\n"
+    "  S.Sel = -1\n"
+    "  KZTRDESC(S, d and d.missing or '')\n"
+    " end\n"
+    " KZTRUPDATE = function(S)\n"
+    "  local d, i = KZTRDATA, S.ListBox:GetSelectedItemIndex()\n"
+    "  if d and i ~= S.Sel then S.Sel = i if d[i + 1] then KZTRDESC(S, d[i + 1].d) end end\n"
+    "  if gMenu:IsPressed(JOY_CANCEL) then gMenu:PlaySound(SOUND_BACK) gMenu:ReturnToPreviousSafeMenu() end\n"
+    " end\n"
+    "end\n"
     /* the pause menu */
     "if gPauseMenu and BASE_CLASS and not KZPCP then\n"
     " KZPCP = 1\n"
@@ -1051,6 +1120,21 @@ static std::string kz_lua(void)
     "  gMenu:SetTextFormat(gTypefaces.ItemList, LEFT, CENTER)\n"
     "  KZPCROWS(self.ListBox)\n"
     " end\n"
+    /* the Trophies page in the pause menu (KZTRMAKE above) */
+    " gScreenTrophies = BASE_CLASS:CreateMenu('ScreenTrophies')\n"
+    " gScreenTrophies.Init = function(self)\n"
+    "  BASE_CLASS.Init(self)\n"
+    "  KZTRMAKE(self, 30, 8)\n"
+    "  self.ListBox:SetBackgroundImagesHD('Ingame_background', 'Ingame_background_selected', 'Ingame_background', B.B2.background_x_offset - 20, B.B2.background_y_offset)\n"
+    "  self.TITLE = " + tl::lua_str(tl::words().page) + "\n"
+    "  self.FOOTER = '$FrontEnd.UpDown$  $FrontEnd.Back$'\n"
+    " end\n"
+    " gScreenTrophies.Entry = function(self)\n"
+    "  if KZTRDATA then self.TITLE = KZTRDATA.title end\n"
+    "  BASE_CLASS.Entry(self)\n"
+    "  KZTRFILL(self)\n"
+    " end\n"
+    " gScreenTrophies.Update = function(self) KZTRUPDATE(self) end\n"
     " gPauseMenu.InitMenuItems = function(self)\n"
     "  local b = self.ListBox\n"
     /* the text format the game's own menu set once in Init (MenuScript.Pause):
@@ -1065,9 +1149,10 @@ static std::string kz_lua(void)
     "  b:AddTextItem('$PauseMenu.Audio') b:SetItemCookie(1, 2)\n"
     "  b:AddTextItem('$PauseMenu.Controls') b:SetItemCookie(2, 3)\n"
     "  b:AddTextItem('PC') b:SetItemCookie(3, 7)\n"
-    "  b:AddTextItem('$PauseMenu.Restart') b:SetItemCookie(4, 4)\n"
-    "  b:AddTextItem('$PauseMenu.Quit') b:SetItemCookie(5, 5)\n"
-    "  if not gGameSystem:IsSubmission() then b:AddTextItem('Debug Options') b:SetItemCookie(6, 6) end\n"
+    "  b:AddTextItem(" + tl::lua_str(tl::words().page) + ") b:SetItemCookie(4, 8)\n"
+    "  b:AddTextItem('$PauseMenu.Restart') b:SetItemCookie(5, 4)\n"
+    "  b:AddTextItem('$PauseMenu.Quit') b:SetItemCookie(6, 5)\n"
+    "  if not gGameSystem:IsSubmission() then b:AddTextItem('Debug Options') b:SetItemCookie(7, 6) end\n"
     " end\n"
     /* made again each time the menu opens: a menu opened while the game was
      * still loading (pausing to skip the intro) also got the game's own items
@@ -1075,16 +1160,18 @@ static std::string kz_lua(void)
     " local entry = gPauseMenu.Entry\n"
     " gPauseMenu.Entry = function(self) %entry(self) if self.ListBox then self:InitMenuItems() end end\n"
     " local sub = gPauseMenu.InitSubMenus\n"
-    " gPauseMenu.InitSubMenus = function(self) %sub(self) self.gScreenPC = gScreenPC end\n"
+    " gPauseMenu.InitSubMenus = function(self) %sub(self) self.gScreenPC = gScreenPC self.gScreenTrophies = gScreenTrophies end\n"
     " local sel = gPauseMenu.SelectPressed\n"
     " gPauseMenu.SelectPressed = function(self)\n"
     "  if self.ListBox:GetSelectedItemCookie() == 7 then gMenu:PlaySound(SOUND_SELECT) self.gScreenPC:Switch(TRUE)\n"
+    "  elseif self.ListBox:GetSelectedItemCookie() == 8 then gMenu:PlaySound(SOUND_SELECT) self.gScreenTrophies:Switch(TRUE)\n"
     "  else %sel(self) end\n"
     " end\n"
     " if gPauseMenu.ListBox then\n"   /* the menu was already made: make its items again */
     "  gPauseMenu.ListBox:Clear()\n"
     "  gPauseMenu:InitMenuItems()\n"
     "  gPauseMenu.gScreenPC = gScreenPC\n"
+    "  gPauseMenu.gScreenTrophies = gScreenTrophies\n"
     " end\n"
     "end\n"
     /* the frontend's Options */
@@ -1172,11 +1259,56 @@ static std::string kz_lua(void)
     "  S.mTextLeft = x\n"
     " end\n"
     "end\n"
-    /* Extras opens on its topmost visible item (Movies 1 and 2 are hidden) */
-    "if ScreenExtrasInit and gScreenExtras and not KZEXT then\n"
+    /* the frontend's Extras: the game's items (MenuScript.FrontEnd's ScreenExtrasInit, made again here) with
+     * "Trophies" above Intro, opening the Trophies page (KZTRMAKE); Extras opens on its topmost visible item
+     * (Movies 1 and 2 are hidden) */
+    "if ScreenExtrasInit and gScreenExtras and gMainMenu and not KZEXT then\n"
     " KZEXT = 1\n"
-    " local ei = ScreenExtrasInit\n"
-    " ScreenExtrasInit = function() %ei() gScreenExtras.Selection:Select(gScreenExtras.Intro) end\n"
+    " gScreenTrophies = {}\n"
+    " ScreenTrophiesInit = function()\n"
+    "  KZTRMAKE(gScreenTrophies, B.B2.get_item_height(), 5)\n"
+    "  gScreenTrophies.ListBox:SetBackgroundImagesHD(B.B2.get_background_image(), B.B2.get_background_img_selected(), B.B2.get_background_img_empty(), B.B2.background_x_offset - 20, B.B2.background_y_offset)\n"
+    " end\n"
+    " ScreenTrophiesEntry = function()\n"
+    "  KZTRFILL(gScreenTrophies)\n"
+    "  gHeaderFooter:Show()\n"
+    "  gHeaderFooter:SetTitle(KZTRDATA and KZTRDATA.title or " + tl::lua_str(tl::words().page) + ", '')\n"
+    "  gHeaderFooter:SetTitleLeftAlign(B.B2.headerfooter_title_align_x)\n"
+    "  gHeaderFooter:SetControlsText('$FrontEnd.UpDown$  $FrontEnd.Back$')\n"
+    " end\n"
+    " ScreenTrophiesUpdate = function() KZTRUPDATE(gScreenTrophies) end\n"
+    " ScreenExtrasInit = function()\n"
+    "  gMenu:SetTextFormat(gTypefaces.SubMenuList, RIGHT, CENTER)\n"
+    "  local S, w, V = gScreenExtras, 512, SUBITEM_VSPACING\n"
+    "  local x, y = gMainMenu.Extras:GetTextRight() - w, MAIN_ITEMS_Y\n"
+    "  S.BotBattle = gMenu:AddAlignedText(x, y, w, V, '$FrontEnd.BotBattle', 2) y = y - V\n"
+    "  S.Credits = gMenu:AddAlignedText(x, y, w, V, '$FrontEnd.Credits', 2) y = y - V\n"
+    "  S.Intro = gMenu:AddAlignedText(x, y, w, V, '$FrontEnd.GameIntro', 2) y = y - V\n"
+    "  S.Trophies = gMenu:AddAlignedText(x, y, w, V, " + tl::lua_str(tl::words().page) + ", 2) y = y - V\n"
+    "  S.Movies2 = gMenu:AddAlignedText(x, y, w, V, 'Movies 2', 2) y = y - V\n"
+    "  S.Movies1 = gMenu:AddAlignedText(x, y, w, V, 'Movies 1', 2)\n"
+    "  local t = { S.Movies1, S.Movies2, S.Trophies, S.Intro, S.Credits, S.BotBattle }\n"
+    "  S.Selection = gMenu:CreateSelection()\n"
+    "  S.Selection:SetStyle(INVISIBLE, COLOR_SELECTION)\n"
+    "  for i = 1, 6 do\n"
+    "   t[i]:SetHiddenRect(x, MAIN_HEADER_Y, w, 40)\n"
+    "   t[i]:SetBackgroundImageHD('', 'SubMenuList_C', 330, 0)\n"
+    "   S.Selection:AddItem(t[i])\n"
+    "  end\n"
+    "  S.Selection:Select(S.Trophies)\n"
+    "  for i = 1, 2 do t[i]:SetInactiveColor('00000000') t[i]:SetEnabled(FALSE) t[i]:SetVisibility(0) t[i]:SetActive(FALSE) end\n"
+    " end\n"
+    " local ee = ScreenExtrasEntry\n"   /* the game's Entry moves its items (by the item's width); Trophies with them */
+    " ScreenExtrasEntry = function()\n"
+    "  %ee()\n"
+    "  gScreenExtras.Trophies:MoveTo(gMainMenu.Extras:GetTextRight() - 512 - 6, MAIN_ITEMS_Y - 3 * SUBITEM_VSPACING, 0)\n"
+    " end\n"
+    " local eu = ScreenExtrasUpdate\n"
+    " ScreenExtrasUpdate = function()\n"
+    "  if gMenu:IsPressed(JOY_SELECT) and gScreenExtras.Selection:IsSelected(gScreenExtras.Trophies) then\n"
+    "   gMenu:PlaySound(SOUND_SELECT) gMenu:SwitchToMenu('ScreenTrophies', TRUE)\n"
+    "  else %eu() end\n"
+    " end\n"
     "end\n";
     return L;
 }
@@ -1222,6 +1354,7 @@ static void create_selection(ppu_context* ctx)
 struct LiveSel { uint32_t sel; int prev, next; long long ms; };
 static LiveSel s_live[8];
 
+static void hover_select(ppu_context* ctx, uint32_t sel);   /* below, with hover */
 static void selection_update(ppu_context* ctx)
 {
     const uint32_t sel = (uint32_t)ctx->gpr[3];
@@ -1232,6 +1365,7 @@ static void selection_update(ppu_context* ctx)
         if (l.ms < slot->ms) slot = &l;   /* else the stalest */
     }
     *slot = { sel, (int)ctx->gpr[4], (int)ctx->gpr[5], t };
+    if (ctx->gpr[4] == 2) hover_select(ctx, sel);   /* up/down: a submenu */
     func_00276DC0(ctx);
 }
 static const LiveSel* live_sel(uint32_t sel)
@@ -1241,17 +1375,41 @@ static const LiveSel* live_sel(uint32_t sel)
     return nullptr;
 }
 
-static bool shown(uint32_t w) { return w && rdf(w + 0x38) == 1.0f; }
+/* A disabled item is skipped too: the frontend's Extras keeps its hidden,
+ * disabled Movies 2 at the row Trophies is drawn on (+0x38 still 1.0), and
+ * hover on it stepped toward an item the selection never lands on. */
+static bool shown(uint32_t w) { return w && rdf(w + 0x38) == 1.0f && menu_widget_enabled(vm_base[w + MENU_WIDGET_ENABLED_BYTE]); }
 static bool inside(uint32_t w, float vx, float vy)
 {
     return vx >= rdf(w + 0x50) && vx < rdf(w + 0x58) && vy >= rdf(w + 0x54) && vy < rdf(w + 0x5C);
 }
 
-/* Hover: the item under the pointer becomes the goal, and the menu is
- * stepped to it with the d-pad, one press at a time, so the game's own
- * handlers run (sounds, the tab marker, submenus). */
-struct Goal { uint32_t sel, grp, box; int target, steps; bool then_x; };   /* then_x: a click, X once there */
+/* Hover: the item under the pointer becomes the goal, and the game's thread
+ * selects it (hover_select). */
+struct Goal { uint32_t sel, grp; int target, steps; bool then_x; int at; };   /* then_x: a click, X once there; at: the index a step left */
 static Goal s_goal;
+
+/* A submenu's hovered item is selected at once, here on the game's thread
+ * just before Selection:Update, as a PC menu does: Update draws the
+ * highlight (+0x42) from the index, and the move sound is the one it plays
+ * for a key (func_002745A8). Stepped with the d-pad instead, the highlight
+ * trailed the pointer by up to a second on a fast sweep: Update takes a key
+ * only on its press, and injected presses 30 ms apart merged into one held
+ * key. The main bar is still stepped (menu_mouse): its tabs open their
+ * submenus on the key, and a written index only moved the bar's highlight. */
+static void hover_select(ppu_context* ctx, uint32_t sel)
+{
+    const Goal g = s_goal;   /* menu_mouse's thread writes it: check all of it */
+    const int cg = (int)rd32(sel + 0x18);
+    if (g.sel != sel || !g.grp || cg < 0 || cg >= (int)rd32(sel + 0x08) || g.grp != rd32(sel + 0x10) + 0x10u * cg) return;
+    if (g.target < 0 || g.target >= (int)rd32(g.grp) || g.target == (int)rd32(g.grp + 0x0C)) return;
+    if (!shown(rd32(rd32(g.grp + 8) + 8u * g.target))) return;
+    wr32(g.grp + 0x0C, (uint32_t)g.target);
+    const uint64_t r3 = ctx->gpr[3], r4 = ctx->gpr[4], r5 = ctx->gpr[5];
+    ctx->gpr[3] = rd32(0x012D330C);   /* the menu, as Update passes it */
+    func_002745A8(ctx);
+    ctx->gpr[3] = r3; ctx->gpr[4] = r4; ctx->gpr[5] = r5;
+}
 
 /* JOY_LEFT, JOY_RIGHT, JOY_UP, JOY_DOWN (0..3) as pad buttons. */
 static unsigned joy_mask(int k) { static const unsigned m[4] = { 0x0080, 0x0020, 0x0010, 0x0040 }; return k >= 0 && k < 4 ? m[k] : 0; }
@@ -1317,7 +1475,7 @@ static bool hover_one(uint32_t sel, float vx, float vy, Goal* g)
         if (d < best_d) { best_d = d; best = i; }
     }
     if (best < 0) return false;
-    *g = { sel, grp, 0, best, 0 };
+    *g = { sel, grp, best, 0, false, -1 };
     return true;
 }
 
@@ -1338,19 +1496,6 @@ static int box_row_at(uint32_t box, float vy, bool hover = false)
     else if (hover) r = std::min((int)((vy - y0) / (ih - over / (n - 1))), n - 1);   /* the box's foot: the last row */
     else r = (int)((vy - y0 + rdf(box + 0xDC)) / ih);
     return r >= 0 && r < n ? r : -1;
-}
-
-/* The d-pad press that moves the goal's menu one step toward it, 0 when there. */
-static unsigned goal_step(const Goal& g)
-{
-    if (g.box) {
-        const int cur = (int)rd32(g.box + 0x12C);
-        return cur == g.target ? 0 : cur < g.target ? 0x0040 : 0x0010;
-    }
-    const int cur = (int)rd32(g.grp + 0x0C);
-    const LiveSel* l = live_sel(g.sel);
-    if (cur == g.target || !l) return 0;
-    return joy_mask(g.target > cur ? l->next : l->prev);
 }
 
 /* gMenu:DialogBox (native func_00272670) runs its own loop until a button is
@@ -1451,8 +1596,10 @@ static void menu_mouse(void)
             if (r >= 0 && r != (int)rd32(box + 0x12C) && option_enabled(option_at(vx, vy)) && menu_box_row_enabled(vm_base, box, r))
                 wr32(box + 0x12C, (uint32_t)r);   /* not onto a greyed row (menu_box.h) */
         } else hover_selection(vx, vy, &g);
-        if ((g.box || g.grp) && (g.box != s_goal.box || g.grp != s_goal.grp || g.target != s_goal.target))
+        if (g.grp && (g.grp != s_goal.grp || g.target != s_goal.target)) {
+            if (g.grp == s_goal.grp) g.at = s_goal.at;   /* a step on its way still counts */
             s_goal = g;
+        }
     }
 hovered:
     prev_x = x; prev_y = y;
@@ -1491,23 +1638,48 @@ hovered:
     else if ((b & 1) && drag_on) {   /* dragging: a step every 20 virtual units */
         const float d = (x - drag_x) * 512.0f / fw;
         if (d >= 20 || d <= -20) { pad_inject(d > 0 ? 0x0020 : 0x0080, 2); drag_x = x; }
-    } else if ((s_goal.box || s_goal.grp) && t >= next_step) {
-        const unsigned step = goal_step(s_goal);
-        if (!step && s_goal.then_x && (int)rd32(s_goal.grp + 0x0C) == s_goal.target) { pad_inject(0x4000, 2); s_goal = {}; }
-        else if (!step || ++s_goal.steps > 32) s_goal = {};
-        else { pad_inject(step, 2); next_step = t + 30; }
+    } else if (s_goal.grp) {   /* a click's X once it is there */
+        const int cur = (int)rd32(s_goal.grp + 0x0C);
+        const LiveSel* l = live_sel(s_goal.sel);
+        if (cur == s_goal.target) { if (s_goal.then_x) pad_inject(0x4000, 2); s_goal = {}; }
+        else if (!l || ++s_goal.steps > 64) s_goal = {};   /* the game did not take it (~0.5 s) */
+        else if (l->prev != 2) {   /* the main bar: a d-pad step, the next once the bar moved and the key was let go */
+            if (s_goal.at >= 0 && cur != s_goal.at) { s_goal.at = -1; next_step = t + 50; }
+            if (t >= next_step) { pad_inject(joy_mask(s_goal.target > cur ? l->next : l->prev), 2); s_goal.at = cur; next_step = t + 150; }
+        }   /* else a submenu: hover_select moves it */
     }
 }
 
 /* Runs `src` in Lua state L, from a hook (see guest()). */
 static void lua_run(ppu_context* ctx, uint32_t L, const std::string& src, const char* name)
 {
-    const uint32_t sp = (uint32_t)((ctx->gpr[1] - 0x4000) & ~0xFull);
+    const uint32_t sp = (uint32_t)((ctx->gpr[1] - 0x4000) & ~0xFull);   /* the callee's stack (guest()) */
+    if (src.size() + strlen(name) + 2 > 0x4000 - 0x400 - 0x100) {   /* it would reach the hook's own frame */
+        fprintf(stderr, "[kz-lua] %s: %zu bytes do not fit on the stack: not run\n", name, src.size());
+        return;
+    }
     const uint32_t buf = sp + 0x400;   /* above the callee's frames */
     const size_t nl = strlen(name) + 1;
     memcpy(vm_base + buf, src.c_str(), src.size() + 1);
     memcpy(vm_base + buf + src.size() + 1, name, nl);
     guest(ctx, func_0007043C, L, buf, src.size(), buf + src.size() + 1);
+}
+
+/* The Trophies page's data (KZTRDATA, trophy_list.h) for state L: once, and again after a trophy unlocked
+ * (kz_trophy_gen). In pieces: lua_run copies its text to the guest's stack. */
+static void trophy_data(ppu_context* ctx, uint32_t L, bool new_state)
+{
+    static std::vector<std::pair<uint32_t, unsigned>> have;   /* state, the generation it has */
+    const unsigned gen = kz_trophy_gen();
+    auto it = std::find_if(have.begin(), have.end(), [&](const auto& e) { return e.first == L; });
+    if (it != have.end() && !new_state && it->second == gen) return;
+    if (it == have.end()) {
+        if (have.size() >= 64) have.clear();   /* shortcut: states come and go with levels; a cleared one is sent again */
+        have.push_back({ L, gen });
+        it = have.end() - 1;
+    }
+    it->second = gen;
+    for (const std::string& c : kz_trophy_page_lua(4096)) lua_run(ctx, L, c, "=kztr");
 }
 
 static void lua_binding(ppu_context* ctx)
@@ -1542,11 +1714,13 @@ static void lua_binding(ppu_context* ctx)
             s_lua_ready = false;
             if (seen) lua_run(ctx, L, probe, "=kzpcq");
             if (!seen || s_lua_ready) {
-                static const std::string lua = kz_lua();
-                lua_run(ctx, L, lua, "=kzpc");
+                /* in pieces of whole blocks (trophy_list.h): lua_run's room on the guest's stack is 15 KB */
+                static const std::vector<std::string> lua = tl::lua_blocks(kz_lua(), 12 * 1024);
+                for (const std::string& piece : lua) lua_run(ctx, L, piece, "=kzpc");
                 static const bool tr = getenv("KZ_LUA_TRACE") != nullptr; static unsigned runs;
-                if (tr) fprintf(stderr, "[kz-lua] script %u in state %08X\n", ++runs, L);
+                if (tr) fprintf(stderr, "[kz-lua] script %u in state %08X (%zu pieces)\n", ++runs, L, lua.size());
             }
+            trophy_data(ctx, L, !seen);
             /* KZ_DEBUG_GIVE (testing; debug_give.h): weapons for the player, once a state has one */
             static const std::string give = debug_give_lua(getenv("KZ_DEBUG_GIVE"));
             if (!give.empty()) lua_run(ctx, L, give, "=kzgive");

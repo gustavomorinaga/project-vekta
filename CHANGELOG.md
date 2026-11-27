@@ -8,6 +8,17 @@ program and folder that build it. Until a release that calls itself playable
 ## [Unreleased]
 
 ### Added
+- A notice when you earn a trophy: a card slides in at the top right with the trophy's own picture from your game's
+  trophy set, its name, its grade and how many of the 59 you have, with a short sound made for Project Vekta. Up to
+  three show at once, the others wait their turn, and the ones below slide up when one leaves; the card is slightly
+  see-through. It shows during loading screens, movies and the pause menu too, and with every upscaler. Two new
+  rows on the PC page, "Trophy Notices" and "Trophy Sound" (on by default; the sound row is greyed out while notices
+  are off). No notice when trophies are not stored (debug options or scripted
+  input). The words on the card follow the game's language (English, French, Spanish, German, Italian, Dutch).
+- A Trophies page in the pause menu and in Extras on the main menu: all 59 trophies in the trophy set's order with
+  their grade and name on the left and the day you earned it (or "Locked") at the row's right end; under the list,
+  the selected trophy's description; how many you have in the page's title. The rows only scroll. Pad, keyboard and mouse work as on the
+  PC page; names and words follow the game's language. Without the trophy set, the page says so.
 - More frame-rate limits on the PC page and in RecompLauncher: 120, 165, 240 and Unlimited (`fps_limit = 0`, a
   1000 Hz game clock), besides 30, 60 and 144. Experimental, for fast PCs and high-refresh monitors; 60 stays the
   default ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
@@ -38,6 +49,12 @@ program and folder that build it. Until a release that calls itself playable
   Scale (patch 2092). One-player games are unchanged.
 
 ### Changed
+- Trophies are kept more safely: the trophy file is written in full to a temporary file and then put in place, so a
+  crash or a power cut while saving keeps the old file instead of a broken one. With a debug option that changes the
+  game (`KZ_UNLOCK_LEVELS`, `KZ_DEBUG_MENU`, `KZ_DEBUG_GOD`, `KZ_DEBUG_GIVE`, `KZ_POKE`), or with input from a
+  control script (`PAD_SCRIPT`, `KZ_ROUTE_PLAY` and the other test inputs), trophies are not stored, and the log
+  says so. Each new trophy is also a `[trophy] unlocked` line in the log (the groundwork for showing it
+  in the game).
 - F12 no longer takes a developer capture (a `capture_<date>_<time>` folder in the game's folder): it was on in
   every build, and F12 is also Steam's screenshot key. Developers turn it on with `PS3RECOMP_CAPTURE_KEY=1`
   (ps3recomp patch 2089).

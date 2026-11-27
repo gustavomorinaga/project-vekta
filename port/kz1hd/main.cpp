@@ -58,6 +58,7 @@
 #include "crash_report.h" /* [kz-crash], [kz-hang], KZ_CRASH_TEST */
 #include "fios_cache.h"   /* a cut-short FIOS cache.dat is removed before the game reads it */
 #include "sys_info.h"     /* [kz-sys], the session header */
+#include "trophies.h"     /* kz_trophies_pump */
 #if __has_include("eboot_id.h")
 #include "eboot_id.h"    /* KZ_EBOOT_SHA256, KZ_EBOOT_SIZE: written into the lift's gen/ by tools/kzbuild.py */
 #if defined(KZ_EBOOT_EDITION_EU) != KZ_EDITION_EU
@@ -559,6 +560,7 @@ static DWORD WINAPI frame_clock(LPVOID)
               }
           } }
         kz_view_update();   /* pcoptions.cpp: the cameras follow the window's aspect */
+        kz_trophies_pump();   /* trophies.cpp: the unlocks since the last frame */
         /* KZ_DEBUG_GOD=1 (testing; debug_god.h): the game's own God mode, every frame */
         { static const int god = debug_god_on(getenv("KZ_DEBUG_GOD"));
           if (god) if (const uint32_t f = debug_god_flag(vm_read32(DEBUG_GOD_SETTINGS))) vm_write8(f, 1); }

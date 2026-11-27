@@ -41,6 +41,8 @@ TROPHY.TRP
 *.webm
 *.mp4
 *.mkv
+# ...except the trophy notice's sound, Project Vekta's own (made by its author for the port; NOTICE.md)
+!port/kz1hd/assets/trophy.mp3
 
 # Build output and caches
 /port/*/build*/

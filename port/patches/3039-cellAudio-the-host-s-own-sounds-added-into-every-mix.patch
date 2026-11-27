@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Thu, 26 Nov 2026 20:25:58 -0300
+Subject: [PATCH] cellAudio: the host's own sounds added into every mixed block
+
+A port that plays a sound of its own (Project Vekta's trophy notice) had to open a second audio device or stream,
+which on Windows means a second WASAPI client, and its level and timing were apart from the game's.
+
+Fix: ps3_audio_set_host_mix(fn). audio_mix_one_block calls fn(mix, frames, channels) on the mixing thread after
+the title's ports are mixed and their lock is released, before the clip: the host adds its samples into the
+interleaved float block at the output's channel count (front left and right first). Both backends (SDL and
+WASAPI) and AUDIO_WAV get the same mix. fn must not block; NULL (the default) changes nothing.
+
+ENHANCEMENT: the PS3 game has no host sounds. Seen in Level 1 (2026-11-26, Linux, SDL backend, stereo): the
+trophy notice's sound found in the AUDIO_WAV capture of the mix at the moment the notice appeared (normalized
+correlation 0.98 with the decoded asset at half amplitude).
+---
+ libs/audio/cellAudio.c | 7 +++++++
+ libs/audio/cellAudio.h | 5 +++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
+index 5c5948b..10561db 100644
+--- a/libs/audio/cellAudio.c
++++ b/libs/audio/cellAudio.c
+@@ -464,6 +464,9 @@ static inline float ld_be_f32(const float* p)
+     return f;
+ }
+ 
++static volatile ps3_audio_host_mix_fn s_host_mix;
++void ps3_audio_set_host_mix(ps3_audio_host_mix_fn fn) { s_host_mix = fn; }
++
+ /* Mix one block from all active ports into s_mix_buffer (stereo float) */
+ static void audio_mix_one_block(void)
+ {
+@@ -606,6 +609,10 @@ static void audio_mix_one_block(void)
+ 
+     mutex_unlock(&s_audio_mutex);
+ 
++    /* the host's own sounds (ps3_audio_set_host_mix), before the clip */
++    { const ps3_audio_host_mix_fn hm = s_host_mix;
++      if (hm) hm(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES, s_out_ch); }
++
+     /* Clip to [-1.0, 1.0] */
+     for (u32 i = 0; i < CELL_AUDIO_BLOCK_SAMPLES * s_out_ch; i++) {
+         if (s_mix_buffer[i] > 1.0f) s_mix_buffer[i] = 1.0f;
+diff --git a/libs/audio/cellAudio.h b/libs/audio/cellAudio.h
+index cef360a..3f3c01b 100644
+--- a/libs/audio/cellAudio.h
++++ b/libs/audio/cellAudio.h
+@@ -120,6 +120,11 @@ s32 cellAudioUnsetPersonalDevice(s32 iPersonalStream);
+  * ps3_audio_clock_caught_up() is 1 once every block due has been mixed. */
+ void ps3_audio_set_clock_ms(double ms);
+ int  ps3_audio_clock_caught_up(void);
++/* The host's own sounds (ENHANCEMENT: a port's notice sound) added into every mixed block: fn(mix, frames, channels)
++ * on the mixing thread, after the title's ports and before the clip; mix is interleaved float at the output's channel
++ * count (front left and right first). It must not block. NULL turns it off. */
++typedef void (*ps3_audio_host_mix_fn)(float* mix, u32 frames, u32 channels);
++void ps3_audio_set_host_mix(ps3_audio_host_mix_fn fn);
+ 
+ #ifdef __cplusplus
+ }
