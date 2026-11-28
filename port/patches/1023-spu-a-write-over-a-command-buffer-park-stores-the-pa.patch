@@ -1,0 +1,434 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 28 Nov 2026 02:00:00 -0300
+Subject: [PATCH] spu: a write over a command-buffer park stores the park's
+ word last
+
+Killzone HD's PSGL leaves holes in its command ring for SPU jobs: NOPs,
+and a self-JUMP (a park) at the start of each 128-byte line. The RSX
+walker waits on a park until a job's write lands there. One memcpy makes
+the words visible in its own order, and a copy preempted midway leaves
+the line half new: a walker that saw the park go could read the old NOPs
+or the next line's park in the middle of the new packets, and walk data.
+
+A DMA PUT, PUTLLC or PUTLLUC that covers parks now stores everything
+else first, then, after a full fence, the parks' words from the last
+line to the first. The bytes are the same; a write with no park in it is
+the one memcpy it was. SPU_PUT_PARK_LAST=0 keeps the old copy (A/B);
+SPU_PUT_TEAR_MS=<ms> pauses a copy midway (fault injection).
+
+tools/test_spu_put_park_last.py: random writes keep their bytes, and a
+thread waiting on the park, as the walker does, never sees a write half
+done, also with a copy paused midway; the control (old copy paused
+midway) is caught.
+---
+ runtime/spu/spu_channels.c                 |   4 +-
+ runtime/spu/spu_dma.h                      |  88 ++++++++++++++-
+ runtime/spu/tests/test_spu_put_park_last.c | 156 +++++++++++++++++++++
+ tools/test_spu_put_park_last.py            |  75 ++++++++++
+ 4 files changed, 315 insertions(+), 8 deletions(-)
+ create mode 100644 runtime/spu/tests/test_spu_put_park_last.c
+ create mode 100644 tools/test_spu_put_park_last.py
+
+--- a/runtime/spu/spu_channels.c
++++ b/runtime/spu/spu_channels.c
+@@ -870,7 +870,7 @@
+             memcmp(mem, ctx->resv_line, MFC_ATOMIC_LINE) == 0) {
+             { extern void spu_lockguard_check(spu_context*, uint32_t, const uint8_t*, uint32_t, const char*);
+               spu_lockguard_check(ctx, ea, ls, MFC_ATOMIC_LINE, "PUTLLC"); }
+-            memcpy(mem, ls, MFC_ATOMIC_LINE);          /* commit local store */
++            spu_put_copy(mem, ls, MFC_ATOMIC_LINE, ea);   /* commit local store (spu_dma.h: parks last) */
+             /* A committing PUTLLC is a line write like any other, so every
+              * PEER reservation on it is lost and its SPU takes SPU_EVENT_LR.
+              * Silent, this is the same lost update the PPU half was added to
+@@ -967,7 +967,7 @@
+         spu_lockline_lock();
+         { extern void spu_lockguard_check(spu_context*, uint32_t, const uint8_t*, uint32_t, const char*);
+           spu_lockguard_check(ctx, ea, ls, MFC_ATOMIC_LINE, "PUTLLUC"); }
+-        memcpy(mem, ls, MFC_ATOMIC_LINE);              /* unconditional store */
++        spu_put_copy(mem, ls, MFC_ATOMIC_LINE, ea);    /* unconditional store (spu_dma.h: parks last) */
+         /* Unconditional, so it invalidates EVERY reservation on the line --
+          * this SPU's included, which is why the notify runs before the
+          * bookkeeping below rather than after it. A peer left holding a
+--- a/runtime/spu/spu_dma.h
++++ b/runtime/spu/spu_dma.h
+@@ -215,6 +215,82 @@
+     return ok;
+ }
+ 
++/* SPU writes over command-buffer parks.
++ *
++ * Killzone HD's PSGL reserves holes in its command ring for SPU jobs
++ * (func_003174B0): NOPs, and a self-JUMP ("park") at the start of each
++ * 128-byte line. The RSX waits on a park until a job's write lands on that
++ * line, whose first word then becomes a command header, and a packet may run
++ * on into the next line. A host memcpy makes the words visible in its own
++ * order, so a walker waiting on a park could leave it while the rest of the
++ * line, or the next line's first word, still held the old NOPs or park, and
++ * read them at the wrong alignment. So a write (DMA PUT, PUTLLC, PUTLLUC) that
++ * covers parks stores everything else first, then, after a full fence, the
++ * parks' words from the last line to the first: when the walker leaves a
++ * park, the whole write is in memory. The end result is the same bytes.
++ *   SPU_PUT_PARK_LAST=0: one memcpy, as before (A/B).
++ *   SPU_PUT_TEAR_MS=<ms> (fault injection): pause <ms> after the first part of
++ *     the copy, as a copy preempted midway.
++ * The first 8 writes over parks, then every 65536th, are logged. */
++static inline int spu_word_is_park(const uint8_t* p, uint32_t ea)
++{
++    uint32_t w;
++    memcpy(&w, p, 4);
++    w = __builtin_bswap32(w);
++    return (w & 0xE0000003u) == 0x20000000u && (w & 0x000FFFFCu) == (ea & 0x000FFFFCu);
++}
++static inline void spu_put_copy(uint8_t* dst, const uint8_t* src, uint32_t size, uint32_t ea)
++{
++    static int cfg = -1;   /* bit 0: parks last; above it: the tear in ms */
++    int c = __atomic_load_n(&cfg, __ATOMIC_RELAXED);
++    if (__builtin_expect(c < 0, 0)) {
++        const char* e = getenv("SPU_PUT_PARK_LAST");
++        const char* t = getenv("SPU_PUT_TEAR_MS");
++        int ms = t ? atoi(t) : 0;
++        ms = ms < 0 ? 0 : ms > 1000 ? 1000 : ms;
++        c = ((e && *e == '0') ? 0 : 1) | (ms << 1);
++        __atomic_store_n(&cfg, c, __ATOMIC_RELAXED);
++    }
++    const int last = c & 1, tear_ms = c >> 1;
++    /* The line starts inside the write that hold a park now. */
++    uint32_t parks[MFC_MAX_DMA_SIZE / 128u + 1u];
++    uint32_t np = 0;
++    if (size >= 4u) {
++        for (uint32_t a = (ea + 127u) & ~127u; a - ea <= size - 4u && np < sizeof parks / sizeof parks[0]; a += 128u)
++            if (spu_word_is_park(dst + (a - ea), a)) parks[np++] = a - ea;
++    }
++    if (!np) { memcpy(dst, src, size); return; }
++    { static unsigned n = 0;
++      const unsigned k = __atomic_add_fetch(&n, 1u, __ATOMIC_RELAXED);
++      if (k <= 8u || (k & 0xFFFFu) == 0u)
++          fprintf(stderr, "[spu-put] #%u over %u park(s): ea=%08X size=0x%X, first at +0x%X%s%s\n",
++                  k, np, ea, size, parks[0], last ? " (parks written last)" : "",
++                  tear_ms ? " (tear injected)" : ""); }
++    if (!last) {
++        if (tear_ms && size > 16u) {
++            memcpy(dst, src, 16);
++            Sleep((DWORD)tear_ms);
++            memcpy(dst + 16, src + 16, size - 16u);
++        } else {
++            memcpy(dst, src, size);
++        }
++        return;
++    }
++    uint32_t pos = 0;
++    for (uint32_t i = 0; i < np; i++) {
++        if (parks[i] > pos) memcpy(dst + pos, src + pos, parks[i] - pos);
++        pos = parks[i] + 4u;
++        if (tear_ms && i == 0) Sleep((DWORD)tear_ms);
++    }
++    if (size > pos) memcpy(dst + pos, src + pos, size - pos);
++    __atomic_thread_fence(__ATOMIC_SEQ_CST);
++    for (uint32_t i = np; i-- > 0; ) {
++        uint32_t w;
++        memcpy(&w, src + parks[i], 4);
++        __atomic_store_n((uint32_t*)(void*)(dst + parks[i]), w, __ATOMIC_RELEASE);
++    }
++}
++
+ /* 1 = done (rc in *rc), 0 = take the full path. */
+ static inline int mfc_do_transfer_fast(spu_context* spu, uint32_t lsa, uint64_t ea,
+                                        uint32_t size, uint32_t cmd, int* rc)
+@@ -256,7 +332,7 @@
+         }
+         if (span_reserved) {
+             spu_lockline_lock();
+-            memcpy(ea_ptr, ls_ptr, size);
++            spu_put_copy(ea_ptr, ls_ptr, size, (uint32_t)ea);
+             for (uint32_t a = a0; ; a += 128u) {
+                 if (spu_coh_line_reserved(a)) spu_coh_notify_write_except(a, spu);
+                 if (a == a1) break;
+@@ -265,7 +341,7 @@
+         } else {
+             /* As the full path below: a line reserved between the scan and
+              * the end of the copy gets its event after it. */
+-            memcpy(ea_ptr, ls_ptr, size);
++            spu_put_copy(ea_ptr, ls_ptr, size, (uint32_t)ea);
+             __atomic_thread_fence(__ATOMIC_SEQ_CST);   /* against spu_coh_reserve's */
+             for (uint32_t a = a0; ; a += 128u) {
+                 if (spu_coh_line_reserved(a)) {
+@@ -815,7 +891,7 @@
+                     const uint32_t lo = a > ea32 ? a - ea32 : 0u;
+                     const uint32_t hi = a + 128u - ea32 < size ? a + 128u - ea32 : size;
+                     if (spu_coh_is_reserved(a)) locked_lines[i >> 6] |= 1ull << (i & 63u);
+-                    else memcpy(ea_ptr + lo, ls_ptr + lo, hi - lo);
++                    else spu_put_copy(ea_ptr + lo, ls_ptr + lo, hi - lo, ea32 + lo);
+                     if (a == a1) break;
+                 }
+                 spu_lockline_lock();
+@@ -824,7 +900,7 @@
+                     const uint32_t lo = a > ea32 ? a - ea32 : 0u;
+                     const uint32_t hi = a + 128u - ea32 < size ? a + 128u - ea32 : size;
+                     if ((locked_lines[i >> 6] >> (i & 63u)) & 1u) {
+-                        memcpy(ea_ptr + lo, ls_ptr + lo, hi - lo);
++                        spu_put_copy(ea_ptr + lo, ls_ptr + lo, hi - lo, ea32 + lo);
+                         spu_coh_notify_write_except(a, spu);
+                     } else if (spu_coh_is_reserved(a)) {
+                         spu_coh_notify_write_except(a, spu);   /* reserved after its copy */
+@@ -834,7 +910,7 @@
+                 spu_lockline_unlock();
+             } else if (span_reserved) {
+                 spu_lockline_lock();
+-                memcpy(ea_ptr, ls_ptr, size);
++                spu_put_copy(ea_ptr, ls_ptr, size, (uint32_t)ea);
+                 SPU_DMA_STATS(1, (uint32_t)ea, size);
+                 for (uint32_t a = a0; ; a += 128u) {
+                     if (spu_coh_line_reserved(a)) spu_coh_notify_write_except(a, spu);
+@@ -842,7 +918,7 @@
+                 }
+                 spu_lockline_unlock();
+             } else {
+-                memcpy(ea_ptr, ls_ptr, size);
++                spu_put_copy(ea_ptr, ls_ptr, size, (uint32_t)ea);
+                 SPU_DMA_STATS(1, (uint32_t)ea, size);
+                 __atomic_thread_fence(__ATOMIC_SEQ_CST);   /* against spu_coh_reserve's */
+                 for (uint32_t a = a0; ; a += 128u) {
+diff --git a/runtime/spu/tests/test_spu_put_park_last.c b/runtime/spu/tests/test_spu_put_park_last.c
+new file mode 100644
+--- /dev/null
++++ b/runtime/spu/tests/test_spu_put_park_last.c
+@@ -0,0 +1,156 @@
++/* An SPU write over a command-buffer park (spu_put_copy, spu_dma.h): the
++ * bytes end up the same, and a walker waiting on the park never sees it go
++ * while the rest of the write is still the old words.
++ *
++ *   ./fixture content           random writes over parks and NOPs, direct and
++ *                               through mfc_submit (PUT): end content checked
++ *   ./fixture walk N            N writes of 8 lines (a park at each line) while
++ *                               a second thread waits on the first park, as
++ *                               the RSX walker does; prints "torn T of N"
++ *   ./fixture walk-mfc N        the same through mfc_submit (PUT)
++ *
++ * tools/test_spu_put_park_last.py runs them with and without
++ * SPU_PUT_PARK_LAST=0 and SPU_PUT_TEAR_MS (a copy paused midway). */
++#include <assert.h>
++#include <pthread.h>
++#include <sched.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++static uint8_t guest[1u << 20];
++uint8_t* vm_base = guest;
++uint32_t ppu_vm_size;
++#include "../spu_channels.c"
++
++static spu_context spu;
++
++static void be_put(uint8_t* p, uint32_t w) { w = __builtin_bswap32(w); memcpy(p, &w, 4); }
++static uint32_t park_word(uint32_t ea) { return 0x20000000u | (ea & 0x1FFFFFFCu); }
++
++static uint32_t s_rng = 0x2545F491u;
++static uint32_t rnd(void) { s_rng ^= s_rng << 13; s_rng ^= s_rng >> 17; s_rng ^= s_rng << 5; return s_rng; }
++
++static void put_mfc(uint32_t ea, uint32_t lsa, uint32_t size)
++{
++    spu.mfc_eah = 0; spu.mfc_eal = ea; spu.mfc_lsa = lsa;
++    spu.mfc_size = size; spu.mfc_tag = 2;
++    assert(mfc_submit(mfc_for(&spu), &spu, 0x20) == 0);   /* MFC_PUT */
++}
++
++/* Old content of [ea, ea + size): a park at each line start, NOPs elsewhere. */
++static void prime(uint32_t ea, uint32_t size)
++{
++    memset(guest + ea, 0, size);
++    for (uint32_t a = (ea + 127u) & ~127u; a + 4u <= ea + size; a += 128u)
++        be_put(guest + a, park_word(a));
++}
++
++static int content(void)
++{
++    static uint8_t src[MFC_MAX_DMA_SIZE];
++    int fails = 0;
++    for (int i = 0; i < 4000; i++) {
++        const uint32_t size = (i % 7 == 0) ? (1u << (rnd() % 4)) : 16u * (1u + rnd() % (MFC_MAX_DMA_SIZE / 16u));
++        const uint32_t ea = 0x40000u + ((rnd() % 0x20000u) & ~15u) + (size < 16 ? (rnd() & 15u & ~(size - 1u)) : 0u);
++        for (uint32_t k = 0; k < size; k++) src[k] = (uint8_t)rnd();
++        if (i & 1) {   /* new words that are parks too, at a line start */
++            for (uint32_t a = (ea + 127u) & ~127u; a + 4u <= ea + size; a += 256u)
++                be_put(src + (a - ea), park_word(a));
++        }
++        prime(ea, size);
++        if (i % 3 == 2 && size <= 0x4000u) {
++            const uint32_t lsa = 0x10000u + (ea & 15u);
++            memcpy(&spu.ls[lsa], src, size);
++            put_mfc(ea, lsa, size);
++        } else {
++            spu_put_copy(guest + ea, src, size, ea);
++        }
++        if (memcmp(guest + ea, src, size)) {
++            if (fails++ < 5) fprintf(stderr, "FAIL: content differs, ea=%08X size=0x%X\n", ea, size);
++        }
++    }
++    printf("%s: 4000 writes over parks keep the bytes they carry\n", fails ? "FAIL" : "PASS");
++    return fails != 0;
++}
++
++#define WEA    0x80000u
++#define WLINES 8u
++#define WSIZE  (WLINES * 128u)
++static uint8_t s_new[WSIZE];
++static volatile int s_armed, s_waiting, s_done, s_quit;
++static int s_torn;
++
++static void* walker(void* arg)
++{
++    (void)arg;
++    for (int seen = 0; ; ) {
++        while (__atomic_load_n(&s_armed, __ATOMIC_ACQUIRE) == seen) {
++            if (__atomic_load_n(&s_quit, __ATOMIC_ACQUIRE)) return 0;
++            sched_yield();
++        }
++        seen = s_armed;
++        __atomic_store_n(&s_waiting, seen, __ATOMIC_RELEASE);
++        uint32_t want; be_put((uint8_t*)&want, park_word(WEA));
++        while (__atomic_load_n((const uint32_t*)(const void*)(guest + WEA), __ATOMIC_ACQUIRE) == want) { }
++        if (memcmp((const void*)(guest + WEA), s_new, WSIZE)) s_torn++;
++        __atomic_store_n(&s_done, seen, __ATOMIC_RELEASE);
++    }
++}
++
++static int walk(int n, int via_mfc)
++{
++    for (uint32_t k = 0; k < WSIZE; k += 4) be_put(s_new + k, 0x00040000u | (k >> 2));   /* commands, no park */
++    pthread_t t;
++    assert(pthread_create(&t, 0, walker, 0) == 0);
++    for (int i = 1; i <= n; i++) {
++        prime(WEA, WSIZE);
++        memcpy(&spu.ls[0x20000], s_new, WSIZE);
++        __atomic_store_n(&s_armed, i, __ATOMIC_RELEASE);
++        while (__atomic_load_n(&s_waiting, __ATOMIC_ACQUIRE) != i) sched_yield();
++        if (via_mfc) put_mfc(WEA, 0x20000, WSIZE);
++        else spu_put_copy(guest + WEA, s_new, WSIZE, WEA);
++        while (__atomic_load_n(&s_done, __ATOMIC_ACQUIRE) != i) sched_yield();
++        assert(!memcmp(guest + WEA, s_new, WSIZE));
++    }
++    __atomic_store_n(&s_quit, 1, __ATOMIC_RELEASE);
++    pthread_join(t, 0);
++    printf("torn %d of %d\n", s_torn, n);
++    return 0;
++}
++
++int main(int argc, char** argv)
++{
++    spu_context_init(&spu, 0);
++    if (argc > 1 && !strcmp(argv[1], "content")) return content();
++    if (argc > 2 && !strcmp(argv[1], "walk")) return walk(atoi(argv[2]), 0);
++    if (argc > 2 && !strcmp(argv[1], "walk-mfc")) return walk(atoi(argv[2]), 1);
++    fprintf(stderr, "usage: fixture content | walk N | walk-mfc N\n");
++    return 2;
++}
++
++/* What the engine links against outside this fixture (as test_spu_dma_repeat.c). */
++unsigned long long ps3_ms_now(void) { return 1000; }
++void ppu_resv_break_store(uint64_t ea)                 { (void)ea; }
++void ps3_ww_report_inline(uint32_t a, uint64_t v, int w)
++{
++    (void)a; (void)v; (void)w;
++}
++uint32_t g_ww_lo = 0xFFFFFFFFu, g_ww_hi = 0;
++int      g_resv_store_active = 0;
++uint32_t g_barrier_sync_watch = 0;
++
++void (*g_spurs_kernel_hook)(uint32_t) = 0;
++uint32_t g_ydkj_spurs_ctx_ea = 0;
++uint32_t g_ydkj_real_spurs_ea = 0;
++uint32_t g_ydkj_real_taskset_ea = 0;
++uint32_t g_ydkj_real_taskid = 0;
++void spurs_ef_set_from_spu(uint32_t ea, uint16_t bits) { (void)ea; (void)bits; }
++void ydkj_wake_all_event_flags(void)                   { }
++void spurs_pm_build_context(spu_context* c, uint32_t a, uint32_t b, uint32_t d)
++{
++    (void)c; (void)a; (void)b; (void)d;
++}
++uint32_t g_spu_image_src_ea, g_spu_image_ls_start, g_spu_image_span;
++void spu_thread_publish_ctx(uint32_t tid, void* ctx) { (void)tid; (void)ctx; }
+diff --git a/tools/test_spu_put_park_last.py b/tools/test_spu_put_park_last.py
+new file mode 100644
+--- /dev/null
++++ b/tools/test_spu_put_park_last.py
+@@ -0,0 +1,75 @@
++#!/usr/bin/env python3
++"""An SPU write over a command-buffer park stores the park's word last.
++
++The RSX walker waits on a park (a JUMP to itself) that the PPU leaves at each
++128-byte line of a hole an SPU fills. A plain memcpy may store the park's line
++start before the rest of the write, so a walker can leave the park and read the
++old NOPs or park words after it. The fixture runs a second thread that waits on
++the park as the walker does and counts the writes it saw half done.
++"""
++import os
++import re
++import shlex
++import subprocess
++import tempfile
++from pathlib import Path
++
++if os.name == "nt":
++    print("SKIP: SPU PUT park fixture currently requires a POSIX C compiler")
++    raise SystemExit(0)
++root = Path(__file__).resolve().parents[1]
++spu = root / "runtime/spu"
++common = ["spu_drain.c", "spu_lockstep.c", "spu_coherency.c", "spu_workload.c",
++          "spurs_policy.c", "spurs_job.c", "spu_tsp_weak.c", "spu_vm_pagemap.c",
++          "spurs_policy_blob_weak.c", "spu_interp.c"]
++env = {k: v for k, v in os.environ.items()
++       if not k.startswith(("SPU_", "SPURS_", "YDKJ_", "LBP_", "GH3_"))}
++
++
++def run(binary, cwd, *args, extra=None):
++    p = subprocess.run([str(binary), *args], env={**env, **(extra or {})},
++                       cwd=cwd, capture_output=True, text=True, timeout=120)
++    print(p.stdout, end="")
++    if p.returncode:
++        print(p.stderr)
++        raise SystemExit(p.returncode)
++    return p.stdout, p.stderr
++
++
++def torn(out):
++    m = re.search(r"torn (\d+) of (\d+)", out)
++    assert m, out
++    return int(m.group(1)), int(m.group(2))
++
++
++with tempfile.TemporaryDirectory(prefix="spu-put-park-") as tmp:
++    binary = Path(tmp) / "fixture"
++    subprocess.run([os.environ.get("CC", "cc"), "-std=gnu17", "-O2", "-UNDEBUG",
++                    *shlex.split(os.environ.get("CFLAGS", "")), "-pthread",
++                    "-I" + str(root / "include"), "-I" + str(spu),
++                    "-I" + str(root / "runtime/platform"),
++                    str(spu / "tests/test_spu_put_park_last.c"),
++                    *[str(spu / name) for name in common],
++                    str(root / "runtime/platform/win32_compat.c"), "-lm",
++                    "-o", str(binary)], check=True)
++
++    out, err = run(binary, tmp, "content")
++    assert "PASS" in out, out
++    assert "(parks written last)" in err, err
++    out, err = run(binary, tmp, "content", extra={"SPU_PUT_PARK_LAST": "0"})
++    assert "PASS" in out, out
++    assert "[spu-put]" in err and "(parks written last)" not in err, err
++
++    for mode in ("walk", "walk-mfc"):
++        t, n = torn(run(binary, tmp, mode, "2000")[0])
++        assert t == 0, f"{mode}: {t} of {n} writes seen half done"
++        t, n = torn(run(binary, tmp, mode, "25", extra={"SPU_PUT_TEAR_MS": "2"})[0])
++        assert t == 0, f"{mode}, a copy paused midway: {t} of {n} seen half done"
++        # The control: one memcpy paused 20 ms midway is seen half done (on a
++        # loaded machine the waiting thread can miss a few), so the fixture
++        # does catch a walker leaving the park too early.
++        t, n = torn(run(binary, tmp, mode, "10",
++                        extra={"SPU_PUT_PARK_LAST": "0", "SPU_PUT_TEAR_MS": "20"})[0])
++        assert t >= 1, f"{mode}, control: none of {n} paused copies seen half done"
++        print(f"PASS: {mode}: the walker leaves the park only once the whole write is in")
++    print("PASS: an SPU write over a park stores the park's word last")
+-- 
+2.56.0
