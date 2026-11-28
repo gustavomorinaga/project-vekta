@@ -1,0 +1,382 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 28 Nov 2026 05:10:00 -0300
+Subject: [PATCH] lv2: PS3_USLEEP_NAP=1, a sub-millisecond sleep on Windows
+ naps, then spins the rest
+
+On Windows a usleep under 1 ms spins to a QueryPerformanceCounter
+deadline, yielding inside the spin: a guest thread that polls with such
+sleeps holds a core for all of its waits. Killzone HD's MultiStream
+thread sleeps 800 us at a time, about 1100 times a second: most of a
+core, all game long (Windows 11, i7-11700K).
+
+With PS3_USLEEP_NAP=1 such a sleep naps on a high-resolution waitable
+timer (one per thread, Windows 10 1803 and later) while a nap fits
+before the deadline, and spins only the rest, so the deadline, and the
+guest's timing, is the same. What a nap costs is measured per thread
+(runtime/syscalls/usleep_nap.h): a nap is taken only while the time left
+is at least the longest nap seen lately and 50 us; before one is timed
+that is 0.5 ms, so sleeps of 550 us or less never nap on a thread that
+has not napped. "[usleep] naps" once a minute: the sleeps that napped,
+the time napped and spun, and the sleeps a nap made late. Default 0: as
+before (an experiment, to measure on Windows first).
+
+tools/test_usleep_nap.py: short sleeps never nap; 800 us sleeps on a
+0.5 ms timer nap once and spin 37% of the time, none late; Wine's timer;
+a 1 ms timer (one late, then as before); one nap held up 3 ms (one late,
+naps back in about 2 s); naps with a long tail (0.2% late, mostly spun).
+---
+ runtime/syscalls/sys_timer.c  |  63 +++++++++++++++
+ runtime/syscalls/usleep_nap.h |  78 ++++++++++++++++++
+ tests/test_usleep_nap.c       | 144 ++++++++++++++++++++++++++++++++++
+ tools/test_usleep_nap.py      |  15 ++++
+ 4 files changed, 300 insertions(+)
+ create mode 100644 runtime/syscalls/usleep_nap.h
+ create mode 100644 tests/test_usleep_nap.c
+ create mode 100755 tools/test_usleep_nap.py
+
+diff --git a/runtime/syscalls/sys_timer.c b/runtime/syscalls/sys_timer.c
+index 001effd..f9394eb 100644
+--- a/runtime/syscalls/sys_timer.c
++++ b/runtime/syscalls/sys_timer.c
+@@ -20,6 +20,7 @@
+ #include <mach/mach_time.h>
+ #endif
+ #include "ps3emu/thread_name.h"
++#include "usleep_nap.h"   /* PS3_USLEEP_NAP */
+ 
+ /* ---------------------------------------------------------------------------
+  * Globals
+@@ -147,6 +148,67 @@ static void write_be64(uint32_t addr, uint64_t val)
+  *
+  * r3 = microseconds
+  * -----------------------------------------------------------------------*/
++#ifdef _WIN32
++/* PS3_USLEEP_NAP=1 (default 0, as before): a sub-millisecond sleep naps on a
++ * high-resolution timer while a nap fits before its deadline, and spins only
++ * the rest (usleep_nap.h). "[usleep] naps" once a minute: the sleeps that
++ * napped, the time napped and spun, and the sleeps a nap made late. */
++#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
++#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
++#endif
++static int usleep_nap_on(void)
++{
++    static int on = -1;
++    if (on < 0) {
++        const char* e = getenv("PS3_USLEEP_NAP");
++        on = e && atoi(e) > 0;
++        if (on) { fprintf(stderr, "[usleep] sub-ms sleeps nap on a high-resolution timer, then spin the rest (PS3_USLEEP_NAP=1)\n"); fflush(stderr); }
++    }
++    return on;
++}
++static volatile LONG64 s_nap_napped, s_nap_us, s_nap_spun_us, s_nap_late, s_nap_late_us, s_nap_say_at;
++static void usleep_nap_until(int64_t qpc_start, int64_t qpc_deadline)
++{
++    static _Thread_local HANDLE timer;
++    static _Thread_local int tried;
++    static _Thread_local struct usleep_nap s;
++    if (!tried) {
++        tried = 1;
++        usleep_nap_init(&s);
++        timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
++    }
++    if (!timer) return;   /* before Windows 10 1803: spin, as before */
++    const double us_per_tick = 1e6 / (double)s_qpc_freq.QuadPart;
++    LARGE_INTEGER a, b;
++    a.QuadPart = qpc_start;
++    int napped = 0;
++    while (usleep_nap_fits(&s, (double)(qpc_deadline - a.QuadPart) * us_per_tick)) {
++        LARGE_INTEGER due;
++        due.QuadPart = -500;   /* 50 us, relative: the timer's next expiry */
++        if (!SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE) || WaitForSingleObject(timer, 100) != WAIT_OBJECT_0) break;
++        QueryPerformanceCounter(&b);
++        usleep_nap_took(&s, (double)(b.QuadPart - a.QuadPart) * us_per_tick);
++        a = b;
++        napped = 1;
++    }
++    if (!napped) { usleep_nap_skip(&s); return; }
++    /* the counts, for the A/B */
++    const LONG64 napped_us = (LONG64)((double)(a.QuadPart - qpc_start) * us_per_tick);
++    const LONG64 left_us = (LONG64)((double)(qpc_deadline - a.QuadPart) * us_per_tick);
++    InterlockedIncrement64(&s_nap_napped);
++    InterlockedExchangeAdd64(&s_nap_us, napped_us);
++    if (left_us >= 0) InterlockedExchangeAdd64(&s_nap_spun_us, left_us);
++    else { InterlockedIncrement64(&s_nap_late); InterlockedExchangeAdd64(&s_nap_late_us, -left_us); }
++    const LONG64 now_s = (LONG64)(a.QuadPart / s_qpc_freq.QuadPart), at = s_nap_say_at;
++    if (now_s >= at && InterlockedCompareExchange64(&s_nap_say_at, now_s + 60, at) == at && at) {
++        fprintf(stderr, "[usleep] naps: %lld sleeps napped, %lld ms napped, %lld ms spun after; %lld late by %lld us in all\n",
++                (long long)s_nap_napped, (long long)(s_nap_us / 1000), (long long)(s_nap_spun_us / 1000),
++                (long long)s_nap_late, (long long)s_nap_late_us);
++        fflush(stderr);
++    }
++}
++#endif
++
+ /* PS3_POLLTOP's real time per site: the sleep below is timed and charged to
+  * the site this call came from. */
+ static unsigned long long s_pt_real_us[128];
+@@ -289,6 +351,7 @@ int64_t sys_timer_usleep(ppu_context* ctx)
+         QueryPerformanceCounter(&qpc_start);
+         const int64_t qpc_deadline = qpc_start.QuadPart +
+             (int64_t)((usec * (uint64_t)s_qpc_freq.QuadPart) / 1000000ULL);
++        if (usleep_nap_on()) usleep_nap_until(qpc_start.QuadPart, qpc_deadline);
+         do {
+             SwitchToThread();
+             QueryPerformanceCounter(&qpc_now);
+diff --git a/runtime/syscalls/usleep_nap.h b/runtime/syscalls/usleep_nap.h
+new file mode 100644
+index 0000000..ed393bd
+--- /dev/null
++++ b/runtime/syscalls/usleep_nap.h
+@@ -0,0 +1,78 @@
++/*
++ * ps3recomp - PS3_USLEEP_NAP: a sub-millisecond sys_timer_usleep naps on a
++ * high-resolution timer while a nap fits before its deadline, and spins only
++ * the rest (Windows; sys_timer.c).
++ *
++ * On Windows a usleep under 1 ms spins to a QueryPerformanceCounter deadline,
++ * yielding inside the spin (SwitchToThread): a timer cannot wake that finely.
++ * A guest thread that polls with such sleeps then holds a core for all of its
++ * waits. Killzone HD's MultiStream thread sleeps 800 us at a time, about 1100
++ * times a second: most of a core, all game long (Windows 11, i7-11700K,
++ * 2026-11-28). A high-resolution waitable timer (Windows 10 1803 and later)
++ * wakes about 0.5 ms after it is set there, whatever shorter time it is set
++ * for (30 to 250 us: about 500 us), so an 800 us sleep can nap for about 500
++ * and spin about 300: the deadline, and so the guest's timing, is the same.
++ *
++ * What a nap costs is measured, per thread, not assumed: a nap is taken only
++ * while the time left is at least the longest nap seen lately plus a margin.
++ * Before any nap is timed the longest is taken to be 0.5 ms (Windows' finest
++ * timer period), so a sleep of 550 us or less never naps on a thread that has
++ * not napped, and a thread whose waits are all short (the main thread's 30 us
++ * waits) is not changed at all. The first nap timed takes the guess's place;
++ * then the longest rises at once to a longer nap and goes back toward the
++ * usual one (a running mean) by 1/16 a nap; on a call where no nap fits it
++ * goes back by 1/1024, and the usual nap toward the shortest seen as slowly,
++ * so one nap held up (a preempted thread) stops the naps for a few seconds,
++ * not for good (a thread's very first nap held up leaves that thread spinning,
++ * as before), and naps that are often long (a loaded machine) are mostly
++ * not taken: the sleep spins, as before. On a timer whose naps never fit (1 ms)
++ * only the first nap is taken. A nap that ends after the deadline makes that
++ * sleep late by the difference; sys_timer.c counts them.
++ *
++ * Header-only, plain C, no Windows types: tests/test_usleep_nap.c drives it
++ * with nap lengths of its own.
++ */
++#ifndef PS3RECOMP_USLEEP_NAP_H
++#define PS3RECOMP_USLEEP_NAP_H
++
++#define USLEEP_NAP_GUESS_US  500.0   /* a nap's length before one is timed */
++#define USLEEP_NAP_MARGIN_US 50.0    /* left over the longest nap for one to be taken */
++
++struct usleep_nap {
++    double usual;   /* a nap's usual length, us (running mean, 1/8) */
++    double peak;    /* the longest nap seen lately, us */
++    double least;   /* the shortest nap seen, us (1e30: none timed yet) */
++};
++
++static inline void usleep_nap_init(struct usleep_nap* s)
++{
++    s->usual = s->peak = USLEEP_NAP_GUESS_US;
++    s->least = 1e30;
++}
++
++/* left: microseconds to the deadline. 1 when a nap fits in it. */
++static inline int usleep_nap_fits(const struct usleep_nap* s, double left)
++{
++    return left >= s->peak + USLEEP_NAP_MARGIN_US;
++}
++
++/* A nap took `took` us. */
++static inline void usleep_nap_took(struct usleep_nap* s, double took)
++{
++    if (s->least > 1e29) { s->usual = s->peak = s->least = took; return; }   /* the first: the guess goes */
++    if (took < s->least) s->least = took;
++    s->usual += (took - s->usual) / 8.0;
++    if (took > s->peak) s->peak = took;
++    else s->peak -= (s->peak - s->usual) / 16.0;
++    if (s->peak < s->usual) s->peak = s->usual;
++}
++
++/* A sleep in which no nap fitted. */
++static inline void usleep_nap_skip(struct usleep_nap* s)
++{
++    if (s->peak > s->usual) s->peak -= (s->peak - s->usual) / 1024.0;
++    if (s->least < s->usual) s->usual -= (s->usual - s->least) / 1024.0;
++    if (s->peak < s->usual) s->peak = s->usual;
++}
++
++#endif
+diff --git a/tests/test_usleep_nap.c b/tests/test_usleep_nap.c
+new file mode 100644
+index 0000000..2031bc4
+--- /dev/null
++++ b/tests/test_usleep_nap.c
+@@ -0,0 +1,144 @@
++/* PS3_USLEEP_NAP (runtime/syscalls/usleep_nap.h): a sub-millisecond sleep
++ * naps while a nap fits before its deadline and spins the rest. Drives the
++ * estimator as sys_timer.c does, with nap lengths of its own: Windows' 0.5 ms
++ * timer (about 500 us whatever is asked), Wine's (about 108), a 1 ms timer,
++ * one nap held up by 3 ms, and naps with a long tail (a loaded machine).
++ * Checked: a thread whose sleeps are all short never naps (as before); an
++ * 800 us sleep naps once on a 0.5 ms timer and spins under half of it, never
++ * late; on a 1 ms timer at most the first sleep is late, then none naps; one
++ * nap held up makes one sleep late and the naps come back within seconds;
++ * under a long tail few sleeps are late (most spin, as before).
++ *
++ * tools/test_usleep_nap.py builds and runs it. */
++#include <stdio.h>
++#include "../runtime/syscalls/usleep_nap.h"
++
++static int fails;
++#define CHECK(c, ...) do { printf("%s ", (c) ? "ok  " : "FAIL"); printf(__VA_ARGS__); putchar('\n'); if (!(c)) fails++; } while (0)
++
++static unsigned rng = 12345;
++static double u01(void) { rng = rng * 1103515245u + 12345u; return ((rng >> 8) & 0xFFFF) / 65536.0; }
++
++enum { T_HALF_MS, T_WINE, T_ONE_MS, T_HELD, T_TAIL };
++static unsigned long nap_i;
++static double nap(int kind)
++{
++    nap_i++;
++    switch (kind) {
++    case T_HALF_MS: return 470 + u01() * 70;                        /* 470 to 540 us */
++    case T_WINE:    return 95 + u01() * 30;                         /* 95 to 125 us */
++    case T_ONE_MS:  return 1000 + u01() * 100;                      /* 1 to 1.1 ms */
++    case T_HELD:    return nap_i == 5000 ? 3000 : 470 + u01() * 70; /* the 5000th nap held up 3 ms */
++    default: {      /* 470 to 540, and one in ten up to 0.4 ms longer */
++        const double base = 470 + u01() * 70;
++        return u01() < 0.1 ? base + u01() * 400 : base; }
++    }
++}
++
++struct run { long sleeps, napped, late, naps; double asked, napped_us, spun_us, late_us, late_max; long last_late, first_nap_after_held; };
++
++/* `n` sleeps of `req` us each, as sys_timer.c: nap while one fits, then spin to the deadline. */
++static void sleeps(struct usleep_nap* s, struct run* r, int kind, double req, long n)
++{
++    for (long i = 0; i < n; i++) {
++        double left = req;
++        int napped = 0;
++        while (usleep_nap_fits(s, left)) {
++            const double t = nap(kind);
++            usleep_nap_took(s, t);
++            left -= t;
++            napped = 1;
++            r->naps++;
++            r->napped_us += t;
++        }
++        if (!napped) usleep_nap_skip(s);
++        else r->napped++;
++        r->sleeps++;
++        r->asked += req;
++        if (left >= 0) r->spun_us += left;
++        else {
++            r->late++; r->late_us -= left; if (-left > r->late_max) r->late_max = -left;
++            r->last_late = r->sleeps;
++        }
++    }
++}
++
++static void fresh(struct usleep_nap* s, struct run* r) { usleep_nap_init(s); *r = (struct run){0}; nap_i = 0; }
++
++int main(void)
++{
++    struct usleep_nap s;
++    struct run r;
++
++    /* short sleeps: never a nap, on any timer */
++    static const double shorts[] = { 1, 30, 100, 250, 500, 549 };
++    int none = 1;
++    for (unsigned k = 0; k < sizeof shorts / sizeof shorts[0]; k++)
++        for (int kind = T_HALF_MS; kind <= T_TAIL; kind++) {
++            fresh(&s, &r);
++            sleeps(&s, &r, kind, shorts[k], 20000);
++            if (r.napped || r.late) none = 0;
++        }
++    CHECK(none, "sleeps of 549 us or less on a thread that has not napped: no nap, as before (6 lengths, 5 timers)");
++
++    /* the MultiStream thread: 800 us, about 1100 a second */
++    fresh(&s, &r);
++    sleeps(&s, &r, T_HALF_MS, 800, 60000);
++    CHECK(r.late == 0 && r.napped == r.sleeps && r.naps == r.sleeps,
++          "0.5 ms timer, 800 us sleeps: every one napped once (%ld naps, %ld sleeps), %ld late", r.naps, r.sleeps, r.late);
++    CHECK(r.spun_us < 0.45 * r.asked, "  spun %.0f%% of the time asked (was 100%%)", 100 * r.spun_us / r.asked);
++
++    /* 600 to 999 us on the same timer: still never late */
++    int ok = 1; double spun = 0, asked = 0;
++    for (double req = 600; req < 1000; req += 25) {
++        fresh(&s, &r);
++        sleeps(&s, &r, T_HALF_MS, req, 5000);
++        if (r.late) ok = 0;
++        spun += r.spun_us; asked += r.asked;
++    }
++    CHECK(ok, "0.5 ms timer, sleeps of 600 to 975 us: none late, %.0f%% spun", 100 * spun / asked);
++
++    /* Wine's timer: naps of about 108 us */
++    fresh(&s, &r);
++    sleeps(&s, &r, T_WINE, 800, 60000);
++    CHECK(r.late == 0 && r.spun_us < 0.30 * r.asked,
++          "Wine-like timer (95 to 125 us), 800 us sleeps: %ld late, %.0f%% spun, %.1f naps a sleep",
++          r.late, 100 * r.spun_us / r.asked, (double)r.naps / r.sleeps);
++
++    /* a 1 ms timer: the first sleep's nap is late, then no nap fits */
++    fresh(&s, &r);
++    sleeps(&s, &r, T_ONE_MS, 800, 60000);
++    CHECK(r.late <= 1 && r.naps <= 1 && r.late_max < 400,
++          "1 ms timer, 800 us sleeps: %ld nap, %ld late (by %.0f us), then spun as before", r.naps, r.late, r.late_max);
++    fresh(&s, &r);
++    sleeps(&s, &r, T_ONE_MS, 950, 60000);
++    CHECK(r.late <= 1 && r.naps <= 1, "1 ms timer, 950 us sleeps: %ld nap, %ld late", r.naps, r.late);
++
++    /* one nap held up 3 ms */
++    fresh(&s, &r);
++    sleeps(&s, &r, T_HELD, 800, 5100);   /* the 5000th nap is the held one */
++    const long held_at = r.last_late, naps_then = r.naps;
++    sleeps(&s, &r, T_HELD, 800, 10000);
++    long back = 0;
++    CHECK(r.late == 1 && held_at > 0, "one nap held up 3 ms: %ld sleep late (by %.0f us)", r.late, r.late_max);
++    {
++        /* replay to find when the naps came back */
++        struct usleep_nap s3; struct run r3;
++        fresh(&s3, &r3);
++        sleeps(&s3, &r3, T_HELD, 800, held_at);
++        const long n0 = r3.naps;
++        for (back = 0; back < 20000 && r3.naps == n0; back++) sleeps(&s3, &r3, T_HELD, 800, 1);
++    }
++    CHECK(back > 0 && back < 4400 && r.naps > naps_then,
++          "  then no nap for %ld sleeps (%.1f s at 1100 a second), then naps again", back, back / 1100.0);
++
++    /* a long tail: one nap in ten up to 0.4 ms longer */
++    fresh(&s, &r);
++    sleeps(&s, &r, T_TAIL, 800, 60000);
++    CHECK(r.late < r.sleeps / 200 && r.spun_us <= r.asked,
++          "long-tailed naps, 800 us sleeps: %ld of %ld late (%.3f%%, by %.0f us at most), %.0f%% spun",
++          r.late, r.sleeps, 100.0 * r.late / r.sleeps, r.late_max, 100 * r.spun_us / r.asked);
++
++    printf("[usleep_nap] %s (%d failed)\n", fails ? "FAIL" : "PASS", fails);
++    return fails ? 1 : 0;
++}
+diff --git a/tools/test_usleep_nap.py b/tools/test_usleep_nap.py
+new file mode 100755
+index 0000000..5b7c452
+--- /dev/null
++++ b/tools/test_usleep_nap.py
+@@ -0,0 +1,15 @@
++#!/usr/bin/env python3
++"""PS3_USLEEP_NAP: a sub-millisecond sleep naps while a nap fits before its
++deadline and spins the rest; short sleeps never nap, and a nap's cost is
++measured per thread (runtime/syscalls/usleep_nap.h, tests/test_usleep_nap.c)."""
++import os
++from pathlib import Path
++import subprocess
++import tempfile
++
++root = Path(__file__).resolve().parents[1]
++with tempfile.TemporaryDirectory(prefix='ps3-usleep-nap-') as tmp:
++    binary = Path(tmp) / ('test.exe' if os.name == 'nt' else 'test')
++    subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu17', '-O1', '-UNDEBUG', '-Wall', '-Werror',
++                    str(root / 'tests/test_usleep_nap.c'), '-o', str(binary)], check=True)
++    subprocess.run([str(binary)], check=True, timeout=60)
+-- 
+2.56.0
