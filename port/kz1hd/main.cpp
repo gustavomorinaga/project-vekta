@@ -51,6 +51,7 @@
 #include "window_icon.h" /* the window's icon, from installer/art/vekta.ico (tools/icon_header.py) */
 #include "tick_rate.h"     /* the game clock's ticks per ms for KZ_TICK_HZ */
 #include "flip_phase.h"    /* at the 60 limit: the flip cadence's phase follows the flips */
+#include "flip_late.h"     /* at the 60 limit: a flip that missed its tick is shown at once */
 #include "kz_version.h"  /* KZ_VERSION_LINE, written into the build folder by version.cmake */
 #include "eboot_check.h" /* the EBOOT.elf against the one this build was lifted from */
 #include "kz_exit.h"
@@ -508,6 +509,10 @@ static DWORD WINAPI frame_clock(LPVOID)
     static kz_flip_phase phase;
     int phase_on = 0;
     double flip_seen = g_kz_flip_hz;   /* the cadence asked for, which the phase lock overrides */
+    /* KZ_FLIP_LATE (default 1, 0 = wait for the next tick as before): at the 60 limit a flip that missed its tick is
+     * shown at once and the ticks go on from there (flip_late.h). */
+    static const int late_mode = getenv("KZ_FLIP_LATE") ? atoi(getenv("KZ_FLIP_LATE")) : 1;
+    static kz_flip_late late;
 
     /* KZ_RSX_POLL_US: how often the FIFO drains between vblank ticks
      * (default 100). Every fence the game waits on -- a label a job or the
@@ -572,6 +577,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                 present_guest_frame();
                 presented = 1;
             }
+            kz_flip_late_tick(&late, presented);
             /* Drain the FIFO every tick. This is what writes the RSX sync-fence
              * labels the game's per-frame logic blocks on, so it has to keep
              * advancing at 60 Hz even while present() throttles. */
@@ -690,6 +696,19 @@ static DWORD WINAPI frame_clock(LPVOID)
                 flipped_this_tick = cellGcm_flip_request_count() != before;
                 if (flipped_this_tick && phase_on) { kz_flip_phase_reach(&phase, (double)now_us(), 0);
                                                      next_tick = (uint64_t)phase.next; }
+            }
+            /* A flip reached after a tick that showed nothing (here or in that tick's own drain) missed its tick: at
+             * the 60 limit it is shown by a tick fired on the next pass, not a whole tick later (flip_late.h). */
+            if (flipped_this_tick &&
+                kz_flip_late_reach(&late, kz_flip_late_armed(late_mode, phase_on, s_own_vblank, g_kz_tick_hz, tick_hz))) {
+                next_tick = now_us();
+                static int said;
+                if (!said++) fprintf(stderr, "[kz] a flip that missed its tick is shown at once (KZ_FLIP_LATE=0 waits for the next tick)\n");
+                static ULONGLONG next_say; static unsigned long long said_n;
+                if (now >= next_say && late.late != said_n) {
+                    if (next_say) fprintf(stderr, "[kz] flips shown at once after missing their tick: %llu\n", late.late);
+                    said_n = late.late; next_say = now + 60000;
+                }
             }
 
             if (rsx_backend_pump() != 0) kz_quit("window closed");
