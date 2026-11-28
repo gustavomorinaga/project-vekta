@@ -5,11 +5,27 @@ Subject: [PATCH] cellGcm: the recovery dump says how the walker got there
  (diagnostic)
 
 ---
- libs/video/cellGcmSys.c | 60 +++++++++++++++++++++++++++++++++++++---
+ libs/video/cellGcmSys.c | 137 ++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 134 insertions(+), 3 deletions(-)
 
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -2075,6 +2075,12 @@
+@@ -2058,12 +2058,14 @@
+  * a title spinning on ctrl->ref waits forever with no indication why. Tokyo
+  * Jungle did exactly this -- get left the 1 MB ring for IO 0x00F00000, which it
+  * never mapped, while put sat at 0x604. Stop at the bad word and say so. */
++static void gcm_hazard_report(const char* why);   /* with the trace below */
+ static void gcm_fifo_bad_branch(const char* kind, u32 target, u32 word)
+ {
+     static int n = 0;
+     if (PS3_LOG_FIRST(n, 8))
+         fprintf(stderr, "[cellGcmSys] FIFO %s to unmapped IO 0x%08X (word 0x%08X) "
+                 "-- not taken, drain stops here\n", kind, target, word);
++    gcm_hazard_report(kind);
+ }
+ 
+ /* A bad branch nearly always means the walker mis-counted a method batch a few
+@@ -2075,6 +2077,76 @@
  #define GCM_TRACE_N 64
  static u32 s_tr_off[GCM_TRACE_N], s_tr_w[GCM_TRACE_N];
  static u32 s_cf_off[8], s_cf_w[8], s_cf_i;   /* last JUMP/CALL words, for GCM_CIRCLE_DUMP */
@@ -19,10 +35,74 @@ Subject: [PATCH] cellGcm: the recovery dump says how the walker got there
 + * data ran past `put` when they were read (the words past `put` may not be
 + * written yet). */
 +static unsigned long long s_acq_unmet, s_pkt_past_put;
++/* The last of each hazard, and park skips and SPU PUTs near the stream, for
++ * the line printed at a bad branch (which one came just before the walker read
++ * data as commands) and for the totals every 30 s. Times: ps3_ms_now(). */
++extern unsigned long long ps3_ms_now(void);
++static volatile unsigned long long s_park_skips, s_spu_near;
++static volatile u32 s_hz_park_io, s_hz_park_put, s_hz_acq_io, s_hz_acq_off, s_hz_pp_io, s_hz_spu_ea, s_hz_spu_size;
++static volatile unsigned long long s_hz_park_t, s_hz_acq_t, s_hz_pp_t, s_hz_spu_t;
++/* The park the walker last stepped over (GCM_PARK_SKIP), watched until the
++ * title rewrites it: what it becomes says whether the step was right (a JUMP
++ * to the next word, or commands over it) or ran the wrong words (a JUMP
++ * elsewhere). */
++static u32 s_pw_io, s_pw_w;
++static unsigned long long s_pw_t;
++static void gcm_hazard_watch(void)
++{
++    const unsigned long long now = ps3_ms_now();
++    if (s_pw_io) {
++        const u32 e = gcm_io2ea(s_pw_io);
++        const u32 w = e ? vm_read32(e) : s_pw_w;
++        static int n = 0;
++        if (w != s_pw_w) {
++            u32 tgt = 0;
++            const int j = gcm_fifo_jump_target(w, &tgt);
++            if (PS3_LOG_FIRST(n, 32))
++                fprintf(stderr, "[fifo-check] skipped park at io=%08X became %08X %llu ms after the skip (%s, target %08X)\n",
++                        s_pw_io, w, now - s_pw_t,
++                        !j ? "commands over it" : tgt == s_pw_io + 4u ? "a JUMP to the next word: the skip was right"
++                                                                         : "a JUMP elsewhere: the skip ran the wrong words",
++                        j ? tgt : 0u);
++            s_pw_io = 0;
++        } else if (now - s_pw_t > 5000u) {
++            if (PS3_LOG_FIRST(n, 32))
++                fprintf(stderr, "[fifo-check] skipped park at io=%08X still stands 5 s later\n", s_pw_io);
++            s_pw_io = 0;
++        }
++    }
++    static unsigned long long t0, last_sum;
++    if (!t0) t0 = now;
++    if (now - t0 >= 30000u) {
++        t0 = now;
++        const unsigned long long sum = s_park_skips + s_acq_unmet + s_pkt_past_put + s_spu_near;
++        if (sum != last_sum) {
++            last_sum = sum;
++            fprintf(stderr, "[fifo-check] totals: park skips %llu, unmet acquires %llu, packets past put %llu, "
++                            "SPU PUTs near the stream %llu\n", s_park_skips, s_acq_unmet, s_pkt_past_put, s_spu_near);
++        }
++    }
++}
++static void gcm_hazard_report(const char* why)
++{
++    static int n = 0;
++    if (!PS3_LOG_FIRST(n, 8)) return;
++    const unsigned long long now = ps3_ms_now();
++#define GCM_HZ_AGO(t) ((t) ? (long long)(now - (t)) : -1ll)
++    fprintf(stderr, "[fifo-check] before this %s: park skips %llu (last io=%08X put=%08X, %lld ms ago); "
++                    "unmet acquires %llu (last io=%08X label 0x%X, %lld ms ago); "
++                    "packets past put %llu (last io=%08X, %lld ms ago); "
++                    "SPU PUTs near the stream %llu (last ea=%08X size=0x%X, %lld ms ago)\n",
++            why, s_park_skips, s_hz_park_io, s_hz_park_put, GCM_HZ_AGO(s_hz_park_t),
++            s_acq_unmet, s_hz_acq_io, s_hz_acq_off, GCM_HZ_AGO(s_hz_acq_t),
++            s_pkt_past_put, s_hz_pp_io, GCM_HZ_AGO(s_hz_pp_t),
++            s_spu_near, s_hz_spu_ea, s_hz_spu_size, GCM_HZ_AGO(s_hz_spu_t));
++#undef GCM_HZ_AGO
++}
  static u32 s_tr_i = 0;
  
  /* A branch we cannot take leaves the walker pointing at whatever it
-@@ -2139,6 +2145,18 @@
+@@ -2139,6 +2211,19 @@
      u32 room = 0;
      u32 io = gcm_ea2io_range(ea, &room);
      if (io == 0xFFFFFFFFu || size > room) return;   /* not in RSX-visible memory */
@@ -33,6 +113,7 @@ Subject: [PATCH] cellGcm: the recovery dump says how the walker got there
 +    { const u32 g = s_fifo_getoff, p = vm_read32(GCM_CONTROL_GUEST_ADDR + 0);
 +      const u32 lo = (g < p ? g : p), hi = (g < p ? p : g);
 +      if (hi - lo < 0x400000u && io + size + 0x10000u > lo && io < hi + 0x10000u) {
++          s_spu_near++; s_hz_spu_ea = ea; s_hz_spu_size = size; s_hz_spu_t = ps3_ms_now();
 +          static int sn = 0;
 +          if (PS3_LOG_FIRST(sn, 16))
 +              fprintf(stderr, "[fifo-check] SPU PUT ea=%08X io=%08X size=0x%X near the stream (get=%08X put=%08X)\n",
@@ -41,7 +122,7 @@ Subject: [PATCH] cellGcm: the recovery dump says how the walker got there
  
      /* Coalesce with the previous block when an SPU emits one buffer in several
       * transfers -- otherwise only the last fragment is remembered and the
-@@ -2275,10 +2293,28 @@
+@@ -2275,10 +2360,28 @@
       * and GCM_RECDBG is far too loud to leave on for a 15-minute run. */
      static int d = 0;
      if (!PS3_LOG_FIRST(d, 3)) return;
@@ -71,7 +152,36 @@ Subject: [PATCH] cellGcm: the recovery dump says how the walker got there
          fprintf(stderr, "[FIFOSTEP] io=%08X w=%08X  type=%u method=0x%04X count=%u\n",
                  s_tr_off[k], w, w >> 29, w & 0x1FFCu, (w >> 18) & 0x7FFu);
      }
-@@ -3070,7 +3106,7 @@
+@@ -2742,6 +2845,7 @@
+      * then runs off the end of the previous frame's bytes until it meets a
+      * word that is not a command, and parks there forever. */
+     atomic_thread_fence(memory_order_acquire);
++    gcm_hazard_watch();
+ 
+     /* GCM_CTXDBG=1: which context the title is actually driving. Ours is written
+      * once at init; if the title repoints gCellGcmCurrentContext at a buffer of
+@@ -3045,7 +3149,19 @@
+                            * ring patches the park last, after moving `put`). */
+                           static int skip = -1;
+                           if (skip < 0) { const char* e = getenv("GCM_PARK_SKIP"); skip = e ? atoi(e) : 0; }
+-                          if (skip) { s_fifo_getoff += 4; continue; }
++                          if (skip) {
++                              s_park_skips++; s_hz_park_io = s_fifo_getoff; s_hz_park_put = put; s_hz_park_t = now;
++                              s_pw_io = s_fifo_getoff; s_pw_w = w; s_pw_t = now;
++                              static int pk = 0;
++                              if (PS3_LOG_FIRST(pk, 32)) {
++                                  u32 nx[4];
++                                  for (u32 k = 0; k < 4; k++) { const u32 e = gcm_io2ea(s_fifo_getoff + 4u + k * 4u);
++                                                               nx[k] = e ? vm_read32(e) : 0xDEADDEADu; }
++                                  fprintf(stderr, "[fifo-check] park skip #%llu at io=%08X after %llu ms (put=%08X, call slot %08X); "
++                                          "next words %08X %08X %08X %08X\n", s_park_skips, s_fifo_getoff,
++                                          now - park_since, put, s_fifo_calloff, nx[0], nx[1], nx[2], nx[3]);
++                              }
++                              s_fifo_getoff += 4; continue; }
+                           gcm_fifo_resync_why("jump-park", &s_fifo_getoff, put);
+                       }
+                   }
+@@ -3070,7 +3186,7 @@
                  if (k == ns && ns < 64) { seen[ns++] = tg & ~0xFFFFu;
                    fprintf(stderr, "[CALL] from io=%08X to io=%08X (ea %08X)\n", s_fifo_getoff, tg, gcm_io2ea(tg)); } } }
              { u32 tgt = w & 0x1FFFFFFCu;
@@ -80,14 +190,14 @@ Subject: [PATCH] cellGcm: the recovery dump says how the walker got there
                s_fifo_calloff = s_fifo_getoff + 4;
                s_fifo_getoff  = tgt; }
              continue;
-@@ -3084,6 +3120,15 @@
+@@ -3084,6 +3200,15 @@
              u32 count  = (w >> 18) & 0x7FF;
              u32 method = w & 0x1FFCu;
              u32 subch  = (w >> 13) & 7;
 +            /* The header is before `put` and its data runs past it: those
 +             * words may not be written yet. The RSX would wait for them. */
 +            if (s_fifo_getoff < put && put - s_fifo_getoff < 4u + count * 4u) {
-+                s_pkt_past_put++;
++                s_pkt_past_put++; s_hz_pp_io = s_fifo_getoff; s_hz_pp_t = ps3_ms_now();
 +                static int pp = 0;
 +                if (PS3_LOG_FIRST(pp, 16))
 +                    fprintf(stderr, "[fifo-check] packet at io=%08X (w=%08X, %u words) runs %u bytes past put %08X\n",
@@ -96,11 +206,11 @@ Subject: [PATCH] cellGcm: the recovery dump says how the walker got there
              /* TCONST_FIFO=1: how the title actually streams vertex constants.
               * NV4097_SET_TRANSFORM_CONSTANT is a 32-register window; if a block
               * arrives NON-INCREMENTING then every dword carries the same method
-@@ -3155,6 +3200,12 @@
+@@ -3155,6 +3280,12 @@
                              fprintf(stderr, "[SEMA-REL] get=0x%08X off=0x%X val=0x%08X\n", s_fifo_getoff, s_sema_offset, v); }
                      }
                      else if (m == 0x68u && vm_read32(la) != v) {
-+            s_acq_unmet++;
++            s_acq_unmet++; s_hz_acq_io = s_fifo_getoff; s_hz_acq_off = s_sema_offset; s_hz_acq_t = ps3_ms_now();
 +            { static int an = 0;
 +              if (PS3_LOG_FIRST(an, 16))
 +                  fprintf(stderr, "[fifo-check] ACQUIRE at io=%08X: label 0x%X is 0x%08X, wants 0x%08X%s\n",
