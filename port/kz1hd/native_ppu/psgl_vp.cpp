@@ -26,6 +26,9 @@
  * (a signalling NaN comes out quieted, as the lifted body leaves it).
  */
 #include "native_ppu.h"
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
 
 extern "C" int vm_block_plain(uint32_t ea, uint32_t n);
 
@@ -143,8 +146,25 @@ bool upload(ppu_context* ctx, uint32_t prog, uint32_t* written_lo, uint32_t* wri
 
 }  // namespace
 
+/* KZ_PSGL_THREADS=1 (diagnostic): say when a different guest thread (its r13)
+ * writes vertex programs into PSGL's command buffer than the one before. Two
+ * threads writing the same buffer would interleave their commands. */
+static void psgl_thread_check(const ppu_context* ctx)
+{
+    static const bool on = getenv("KZ_PSGL_THREADS") && atoi(getenv("KZ_PSGL_THREADS"));
+    if (!on) return;
+    static std::atomic<uint64_t> last{0};
+    static std::atomic<int> said{0};
+    const uint64_t me = ctx->gpr[13];
+    const uint64_t was = last.exchange(me, std::memory_order_relaxed);
+    if (was != me && said.fetch_add(1, std::memory_order_relaxed) < 16)
+        fprintf(stderr, "[kz-psgl] vertex program upload on guest thread r13=0x%08llX (before: 0x%08llX), lr=0x%08llX\n",
+                (unsigned long long)me, (unsigned long long)was, (unsigned long long)ctx->lr);
+}
+
 void func_00312218(ppu_context* ctx)
 {
+    psgl_thread_check(ctx);
     const uint32_t prog = (uint32_t)ctx->gpr[3];
     uint32_t lo, hi;
     if (__builtin_expect(!kz_native_verify, 1)) {
