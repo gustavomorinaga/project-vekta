@@ -1,0 +1,721 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 28 Nov 2026 10:20:00 -0300
+Subject: [PATCH] cellGcm: GCM_FIFO_WATCH=1, what the walker read is checked
+ again after it read it (diagnostic)
+
+Killzone HD's rare split-screen resync on Windows has one shape in all four
+incidents seen: the walker comes linearly through the ring to a count-1
+packet slot below put and finds 8 bytes of floats where a header and its
+argument belong, followed by a valid 00041714. No park skip, no CALL, not
+past put, no SPU PUT near the stream.
+
+GCM_FIFO_WATCH=1 (off by default) asks three things of it:
+- at a bad word, the words around it now, as the walker read them last and
+  as it read them the pass before (a line read again 20 ms or more after):
+  were the floats there the pass before, so this pass never wrote them?
+- every line the walker reads is compared with memory 1 ms and 20 ms later:
+  does a word below put change after the walker read it (a late write, or a
+  writer aiming at the wrong address)?
+- SPU DMA PUTs and line stores (PUTLLC, PUTLLUC) into the IO pages the
+  walker reads are logged and listed at a bad word and at a change.
+And at a bad word the 24 bytes around it are read again for 200 ms.
+
+Totals every 10 s ("[fifo-watch] 10 s:"). Test: tools/test_gcm_fifo_watch.py
+(libs/video/tests/test_gcm_fifo_watch.c). Not for merge.
+---
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index c2a9346..979f11d 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -2275,6 +2275,9 @@ static u32 gcm_ea2io_range(u32 ea, u32* room)
+     return 0xFFFFFFFFu;
+ }
+ 
++/* GCM_FIFO_WATCH=1: a diagnostic of what the walker read (gcm_fifo_watch.h). */
++#include "gcm_fifo_watch.h"
++
+ void gcm_forget_spu_blocks(void)
+ {
+     memset(s_spu_blk, 0, sizeof s_spu_blk);
+@@ -2283,6 +2286,8 @@ void gcm_forget_spu_blocks(void)
+ 
+ void gcm_note_spu_put(u32 ea, u32 size)
+ {
++    if (GW_ON()) gw_spu_store(ea, size & 0x7FFFFFFFu);   /* GCM_FIFO_WATCH */
++    if (size & 0x80000000u) return;   /* a line store (PUTLLC, PUTLLUC), for the watch only */
+     if (!size || size > 0x40000u) return;
+     u32 room = 0;
+     u32 io = gcm_ea2io_range(ea, &room);
+@@ -2468,6 +2473,7 @@ static void gcm_fifo_dump_around(u32 getoff)
+         fprintf(stderr, "[FIFODUMP] %+3d io=%08X w=%08X%s\n",
+                 k, io, vm_read32(ea), k ? "" : "   <-- bad word");
+     }
++    if (s_gw_on > 0) gw_incident(getoff);   /* GCM_FIFO_WATCH */
+ }
+ 
+ 
+@@ -2922,6 +2928,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
+      * word that is not a command, and parks there forever. */
+     atomic_thread_fence(memory_order_acquire);
+     gcm_hazard_watch();
++    if (GW_ON()) gw_tick(put);   /* GCM_FIFO_WATCH: the lines read 1 ms and 20 ms ago */
+ 
+     /* GCM_CTXDBG=1: which context the title is actually driving. Ours is written
+      * once at init; if the title repoints gCellGcmCurrentContext at a buffer of
+@@ -3051,6 +3058,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
+         s_tr_off[s_tr_i % GCM_TRACE_N] = s_fifo_getoff;
+         s_tr_w[s_tr_i % GCM_TRACE_N] = w;
+         s_tr_i++;
++        if (s_gw_on > 0) gw_step(s_fifo_getoff, w);   /* GCM_FIFO_WATCH */
+         if (w && ((w & 0xE0000003u) == 0x20000000u || (w & 3u) == 1u || (w & 3u) == 2u)) {
+             s_cf_off[s_cf_i % 8] = s_fifo_getoff; s_cf_w[s_cf_i % 8] = w; s_cf_i++; }
+         /* GCM_WORD_STATS=<secs>: NOP words vs headers vs jumps/calls/returns
+@@ -3598,6 +3606,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
+             fprintf(stderr, "[FIFOUW] unknown word 0x%08X at getoff 0x%X\n", w, s_fifo_getoff); }
+         s_fifo_getoff += 4;                    /* unknown word: skip */
+     }
++    if (s_gw_on > 0) gw_drain_end(s_fifo_getoff);   /* GCM_FIFO_WATCH: the last packet read */
+ 
+     /* Walker watchdog. Everything above recovers from a *recognised* stall --
+      * a branch we cannot take, a park the title abandoned. A walker that stops
+@@ -3831,6 +3840,7 @@ static void gcm_fifo_next_segment(u32 ctx)
+     const u32 io_cur = gcm_ea2io(cur), io_next = gcm_ea2io(next);
+     if (io_cur == 0xFFFFFFFFu || io_next == 0xFFFFFFFFu || cur > end) return;
+     vm_write32(cur, 0x20000000u | io_next);              /* JUMP -> next segment */
++    __atomic_add_fetch(&s_gw_segs, 1ull, __ATOMIC_RELAXED);   /* GCM_FIFO_WATCH: segment switches */
+     /* The JUMP has to be in memory before `put` lets the walker reach it. */
+     atomic_thread_fence(memory_order_release);
+     vm_write32(GCM_CONTROL_GUEST_ADDR + 0, io_cur);      /* put: up to the JUMP */
+diff --git a/libs/video/gcm_fifo_watch.h b/libs/video/gcm_fifo_watch.h
+new file mode 100644
+index 0000000..3244a7b
+--- /dev/null
++++ b/libs/video/gcm_fifo_watch.h
+@@ -0,0 +1,365 @@
++/*
++ * gcm_fifo_watch.h -- GCM_FIFO_WATCH=1 (diagnostic, off by default): what the
++ * FIFO walker read, compared with memory again after it read it, and at a bad
++ * word, what was there the pass before. Included once, by cellGcmSys.c.
++ *
++ * Why: Killzone HD's rare split-screen resync (Windows, 2026-11-28, four
++ * incidents) has one shape. The walker comes linearly through the ring to a
++ * slot below `put` and finds 8 bytes of float data where a count-1 header and
++ * its argument belong, followed by a valid 00041714. Not past put, not after a
++ * park skip, not through a CALL. Three questions:
++ *
++ *  1. Were those 8 bytes already there the pass before (the title never wrote
++ *     them in this pass), or are they new? At a bad word each word around it
++ *     is printed as it is now, as the walker read it last, and as it read it
++ *     the pass before (a pass: a line read again 20 ms or more after).
++ *  2. Does a word below `put` change after the walker has read it (a write
++ *     that comes late, or a writer aiming at a wrong address)? Each 128-byte
++ *     line the walker reads is compared with memory 1 ms and 20 ms later; a
++ *     changed word is reported with get, put and the title's write head.
++ *  3. Does an SPU store into the lines the walker reads? SPU DMA PUTs and line
++ *     stores (PUTLLC, PUTLLUC) into watched IO pages are logged; at a bad word
++ *     and at a change, the ones on that line are listed.
++ *
++ * And at a bad word the 24 bytes around it are read again for 200 ms (the
++ * walker waits): a late write shows as the words changing under it.
++ *
++ * Cost when off: one load per walker word. When on: about 2.2 MB per 1 MB IO
++ * page the walker reads, a copy of each word it consumes and two compares of
++ * it later. Totals every 10 s ("[fifo-watch] 10 s:").
++ */
++#ifndef GCM_FIFO_WATCH_H
++#define GCM_FIFO_WATCH_H
++
++#define GW_PAGES   512u               /* 1 MB IO pages: IO offsets below 512 MB */
++#define GW_PASS_US 20000ull           /* a line read again this long after: a new pass */
++#define GW_Q_N     65536u             /* lines waiting for their check */
++#define GW_SPU_N   4096u              /* SPU stores remembered */
++
++typedef struct gw_page {
++    u32 cur[262144];                  /* each word as the walker read it last */
++    u32 prev[262144];                 /* ...and the pass before */
++    unsigned long long line_us[8192]; /* when the walker last read in each line */
++    unsigned long long prev_us[8192]; /* ...and the pass before */
++    unsigned long long spu_us[8192];  /* when an SPU last stored into it */
++    u32 mask[8192];                   /* words read in the line since its check was queued */
++} gw_page;
++
++typedef struct { u32 line, mask; unsigned long long t; } gw_q;
++typedef struct { u32 ea, size, w0, w1; unsigned long long t; } gw_spu;
++
++static int s_gw_on = -1;
++static gw_page* s_gw_pg[GW_PAGES];
++static u32 s_gw_prev_io = 0xFFFFFFFFu, s_gw_prev_w;
++static gw_q s_gw_q1[GW_Q_N], s_gw_q2[GW_Q_N];
++static u32 s_gw_q1h, s_gw_q1t, s_gw_q2h, s_gw_q2t;
++static gw_spu s_gw_spu[GW_SPU_N];
++static u32 s_gw_spu_i;
++static unsigned long long s_gw_lines, s_gw_word1, s_gw_word20, s_gw_hole, s_gw_near_head, s_gw_qdrop;
++static unsigned long long s_gw_spu_n, s_gw_spu_read, s_gw_segs;
++
++static int gw_on_slow(void)
++{
++    const char* e = getenv("GCM_FIFO_WATCH");
++    const int on = e && atoi(e) ? 1 : 0;
++    if (__atomic_exchange_n(&s_gw_on, on, __ATOMIC_RELAXED) < 0 && on)
++        fprintf(stderr, "[fifo-watch] on: words the walker reads are checked again 1 ms and 20 ms later\n");
++    return on;
++}
++#define GW_ON() (__atomic_load_n(&s_gw_on, __ATOMIC_RELAXED) > 0 || \
++                 (__atomic_load_n(&s_gw_on, __ATOMIC_RELAXED) < 0 && gw_on_slow()))
++
++static unsigned long long gw_us(void)
++{
++#ifdef _WIN32
++    static LARGE_INTEGER f;
++    LARGE_INTEGER c;
++    if (!f.QuadPart) QueryPerformanceFrequency(&f);
++    QueryPerformanceCounter(&c);
++    return (unsigned long long)(c.QuadPart / f.QuadPart) * 1000000ull +
++           (unsigned long long)(c.QuadPart % f.QuadPart) * 1000000ull / (unsigned long long)f.QuadPart;
++#else
++    struct timespec ts;
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    return (unsigned long long)ts.tv_sec * 1000000ull + (unsigned long long)ts.tv_nsec / 1000ull;
++#endif
++}
++
++static gw_page* gw_page_of(u32 io, int make)
++{
++    const u32 pi = io >> 20;
++    if (pi >= GW_PAGES) return NULL;
++    gw_page* p = __atomic_load_n(&s_gw_pg[pi], __ATOMIC_ACQUIRE);
++    if (!p && make) {   /* only the walker makes pages */
++        p = (gw_page*)calloc(1, sizeof *p);
++        if (!p) return NULL;
++        __atomic_store_n(&s_gw_pg[pi], p, __ATOMIC_RELEASE);
++        fprintf(stderr, "[fifo-watch] watching IO page 0x%08X\n", pi << 20);
++    }
++    return p;
++}
++
++/* The title's write head (its context's `current`), as an IO offset. */
++static u32 gw_head(void)
++{
++    u32 ctx = s_gcm_ctx_out_ea ? vm_read32(s_gcm_ctx_out_ea) : 0;
++    if (!ctx) ctx = s_gcm_context_ea;
++    const u32 cur = ctx ? vm_read32(ctx + 0x8) : 0;
++    return cur ? gcm_ea2io_range(cur, NULL) : 0xFFFFFFFFu;
++}
++
++static void gw_q_push(gw_q* q, u32* tail, u32 head, u32 line, u32 mask, unsigned long long t)
++{
++    if (*tail - head >= GW_Q_N) { s_gw_qdrop++; return; }
++    gw_q* e = &q[*tail % GW_Q_N];
++    e->line = line; e->mask = mask; e->t = t;
++    (*tail)++;
++}
++
++/* The walker consumed the words [from, to): remember them as it read them. */
++static void gw_capture(u32 from, u32 to)
++{
++    const unsigned long long now = gw_us();
++    for (u32 io = from; io < to; ) {
++        const u32 pend = (io | 0xFFFFFu) + 1u, lim = (to < pend || pend == 0) ? to : pend;
++        gw_page* p = gw_page_of(io, 1);
++        const u32 ea0 = gcm_io2ea(io), io0 = io;
++        if (!p || !ea0) { io = lim; continue; }
++        for (; io < lim; io += 4u) {
++            const u32 wi = (io & 0xFFFFFu) >> 2, li = wi >> 5;
++            if (p->line_us[li] + GW_PASS_US <= now) {   /* a new pass over this line */
++                memcpy(&p->prev[li << 5], &p->cur[li << 5], 128);
++                p->prev_us[li] = p->line_us[li];
++            }
++            p->line_us[li] = now;
++            p->cur[wi] = vm_read32(ea0 + (io - io0));
++            if (!p->mask[li]) gw_q_push(s_gw_q1, &s_gw_q1t, s_gw_q1h, io & ~127u, 0, now);
++            p->mask[li] |= 1u << (wi & 31u);
++        }
++    }
++}
++
++/* The word at `at` (w) was decoded and the walker is now at `next`: what it
++ * consumed is that word and, for a method header, its arguments (a run of
++ * NOPs up to `next`). A JUMP, CALL, RETURN or flip word is one word; `next`
++ * at `at` is a word not consumed (a park, an acquire), read again later. */
++static void gw_consumed(u32 at, u32 w, u32 next)
++{
++    if (next == at) return;
++    u32 end = at + 4u;
++    const int ctl = (w & 0xE0000003u) == 0x20000000u || (w & 3u) == 1u || (w & 3u) == 2u ||
++                    w == 0x00020000u || (w & 0xFFFF0000u) == 0xFEAD0000u;
++    if (!ctl && next > at && next - at <= 0x10000u) {
++        if (!w) end = next;
++        else { const u32 e = at + 4u + ((w >> 18) & 0x7FFu) * 4u; end = e < next ? e : next; }
++    }
++    gw_capture(at, end);
++}
++
++/* Each word the walker decodes, at the top of its loop. */
++static inline void gw_step(u32 io, u32 w)
++{
++    if (s_gw_prev_io != 0xFFFFFFFFu) gw_consumed(s_gw_prev_io, s_gw_prev_w, io);
++    s_gw_prev_io = io; s_gw_prev_w = w;
++}
++
++/* The end of a drain pass: the last packet is consumed now, not next pass. */
++static void gw_drain_end(u32 getoff)
++{
++    if (s_gw_prev_io != 0xFFFFFFFFu) gw_consumed(s_gw_prev_io, s_gw_prev_w, getoff);
++    s_gw_prev_io = 0xFFFFFFFFu;
++}
++
++static int gw_is_park(u32 io, u32 w)
++{
++    return ((w & 0xE0000003u) == 0x20000000u && (w & 0x1FFFFFFCu) == io) || ((w & 3u) == 1u && (w & ~3u) == io);
++}
++
++/* The SPU stores in the log that overlap [ea, ea + n), newest first. */
++static void gw_spu_list(const char* tag, u32 ea, u32 n, unsigned long long since)
++{
++    const unsigned long long now = gw_us();
++    const u32 top = __atomic_load_n(&s_gw_spu_i, __ATOMIC_RELAXED);
++    int shown = 0;
++    for (u32 k = 0; k < GW_SPU_N && k < top && shown < 12; k++) {
++        const gw_spu* s = &s_gw_spu[(top - 1u - k) % GW_SPU_N];
++        if (s->t < since) break;
++        if (s->ea < ea + n && s->ea + s->size > ea) {
++            fprintf(stderr, "[fifo-watch]   %s SPU store ea=%08X size=0x%X %.2f ms ago, first words %08X %08X\n",
++                    tag, s->ea, s->size, (double)(now - s->t) / 1000.0, s->w0, s->w1);
++            shown++;
++        }
++    }
++    if (!shown) fprintf(stderr, "[fifo-watch]   %s no SPU store on it in the log\n", tag);
++}
++
++/* One word found changed: stage 1 (1 ms) or 2 (20 ms) after it was read. */
++static void gw_report(int stage, gw_page* p, u32 line, u32 k, u32 was, u32 now_w, unsigned long long t_read,
++                      u32 put, unsigned long long now)
++{
++    const u32 io = line + k * 4u, li = (line & 0xFFFFFu) >> 7;
++    const int hole = !was || gw_is_park(io, was);
++    const u32 head = gw_head();
++    const int by_head = head != 0xFFFFFFFFu && head >= io && head - io < 0x400u;
++    if (hole) s_gw_hole++;
++    else { if (stage == 1) s_gw_word1++; else s_gw_word20++; if (by_head) s_gw_near_head++; }
++    static int nw = 0, nh = 0;
++    if (hole ? !PS3_LOG_FIRST(nh, 8) : !PS3_LOG_FIRST(nw, 64)) return;
++    const u32 ea = gcm_io2ea(line);
++    fprintf(stderr, "[fifo-watch] io=%08X changed after the walker read it (seen at the %s check, %.2f ms after):"
++                    " %08X -> %08X, %s; get=%08X put=%08X head=%08X (%+d bytes)%s\n",
++            io, stage == 1 ? "1 ms" : "20 ms", (double)(now - t_read) / 1000.0, was, now_w,
++            hole ? (was ? "was a park" : "was a NOP") : "was a command word",
++            s_fifo_getoff, put, head, head != 0xFFFFFFFFu ? (int)(head - io) : 0,
++            p->spu_us[li] >= t_read ? ", an SPU stored into this line after the read" : "");
++    if (hole) return;
++    char a[160], b[160];
++    int la = 0, lb = 0;
++    for (u32 j = (k >= 4u ? k - 4u : 0u); j < k + 4u && j < 32u; j++) {
++        la += snprintf(a + la, sizeof a - la, j == k ? " [%08X]" : " %08X", p->cur[(li << 5) + j]);
++        lb += snprintf(b + lb, sizeof b - lb, j == k ? " [%08X]" : " %08X", ea ? vm_read32(ea + j * 4u) : 0u);
++    }
++    fprintf(stderr, "[fifo-watch]   as read:%s | now:%s\n", a, b);
++    if (ea) gw_spu_list("this line:", ea, 128, t_read > 1000000ull ? t_read - 1000000ull : 0);
++}
++
++/* Lines read 1 ms ago, then 20 ms ago: compare what the walker read with memory. */
++static u32 gw_check_line(int stage, u32 line, u32 m, unsigned long long t, u32 put, unsigned long long now)
++{
++    gw_page* p = gw_page_of(line, 0);
++    const u32 ea = gcm_io2ea(line);
++    if (!p || !ea) return 0;
++    const u32 li = (line & 0xFFFFFu) >> 7;
++    u32 left = m;
++    for (u32 b = m; b; b &= b - 1u) {
++        const u32 k = (u32)__builtin_ctz(b);
++        const u32 was = p->cur[(li << 5) + k], now_w = vm_read32(ea + k * 4u);
++        if (was == now_w) continue;
++        gw_report(stage, p, line, k, was, now_w, t, put, now);
++        left &= ~(1u << k);
++    }
++    return left;
++}
++
++static void gw_tick(u32 put)
++{
++    const unsigned long long now = gw_us();
++    while (s_gw_q1h != s_gw_q1t) {
++        gw_q* e = &s_gw_q1[s_gw_q1h % GW_Q_N];
++        if (now - e->t < 1000ull) break;
++        gw_page* p = gw_page_of(e->line, 0);
++        const u32 li = (e->line & 0xFFFFFu) >> 7;
++        const u32 m = p ? p->mask[li] : 0u;
++        if (p) p->mask[li] = 0;
++        s_gw_lines++;
++        const u32 left = m ? gw_check_line(1, e->line, m, e->t, put, now) : 0u;
++        if (left) gw_q_push(s_gw_q2, &s_gw_q2t, s_gw_q2h, e->line, left, e->t);
++        s_gw_q1h++;
++    }
++    while (s_gw_q2h != s_gw_q2t) {
++        gw_q* e = &s_gw_q2[s_gw_q2h % GW_Q_N];
++        if (now - e->t < GW_PASS_US) break;
++        gw_check_line(2, e->line, e->mask, e->t, put, now);
++        s_gw_q2h++;
++    }
++    static unsigned long long t0;
++    if (!t0) {
++        t0 = now;
++        if (s_seg_size)
++            fprintf(stderr, "[fifo-watch] ring EA %08X..%08X (IO %08X), segments of 0x%X\n",
++                    s_ring_begin, s_ring_end, gcm_ea2io_range(s_ring_begin, NULL), s_seg_size);
++    }
++    if (now - t0 >= 10000000ull) {
++        fprintf(stderr, "[fifo-watch] 10 s: lines checked %llu; changed after the walker read them: command words"
++                        " %llu at 1 ms and %llu at 20 ms (%llu of them within 1 KB behind the title's head),"
++                        " NOP or park words %llu; SPU stores into watched pages %llu (%llu into lines already read);"
++                        " segment switches %llu; check queue drops %llu\n",
++                s_gw_lines, s_gw_word1, s_gw_word20, s_gw_near_head, s_gw_hole,
++                __atomic_load_n(&s_gw_spu_n, __ATOMIC_RELAXED), __atomic_load_n(&s_gw_spu_read, __ATOMIC_RELAXED),
++                __atomic_load_n(&s_gw_segs, __ATOMIC_RELAXED), s_gw_qdrop);
++        t0 = now;
++    }
++}
++
++/* An SPU stored [ea, ea + size) (after the store: what it wrote is in memory). */
++static void gw_spu_store(u32 ea, u32 size)
++{
++    if (!size) return;
++    const u32 io = gcm_ea2io_range(ea, NULL);
++    if (io == 0xFFFFFFFFu || !gw_page_of(io, 0)) return;
++    const unsigned long long now = gw_us();
++    const u32 i = __atomic_fetch_add(&s_gw_spu_i, 1u, __ATOMIC_RELAXED) % GW_SPU_N;
++    gw_spu* s = &s_gw_spu[i];
++    s->ea = ea; s->size = size; s->t = now;
++    s->w0 = vm_read32(ea & ~3u); s->w1 = vm_read32((ea & ~3u) + 4u);
++    __atomic_add_fetch(&s_gw_spu_n, 1ull, __ATOMIC_RELAXED);
++    for (u32 a = io & ~127u; a < io + size; a += 128u) {
++        gw_page* p = gw_page_of(a, 0);
++        if (!p) continue;
++        const u32 li = (a & 0xFFFFFu) >> 7;
++        if (p->line_us[li]) __atomic_add_fetch(&s_gw_spu_read, 1ull, __ATOMIC_RELAXED);
++        p->spu_us[li] = now;
++    }
++}
++
++/* A bad word at `getoff` (w): the words around it now, as read last and the
++ * pass before, the SPU stores near it, and the same words for 200 ms. */
++static void gw_incident(u32 getoff)
++{
++    const u32 put = vm_read32(GCM_CONTROL_GUEST_ADDR + 0);
++    const unsigned long long now = gw_us();
++    const u32 head = gw_head();
++    fprintf(stderr, "[fifo-watch] bad word at io=%08X: get=%08X put=%08X head=%08X; segment switches so far %llu\n",
++            getoff, s_fifo_getoff, put, head, __atomic_load_n(&s_gw_segs, __ATOMIC_RELAXED));
++    for (int k = -8; k <= 4; k++) {
++        const u32 io = getoff + (u32)(k * 4);
++        const u32 ea = gcm_io2ea(io);
++        gw_page* p = gw_page_of(io, 0);
++        if (!ea) continue;
++        const u32 w = vm_read32(ea);
++        if (!p) { fprintf(stderr, "[fifo-watch] %+3d io=%08X now %08X (page not watched)\n", k, io, w); continue; }
++        const u32 wi = (io & 0xFFFFFu) >> 2, li = wi >> 5;
++        const int this_pass = p->line_us[li] && now - p->line_us[li] < GW_PASS_US;
++        const u32 before = this_pass ? p->prev[wi] : p->cur[wi];
++        const unsigned long long tb = this_pass ? p->prev_us[li] : p->line_us[li];
++        fprintf(stderr, "[fifo-watch] %+3d io=%08X now %08X | read last %08X (line %.2f ms ago) | the pass before %08X (%s%.1f ms ago)%s\n",
++                k, io, w, p->cur[wi], p->line_us[li] ? (double)(now - p->line_us[li]) / 1000.0 : -1.0,
++                before, tb ? "" : "never, ", tb ? (double)(now - tb) / 1000.0 : 0.0,
++                k == 0 ? "   <-- bad word" : "");
++    }
++    const u32 bea = gcm_io2ea(getoff);
++    if (bea) gw_spu_list("near it:", bea - 128u, 256u, now > 2000000ull ? now - 2000000ull : 0);
++    /* The walker waits here: a write that comes late lands under it. */
++    static const unsigned at_us[] = { 0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000 };
++    u32 last[7] = { 0 };
++    int changes = 0;
++    for (unsigned i = 0; i < sizeof at_us / sizeof at_us[0]; i++) {
++        const unsigned long long due = now + at_us[i];
++        for (;;) {
++            const unsigned long long t = gw_us();
++            if (t >= due) break;
++            if (due - t > 1500ull) Sleep(1);
++        }
++        u32 v[7];
++        for (int k = -2; k <= 3; k++) { const u32 e = gcm_io2ea(getoff + (u32)(k * 4)); v[k + 2] = e ? vm_read32(e) : 0; }
++        v[6] = vm_read32(GCM_CONTROL_GUEST_ADDR + 0);
++        const int changed = i && memcmp(v, last, sizeof v);
++        if (!i || changed || i + 1 == sizeof at_us / sizeof at_us[0]) {
++            fprintf(stderr, "[fifo-watch] +%.1f ms: %08X %08X [%08X %08X] %08X %08X put=%08X head=%08X%s\n",
++                    (double)(gw_us() - now) / 1000.0, v[0], v[1], v[2], v[3], v[4], v[5], v[6], gw_head(),
++                    changed ? "  (changed)" : "");
++            changes += changed;
++        }
++        memcpy(last, v, sizeof v);
++    }
++    fprintf(stderr, "[fifo-watch] the words around the bad one %s in 200 ms\n", changes ? "changed" : "did not change");
++    /* The wait is not a new pass over these lines. */
++    const unsigned long long t_end = gw_us();
++    for (int k = -8; k <= 4; k += 4) {
++        gw_page* p = gw_page_of(getoff + (u32)(k * 4), 0);
++        const u32 li = ((getoff + (u32)(k * 4)) & 0xFFFFFu) >> 7;
++        if (p && p->line_us[li] && now - p->line_us[li] < GW_PASS_US) p->line_us[li] = t_end;
++    }
++}
++
++#endif
+diff --git a/libs/video/tests/test_gcm_fifo_watch.c b/libs/video/tests/test_gcm_fifo_watch.c
+new file mode 100644
+index 0000000..ae7988a
+--- /dev/null
++++ b/libs/video/tests/test_gcm_fifo_watch.c
+@@ -0,0 +1,185 @@
++/* GCM_FIFO_WATCH (gcm_fifo_watch.h, a diagnostic): a word below put that
++ * changes after the walker read it is reported, a NOP that changes is counted
++ * apart, and at a bad word the words around it are printed as read the pass
++ * before -- here a slot the second pass never wrote, still holding the first
++ * pass's float arguments, the shape of Killzone HD's split-screen resync.
++ *
++ * gcc -std=gnu17 -I include -I libs/video
++ *   libs/video/tests/test_gcm_fifo_watch.c -ffunction-sections
++ *   -fdata-sections -Wl,--gc-sections -pthread -o /tmp/test_gcm_fifo_watch
++ *   (clang on macOS: -Wl,-dead_strip)
++ */
++#include "../cellGcmSys.c"
++#include "../rsx_tiling.c"
++#include "port_links.h"
++#include <stdio.h>
++#include <stdlib.h>
++/* GCM_REPORT_SPU_HOLD_MS asks the SPU task layer whether a task round is
++ * running; there are no SPU tasks here. */
++int spu_taskset_round_busy(uint32_t* ts, uint32_t* tid) { (void)ts; (void)tid; return 0; }
++uint8_t* vm_base;
++uint32_t ppu_vm_size;
++int g_resv_store_active;
++uint32_t g_ww_lo, g_ww_hi;
++void ppu_resv_break_store(uint64_t ea) { (void)ea; }
++void ps3_ww_report_inline(uint32_t a, uint64_t v, int w) { (void)a; (void)v; (void)w; }
++int spu_coh_is_reserved(uint32_t a) { (void)a; return 0; }
++void spu_coh_notify_write(uint32_t a) { (void)a; }
++void spu_lockline_lock(void) {}
++void spu_lockline_unlock(void) {}
++ps3_guest_caller_fn g_ps3_guest_caller;
++/* The walker's other consumers: no graphics backend, no lifted program. */
++PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++u32 g_rsx_last_reference;
++void (*g_spu_put_hook)(uint32_t ea, uint32_t size);
++void ppu_dump_bctrl_ring(uint32_t n, const char* why) { (void)n; (void)why; }
++void ppu_dump_guest_stack(ppu_context* c, const char* why) { (void)c; (void)why; }
++void rsx_state_init(rsx_state* state) { (void)state; }
++/* Counts the probe methods the walker ran. */
++#define PROBE_METHOD 0x1EE0u
++static u32 seen_n;
++/* No microcode or constant runs here: the walker hands every word to
++ * rsx_process_method instead. */
++int  rsx_process_vp_run(rsx_state* state, u32 method, const u8* src, u32 count)
++{ (void)state; (void)method; (void)src; (void)count; return 0; }
++int  rsx_process_method(rsx_state* state, u32 method, u32 data)
++{
++    (void)state;
++    if (method == PROBE_METHOD) seen_n++;
++    (void)data;
++    return 0;
++}
++int  rsx_draw_engine_enabled(void) { return 0; }
++rsx_backend* rsx_get_backend(void) { return NULL; }
++void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
++void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
++void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
++void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++int  rsx_live_draw_enabled(void) { return 0; }
++void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
++int  rsx_live_draw_blit(u32 a, u32 b, u32 c, u32 d, u32 e, u32 f, u32 w, u32 h)
++{ (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)w; (void)h; return 0; }
++void rsx_live_draw_note_resolve(u32 a, u32 b, u32 c, u32 d) { (void)a; (void)b; (void)c; (void)d; }
++int  rsx_live_draw_resolve_blit(u32 a, u32 b, u32 c, u32 d, u32 e, u32 f, u32 g, u32 h,
++                                u32 i, u32 j, u32 k, u32 l)
++{ (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; (void)j; (void)k; (void)l; return 0; }
++
++void rsx_raise_user_cmd(uint32_t arg) { (void)arg; }
++
++#define IO_ADDR   0x00100000u
++#define IO_SIZE   0x00100000u
++#define CMD_SIZE  0x00010000u
++#define SEG_B     0x00008000u
++
++static uint32_t g_heap = 0x00400000u;
++static u32 host_alloc(u32 size, u32 align)
++{
++    if (!align) align = 4;
++    g_heap = (g_heap + align - 1u) & ~(align - 1u);
++    u32 r = g_heap;
++    g_heap += size;
++    return r;
++}
++static void gw32(uint32_t ea, uint32_t v)
++{
++    uint8_t* p = vm_base + ea;
++    p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v;
++}
++static void host_w32(u32 ea, u32 v) { gw32(ea, v); }
++
++static int fails;
++static void check(int ok, const char* what)
++{
++    printf("[%s] %s\n", ok ? "PASS" : "FAIL", what);
++    fails += !ok;
++}
++
++static u32 put_probe(u32 io, u32 arg)
++{
++    gw32(IO_ADDR + io, (1u << 18) | PROBE_METHOD);
++    gw32(IO_ADDR + io + 4, arg);
++    return io + 8;
++}
++
++static void walk(u32 ctrl, u32 from, u32 put)
++{
++    s_fifo_getoff = from;
++    vm_write32(ctrl + 4, from);
++    vm_write32(ctrl + 0, put);
++    cellGcm_rsx_process_fifo();
++}
++
++static void sleep_ms(unsigned ms)
++{
++    struct timespec ts = { 0, (long)ms * 1000000L };
++    nanosleep(&ts, NULL);
++}
++
++int main(void)
++{
++    setvbuf(stdout, NULL, _IONBF, 0);
++    setenv("GCM_FIFO_WATCH", "1", 1);
++    const uint32_t vm_size = ppu_hle_inject_base + 0x10000u;
++    vm_base = (uint8_t*)calloc(1, vm_size);
++    if (!vm_base) { puts("FAIL: guest VM alloc"); return 1; }
++    ppu_vm_size = vm_size;
++    u32 ctx_out = host_alloc(4, 4);
++    (void)cellGcmSetupContext(ctx_out, CMD_SIZE, IO_SIZE, IO_ADDR, host_alloc, host_w32);
++    const uint32_t ctrl = (uint32_t)(uintptr_t)cellGcmGetControlRegister();
++
++    /* 1. Three probes and a run of NOPs, walked; then one probe's header and
++     * one NOP are written over, and the next pass, 2 ms later, checks them. */
++    u32 e = put_probe(0, 0);
++    e = put_probe(e, 1);
++    e = put_probe(e, 2);
++    e += 0x20;                                   /* 8 NOP words */
++    walk(ctrl, 0, e);
++    check(seen_n == 3, "the three probes ran");
++    gw32(IO_ADDR + 8, 0x3D60E0E2u);              /* the second probe's header */
++    gw32(IO_ADDR + 0x20, 0x00041714u);           /* a NOP */
++    sleep_ms(2);
++    walk(ctrl, e, e);                            /* nothing to walk: the checks run */
++    check(s_gw_word1 == 1, "a command word changed after it was read: reported at the 1 ms check");
++    check(s_gw_hole == 1, "a NOP changed after it was read: counted apart");
++    sleep_ms(25);
++    walk(ctrl, e, e);
++    check(s_gw_word20 == 0 && s_gw_word1 == 1, "the same change is not reported again at 20 ms");
++
++    /* 2. Untouched words are not reported. */
++    u32 f = put_probe(0x400, 3);
++    f = put_probe(f, 4);
++    walk(ctrl, 0x400, f);
++    sleep_ms(25);
++    walk(ctrl, f, f);
++    sleep_ms(2);
++    walk(ctrl, f, f);
++    check(s_gw_word1 == 1 && s_gw_word20 == 0, "words that stay as read are not reported");
++
++    /* 3. The first pass at 0x800 has a count-3 packet whose arguments at 0x808
++     * are floats; the second pass, 25 ms later, writes count-1 packets there
++     * but not the one at 0x808. The walker reads the first pass's floats as a
++     * JUMP to unmapped IO: at that bad word the watch prints the pass before. */
++    gw32(IO_ADDR + 0x800, (3u << 18) | PROBE_METHOD);
++    gw32(IO_ADDR + 0x804, 7);
++    gw32(IO_ADDR + 0x808, 0x3D60E0E2u);
++    gw32(IO_ADDR + 0x80C, 0x3DC0C0C2u);
++    u32 g = put_probe(0x810, 8);
++    walk(ctrl, 0x800, g);
++    sleep_ms(25);
++    walk(ctrl, g, g);
++    put_probe(0x800, 9);                         /* 0x800..0x807 */
++    put_probe(0x810, 10);                        /* 0x808..0x80F left as they were */
++    gw32(IO_ADDR + 0x818, 0x20000000u | 0x818);  /* park */
++    walk(ctrl, 0x800, 0x818);
++    check(s_fifo_getoff == 0x818, "the bad word was resynced over");
++    gw_page* p = gw_page_of(0x808, 0);
++    check(p && p->prev[0x808 >> 2] == 0x3D60E0E2u, "the pass before is kept for the bad word: the floats it holds now");
++    check(p && p->cur[0x800 >> 2] == ((1u << 18) | PROBE_METHOD) && p->prev[0x800 >> 2] == ((3u << 18) | PROBE_METHOD),
++          "a word the second pass wrote: read last as written, the pass before as before");
++
++    printf("[gcm_fifo_watch] %s (%d failed)\n", fails ? "FAIL" : "PASS", fails);
++    free(vm_base);
++    return fails ? 1 : 0;
++}
+diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
+index 6472dd0..c88d5cb 100644
+--- a/runtime/spu/spu_channels.c
++++ b/runtime/spu/spu_channels.c
+@@ -180,6 +180,16 @@ void (*g_spu_out_mbox_hook)(uint32_t group_id, uint32_t spu_id,
+  * stream is, so the only evidence is the DMA that writes it. NULL until
+  * installed, so a title with no SPU-built FIFO pays nothing. */
+ void (*g_spu_put_hook)(uint32_t ea, uint32_t size) = 0;
++
++/* GCM_FIFO_WATCH=1 (cellGcmSys.c, a diagnostic): a line store (PUTLLC,
++ * PUTLLUC) reaches the walker's watch too, through the PUT hook with the
++ * size's top bit set, which the hook leaves to the watch. */
++static void spu_line_store_watch(uint32_t ea)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("GCM_FIFO_WATCH"); on = e && atoi(e) ? 1 : 0; }
++    if (on && g_spu_put_hook) g_spu_put_hook(ea & ~127u, 128u | 0x80000000u);
++}
+ void (*g_spu_dma_hook)(spu_context*, uint32_t ea, uint32_t lsa, uint32_t size, int put) = 0;
+ void (*g_spu_job_hook)(spu_context*) = 0;
+ 
+@@ -871,6 +881,7 @@ static int spu_mfc_atomic(spu_context* ctx, uint32_t cmd)
+             { extern void spu_lockguard_check(spu_context*, uint32_t, const uint8_t*, uint32_t, const char*);
+               spu_lockguard_check(ctx, ea, ls, MFC_ATOMIC_LINE, "PUTLLC"); }
+             spu_put_copy(mem, ls, MFC_ATOMIC_LINE, ea);   /* commit local store (spu_dma.h: parks last) */
++            spu_line_store_watch(ea);   /* GCM_FIFO_WATCH */
+             /* A committing PUTLLC is a line write like any other, so every
+              * PEER reservation on it is lost and its SPU takes SPU_EVENT_LR.
+              * Silent, this is the same lost update the PPU half was added to
+@@ -968,6 +979,7 @@ static int spu_mfc_atomic(spu_context* ctx, uint32_t cmd)
+         { extern void spu_lockguard_check(spu_context*, uint32_t, const uint8_t*, uint32_t, const char*);
+           spu_lockguard_check(ctx, ea, ls, MFC_ATOMIC_LINE, "PUTLLUC"); }
+         spu_put_copy(mem, ls, MFC_ATOMIC_LINE, ea);    /* unconditional store (spu_dma.h: parks last) */
++        spu_line_store_watch(ea);   /* GCM_FIFO_WATCH */
+         /* Unconditional, so it invalidates EVERY reservation on the line --
+          * this SPU's included, which is why the notify runs before the
+          * bookkeeping below rather than after it. A peer left holding a
+diff --git a/tools/test_gcm_fifo_watch.py b/tools/test_gcm_fifo_watch.py
+new file mode 100644
+index 0000000..dcc98d8
+--- /dev/null
++++ b/tools/test_gcm_fifo_watch.py
+@@ -0,0 +1,27 @@
++#!/usr/bin/env python3
++"""GCM_FIFO_WATCH (a diagnostic): a word below put that changes after the walker
++read it is reported, and at a bad word the pass before is kept
++(libs/video/tests/test_gcm_fifo_watch.c, which compiles cellGcmSys.c in)."""
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++
++root = Path(__file__).resolve().parents[1]
++if os.name == 'nt':
++    print('SKIP: the GCM watch fixture uses POSIX linking')
++    raise SystemExit(0)
++with tempfile.TemporaryDirectory(prefix='gcm-fifo-watch-') as tmp:
++    binary = Path(tmp) / 'test'
++    linker = ['-Wl,-dead_strip'] if sys.platform == 'darwin' else ['-Wl,--gc-sections', '-pthread', '-lm']
++    subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu17', '-O1', '-UNDEBUG',
++                    '-ffunction-sections', '-fdata-sections',
++                    '-I' + str(root / 'include'), '-I' + str(root / 'libs/video'),
++                    str(root / 'libs/video/tests/test_gcm_fifo_watch.c'), *linker,
++                    '-o', str(binary)], check=True)
++    result = subprocess.run([str(binary)], timeout=30, capture_output=True, text=True)
++    print(result.stdout.strip())
++    if result.returncode:
++        print(result.stderr[-3000:])
++        raise SystemExit('test_gcm_fifo_watch failed')
