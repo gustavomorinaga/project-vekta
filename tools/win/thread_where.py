@@ -17,10 +17,12 @@ It changes nothing in the process beyond those short pauses.
 import collections
 import ctypes
 import ctypes.wintypes as wt
+import os
 import sys
 import time
 
-from thread_cpu import k32, modules_of
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # an embedded python's ._pth leaves it out
+from thread_cpu import k32, modules_of  # noqa: E402
 
 THREAD_SUSPEND_RESUME = 0x0002
 THREAD_GET_CONTEXT = 0x0008
@@ -77,6 +79,9 @@ def main():
                 rsp = ctypes.c_uint64.from_address(ctx + OFF_RSP).value
                 n = ctypes.c_size_t()
                 got = k32.ReadProcessMemory(hp, ctypes.c_void_p(rsp), stack, 4096, ctypes.byref(n))
+                if not got:   # near the top of its stack: 4 KB runs past the end
+                    got = k32.ReadProcessMemory(hp, ctypes.c_void_p(rsp), stack, 256, ctypes.byref(n))
+                got = got or 1   # keep the instruction pointer even with no stack
         finally:
             k32.ResumeThread(ht)
         if not got:
