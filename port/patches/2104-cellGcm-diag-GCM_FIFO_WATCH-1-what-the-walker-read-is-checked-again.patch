@@ -14,9 +14,12 @@ GCM_FIFO_WATCH=1 (off by default) asks three things of it:
 - at a bad word, the words around it now, as the walker read them last and
   as it read them the pass before (a line read again 20 ms or more after):
   were the floats there the pass before, so this pass never wrote them?
-- every line the walker reads is compared with memory 1 ms and 20 ms later:
+- every line the walker reads is compared with memory 1 ms and 5 ms later:
   does a word below put change after the walker read it (a late write, or a
-  writer aiming at the wrong address)?
+  writer aiming at the wrong address)? A change after the title's write head
+  came round the ring over the word is its next lap (about 24 ms in a
+  2-player match at 60: some 85 MB a second walked through a 2 MB ring,
+  mostly the NOPs of SPU holes), counted as reuse and not reported.
 - SPU DMA PUTs and line stores (PUTLLC, PUTLLUC) into the IO pages the
   walker reads are logged and listed at a bad word and at a change.
 And at a bad word the 24 bytes around it are read again for 200 ms.
@@ -89,10 +92,10 @@ index c2a9346..979f11d 100644
      vm_write32(GCM_CONTROL_GUEST_ADDR + 0, io_cur);      /* put: up to the JUMP */
 diff --git a/libs/video/gcm_fifo_watch.h b/libs/video/gcm_fifo_watch.h
 new file mode 100644
-index 0000000..3244a7b
+index 0000000..27e50ac
 --- /dev/null
 +++ b/libs/video/gcm_fifo_watch.h
-@@ -0,0 +1,365 @@
+@@ -0,0 +1,405 @@
 +/*
 + * gcm_fifo_watch.h -- GCM_FIFO_WATCH=1 (diagnostic, off by default): what the
 + * FIFO walker read, compared with memory again after it read it, and at a bad
@@ -107,11 +110,15 @@ index 0000000..3244a7b
 + *  1. Were those 8 bytes already there the pass before (the title never wrote
 + *     them in this pass), or are they new? At a bad word each word around it
 + *     is printed as it is now, as the walker read it last, and as it read it
-+ *     the pass before (a pass: a line read again 20 ms or more after).
++ *     the pass before (a pass: a line read again 10 ms or more after).
 + *  2. Does a word below `put` change after the walker has read it (a write
 + *     that comes late, or a writer aiming at a wrong address)? Each 128-byte
-+ *     line the walker reads is compared with memory 1 ms and 20 ms later; a
-+ *     changed word is reported with get, put and the title's write head.
++ *     line the walker reads is compared with memory 1 ms and 5 ms later. The
++ *     title's own next lap is not that: in a 2-player match at 60 the walker
++ *     reads about 85 MB a second through the 2 MB ring (most of it the NOPs
++ *     of SPU holes), a lap of about 24 ms, so a change after the title's
++ *     write head has come round over the word since the read is counted as
++ *     reuse; any other change is reported, with get, put and the head.
 + *  3. Does an SPU store into the lines the walker reads? SPU DMA PUTs and line
 + *     stores (PUTLLC, PUTLLUC) into watched IO pages are logged; at a bad word
 + *     and at a change, the ones on that line are listed.
@@ -127,7 +134,9 @@ index 0000000..3244a7b
 +#define GCM_FIFO_WATCH_H
 +
 +#define GW_PAGES   512u               /* 1 MB IO pages: IO offsets below 512 MB */
-+#define GW_PASS_US 20000ull           /* a line read again this long after: a new pass */
++#define GW_PASS_US 10000ull           /* a line read again this long after: a new pass (a lap: ~24 ms) */
++#define GW_LATE1_US 1000ull           /* the first check of a line read */
++#define GW_LATE2_US 5000ull           /* ...and the second */
 +#define GW_Q_N     65536u             /* lines waiting for their check */
 +#define GW_SPU_N   4096u              /* SPU stores remembered */
 +
@@ -140,7 +149,7 @@ index 0000000..3244a7b
 +    u32 mask[8192];                   /* words read in the line since its check was queued */
 +} gw_page;
 +
-+typedef struct { u32 line, mask; unsigned long long t; } gw_q;
++typedef struct { u32 line, mask, head, lap; unsigned long long t; } gw_q;   /* the title's head and lap at the read */
 +typedef struct { u32 ea, size, w0, w1; unsigned long long t; } gw_spu;
 +
 +static int s_gw_on = -1;
@@ -150,7 +159,9 @@ index 0000000..3244a7b
 +static u32 s_gw_q1h, s_gw_q1t, s_gw_q2h, s_gw_q2t;
 +static gw_spu s_gw_spu[GW_SPU_N];
 +static u32 s_gw_spu_i;
-+static unsigned long long s_gw_lines, s_gw_word1, s_gw_word20, s_gw_hole, s_gw_near_head, s_gw_qdrop;
++static unsigned long long s_gw_lines, s_gw_word1, s_gw_word2, s_gw_reuse, s_gw_hole, s_gw_near_head, s_gw_qdrop;
++static u32 s_gw_head0 = 0xFFFFFFFFu;          /* the title's write head when this drain pass began */
++static u32 s_gw_lap;                          /* times the head went back to the ring's start */
 +static unsigned long long s_gw_spu_n, s_gw_spu_read, s_gw_segs;
 +
 +static int gw_on_slow(void)
@@ -158,7 +169,7 @@ index 0000000..3244a7b
 +    const char* e = getenv("GCM_FIFO_WATCH");
 +    const int on = e && atoi(e) ? 1 : 0;
 +    if (__atomic_exchange_n(&s_gw_on, on, __ATOMIC_RELAXED) < 0 && on)
-+        fprintf(stderr, "[fifo-watch] on: words the walker reads are checked again 1 ms and 20 ms later\n");
++        fprintf(stderr, "[fifo-watch] on: words the walker reads are checked again 1 ms and 5 ms later\n");
 +    return on;
 +}
 +#define GW_ON() (__atomic_load_n(&s_gw_on, __ATOMIC_RELAXED) > 0 || \
@@ -203,12 +214,23 @@ index 0000000..3244a7b
 +    return cur ? gcm_ea2io_range(cur, NULL) : 0xFFFFFFFFu;
 +}
 +
-+static void gw_q_push(gw_q* q, u32* tail, u32 head, u32 line, u32 mask, unsigned long long t)
++static void gw_q_push(gw_q* q, u32* tail, u32 qhead, u32 line, u32 mask, u32 head, u32 lap, unsigned long long t)
 +{
-+    if (*tail - head >= GW_Q_N) { s_gw_qdrop++; return; }
++    if (*tail - qhead >= GW_Q_N) { s_gw_qdrop++; return; }
 +    gw_q* e = &q[*tail % GW_Q_N];
-+    e->line = line; e->mask = mask; e->t = t;
++    e->line = line; e->mask = mask; e->head = head; e->lap = lap; e->t = t;
 +    (*tail)++;
++}
++
++/* Has the title's write head come round the ring over `io` since it stood at
++ * h0 in lap l0 (when the word was read) to h1 in lap l1? Then the word
++ * changing is its next lap. Everything the walker reads is behind the head:
++ * below it in the same lap, or above it at the end of the lap before. */
++static int gw_head_passed(u32 h0, u32 l0, u32 io, u32 h1, u32 l1)
++{
++    if (h0 == 0xFFFFFFFFu || h1 == 0xFFFFFFFFu) return 0;
++    if (io < h0) return l1 - l0 >= 2u || (l1 - l0 == 1u && h1 >= io);
++    return l1 != l0 || h1 >= io;
 +}
 +
 +/* The walker consumed the words [from, to): remember them as it read them. */
@@ -228,7 +250,7 @@ index 0000000..3244a7b
 +            }
 +            p->line_us[li] = now;
 +            p->cur[wi] = vm_read32(ea0 + (io - io0));
-+            if (!p->mask[li]) gw_q_push(s_gw_q1, &s_gw_q1t, s_gw_q1h, io & ~127u, 0, now);
++            if (!p->mask[li]) gw_q_push(s_gw_q1, &s_gw_q1t, s_gw_q1h, io & ~127u, 0, s_gw_head0, s_gw_lap, now);
 +            p->mask[li] |= 1u << (wi & 31u);
 +        }
 +    }
@@ -288,24 +310,35 @@ index 0000000..3244a7b
 +    if (!shown) fprintf(stderr, "[fifo-watch]   %s no SPU store on it in the log\n", tag);
 +}
 +
-+/* One word found changed: stage 1 (1 ms) or 2 (20 ms) after it was read. */
++/* One word found changed: stage 1 (1 ms) or 2 (5 ms) after it was read, the
++ * title's head at h0 then. */
 +static void gw_report(int stage, gw_page* p, u32 line, u32 k, u32 was, u32 now_w, unsigned long long t_read,
-+                      u32 put, unsigned long long now)
++                      u32 h0, u32 l0, u32 put, unsigned long long now)
 +{
 +    const u32 io = line + k * 4u, li = (line & 0xFFFFFu) >> 7;
++    const u32 head = s_gw_head0;   /* with s_gw_lap, from the start of this pass */
++    if (gw_head_passed(h0, l0, io, head, s_gw_lap)) {   /* the title's next lap */
++        s_gw_reuse++;
++        static int nr = 0;
++        if (PS3_LOG_FIRST(nr, 2))
++            fprintf(stderr, "[fifo-watch] io=%08X changed %.2f ms after the read, the title's head having come round"
++                            " over it (%08X then, %08X now): reuse, counted, not reported\n",
++                    io, (double)(now - t_read) / 1000.0, h0, head);
++        return;
++    }
 +    const int hole = !was || gw_is_park(io, was);
-+    const u32 head = gw_head();
 +    const int by_head = head != 0xFFFFFFFFu && head >= io && head - io < 0x400u;
 +    if (hole) s_gw_hole++;
-+    else { if (stage == 1) s_gw_word1++; else s_gw_word20++; if (by_head) s_gw_near_head++; }
++    else { if (stage == 1) s_gw_word1++; else s_gw_word2++; if (by_head) s_gw_near_head++; }
 +    static int nw = 0, nh = 0;
 +    if (hole ? !PS3_LOG_FIRST(nh, 8) : !PS3_LOG_FIRST(nw, 64)) return;
 +    const u32 ea = gcm_io2ea(line);
-+    fprintf(stderr, "[fifo-watch] io=%08X changed after the walker read it (seen at the %s check, %.2f ms after):"
-+                    " %08X -> %08X, %s; get=%08X put=%08X head=%08X (%+d bytes)%s\n",
-+            io, stage == 1 ? "1 ms" : "20 ms", (double)(now - t_read) / 1000.0, was, now_w,
-+            hole ? (was ? "was a park" : "was a NOP") : "was a command word",
-+            s_fifo_getoff, put, head, head != 0xFFFFFFFFu ? (int)(head - io) : 0,
++    fprintf(stderr, "[fifo-watch] io=%08X changed after the walker read it (seen at the %s check, %.2f ms after,"
++                    " the title's head not round yet): %08X -> %08X, %s; get=%08X put=%08X head=%08X (%+d bytes,"
++                    " %08X at the read)%s\n",
++            io, stage == 1 ? "1 ms" : "5 ms", (double)(now - t_read) / 1000.0, was, now_w,
++            hole ? (was ? "was a park" : "was a NOP") : "was a command word or argument",
++            s_fifo_getoff, put, head, head != 0xFFFFFFFFu ? (int)(head - io) : 0, h0,
 +            p->spu_us[li] >= t_read ? ", an SPU stored into this line after the read" : "");
 +    if (hole) return;
 +    char a[160], b[160];
@@ -318,8 +351,9 @@ index 0000000..3244a7b
 +    if (ea) gw_spu_list("this line:", ea, 128, t_read > 1000000ull ? t_read - 1000000ull : 0);
 +}
 +
-+/* Lines read 1 ms ago, then 20 ms ago: compare what the walker read with memory. */
-+static u32 gw_check_line(int stage, u32 line, u32 m, unsigned long long t, u32 put, unsigned long long now)
++/* Lines read 1 ms ago, then 5 ms ago: compare what the walker read with memory. */
++static u32 gw_check_line(int stage, u32 line, u32 m, unsigned long long t, u32 h0, u32 l0, u32 put,
++                         unsigned long long now)
 +{
 +    gw_page* p = gw_page_of(line, 0);
 +    const u32 ea = gcm_io2ea(line);
@@ -330,7 +364,7 @@ index 0000000..3244a7b
 +        const u32 k = (u32)__builtin_ctz(b);
 +        const u32 was = p->cur[(li << 5) + k], now_w = vm_read32(ea + k * 4u);
 +        if (was == now_w) continue;
-+        gw_report(stage, p, line, k, was, now_w, t, put, now);
++        gw_report(stage, p, line, k, was, now_w, t, h0, l0, put, now);
 +        left &= ~(1u << k);
 +    }
 +    return left;
@@ -339,40 +373,49 @@ index 0000000..3244a7b
 +static void gw_tick(u32 put)
 +{
 +    const unsigned long long now = gw_us();
++    /* Everything this pass reads is behind the head as it is now. Within a
++     * lap it only moves forward (to the next block); a step back of more than
++     * 256 KB is the ring's end. */
++    const u32 h = gw_head();
++    if (h != 0xFFFFFFFFu && s_gw_head0 != 0xFFFFFFFFu && h + 0x40000u < s_gw_head0) s_gw_lap++;
++    if (h != 0xFFFFFFFFu) s_gw_head0 = h;
 +    while (s_gw_q1h != s_gw_q1t) {
 +        gw_q* e = &s_gw_q1[s_gw_q1h % GW_Q_N];
-+        if (now - e->t < 1000ull) break;
++        if (now - e->t < GW_LATE1_US) break;
 +        gw_page* p = gw_page_of(e->line, 0);
 +        const u32 li = (e->line & 0xFFFFFu) >> 7;
 +        const u32 m = p ? p->mask[li] : 0u;
 +        if (p) p->mask[li] = 0;
 +        s_gw_lines++;
-+        const u32 left = m ? gw_check_line(1, e->line, m, e->t, put, now) : 0u;
-+        if (left) gw_q_push(s_gw_q2, &s_gw_q2t, s_gw_q2h, e->line, left, e->t);
++        const u32 left = m ? gw_check_line(1, e->line, m, e->t, e->head, e->lap, put, now) : 0u;
++        if (left) gw_q_push(s_gw_q2, &s_gw_q2t, s_gw_q2h, e->line, left, e->head, e->lap, e->t);
 +        s_gw_q1h++;
 +    }
 +    while (s_gw_q2h != s_gw_q2t) {
 +        gw_q* e = &s_gw_q2[s_gw_q2h % GW_Q_N];
-+        if (now - e->t < GW_PASS_US) break;
-+        gw_check_line(2, e->line, e->mask, e->t, put, now);
++        if (now - e->t < GW_LATE2_US) break;
++        gw_check_line(2, e->line, e->mask, e->t, e->head, e->lap, put, now);
 +        s_gw_q2h++;
 +    }
-+    static unsigned long long t0;
++    static unsigned long long t0, l0, s0, g0;
 +    if (!t0) {
 +        t0 = now;
-+        if (s_seg_size)
-+            fprintf(stderr, "[fifo-watch] ring EA %08X..%08X (IO %08X), segments of 0x%X\n",
-+                    s_ring_begin, s_ring_end, gcm_ea2io_range(s_ring_begin, NULL), s_seg_size);
++        fprintf(stderr, "[fifo-watch] the title's write head at IO %08X\n", s_gw_head0);
 +    }
 +    if (now - t0 >= 10000000ull) {
-+        fprintf(stderr, "[fifo-watch] 10 s: lines checked %llu; changed after the walker read them: command words"
-+                        " %llu at 1 ms and %llu at 20 ms (%llu of them within 1 KB behind the title's head),"
-+                        " NOP or park words %llu; SPU stores into watched pages %llu (%llu into lines already read);"
-+                        " segment switches %llu; check queue drops %llu\n",
-+                s_gw_lines, s_gw_word1, s_gw_word20, s_gw_near_head, s_gw_hole,
-+                __atomic_load_n(&s_gw_spu_n, __ATOMIC_RELAXED), __atomic_load_n(&s_gw_spu_read, __ATOMIC_RELAXED),
-+                __atomic_load_n(&s_gw_segs, __ATOMIC_RELAXED), s_gw_qdrop);
-+        t0 = now;
++        /* this window, then the run so far */
++        const unsigned long long spu = __atomic_load_n(&s_gw_spu_n, __ATOMIC_RELAXED),
++                                 segs = __atomic_load_n(&s_gw_segs, __ATOMIC_RELAXED);
++        fprintf(stderr, "[fifo-watch] 10 s: %llu lines read and checked (%.1f MB/s), %llu segment switches,"
++                        " %llu SPU stores into watched pages, head lap %u at %08X. Run so far: changed after the walker read them with"
++                        " the title's head not round yet: command words %llu at 1 ms and %llu at 5 ms (%llu within"
++                        " 1 KB behind the head), NOP or park words %llu; the title's next lap over them %llu;"
++                        " SPU stores into lines already read %llu; check queue drops %llu\n",
++                s_gw_lines - l0, (double)(s_gw_lines - l0) * 128.0 / (double)(now - t0), segs - g0, spu - s0,
++                s_gw_lap, s_gw_head0,
++                s_gw_word1, s_gw_word2, s_gw_near_head, s_gw_hole, s_gw_reuse,
++                __atomic_load_n(&s_gw_spu_read, __ATOMIC_RELAXED), s_gw_qdrop);
++        t0 = now; l0 = s_gw_lines; s0 = spu; g0 = segs;
 +    }
 +}
 +
@@ -460,15 +503,17 @@ index 0000000..3244a7b
 +#endif
 diff --git a/libs/video/tests/test_gcm_fifo_watch.c b/libs/video/tests/test_gcm_fifo_watch.c
 new file mode 100644
-index 0000000..ae7988a
+index 0000000..3f1f5d3
 --- /dev/null
 +++ b/libs/video/tests/test_gcm_fifo_watch.c
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,215 @@
 +/* GCM_FIFO_WATCH (gcm_fifo_watch.h, a diagnostic): a word below put that
 + * changes after the walker read it is reported, a NOP that changes is counted
-+ * apart, and at a bad word the words around it are printed as read the pass
-+ * before -- here a slot the second pass never wrote, still holding the first
-+ * pass's float arguments, the shape of Killzone HD's split-screen resync.
++ * apart, a change after the title's write head came round the ring over it is
++ * its next lap (counted, not reported), and at a bad word the words around it
++ * are printed as read the pass before -- here a slot the second pass never
++ * wrote, still holding the first pass's float arguments, the shape of
++ * Killzone HD's split-screen resync.
 + *
 + * gcc -std=gnu17 -I include -I libs/video
 + *   libs/video/tests/test_gcm_fifo_watch.c -ffunction-sections
@@ -611,7 +656,7 @@ index 0000000..ae7988a
 +    check(s_gw_hole == 1, "a NOP changed after it was read: counted apart");
 +    sleep_ms(25);
 +    walk(ctrl, e, e);
-+    check(s_gw_word20 == 0 && s_gw_word1 == 1, "the same change is not reported again at 20 ms");
++    check(s_gw_word2 == 0 && s_gw_word1 == 1, "the same change is not reported again at 5 ms");
 +
 +    /* 2. Untouched words are not reported. */
 +    u32 f = put_probe(0x400, 3);
@@ -621,7 +666,7 @@ index 0000000..ae7988a
 +    walk(ctrl, f, f);
 +    sleep_ms(2);
 +    walk(ctrl, f, f);
-+    check(s_gw_word1 == 1 && s_gw_word20 == 0, "words that stay as read are not reported");
++    check(s_gw_word1 == 1 && s_gw_word2 == 0, "words that stay as read are not reported");
 +
 +    /* 3. The first pass at 0x800 has a count-3 packet whose arguments at 0x808
 +     * are floats; the second pass, 25 ms later, writes count-1 packets there
@@ -644,6 +689,34 @@ index 0000000..ae7988a
 +    check(p && p->prev[0x808 >> 2] == 0x3D60E0E2u, "the pass before is kept for the bad word: the floats it holds now");
 +    check(p && p->cur[0x800 >> 2] == ((1u << 18) | PROBE_METHOD) && p->prev[0x800 >> 2] == ((3u << 18) | PROBE_METHOD),
 +          "a word the second pass wrote: read last as written, the pass before as before");
++
++    /* 4. The title's head at 512 KB when probes at 0xC00 are read, then back
++     * at the ring's start (a lap) and past 0xC00: the word changing is its
++     * next lap. Read again with the head at 512 KB and changed at once: not. */
++    const u32 ctx = vm_read32(ctx_out);
++    vm_write32(ctx + 4, IO_ADDR + IO_SIZE - 4u);  /* end: a ring as big as the IO space, so the head can move */
++    vm_write32(ctx + 8, IO_ADDR + 0x80000u);
++    walk(ctrl, f, f);                            /* the head is seen there */
++    u32 h = put_probe(0xC00, 11);
++    h = put_probe(h, 12);
++    walk(ctrl, 0xC00, h);
++    vm_write32(ctx + 8, IO_ADDR + 0x100u);
++    walk(ctrl, h, h);                            /* a lap: the head went back to the start */
++    const u32 lap = s_gw_lap;
++    vm_write32(ctx + 8, IO_ADDR + 0x1000u);      /* ...and on past 0xC00 */
++    gw32(IO_ADDR + 0xC00, 0x00041714u);
++    sleep_ms(2);
++    walk(ctrl, h, h);
++    check(lap == 1, "the head going back to the ring's start is a lap");
++    check(s_gw_reuse == 1 && s_gw_word1 == 1, "a change after the head came round over the word: reuse, not reported");
++    vm_write32(ctx + 8, IO_ADDR + 0x80000u);
++    walk(ctrl, h, h);
++    u32 q = put_probe(0xE00, 13);
++    walk(ctrl, 0xE00, q);
++    gw32(IO_ADDR + 0xE04, 0x3DC0C0C2u);          /* the probe's argument */
++    sleep_ms(2);
++    walk(ctrl, q, q);
++    check(s_gw_word1 == 2 && s_gw_reuse == 1, "a change with the head not round yet: reported");
 +
 +    printf("[gcm_fifo_watch] %s (%d failed)\n", fails ? "FAIL" : "PASS", fails);
 +    free(vm_base);
