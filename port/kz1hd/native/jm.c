@@ -427,6 +427,37 @@ static void gfx_sync(void)
     }
 }
 
+#ifdef _WIN32
+/* KZ_JM_IDLE (experiment, Windows): an idle worker's pause after its 256 spins. mingw-w64's usleep(50) is
+ * Sleep(50 / 1000) = Sleep(0): no pause, the worker spinning on a core (Linux's usleep(50) pauses ~60 us).
+ * Unset or 0: that, as before. 1: a high-resolution waitable timer (Windows 10 1803 and later) for 50 us, which
+ * is ~0.5 ms on Windows (tools/win/nap_probe.py). 2: SwitchToThread. */
+static void jm_idle_nap(void)
+{
+    static int mode = -1;
+    if (mode < 0) {
+        const char* e = getenv("KZ_JM_IDLE");
+        mode = e ? atoi(e) : 0;
+        fprintf(stderr, "[kz-jm] idle worker pause: %s\n", mode == 1 ? "high-resolution timer" : mode == 2 ? "SwitchToThread" : "usleep(50) = Sleep(0)");
+    }
+    if (mode == 1) {
+        static __thread HANDLE timer;
+        static __thread int made;
+        if (!made) { made = 1; timer = CreateWaitableTimerExW(NULL, NULL, 0x00000002 /* HIGH_RESOLUTION */, TIMER_ALL_ACCESS); }
+        LARGE_INTEGER due;
+        due.QuadPart = -500;   /* 50 us in 100 ns units, relative */
+        if (timer && SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE) && WaitForSingleObject(timer, 100) == WAIT_OBJECT_0)
+            return;
+    } else if (mode == 2) {
+        SwitchToThread();
+        return;
+    }
+    usleep(50);
+}
+#else
+static void jm_idle_nap(void) { usleep(50); }
+#endif
+
 static void* jm_worker(void* arg)
 {
     const int k = (int)(intptr_t)arg, spu = 3 + k % 3;
@@ -453,7 +484,7 @@ static void* jm_worker(void* arg)
             if (tr && g_ps3_trace_on) ps3_trace_span("jm_job", tr, ps3_trace_now(), (uint32_t)j.module);
             idle = 0;
         } else if (++idle < 256) _mm_pause();
-        else usleep(50);
+        else jm_idle_nap();
     }
     return NULL;
 }
