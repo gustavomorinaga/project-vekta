@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 28 Nov 2026 02:30:00 -0300
+Subject: [PATCH] cellPad: on Windows the poll gate's clock is the performance
+ counter
+
+pad_now_ms was GetTickCount64 on Windows, which moves in 15.6 ms steps
+(the system timer; timeBeginPeriod does not change it). The 4 ms poll
+gate then let one host poll through a step: pads, keyboard and mouse were
+read at 64 Hz, not up to 250. Above 64 fps the mouse's counts came on
+some frames in lumps and on the frames between not at all, so at 144 fps
+a view turned by the mouse, and the gun swaying with it, moved in steps;
+sticks and buttons were as late. QueryPerformanceCounter in ms instead,
+as CLOCK_MONOTONIC off Windows (unchanged).
+---
+ libs/input/cellPad.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -1060,10 +1060,22 @@
+     }
+     return f;
+ }
++/* Milliseconds on a monotonic clock, for the poll gate and the pad's timers.
++ * On Windows from the performance counter: GetTickCount64 moves in steps of
++ * the system timer, 15.6 ms (timeBeginPeriod does not change it), so the
++ * PAD_POLL_INTERVAL_MS gate let one poll through a step: the host was read at
++ * 64 Hz, not 250. Above 64 fps the mouse's counts then came on some frames in
++ * lumps and on the frames between not at all (at 144 fps a view that turns,
++ * and a gun that sways, in steps), and pads' sticks and buttons were as late. */
+ static unsigned long long pad_now_ms(void)
+ {
+ #ifdef _WIN32
+-    return (unsigned long long)GetTickCount64();
++    static LARGE_INTEGER f;   /* set once; every thread stores the same value */
++    LARGE_INTEGER c;
++    if (!f.QuadPart) QueryPerformanceFrequency(&f);
++    QueryPerformanceCounter(&c);
++    const unsigned long long q = (unsigned long long)c.QuadPart, hz = (unsigned long long)f.QuadPart;
++    return q / hz * 1000ull + q % hz * 1000ull / hz;
+ #else
+     struct timespec ts;
+     clock_gettime(CLOCK_MONOTONIC, &ts);
+-- 
+2.56.0
