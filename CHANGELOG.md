@@ -116,6 +116,12 @@ program and folder that build it. Until a release that calls itself playable
   the pointer was captured again no longer turns the view all at once afterwards (a sudden jump or flick).
 - Mouse look (#121): a frame that runs slow no longer turns the view twice as far for the same mouse movement (most
   often at the 144 fps limit).
+- Frame rate at the 60 fps limit in heavy scenes: a frame that takes a little more than 1/60 s is now shown as soon
+  as it is done. It waited for the next 1/60 s tick, and the game starts its next frame only once the last one is
+  shown, so such scenes (two players in split screen at a high resolution, or a slower PC) dropped between 60 and 30
+  fps: a 2-player match at 3440x1440 on Windows ran at about 43 fps, with 71 frames of 50 ms or more in 3 minutes, and
+  now runs at about 52, with 1. Frames that fit in 1/60 s are shown as before, and no two frames less than 1/60 s
+  apart.
 
 ## [0.7.0] - 2026-11-23 (pre-release)
 
