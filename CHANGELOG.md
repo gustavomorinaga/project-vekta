@@ -68,6 +68,14 @@ program and folder that build it. Until a release that calls itself playable
 - Windows: the shader and pipeline caches were off, so every run compiled the game's shaders again and stuttered
   where they were first met. They now live in the install's `work\vk-cache` (removed with the game); a damaged
   `pipelines.bin` is ignored instead of handed to the graphics driver (patch 2099).
+- Windows (#121): the controllers, the keyboard and the mouse were read only 64 times a second, in the steps of the
+  Windows system timer, so above 60 fps the view turned and the gun swayed in small jumps, and a press or a stick
+  could arrive a frame late. They are read every 4 ms, as on Linux (patch 4022).
+- Split screen: the game's helper jobs write parts of its graphics command stream while it is being read, and the
+  reader now waits for a part still being written in two more cases: a write that covers a waiting point puts that
+  point last (patch 1023), and a command whose data runs into an unwritten part waits for it instead of reading the
+  wait as data (patch 2103). A 2-player session on Windows twice showed a broken HUD and pause menu after such a
+  misread; long scripted matches never showed it, so these are precautions until it is seen in play again.
 - Menus with the mouse (#180): hovering skips greyed-out items and selects a submenu's item at once, so the
   highlight keeps up with the pointer and a click opens Extras > Trophies.
 - PC page with the mouse: after a Display Mode or Resolution change the selection stays on the row you were on. It
