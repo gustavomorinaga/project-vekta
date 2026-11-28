@@ -411,6 +411,34 @@ static int kz_window_minimized(void)
     return w && (flags(w) & (0x40u | 0x08u)) != 0;   /* SDL_WINDOW_MINIMIZED, SDL_WINDOW_HIDDEN */
 }
 
+#ifdef _WIN32
+/* KZ_FRAME_NAP (experiment, Windows): the frame clock's pause between passes. Sleep() counts whole milliseconds, so
+ * the default KZ_RSX_POLL_US of 100 became Sleep(0): no pause, the thread spinning on a core (POSIX's usleep(100)
+ * pauses about 150 us). Unset or 0: that, as before. 1: a high-resolution waitable timer for poll_us
+ * (CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, Windows 10 1803 and later; Sleep(0) where it cannot be made or set), the
+ * same nap as patch 2058's flip wait. 2: SwitchToThread, which also lets a ready thread of lower priority run. */
+static void frame_clock_nap(unsigned poll_us)
+{
+    static const int mode = getenv("KZ_FRAME_NAP") ? atoi(getenv("KZ_FRAME_NAP")) : 0;
+    if (poll_us >= 1000u) { Sleep(poll_us / 1000u); return; }
+    if (mode == 1) {
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+        static HANDLE timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+        static int said;
+        if (!said++) fprintf(stderr, "[kz] frame clock naps: %s, %u us\n", timer ? "high-resolution timer" : "no timer, Sleep(0)", poll_us);
+        LARGE_INTEGER due;
+        due.QuadPart = -(LONGLONG)poll_us * 10;   /* 100 ns units, relative */
+        if (timer && SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE) && WaitForSingleObject(timer, 100) == WAIT_OBJECT_0) return;
+        Sleep(0);
+        return;
+    }
+    if (mode == 2) { SwitchToThread(); return; }
+    Sleep(0);
+}
+#endif
+
 static DWORD WINAPI frame_clock(LPVOID)
 {
     ps3_thread_name("frame clock");   /* vblanks, flips, the FIFO drain and the presents */
@@ -461,7 +489,7 @@ static DWORD WINAPI frame_clock(LPVOID)
     const unsigned poll_us = poll_env ? (unsigned)atoi(poll_env) : 100u;
     for (;;) {
 #ifdef _WIN32
-        Sleep(poll_us / 1000u);
+        frame_clock_nap(poll_us);
 #else
         usleep(poll_us);
 #endif
