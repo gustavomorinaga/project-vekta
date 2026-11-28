@@ -187,3 +187,4 @@
 5003-sceNpTrophy-ps3_trophy_ready-the-set-read-and-the-st.patch
 2099-Vulkan-the-disk-caches-on-Windows-a-replace-that-wor.patch
 4022-cellPad-on-Windows-the-poll-gate-s-clock-is-the-perf.patch
+1023-spu-a-write-over-a-command-buffer-park-stores-the-pa.patch
