@@ -68,8 +68,19 @@ program and folder that build it. Until a release that calls itself playable
 - Windows: the shader and pipeline caches were off, so every run compiled the game's shaders again and stuttered
   where they were first met. They now live in the install's `work\vk-cache` (removed with the game); a damaged
   `pipelines.bin` is ignored instead of handed to the graphics driver (patch 2099).
+- Windows (#121): the controllers, the keyboard and the mouse were read only 64 times a second, in the steps of the
+  Windows system timer, so above 60 fps the view turned and the gun swayed in small jumps, and a press or a stick
+  could arrive a frame late. They are read every 4 ms, as on Linux (patch 4022).
+- Split screen: the game's helper jobs write parts of its graphics command stream while it is being read, and the
+  reader now waits for a part still being written in two more cases: a write that covers a waiting point puts that
+  point last (patch 1023), and a command whose data runs into an unwritten part waits for it instead of reading the
+  wait as data (patch 2103). A 2-player session on Windows twice showed a broken HUD and pause menu after such a
+  misread; long scripted matches never showed it, so these are precautions until it is seen in play again.
 - Menus with the mouse (#180): hovering skips greyed-out items and selects a submenu's item at once, so the
   highlight keeps up with the pointer and a click opens Extras > Trophies.
+- PC page with the mouse: after a Display Mode or Resolution change the selection stays on the row you were on. It
+  jumped to whatever row the new window put under the pointer (often Frame Rate Limit), so the next left or right
+  changed that row instead: the window changing under a pointer standing still counted as a mouse move.
 - Mouse yaw turns by the same amount whatever the frame times: the game turns at the mean of a frame's turn rate and
   the last one's, so with frames of different lengths (at 144 when it dips, and at 240 and Unlimited) a flick turned
   up to 14 % more or less than its counts.
@@ -116,6 +127,16 @@ program and folder that build it. Until a release that calls itself playable
   the pointer was captured again no longer turns the view all at once afterwards (a sudden jump or flick).
 - Mouse look (#121): a frame that runs slow no longer turns the view twice as far for the same mouse movement (most
   often at the 144 fps limit).
+- Frame rate at the 60 fps limit in heavy scenes: a frame that takes a little more than 1/60 s is now shown as soon
+  as it is done. It waited for the next 1/60 s tick, and the game starts its next frame only once the last one is
+  shown, so such scenes (two players in split screen at a high resolution, or a slower PC) dropped between 60 and 30
+  fps: a 2-player match at 3440x1440 on Windows ran at about 44 fps, with 30 to 71 frames of 50 ms or more in 3
+  minutes, and now runs at about 51, with 1 to 7. Frames that fit in 1/60 s are shown as before, and no two frames
+  less than 1/60 s apart.
+- Windows: the worker that takes the post-processing chain's jobs never paused while it waited for one (a pause of
+  50 microseconds is none there), so it kept a whole CPU core busy all game long. It now naps while idle: a 2-player
+  match at 3440x1440 ran at about 67 fps instead of 59 at the 144 fps limit and about 54 instead of 50 at the 60
+  limit, 1 player a little better too, with one core less in use.
 
 ## [0.7.0] - 2026-11-23 (pre-release)
 

@@ -1,0 +1,406 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 28 Nov 2026 02:30:00 -0300
+Subject: [PATCH] cellGcm: a packet whose arguments run over a park waits for
+ that line
+
+Killzone HD's PSGL leaves holes in its command ring for SPU jobs: NOPs,
+with a park (a JUMP to itself) at the start of each 128-byte line, and a
+job writes the lines later. The walker waits on a park it reads as a
+header. A packet that starts in a line already written and runs into the
+next one takes that line's park word as an argument while the line is
+not written yet: the walker ran the rest of the line as NOPs, so the
+line's commands were lost, or, when they landed while it was there, it
+read them from whatever word it had reached and took a float for a
+header (Windows, two players: a JUMP to an unmapped IO, then a resync).
+
+Such a packet now stops the pass at its header, as the park itself
+would, and runs once the line is written; past the park's grace
+(GCM_PARK_GRACE_MS) it runs as before. Only the line starts inside a
+packet that crosses one are read. GCM_PARK_IN_PACKET=0 keeps the old
+walk and only counts these packets (A/B). "[fifo] packets over a park"
+gives the totals.
+
+tools/test_gcm_park_in_packet.py: a two-line hole whose first line ends
+in a packet that runs into the second; the walker waits at it, then runs
+every command once and in order; a second line never written costs the
+grace; a packet crossing a line with no park runs at once; the control
+loses the second line.
+---
+ libs/video/cellGcmSys.c                    |  83 ++++++++
+ libs/video/tests/test_gcm_park_in_packet.c | 227 +++++++++++++++++++++
+ tools/test_gcm_park_in_packet.py           |  30 +++
+ 3 files changed, 340 insertions(+)
+ create mode 100644 libs/video/tests/test_gcm_park_in_packet.c
+ create mode 100755 tools/test_gcm_park_in_packet.py
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index d321682..cb43459 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -1161,6 +1161,82 @@ static unsigned long long gcm_park_grace_ms(void)
+     if (ms < 0) { const char* e = getenv("GCM_PARK_GRACE_MS"); ms = e ? atoll(e) : (long long)GCM_PARK_GRACE_MS; }
+     return (unsigned long long)ms;
+ }
++/* A packet whose arguments run over a park waits like the park.
++ *
++ * Killzone HD's PSGL reserves command-buffer holes for SPU jobs
++ * (func_003174B0): NOPs, with a park (a JUMP to itself) at the start of each
++ * 128-byte line, and a job writes the lines later. The walker waits on a park
++ * it reads as a header. A packet that starts in a line already written and
++ * runs into the next one, though, takes that line's park word as an argument
++ * while the line is not written yet: the walker then ran the rest of the line
++ * as NOPs and lost its commands, or, when they landed while it was there, read
++ * them from whatever word it had reached, a float as a header (Windows, two
++ * players: a JUMP to an unmapped IO, then a resync). The RSX fetches a line
++ * long after a job's DMA has written it; here the job's thread can be
++ * preempted between two lines. So a packet with a park in its arguments stops
++ * the pass at its header, as the park would, and runs once the line is
++ * written; past the park's grace it runs as before, so a hole nothing fills
++ * costs a pause, not the FIFO. Only the 128-byte line starts inside the
++ * packet are read, and only for a packet that crosses one.
++ * GCM_PARK_IN_PACKET=0 runs such a packet at once, as before, and counts it. */
++static u32 s_pip_io, s_pip_park;        /* the packet waiting and the park in it (0 = none) */
++static unsigned long long s_pip_since, s_pip_seen, s_pip_ran, s_pip_longest, s_pip_said;
++static void gcm_pip_totals(unsigned long long now)
++{
++    static unsigned long long last_t, last_seen = ~0ull;
++    if (s_pip_seen == last_seen || now - last_t < 10000ull) return;
++    last_t = now; last_seen = s_pip_seen;
++    fprintf(stderr, "[fifo] packets over a park: %llu (%llu run with it, longest wait %llu ms)\n",
++            s_pip_seen, s_pip_ran, s_pip_longest);
++}
++/* io: the header's IO offset, ea: its address. The caller has seen the packet
++ * cross a line start, or a packet waiting. */
++static __attribute__((noinline)) int gcm_packet_over_park(u32 io, u32 ea, u32 count)
++{
++    const u32 first = io + 4u, end = first + count * 4u;
++    u32 park = 0;
++    for (u32 a = (first + 127u) & ~127u; a < end; a += 128u) {
++        const u32 la = ((a ^ io) >> 20) ? gcm_io2ea(a) : ea + (a - io);   /* same 1 MB IO page: same mapping */
++        u32 tgt;
++        if (la && gcm_fifo_jump_target(vm_read32(la), &tgt) && tgt == a) { park = a; break; }
++    }
++    if (!park && !s_pip_io) return 0;
++    static int mode = -1;
++    if (mode < 0) { const char* e = getenv("GCM_PARK_IN_PACKET"); mode = e ? atoi(e) : 1; }
++    const unsigned long long now = ps3_ms_now();
++    if (!park || s_pip_io != io) {
++        if (s_pip_io == io) {             /* the line was written while the packet waited */
++            const unsigned long long ms = now - s_pip_since;
++            if (ms > s_pip_longest) s_pip_longest = ms;
++            if (s_pip_said < 32) {
++                s_pip_said++;
++                const u32 ea = gcm_io2ea(s_pip_park);
++                fprintf(stderr, "[fifo] the line at io=%08X was written after %llu ms (now %08X): packet at io=%08X runs\n",
++                        s_pip_park, ms, ea ? vm_read32(ea) : 0u, io);
++            }
++        }
++        s_pip_io = 0;
++        if (!park) { gcm_pip_totals(now); return 0; }
++        s_pip_io = io; s_pip_park = park; s_pip_since = now; s_pip_seen++;
++        if (s_pip_said < 32) {
++            s_pip_said++;
++            const u32 hea = gcm_io2ea(io);
++            fprintf(stderr, "[fifo] packet at io=%08X (w=%08X, %u words) runs over the park at io=%08X: %s\n",
++                    io, hea ? vm_read32(hea) : 0u, count, park,
++                    mode ? "waiting for that line" : "run anyway (GCM_PARK_IN_PACKET=0)");
++        }
++    }
++    if (mode && now - s_pip_since < gcm_park_grace_ms()) return 1;
++    s_pip_ran++;
++    if (mode && s_pip_said < 32) {
++        s_pip_said++;
++        fprintf(stderr, "[fifo] packet at io=%08X runs over the park at io=%08X after %llu ms: the line was not written\n",
++                io, park, now - s_pip_since);
++    }
++    s_pip_io = 0;
++    gcm_pip_totals(now);
++    return 0;
++}
+ /* Strict flips: the drain always stops at a flip, however far behind it is, so a
+  * title whose only pacing is the RSX holding each VSYNC flip until the next
+  * refresh (Killzone HD: no SetWaitFlip, no flip-status wait, it just fills the
+@@ -3081,6 +3157,13 @@ static void gcm_rsx_process_fifo_unlocked(void)
+             continue;
+         }
+         if (type == 0 || type == 2) {          /* method (incrementing / NI) */
++            /* Its arguments run over a park: wait for the line to be written. */
++            if ((((s_fifo_getoff + 4u + 127u) & ~127u) < s_fifo_getoff + 4u + ((w >> 16) & 0x1FFCu) || s_pip_io) &&
++                gcm_packet_over_park(s_fifo_getoff, ea, (w >> 18) & 0x7FFu)) {
++                why = "parked-in-packet";
++                s_park_pass = 1;
++                break;
++            }
+             u32 count  = (w >> 18) & 0x7FF;
+             u32 method = w & 0x1FFCu;
+             u32 subch  = (w >> 13) & 7;
+diff --git a/libs/video/tests/test_gcm_park_in_packet.c b/libs/video/tests/test_gcm_park_in_packet.c
+new file mode 100644
+index 0000000..ff57ca0
+--- /dev/null
++++ b/libs/video/tests/test_gcm_park_in_packet.c
+@@ -0,0 +1,227 @@
++/* A packet whose arguments run over a park waits like the park (cellGcmSys.c,
++ * gcm_packet_over_park).
++ *
++ * Killzone HD's PSGL leaves holes in its ring for SPU jobs: NOPs, with a park
++ * (a JUMP to itself) at the start of each 128-byte line, and a job writes the
++ * lines later. Here a hole of two lines sits between two pieces of PPU
++ * commands; the job writes the first line, whose last packet runs into the
++ * second, and only then the second line. The walker must not take the second
++ * line's park word as an argument: it waits at that packet's header until
++ * the line is written, then runs every command once and in order. A line
++ * that is never written costs the park's grace and then runs as before. A
++ * packet that crosses a line with no park in it (PPU commands, with an
++ * argument that is a JUMP somewhere else) runs at once.
++ *
++ * Run with GCM_PARK_IN_PACKET=0 it is the control: the walker takes the park
++ * word as an argument, runs the rest of the line as NOPs, and the line's
++ * commands are lost.
++ *
++ * gcc -std=gnu17 -I include -I libs/video
++ *   libs/video/tests/test_gcm_park_in_packet.c -ffunction-sections
++ *   -fdata-sections -Wl,--gc-sections -pthread -o /tmp/test_gcm_park_in_packet
++ *   (clang on macOS: -Wl,-dead_strip)
++ */
++#include "../cellGcmSys.c"
++#include "../rsx_tiling.c"
++#include "port_links.h"
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++/* GCM_REPORT_SPU_HOLD_MS asks the SPU task layer whether a task round is
++ * running; there are no SPU tasks here. */
++int spu_taskset_round_busy(uint32_t* ts, uint32_t* tid) { (void)ts; (void)tid; return 0; }
++uint8_t* vm_base;
++uint32_t ppu_vm_size;
++int g_resv_store_active;
++uint32_t g_ww_lo, g_ww_hi;
++void ppu_resv_break_store(uint64_t ea) { (void)ea; }
++void ps3_ww_report_inline(uint32_t a, uint64_t v, int w) { (void)a; (void)v; (void)w; }
++int spu_coh_is_reserved(uint32_t a) { (void)a; return 0; }
++void spu_coh_notify_write(uint32_t a) { (void)a; }
++void spu_lockline_lock(void) {}
++void spu_lockline_unlock(void) {}
++ps3_guest_caller_fn g_ps3_guest_caller;
++/* The walker's other consumers: no graphics backend, no lifted program. */
++PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++u32 g_rsx_last_reference;
++void (*g_spu_put_hook)(uint32_t ea, uint32_t size);
++void ppu_dump_bctrl_ring(uint32_t n, const char* why) { (void)n; (void)why; }
++void ppu_dump_guest_stack(ppu_context* c, const char* why) { (void)c; (void)why; }
++void rsx_state_init(rsx_state* state) { (void)state; }
++/* Records the arguments of the probe methods the walker executed. */
++#define PROBE_METHOD 0x1EE0u
++static u32 seen[64], seen_n;
++int  rsx_process_method(rsx_state* state, u32 method, u32 data)
++{
++    (void)state;
++    if (method == PROBE_METHOD && seen_n < 64) seen[seen_n++] = data;
++    return 0;
++}
++int  rsx_draw_engine_enabled(void) { return 0; }
++/* The walker hands vertex-program runs here (#554) and asks for a vtable
++ * backend (#466); this fixture has neither. */
++int  rsx_process_vp_run(rsx_state* state, u32 method, const u8* src, u32 count)
++{ (void)state; (void)method; (void)src; (void)count; return 0; }
++rsx_backend* rsx_get_backend(void) { return NULL; }
++void rsx_draw_engine_method(u32 method, u32 arg) { (void)method; (void)arg; }
++void rsx_draw_engine_note_flip(u32 buffer_id) { (void)buffer_id; }
++void rsx_draw_engine_guest_read(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++void rsx_draw_engine_label_released(void) {}
++u32  rsx_draw_engine_surface_pitch(u32 l, u32 o) { (void)l; (void)o; return 0; }
++void rsx_draw_engine_guest_wrote(u32 l, u32 o, u32 p, u32 w, u32 h) { (void)l; (void)o; (void)p; (void)w; (void)h; }
++int  rsx_live_draw_enabled(void) { return 0; }
++void rsx_live_draw_method(u32 method, u32 arg) { (void)method; (void)arg; }
++int  rsx_live_draw_blit(u32 a, u32 b, u32 c, u32 d, u32 e, u32 f, u32 w, u32 h)
++{ (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)w; (void)h; return 0; }
++void rsx_live_draw_note_resolve(u32 a, u32 b, u32 c, u32 d) { (void)a; (void)b; (void)c; (void)d; }
++int  rsx_live_draw_resolve_blit(u32 a, u32 b, u32 c, u32 d, u32 e, u32 f, u32 g, u32 h,
++                                u32 i, u32 j, u32 k, u32 l)
++{ (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; (void)j; (void)k; (void)l; return 0; }
++
++
++void rsx_raise_user_cmd(uint32_t arg) { (void)arg; }
++#define IO_ADDR   0x00100000u
++#define IO_SIZE   0x00100000u
++#define CMD_SIZE  0x00010000u
++
++static uint32_t g_heap = 0x00400000u;
++static u32 host_alloc(u32 size, u32 align)
++{
++    if (!align) align = 4;
++    g_heap = (g_heap + align - 1u) & ~(align - 1u);
++    u32 r = g_heap;
++    g_heap += size;
++    return r;
++}
++static void host_w32(u32 ea, u32 v)
++{
++    uint8_t* p = vm_base + ea;
++    p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v;
++}
++/* A word at an IO offset of the ring. */
++static void gw32(u32 io, u32 v) { host_w32(IO_ADDR + io, v); }
++
++static int fails;
++static void check(int ok, const char* what)
++{
++    printf("[%s] %s\n", ok ? "PASS" : "FAIL", what);
++    fails += !ok;
++}
++static int seen_is(const u32* want, u32 n)
++{
++    if (seen_n != n) return 0;
++    for (u32 i = 0; i < n; i++) if (seen[i] != want[i]) return 0;
++    return 1;
++}
++static void show_seen(void)
++{
++    printf("       probes:");
++    for (u32 i = 0; i < seen_n; i++) printf(" %X", seen[i]);
++    printf("\n");
++}
++
++/* A probe: one method, one argument. A run: the probe non-incrementing, so
++ * every argument is one probe. */
++static u32 probe(u32 io, u32 arg) { gw32(io, (1u << 18) | PROBE_METHOD); gw32(io + 4, arg); return io + 8; }
++static u32 run_hdr(u32 n) { return 0x40000000u | (n << 18) | PROBE_METHOD; }
++static void zero(u32 io, u32 n) { for (u32 i = 0; i < n; i += 4) gw32(io + i, 0); }
++
++/* The hole: lines 0x080 and 0x100, NOPs with a park at each line start. */
++static void hole(void)
++{
++    zero(0x080, 0x100);
++    gw32(0x080, 0x20000000u | 0x080);
++    gw32(0x100, 0x20000000u | 0x100);
++}
++/* The job's first line: a probe, NOPs, and a run of 4 at 0x0F8 whose
++ * arguments are at 0x0FC (this line) and 0x100..0x108 (the next one). Its
++ * park word goes last, as the SPU's copy stores it (patch 1023). */
++static void line1(void)
++{
++    gw32(0x084, 0xC1);
++    zero(0x088, 0x70);
++    gw32(0x0F8, run_hdr(4));
++    gw32(0x0FC, 0xD1);
++    gw32(0x080, (1u << 18) | PROBE_METHOD);
++}
++/* ...and its second: the run's last three arguments, then a probe. */
++static void line2(void)
++{
++    gw32(0x104, 0xD3); gw32(0x108, 0xD4);
++    probe(0x10C, 0xC2);
++    gw32(0x100, 0xD2);
++}
++
++int main(void)
++{
++    setvbuf(stdout, NULL, _IONBF, 0);
++    const char* e = getenv("GCM_PARK_IN_PACKET");
++    const int control = e && !atoi(e);
++    const uint32_t vm_size = ppu_hle_inject_base + 0x10000u;
++    vm_base = (uint8_t*)calloc(1, vm_size);
++    if (!vm_base) { puts("FAIL: guest VM alloc"); return 1; }
++    ppu_vm_size = vm_size;
++
++    u32 ctx_out = host_alloc(4, 4);
++    (void)cellGcmSetupContext(ctx_out, CMD_SIZE, IO_SIZE, IO_ADDR, host_alloc, host_w32);
++    const uint32_t ctrl = (uint32_t)(uintptr_t)cellGcmGetControlRegister();
++
++    /* PPU commands, the hole, PPU commands. The second piece has a run that
++     * crosses the line at 0x200 with plain arguments, the one at the line
++     * start a JUMP somewhere else, and ends at put. */
++    probe(0x000, 0xA0);
++    hole();
++    probe(0x180, 0xB0);
++    gw32(0x1F8, run_hdr(3)); gw32(0x1FC, 0xB1); gw32(0x200, 0x20000000u | 0x300); gw32(0x204, 0xB3);
++    const u32 put = probe(0x208, 0xB4);
++
++    s_fifo_getoff = 0;
++    vm_write32(ctrl + 4, 0);
++    vm_write32(ctrl + 0, put);
++    cellGcm_rsx_process_fifo();
++    const u32 w0[] = { 0xA0 };
++    check(s_fifo_getoff == 0x080 && seen_is(w0, 1), "the walker parks at the hole");
++
++    line1();
++    cellGcm_rsx_process_fifo();
++    if (!control) {
++        const u32 w1[] = { 0xA0, 0xC1 };
++        check(s_fifo_getoff == 0x0F8 && seen_is(w1, 2),
++              "the first line runs up to the packet whose arguments run over the second line's park");
++        for (int i = 0; i < 20; i++) cellGcm_rsx_process_fifo();
++        check(s_fifo_getoff == 0x0F8 && seen_n == 2, "...and waits there, pass after pass (no stuck-get resync)");
++
++        line2();
++        cellGcm_rsx_process_fifo();
++        const u32 w2[] = { 0xA0, 0xC1, 0xD1, 0xD2, 0xD3, 0xD4, 0xC2, 0xB0, 0xB1, 0x20000300u, 0xB3, 0xB4 };
++        check(s_fifo_getoff == put && seen_is(w2, 12),
++              "once the line is written every command runs once, in order, through to put");
++        if (!seen_is(w2, 12)) show_seen();
++        check(s_pip_seen == 1 && s_pip_ran == 0, "one packet waited, none ran over a park");
++
++        /* The same hole again, and this time its second line never comes. */
++        seen_n = 0;
++        hole();
++        line1();
++        s_fifo_getoff = 0x080;
++        cellGcm_rsx_process_fifo();
++        check(s_fifo_getoff == 0x0F8 && s_pip_seen == 2,
++              "a hole met again waits at the same packet (a new wait, not the old one's time)");
++        usleep((useconds_t)(GCM_PARK_GRACE_MS * 3u * 1000u));
++        cellGcm_rsx_process_fifo();
++        check(s_fifo_getoff == put && s_pip_ran == 1, "a line never written costs the grace, then the packet runs as before");
++    } else {
++        const u32 lost[] = { 0xA0, 0xC1, 0xD1, 0x20000100u, 0, 0, 0xB0, 0xB1, 0x20000300u, 0xB3, 0xB4 };
++        check(s_fifo_getoff == put && seen_is(lost, 11),
++              "control: the park word is taken as an argument and the walker runs on to put");
++        if (!seen_is(lost, 11)) show_seen();
++        line2();
++        cellGcm_rsx_process_fifo();
++        check(seen_n == 11, "control: the second line, written after, is never run (its commands are lost)");
++        check(s_pip_seen == 1 && s_pip_ran == 1, "control: the packet over the park is counted");
++    }
++
++    printf("[gcm_park_in_packet%s] %s (%d failed)\n", control ? " control" : "", fails ? "FAIL" : "PASS", fails);
++    free(vm_base);
++    return fails ? 1 : 0;
++}
+diff --git a/tools/test_gcm_park_in_packet.py b/tools/test_gcm_park_in_packet.py
+new file mode 100755
+index 0000000..9c4b2f8
+--- /dev/null
++++ b/tools/test_gcm_park_in_packet.py
+@@ -0,0 +1,30 @@
++#!/usr/bin/env python3
++"""A packet whose arguments run over a park waits for that line to be written,
++and runs as before past the park's grace; the control (GCM_PARK_IN_PACKET=0,
++the old walk) loses the line's commands (libs/video/tests/test_gcm_park_in_packet.c,
++which compiles cellGcmSys.c in)."""
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++
++root = Path(__file__).resolve().parents[1]
++if os.name == 'nt':
++    print('SKIP: the GCM park fixture uses POSIX linking')
++    raise SystemExit(0)
++with tempfile.TemporaryDirectory(prefix='gcm-park-in-packet-') as tmp:
++    binary = Path(tmp) / 'test'
++    linker = ['-Wl,-dead_strip'] if sys.platform == 'darwin' else ['-Wl,--gc-sections', '-pthread', '-lm']
++    subprocess.run([os.environ.get('CC', 'cc'), '-std=gnu17', '-O1', '-UNDEBUG',
++                    '-ffunction-sections', '-fdata-sections',
++                    '-I' + str(root / 'include'), '-I' + str(root / 'libs/video'),
++                    str(root / 'libs/video/tests/test_gcm_park_in_packet.c'), *linker,
++                    '-o', str(binary)], check=True)
++    base = {k: v for k, v in os.environ.items() if k != 'GCM_PARK_IN_PACKET'}
++    for extra in ({}, {'GCM_PARK_IN_PACKET': '0'}):
++        result = subprocess.run([str(binary)], timeout=30, capture_output=True, text=True, env={**base, **extra})
++        print(result.stdout.strip())
++        if result.returncode:
++            print(result.stderr[-2000:])
++            raise SystemExit('test_gcm_park_in_packet failed')
