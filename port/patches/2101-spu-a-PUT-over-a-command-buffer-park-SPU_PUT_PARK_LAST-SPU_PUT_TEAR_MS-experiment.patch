@@ -1,14 +1,36 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gustavo Morinaga <me@gustavomorinaga.dev>
 Date: Sat, 28 Nov 2026 01:00:00 -0300
-Subject: [PATCH] spu: an SPU PUT over a command-buffer park can write its first
- word last (SPU_PUT_PARK_LAST) or be torn on purpose (SPU_PUT_TEAR_MS)
- (experiment)
+Subject: [PATCH] spu: an SPU write over a command-buffer park can write its
+ first word last (SPU_PUT_PARK_LAST) or be torn on purpose
+ (SPU_PUT_TEAR_MS) (experiment)
 
+DMA PUTs and the PUTLLC/PUTLLUC line stores.
 ---
- runtime/spu/spu_dma.h | 65 ++++++++++++++++++++++++++++++++++++++++++++++---
- 1 file changed, 61 insertions(+), 4 deletions(-)
+ runtime/spu/spu_channels.c | 4 ++--
+ runtime/spu/spu_dma.h      | 65 +++++++++++++++++++++++++++++++++++++++++++---
+ 2 files changed, 63 insertions(+), 6 deletions(-)
 
+--- a/runtime/spu/spu_channels.c
++++ b/runtime/spu/spu_channels.c
+@@ -870,7 +870,7 @@
+             memcmp(mem, ctx->resv_line, MFC_ATOMIC_LINE) == 0) {
+             { extern void spu_lockguard_check(spu_context*, uint32_t, const uint8_t*, uint32_t, const char*);
+               spu_lockguard_check(ctx, ea, ls, MFC_ATOMIC_LINE, "PUTLLC"); }
+-            memcpy(mem, ls, MFC_ATOMIC_LINE);          /* commit local store */
++            spu_put_copy(mem, ls, MFC_ATOMIC_LINE, ea);   /* commit local store (spu_dma.h: a park's first word last) */
+             /* A committing PUTLLC is a line write like any other, so every
+              * PEER reservation on it is lost and its SPU takes SPU_EVENT_LR.
+              * Silent, this is the same lost update the PPU half was added to
+@@ -967,7 +967,7 @@
+         spu_lockline_lock();
+         { extern void spu_lockguard_check(spu_context*, uint32_t, const uint8_t*, uint32_t, const char*);
+           spu_lockguard_check(ctx, ea, ls, MFC_ATOMIC_LINE, "PUTLLUC"); }
+-        memcpy(mem, ls, MFC_ATOMIC_LINE);              /* unconditional store */
++        spu_put_copy(mem, ls, MFC_ATOMIC_LINE, ea);    /* unconditional store (spu_dma.h: a park's first word last) */
+         /* Unconditional, so it invalidates EVERY reservation on the line --
+          * this SPU's included, which is why the notify runs before the
+          * bookkeeping below rather than after it. A peer left holding a
 --- a/runtime/spu/spu_dma.h
 +++ b/runtime/spu/spu_dma.h
 @@ -215,6 +215,64 @@
