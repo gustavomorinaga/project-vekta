@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gustavo Morinaga <me@gustavomorinaga.dev>
+Date: Sat, 28 Nov 2026 01:00:00 -0300
+Subject: [PATCH] spu: an SPU PUT over a command-buffer park can write its first
+ word last (SPU_PUT_PARK_LAST) or be torn on purpose (SPU_PUT_TEAR_MS)
+ (experiment)
+
+---
+ runtime/spu/spu_dma.h | 65 ++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 61 insertions(+), 4 deletions(-)
+
+--- a/runtime/spu/spu_dma.h
++++ b/runtime/spu/spu_dma.h
+@@ -215,6 +215,64 @@
+     return ok;
+ }
+ 
++/* An SPU PUT over a command-buffer park (diagnostic and experiment).
++ *
++ * Killzone HD's PSGL reserves holes in its command ring for SPU jobs
++ * (func_003174B0): NOPs, and a self-JUMP ("park") at the start of each
++ * 128-byte line. The RSX waits on the park until the job's DMA writes the
++ * line, whose first word then becomes a command header. A host memcpy makes
++ * the first word visible first, and a walker waiting on the park can then
++ * read the rest of the transfer before it lands (a copy preempted midway).
++ *   SPU_PUT_PARK_LAST=1: write the first word last, after a full fence, so the
++ *     walker leaves the park only when the whole transfer is in memory.
++ *   SPU_PUT_TEAR_MS=<ms> (fault injection): wait <ms> partway through the copy,
++ *     after the first word without SPU_PUT_PARK_LAST and before it with.
++ * The first PUTs over a park are logged with their size. */
++static inline int spu_put_over_park(const uint8_t* dst, uint32_t ea, uint32_t size)
++{
++    if (size < 16 || (ea & 15u)) return 0;
++    uint32_t w;
++    memcpy(&w, dst, 4);
++    w = __builtin_bswap32(w);
++    return (w & 0xE0000003u) == 0x20000000u && (w & 0x000FFFFCu) == (ea & 0x000FFFFCu);
++}
++static inline void spu_put_copy(uint8_t* dst, const uint8_t* src, uint32_t size, uint32_t ea)
++{
++    static int last = -1, tear_ms = 0;
++    if (__builtin_expect(last < 0, 0)) {
++        const char* e = getenv("SPU_PUT_PARK_LAST");
++        const char* t = getenv("SPU_PUT_TEAR_MS");
++        tear_ms = t ? atoi(t) : 0;
++        last = (e && atoi(e)) ? 1 : 0;
++    }
++    if (!spu_put_over_park(dst, ea, size)) { memcpy(dst, src, size); return; }
++    { static unsigned n = 0;
++      const unsigned k = __atomic_add_fetch(&n, 1u, __ATOMIC_RELAXED);
++      if (k <= 16u || (k & 0xFFFFu) == 0u)
++          fprintf(stderr, "[spu-put] #%u over a park: ea=%08X size=0x%X first word %02X%02X%02X%02X%s%s\n",
++                  k, ea, size, src[0], src[1], src[2], src[3], last ? " (written last)" : "",
++                  tear_ms ? " (tear injected)" : ""); }
++    if (last) {
++        if (tear_ms) {
++            memcpy(dst + 4, src + 4, 12);
++            Sleep((DWORD)tear_ms);
++            memcpy(dst + 16, src + 16, size - 16);
++        } else {
++            memcpy(dst + 4, src + 4, size - 4);
++        }
++        __atomic_thread_fence(__ATOMIC_SEQ_CST);
++        memcpy(dst, src, 4);
++        return;
++    }
++    if (tear_ms) {
++        memcpy(dst, src, 16);
++        Sleep((DWORD)tear_ms);
++        memcpy(dst + 16, src + 16, size - 16);
++        return;
++    }
++    memcpy(dst, src, size);
++}
++
+ /* 1 = done (rc in *rc), 0 = take the full path. */
+ static inline int mfc_do_transfer_fast(spu_context* spu, uint32_t lsa, uint64_t ea,
+                                        uint32_t size, uint32_t cmd, int* rc)
+@@ -256,7 +314,7 @@
+         }
+         if (span_reserved) {
+             spu_lockline_lock();
+-            memcpy(ea_ptr, ls_ptr, size);
++            spu_put_copy(ea_ptr, ls_ptr, size, (uint32_t)ea);
+             for (uint32_t a = a0; ; a += 128u) {
+                 if (spu_coh_line_reserved(a)) spu_coh_notify_write_except(a, spu);
+                 if (a == a1) break;
+@@ -265,7 +323,7 @@
+         } else {
+             /* As the full path below: a line reserved between the scan and
+              * the end of the copy gets its event after it. */
+-            memcpy(ea_ptr, ls_ptr, size);
++            spu_put_copy(ea_ptr, ls_ptr, size, (uint32_t)ea);
+             __atomic_thread_fence(__ATOMIC_SEQ_CST);   /* against spu_coh_reserve's */
+             for (uint32_t a = a0; ; a += 128u) {
+                 if (spu_coh_line_reserved(a)) {
+@@ -834,7 +892,7 @@
+                 spu_lockline_unlock();
+             } else if (span_reserved) {
+                 spu_lockline_lock();
+-                memcpy(ea_ptr, ls_ptr, size);
++                spu_put_copy(ea_ptr, ls_ptr, size, (uint32_t)ea);
+                 SPU_DMA_STATS(1, (uint32_t)ea, size);
+                 for (uint32_t a = a0; ; a += 128u) {
+                     if (spu_coh_line_reserved(a)) spu_coh_notify_write_except(a, spu);
+@@ -842,7 +900,7 @@
+                 }
+                 spu_lockline_unlock();
+             } else {
+-                memcpy(ea_ptr, ls_ptr, size);
++                spu_put_copy(ea_ptr, ls_ptr, size, (uint32_t)ea);
+                 SPU_DMA_STATS(1, (uint32_t)ea, size);
+                 __atomic_thread_fence(__ATOMIC_SEQ_CST);   /* against spu_coh_reserve's */
+                 for (uint32_t a = a0; ; a += 128u) {
+-- 
+2.56.0
