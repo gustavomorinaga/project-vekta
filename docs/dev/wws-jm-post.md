@@ -119,6 +119,13 @@ So the default is now `KZ_JM_SKIP`: the lanes do not run `jm_post` (`PS3_SPURS_W
 thread takes each job and completes it (ticket, slot, barrier) without computing. Level 1 uncapped about 60 -> about
 64 fps, same picture. `KZ_JM_SKIP=0` goes back to the earlier path (3 lanes + 3 threads).
 
+That thread waits for jobs spinning 256 rounds, then pausing with `usleep(50)`. On Windows mingw-w64's `usleep` is
+`Sleep(us / 1000)`, so the pause was `Sleep(0)`, none, and the idle thread kept a whole core busy (about 100 % of one in
+a 2-player match, 2026-11-28). Since 0.8.0 it naps there on a high-resolution waitable timer set for 50 us (about
+0.5 ms on Windows, `jm_idle_nap` in `jm.c`); `KZ_JM_IDLE=0` spins as before. Paired runs on an i7-11700K, 2-player at
+3440x1440: 58.9 -> 66.8 fps at the 144 limit, 49.9 -> 54.3 at 60; 1 player at 60 58.5 -> 59.4, p99 25.5 -> 23.0 ms;
+the process about 95 % of a core lighter. Linux is unchanged.
+
 Level 1's gameplay in the reference footage looks the same as ours; the likely place where the effects are missing is
 the depth-of-field blur of the cutscenes.
 

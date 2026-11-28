@@ -133,6 +133,10 @@ program and folder that build it. Until a release that calls itself playable
   fps: a 2-player match at 3440x1440 on Windows ran at about 44 fps, with 30 to 71 frames of 50 ms or more in 3
   minutes, and now runs at about 51, with 1 to 7. Frames that fit in 1/60 s are shown as before, and no two frames
   less than 1/60 s apart.
+- Windows: the worker that takes the post-processing chain's jobs never paused while it waited for one (a pause of
+  50 microseconds is none there), so it kept a whole CPU core busy all game long. It now naps while idle: a 2-player
+  match at 3440x1440 ran at about 67 fps instead of 59 at the 144 fps limit and about 54 instead of 50 at the 60
+  limit, 1 player a little better too, with one core less in use.
 
 ## [0.7.0] - 2026-11-23 (pre-release)
 
