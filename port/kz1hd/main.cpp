@@ -416,18 +416,44 @@ static int kz_window_minimized(void)
  * the default KZ_RSX_POLL_US of 100 became Sleep(0): no pause, the thread spinning on a core (POSIX's usleep(100)
  * pauses about 150 us). Unset or 0: that, as before. 1: a high-resolution waitable timer for poll_us
  * (CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, Windows 10 1803 and later; Sleep(0) where it cannot be made or set), the
- * same nap as patch 2058's flip wait. 2: SwitchToThread, which also lets a ready thread of lower priority run. */
-static void frame_clock_nap(unsigned poll_us)
+ * same nap as patch 2058's flip wait; that timer's floor is ~0.5 ms on Windows (tools/win/nap_probe.py), so every
+ * fence the game waits on can cost that much. 2: SwitchToThread, which also lets a ready thread of lower priority run.
+ * 3: the timer's nap only while the FIFO is idle -- get == put, put unchanged for 2 ms -- and the next tick is more
+ * than 1.5 ms away (a 60 fps frame's wait for its flip); Sleep(0) otherwise, so fences and flips keep the spin. */
+static void frame_clock_nap(unsigned poll_us, long long us_to_tick)
 {
     static const int mode = getenv("KZ_FRAME_NAP") ? atoi(getenv("KZ_FRAME_NAP")) : 0;
     if (poll_us >= 1000u) { Sleep(poll_us / 1000u); return; }
-    if (mode == 1) {
+    if (mode == 1 || mode == 3) {
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
 #endif
         static HANDLE timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
         static int said;
-        if (!said++) fprintf(stderr, "[kz] frame clock naps: %s, %u us\n", timer ? "high-resolution timer" : "no timer, Sleep(0)", poll_us);
+        if (!said++) fprintf(stderr, "[kz] frame clock naps%s: %s, %u us\n", mode == 3 ? " while the FIFO is idle" : "",
+                             timer ? "high-resolution timer" : "no timer, Sleep(0)", poll_us);
+        if (mode == 3) {
+#ifdef VM_HLE_INJECT_BASE
+            static uint32_t last_put;
+            static uint64_t put_since, naps, passes, next_say;
+            const uint64_t t = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
+                                   std::chrono::steady_clock::now().time_since_epoch()).count();
+            const uint32_t put = vm_read32(VM_HLE_INJECT_BASE + 0x2000u), get = vm_read32(VM_HLE_INJECT_BASE + 0x2004u);
+            if (put != last_put) { last_put = put; put_since = t; }
+            passes++;
+            if (!next_say) next_say = t + 30000000u;
+            if (t >= next_say) {
+                fprintf(stderr, "[kz] frame clock: %llu of %llu passes napped\n", (unsigned long long)naps,
+                        (unsigned long long)passes);
+                naps = passes = 0; next_say = t + 30000000u;
+            }
+            if (!(get == put && t - put_since >= 2000u && us_to_tick > 1500)) { Sleep(0); return; }
+            naps++;
+#else
+            Sleep(0);
+            return;
+#endif
+        }
         LARGE_INTEGER due;
         due.QuadPart = -(LONGLONG)poll_us * 10;   /* 100 ns units, relative */
         if (timer && SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE) && WaitForSingleObject(timer, 100) == WAIT_OBJECT_0) return;
@@ -435,6 +461,7 @@ static void frame_clock_nap(unsigned poll_us)
         return;
     }
     if (mode == 2) { SwitchToThread(); return; }
+    (void)us_to_tick;
     Sleep(0);
 }
 #endif
@@ -489,7 +516,7 @@ static DWORD WINAPI frame_clock(LPVOID)
     const unsigned poll_us = poll_env ? (unsigned)atoi(poll_env) : 100u;
     for (;;) {
 #ifdef _WIN32
-        frame_clock_nap(poll_us);
+        frame_clock_nap(poll_us, (long long)(next_tick - now_us()));
 #else
         usleep(poll_us);
 #endif
