@@ -70,6 +70,9 @@ program and folder that build it. Until a release that calls itself playable
   `pipelines.bin` is ignored instead of handed to the graphics driver (patch 2099).
 - Menus with the mouse (#180): hovering skips greyed-out items and selects a submenu's item at once, so the
   highlight keeps up with the pointer and a click opens Extras > Trophies.
+- PC page with the mouse: after a Display Mode or Resolution change the selection stays on the row you were on. It
+  jumped to whatever row the new window put under the pointer (often Frame Rate Limit), so the next left or right
+  changed that row instead: the window changing under a pointer standing still counted as a mouse move.
 - Mouse yaw turns by the same amount whatever the frame times: the game turns at the mean of a frame's turn rate and
   the last one's, so with frames of different lengths (at 144 when it dips, and at 240 and Unlimited) a flick turned
   up to 14 % more or less than its counts.

@@ -41,6 +41,7 @@
 #include <cctype>
 #include <algorithm>
 #include <vector>
+#include <atomic>
 
 #include "ppu_recomp.h"
 #include "view.h"
@@ -54,6 +55,7 @@
 #include "debug_give.h"  /* KZ_DEBUG_GIVE */
 #include "edition.h"     /* KZ_GA: guest addresses in this build's edition */
 #include "menu_box.h"    /* the list box the mouse drives */
+#include "menu_hover.h"  /* when the pointer picks a row */
 #include "route.h"
 #include "pc_deps.h"     /* which rows are in use */
 #include "trophies.h"    /* kz_notice_options, the Trophies page */
@@ -558,10 +560,14 @@ static int res_index(void)
     for (size_t i = 0; i < s_res.size(); i++) if (s_res[i] == std::make_pair(w, h)) return (int)i;
     return 0;
 }
+/* When the menu last asked for a display change: the window then changes under
+ * the pointer, which menu_mouse must not take as a move (menu_hover.h). */
+static std::atomic<long long> s_display_changed_ms{0};
 static void apply_display(void)
 {
     int w = 1280, h = 720;
     sscanf(s_ini["resolution"].c_str(), "%dx%d", &w, &h);
+    s_display_changed_ms.store(now_ms(), std::memory_order_relaxed);
     rsx_vulkan_set_display(s_ini["display"].c_str(), w, h, atoi(s_ini["refresh"].c_str()));
 }
 static void apply_fps(int fps)
@@ -621,7 +627,10 @@ static void display_seq_tick(long long t)
         const display_step& d = st[next];
         if (d.mode[0]) mode = d.mode;
         if (d.w) { w = d.w; h = d.h; }
-        if (d.mode[0] || d.w) rsx_vulkan_set_display(mode.c_str(), w, h, atoi(s_ini["refresh"].c_str()));
+        if (d.mode[0] || d.w) {
+            s_display_changed_ms.store(now_ms(), std::memory_order_relaxed);
+            rsx_vulkan_set_display(mode.c_str(), w, h, atoi(s_ini["refresh"].c_str()));
+        }
         if (d.scale) rsx_vulkan_set_scale((float)d.scale / 100.0f);
         for (const char* p = d.set; *p;) {   /* key=value;... as the rows set them (not written to the ini) */
             const char* eq = strchr(p, '=');
@@ -1562,11 +1571,12 @@ static void menu_mouse(void)
     if (g_kz_tick_hz >= 100) g_kz_flip_hz = ui ? 144.0 : play_hz;
     int x, y, w, h, wheel; unsigned b;
     pad_mouse_ui_state(&x, &y, &w, &h, &b, &wheel);
-    static unsigned prev_b; static int prev_x = -1, prev_y = -1, drag_x;
+    static unsigned prev_b; static int drag_x;
+    static menu_hover hover = { -1, -1, 0, 0, 0 };
     static bool drag_on;   /* the left button went down where dragging steps a slider */
     const unsigned pressed = b & ~prev_b;
     prev_b = b;
-    if (!ui || !w || !h) { prev_x = -1; s_goal = {}; return; }
+    if (!ui || !w || !h) { menu_hover_reset(&hover); s_goal = {}; return; }
     /* The menus lay out on 512 x 450, over the 16:9 frame: in the middle of a
      * widescreen picture (hud.cpp widens their layout by the window's aspect
      * over 16:9), else the frame as shown, with bars around it. */
@@ -1584,7 +1594,8 @@ static void menu_mouse(void)
         if (lb && menu_box_drivable(rd32(lb), rdf(lb + 0x38), vm_base[lb + 0x41])) { box = lb; break; }
     }
     static const bool fake_pos = getenv("PAD_MOUSE_POS") != nullptr;   /* tests: hover every tick */
-    const bool moved = x != prev_x || y != prev_y;
+    /* Moved by hand: not the window changing under a pointer standing still (menu_hover.h). */
+    const bool moved = menu_hover_moved(&hover, x, y, w, h, t, s_display_changed_ms.load(std::memory_order_relaxed)) != 0;
     if (moved || fake_pos) {
         Goal g = {};
         if (box) {
@@ -1602,7 +1613,6 @@ static void menu_mouse(void)
         }
     }
 hovered:
-    prev_x = x; prev_y = y;
     const OptRow* opt = nullptr;
     /* Dragging steps the selected row only from a press that was not on a
      * cycling value or a greyed-out row: from a stale drag_x, holding the
