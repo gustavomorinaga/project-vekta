@@ -13,6 +13,8 @@
  * it with what the job writes back (its PUTs), byte for byte.
  * KZ_JM_TIME=1: time per job of each module on the SPU lanes.
  * KZ_JM_WATCH=1: the job manager's header every second.
+ * KZ_JM_IDLE=0 (Windows): an idle worker spins as before 0.8.0 instead of
+ * napping on a high-resolution timer (jm_idle_nap).
  * KZ_JM_SKIP_US=<us>: under KZ_JM_SKIP, each job is held that long before it
  * is finished. Off by default. In the 144 Hz mode, in busy scenes, jm_post
  * finishing at once lets the skinned models (jm_gfx) be built from last
@@ -427,6 +429,38 @@ static void gfx_sync(void)
     }
 }
 
+/* An idle worker's pause, after its 256 spins: usleep(50), about 60 us on Linux. mingw-w64's usleep is
+ * Sleep(us / 1000), so on Windows that was Sleep(0), no pause: the worker, idle nearly all the time (KZ_JM_SKIP
+ * finishes jm_post's jobs at once), held a core spinning all game long (Windows 11, i7-11700K, 2026-11-28: about
+ * 105 % of a core in a 2-player match, 8 % with this nap). On Windows it naps instead on a high-resolution
+ * waitable timer (Windows 10 1803 and later), one per worker, set for 50 us; it wakes about 0.5 ms later there
+ * (tools/win/nap_probe.py), well within the ~10 ms the chain takes the PS3's SPUs. KZ_JM_IDLE=0, or a timer that
+ * cannot be made: usleep(50), as before. */
+#ifdef _WIN32
+static void jm_idle_nap(void)
+{
+    static int mode = -1;   /* every worker stores the same value */
+    if (mode < 0) {
+        const char* e = getenv("KZ_JM_IDLE");
+        mode = !e || atoi(e) != 0;
+        fprintf(stderr, mode ? "[kz-jm] an idle worker naps on a high-resolution timer (KZ_JM_IDLE=0 spins as before)\n"
+                             : "[kz-jm] an idle worker spins, KZ_JM_IDLE=0 (usleep(50) is Sleep(0) here)\n");
+    }
+    if (mode) {
+        static _Thread_local HANDLE timer;
+        static _Thread_local int made;
+        if (!made) { made = 1; timer = CreateWaitableTimerExW(NULL, NULL, 0x00000002 /* HIGH_RESOLUTION */, TIMER_ALL_ACCESS); }
+        LARGE_INTEGER due;
+        due.QuadPart = -500;   /* 50 us in 100 ns units, relative */
+        if (timer && SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE) && WaitForSingleObject(timer, 100) == WAIT_OBJECT_0)
+            return;
+    }
+    usleep(50);
+}
+#else
+static void jm_idle_nap(void) { usleep(50); }
+#endif
+
 static void* jm_worker(void* arg)
 {
     const int k = (int)(intptr_t)arg, spu = 3 + k % 3;
@@ -453,7 +487,7 @@ static void* jm_worker(void* arg)
             if (tr && g_ps3_trace_on) ps3_trace_span("jm_job", tr, ps3_trace_now(), (uint32_t)j.module);
             idle = 0;
         } else if (++idle < 256) _mm_pause();
-        else usleep(50);
+        else jm_idle_nap();
     }
     return NULL;
 }
